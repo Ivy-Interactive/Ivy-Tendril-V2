@@ -1,8 +1,14 @@
 import "@testing-library/jest-dom/vitest";
 import { act, fireEvent, render, screen } from "@testing-library/react";
+import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vite-plus/test";
 
-import { DataTable, type DataTableColumn, type DataTableProps } from "./index";
+import {
+  DATA_TABLE_VIRTUALIZATION_THRESHOLD,
+  DataTable,
+  type DataTableColumn,
+  type DataTableProps,
+} from "./index";
 
 /**
  * Measured height of every data row. `estimateRowHeight` is passed to match it, so the total size is
@@ -270,6 +276,49 @@ describe("DataTable virtualization", () => {
 
     const padSum = spacerHeights(container).reduce((sum, height) => sum + height, 0);
     expect(padSum + renderedRows(container).length * ROW_HEIGHT).toBe(TOTAL_HEIGHT);
+  });
+
+  it("never commits an empty body when windowing switches on under it", () => {
+    /* The bug: `getScrollElement` returned null while windowing was off, and virtual-core calls
+       `cleanup()` whenever that result changes - dropping the scroll element, its measured rect and
+       its listeners. The render that switched windowing on therefore attached to an unmeasured
+       container, `outerSize` was 0, `calculateRange` returned null, and the commit rendered no rows
+       at all. That is the Jobs table going blank "for a moment, and then rendering": it needs no
+       refresh and no loading toggle, only the row count crossing the threshold as a window appends.
+
+       Asserted over every commit rather than the final DOM, because a single blank frame is exactly
+       what the user sees and exactly what a settled-state assertion cannot see. */
+    const commits: number[] = [];
+    function Probe({ count }: { count: number }) {
+      const ref = React.useRef<HTMLDivElement | null>(null);
+      React.useLayoutEffect(() => {
+        const root = ref.current;
+        if (root) commits.push(root.querySelectorAll("tr[data-row-id]").length);
+      });
+      return (
+        <div ref={ref}>
+          <DataTable
+            columns={columns}
+            rows={rows.slice(0, count)}
+            getRowId={rowId}
+            paginated={false}
+            estimateRowHeight={ROW_HEIGHT}
+          />
+        </div>
+      );
+    }
+
+    // Below the "auto" threshold: every row rendered, windowing off.
+    const { rerender } = render(<Probe count={DATA_TABLE_VIRTUALIZATION_THRESHOLD} />);
+    commits.length = 0;
+
+    // One more row crosses it, and the virtualizer takes over mid-flight.
+    act(() => {
+      rerender(<Probe count={DATA_TABLE_VIRTUALIZATION_THRESHOLD + 1} />);
+    });
+
+    expect(commits.length).toBeGreaterThan(0);
+    expect(commits, `a commit rendered no rows: ${commits.join(", ")}`).not.toContain(0);
   });
 });
 

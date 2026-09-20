@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
+import { Badge } from "@ivy-interactive/components/ui";
 import {
   PlanGitView,
   PlanMarkdown,
@@ -37,7 +38,13 @@ import {
 } from "../controllers/execute_guards";
 import { PlanRevisionDiff } from "./PlanRevisionDiff";
 import { PlanVerifications } from "./PlanVerifications";
-import { formatPlanId, isReviewState, normalizePlanState, planStateBadgeClass } from "./PlansView";
+import {
+  formatPlanId,
+  isReviewState,
+  normalizePlanState,
+  planStateBadgeVariant,
+} from "./PlansView";
+import { ErrorBanner } from "../components/ErrorBanner";
 import { ProjectBadges } from "../components/ProjectBadges";
 import { RecommendationCard } from "../components/RecommendationCard";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
@@ -128,11 +135,7 @@ const ExecutionFailedCallout: React.FC<{ plan: PlanDetail; jobs: Job[] }> = ({ p
     .pop();
   const reason = lastFailure?.statusMessage?.trim();
   return (
-    <div
-      role="alert"
-      data-testid="plan-failure-callout"
-      className="mb-4 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-    >
+    <ErrorBanner data-testid="plan-failure-callout" className="mb-4">
       <p className="font-semibold">Execution Failed</p>
       {failed.length > 0 ? (
         <ul className="mt-1 space-y-0.5">
@@ -148,7 +151,7 @@ const ExecutionFailedCallout: React.FC<{ plan: PlanDetail; jobs: Job[] }> = ({ p
           {reason || "No details available. Check the job logs."}
         </p>
       )}
-    </div>
+    </ErrorBanner>
   );
 };
 
@@ -240,7 +243,7 @@ const PlanQuestionsPanel: React.FC<{
               {question.optional ? `${label(question)} (Optional)` : label(question)}
             </button>
             {savingIds.has(question.id) && (
-              <span className="text-[10px] text-muted-foreground">saving…</span>
+              <span className="text-2xs text-muted-foreground">saving…</span>
             )}
           </li>
         ))}
@@ -277,12 +280,6 @@ interface PlanDetailViewProps {
   onJobStarted?: (response: StartJobResponse) => void;
   /** The plan's state changed on the service; the caller should re-fetch it. */
   onPlanChanged?: (planId: string) => void;
-  /**
-   * V1's `ContentView` wires `onCreatePlan` into its embedded chat unconditionally, so "create plan
-   * from this message" works there as well as on the Chat page. Threaded through to
-   * {@link PlanChatPanel}; without it that message action is inert.
-   */
-  onCreatePlan?: (initialDescription: string) => void;
   onPlanDeleted?: (planId: string) => void;
 }
 
@@ -292,7 +289,6 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   projectRepos = [],
   jobs = [],
   onExecute,
-  onCreatePlan,
   onJobStarted,
   onPlanChanged,
   onPlanDeleted,
@@ -1449,13 +1445,11 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   const otherTabsPane = (
     <div key="tab-pane" className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
       {effectiveTab === "diff" && (
-        <div className="rounded-xl border border-border bg-card/40 p-6">
-          <PlanRevisionDiff planId={plan.id} revisionCount={plan.revisionCount ?? 0} />
-        </div>
+        <PlanRevisionDiff planId={plan.id} revisionCount={plan.revisionCount ?? 0} />
       )}
 
       {effectiveTab === "recommendations" && (
-        <div className="space-y-4 rounded-xl border border-border bg-card/40 p-6">
+        <div className="space-y-4">
           <div>
             <h3 className="text-sm font-semibold text-foreground">Plan Recommendations</h3>
             <p className="text-xs text-muted-foreground">
@@ -1483,7 +1477,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       )}
 
       {effectiveTab === "git" && (
-        <div className="rounded-xl border border-border bg-card/40 p-6">
+        <>
           {gitError ? (
             <p data-testid="git-tab-error" className="text-xs text-destructive">
               {gitError}
@@ -1498,14 +1492,14 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
           ) : (
             <p className="text-sm text-muted-foreground/70">Loading git state…</p>
           )}
-        </div>
+        </>
       )}
 
       {effectiveTab === "details" && (
         <div className="space-y-4">
           {/* `DetailsTabView.Build`'s own field order, and its `RemoveEmpty()`: a row the plan
               has no value for is dropped rather than rendered blank. */}
-          <dl className="rounded-xl border border-border bg-card/40 p-4">
+          <dl>
             <DetailRow label="Plan ID">
               <button
                 type="button"
@@ -1576,7 +1570,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
               because V2's Git tab is the only other place they appear and it is hidden while a
               plan has nothing in git yet. */}
           <div className="grid gap-4 sm:grid-cols-2">
-            <div className="rounded-xl border border-border bg-card/40 p-4">
+            <div>
               <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
                 Repositories
               </h4>
@@ -1589,7 +1583,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
               </ul>
             </div>
 
-            <div className="rounded-xl border border-border bg-card/40 p-4">
+            <div>
               <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
                 Commits
               </h4>
@@ -1662,24 +1656,19 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
            * is reachable for every plan, so it has to say which one it is looking at.
            */
           ProjectBadges: [
-            <span
+            <Badge
               key="state"
               data-testid="plan-state-badge"
-              className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${planStateBadgeClass(
-                effectivePlan.state,
-              )}`}
+              variant={planStateBadgeVariant(effectivePlan.state)}
             >
               {effectivePlan.state}
-            </span>,
+            </Badge>,
             <ProjectBadges key="projects" project={plan.project} />,
             ...(plan.level
               ? [
-                  <span
-                    key="level"
-                    className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground"
-                  >
+                  <Badge key="level" variant="outline">
                     {plan.level}
-                  </span>,
+                  </Badge>,
                 ]
               : []),
           ],
@@ -1694,7 +1683,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
                   <span
                     key="in-flight"
                     data-testid="plan-in-flight-notice"
-                    className="rounded-lg border border-info/40 bg-info/10 px-3 py-1.5 text-xs font-medium text-info"
+                    className="rounded-box border border-info/40 bg-info/10 px-3 py-1.5 text-xs font-medium text-info"
                   >
                     A job is running on this plan.
                   </span>,
@@ -1702,14 +1691,9 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
               : []),
             ...(actionError
               ? [
-                  <div
-                    key="error"
-                    role="alert"
-                    data-testid="plan-action-error"
-                    className="flex-1 rounded-lg border border-destructive/40 bg-destructive/10 p-2 text-xs text-destructive"
-                  >
+                  <ErrorBanner key="error" data-testid="plan-action-error" className="flex-1">
                     {actionError}
-                  </div>,
+                  </ErrorBanner>,
                 ]
               : []),
           ],
@@ -1753,9 +1737,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
           /* `isShareMode ? null : new PlanChatView(selectedPlan)` — the plan's own conversation,
              hosted by the same view the Chat app is. V2 has no share mode, so there is no null arm
              yet. */
-          Chat: [
-            <PlanChatPanel key="chat" plan={plan} draft={chatDraft} onCreatePlan={onCreatePlan} />,
-          ],
+          Chat: [<PlanChatPanel key="chat" plan={plan} draft={chatDraft} />],
           Content: [effectiveTab === "plan" ? planPane : otherTabsPane],
         }}
       />

@@ -1,9 +1,17 @@
 [package]
 name = "tendril-app"
-version = "0.1.0"
+# Inherited, like every other crate in the workspace. This was the one manifest carrying its own
+# copy, so a release that bumped `[workspace.package]` left the desktop crate behind - and the
+# "SpaceCorps" author string disagreed with the rest of the tree.
+version.workspace = true
 description = "Tendril Desktop Application"
-authors = ["SpaceCorps"]
-edition = "2021"
+authors.workspace = true
+edition.workspace = true
+# Not `rust-version.workspace = true`: the desktop crate's floor is genuinely higher than the rest
+# of the workspace's. `notify-rust` 4.18 (via tauri-plugin-notification) declares 1.89, so inheriting
+# the workspace's 1.88 would claim support this crate does not have. The three library/CLI crates
+# stay at 1.88; only the Tauri chain forces 1.89.
+rust-version = "1.89"
 
 [lib]
 name = "tendril_app_lib"
@@ -33,7 +41,7 @@ url = "2"
 tendril-core = { path = "../../../crates/tendril-core" }
 sysinfo = "0.33"
 chrono = { version = "0.4", features = ["serde"] }
-dirs = "6"
+dirs = "7"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 

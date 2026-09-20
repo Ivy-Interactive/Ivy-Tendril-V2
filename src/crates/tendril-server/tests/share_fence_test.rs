@@ -136,6 +136,7 @@ async fn a_share_token_does_not_reach_anything_off_the_allow_list() {
         "/api/jobs",
         "/api/projects",
         "/api/config",
+        "/api/config/text",
         "/api/chat/sessions",
         "/api/vaults",
         "/api/dashboard",
@@ -144,6 +145,30 @@ async fn a_share_token_does_not_reach_anything_off_the_allow_list() {
             h.as_visitor("GET", path, &token).await,
             StatusCode::UNAUTHORIZED,
             "{path} is not part of a share"
+        );
+    }
+}
+
+/// The in-app config editor, end to end through the real router rather than through the policy function
+/// alone, because this is the assertion that survives a refactor of where the check is wired.
+///
+/// Both halves matter and they fail differently. `GET` serves the whole of `config.yaml` — masking hides
+/// the credentials but not the provider hostnames, the project paths or the shape of the install — and
+/// `PUT` rewrites the daemon's configuration, which is a short step from arbitrary execution via a
+/// `codingAgent` entry. A share is read-only and comment-only; neither belongs in it.
+///
+/// `UNAUTHORIZED` rather than `FORBIDDEN`: these routes sit *inside* `auth_middleware`, so the refusal is
+/// the token failing to authenticate for this path at all, not a guard downstream of it.
+#[tokio::test]
+async fn a_share_token_cannot_read_or_write_the_config_editor() {
+    let h = harness();
+    let token = h.publish_share();
+
+    for method in ["GET", "PUT"] {
+        assert_eq!(
+            h.as_visitor(method, "/api/config/text", &token).await,
+            StatusCode::UNAUTHORIZED,
+            "{method} /api/config/text must never be reachable with a share token"
         );
     }
 }
@@ -160,6 +185,7 @@ async fn a_share_token_cannot_mutate_a_plan() {
         ("DELETE", "/api/plans/00001"),
         ("POST", "/api/jobs"),
         ("PUT", "/api/plans/00001/revisions/latest"),
+        ("PUT", "/api/config/text"),
     ] {
         assert_eq!(
             h.as_visitor(method, path, &token).await,

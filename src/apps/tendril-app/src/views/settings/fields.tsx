@@ -17,18 +17,45 @@ import {
  */
 
 /**
+ * The one width every settings screen is laid out against - V1's `Size.Auto().Max(Size.Units(120))`,
+ * the cap `AppearanceSetupView`, `CodingAgentSetupView` and the account and tunnel views all open
+ * with. `170` rather than `120` because V2's controls are wider, but the point is the same: one
+ * column, applied in one place.
+ *
+ * `min-w-0` travels with it. Without it the cap still holds but the element cannot shrink below its
+ * content as a flex item, which is how a wide table pushes rows past the pane edge with no way to
+ * scroll to them.
+ */
+export const SETTINGS_CONTAINER = "min-w-0 max-w-170";
+
+/**
  * Section heading and hint, the `Text.Block(...).Bold()` / `Text.Muted(...).Small()` pair V1 opens
  * every setup view with.
+ *
+ * It applies {@link SETTINGS_CONTAINER} itself, so a section is bounded by being a section rather
+ * than by each call site remembering to repeat the cap. Three of them had not - Team Vault, Daemon
+ * Diagnostics and Newsletter ran the full width of the pane while everything around them stopped at
+ * the same column.
+ *
+ * It draws no box, because V1 draws none: every one of its setup views returns a bare
+ * `Layout.Vertical()` whose first two children are that heading pair, and the only `new Card(...)`
+ * anywhere in `Apps/Settings` is the agent tile in `CodingAgentSetupView` - a card because it is a
+ * selectable thing, not because it is a section. This used to render
+ * `rounded-box border border-border bg-card/60 p-6` plus a rule under the header, which boxed every
+ * section inside the pane that already frames them and made the screen read as a stack of widgets
+ * rather than one settings page.
  */
-export const SectionCard: React.FC<{
+export const SettingsSection: React.FC<{
   title: string;
   hint?: string;
   testId?: string;
   action?: React.ReactNode;
+  /** Opt out of the shared cap for a section that owns its own width. */
+  unbounded?: boolean;
   children: React.ReactNode;
-}> = ({ title, hint, testId, action, children }) => (
-  <div className="rounded-xl border border-border bg-card/60 p-6" data-testid={testId}>
-    <div className="flex items-start justify-between gap-3 border-b border-border pb-4">
+}> = ({ title, hint, testId, action, unbounded, children }) => (
+  <section className={unbounded ? undefined : SETTINGS_CONTAINER} data-testid={testId}>
+    <div className="flex items-start justify-between gap-3">
       <div>
         <h2 className="text-base font-semibold text-foreground">{title}</h2>
         {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
@@ -36,12 +63,16 @@ export const SectionCard: React.FC<{
       {action}
     </div>
     <div className="mt-4">{children}</div>
-  </div>
+  </section>
 );
 
 /**
- * `Text.H4(...).Bold()`, the heading V1's `ProjectDetailView` separates its ten blocks with. Unlike
- * `SectionCard` it draws no box, because inside one project every block is part of the same screen.
+ * `Text.H4(...).Bold()`, the heading V1's `ProjectDetailView` separates its ten blocks with.
+ *
+ * It draws no rule. It used to carry a `border-t` above it, on the reasoning that blocks inside one
+ * project are parts of a single screen rather than separate pages - but V1 draws no rule between
+ * them either, and `first:border-t-0` never fired because in all three consumers something precedes
+ * the first block, so every one of the 17 instances drew one. Blocks are separated by spacing alone.
  */
 export const SubSection: React.FC<{
   title: string;
@@ -51,10 +82,7 @@ export const SubSection: React.FC<{
   testId?: string;
   children: React.ReactNode;
 }> = ({ title, hint, count, action, testId, children }) => (
-  <section
-    className="space-y-2 border-t border-border pt-4 first:border-t-0 first:pt-0"
-    data-testid={testId}
-  >
+  <section className="space-y-2" data-testid={testId}>
     <div className="flex flex-wrap items-center justify-between gap-2">
       <div>
         <h3 className="text-sm font-semibold text-foreground">
@@ -202,7 +230,7 @@ export const NativeSelectField: React.FC<{
       value={value}
       disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
-      className="h-9 w-full rounded-fields border border-input bg-background px-2 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className="h-9 w-full rounded-field border border-input bg-background px-2 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-ring"
     >
       {!options.some((option) => option.value === value) && (
         <option value={value}>{value || "Default"}</option>

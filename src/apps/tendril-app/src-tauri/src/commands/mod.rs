@@ -134,6 +134,36 @@ pub async fn cmd_repair_service() -> Result<String, BridgeError> {
     })
 }
 
+/// Installs the bundled daemon and its autostart unit on demand.
+///
+/// The same work startup does on its own, exposed so the Service settings pane can retry it: the
+/// startup run is best-effort and silent, and a machine that refused it the first time (a locked
+/// executable, a LaunchAgents directory that was not writable yet) has no other way back.
+#[tauri::command]
+pub async fn cmd_install_service() -> Result<crate::service::ProvisionReport, BridgeError> {
+    let home = resolve_tendril_home();
+    // Blocking file IO, up to ~250 MB of it, so it does not belong on the async runtime's thread.
+    tokio::task::spawn_blocking(move || crate::service::provision(&home))
+        .await
+        .map_err(|e| BridgeError::internal(format!("service install task failed: {e}")))
+}
+
+/// Removes the autostart registration, leaving `<home>/bin` and every byte of user data in place.
+///
+/// Deliberately asymmetric with install: the binaries stay. They are what an already-running daemon
+/// is executing and what `agent_path` puts on a coding agent's `PATH`, so deleting them from under a
+/// live process to satisfy a settings toggle is not something this should do. "Do not start at
+/// login" is the whole intent.
+#[tauri::command]
+pub async fn cmd_uninstall_service_autostart() -> Result<String, BridgeError> {
+    tokio::task::spawn_blocking(|| {
+        crate::service::provision::unregister_autostart("com.spacecorps.tendril.service")
+    })
+    .await
+    .map_err(|e| BridgeError::internal(format!("service uninstall task failed: {e}")))?
+    .map_err(BridgeError::internal)
+}
+
 #[tauri::command]
 pub async fn cmd_switch_service_mode(mode: String) -> Result<ServiceInfoDto, BridgeError> {
     let home = resolve_tendril_home();

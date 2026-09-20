@@ -3,12 +3,20 @@ import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import { useShell } from "./ShellContext.tsx";
 import { type ShellWidgetProps, modKeyLabel } from "./types.ts";
 import { ShellTooltip } from "./ShellTooltip.tsx";
+import { IconButton } from "../ui/IconButton";
 import "./shell.css";
 
 interface ShellSidebarHeaderProps extends ShellWidgetProps {
   title?: string;
   version?: string;
   logoUrl?: string;
+  /**
+   * The brand mark as a node, for a logo that ships as a component rather than a file - an inline
+   * SVG carries no request to fail and no path to get wrong across dev, bundle and Tauri. Wins over
+   * {@link logoUrl} when both are given; the rail's hover-to-expand behaviour is the same either
+   * way, since the CSS keys off `.tsh-header-logo`.
+   */
+  logo?: React.ReactNode;
 }
 
 /**
@@ -21,6 +29,7 @@ export const ShellSidebarHeader: React.FC<ShellSidebarHeaderProps> = ({
   title = "Ivy Tendril",
   version,
   logoUrl,
+  logo,
 }) => {
   const { collapsed, toggle } = useShell();
   const shortcut = `${modKeyLabel()}+B`;
@@ -37,7 +46,11 @@ export const ShellSidebarHeader: React.FC<ShellSidebarHeaderProps> = ({
               aria-hidden={!collapsed}
               tabIndex={collapsed ? 0 : -1}
             >
-              {logoUrl && <img className="tsh-header-logo" src={logoUrl} alt="" />}
+              {logo ? (
+                <span className="tsh-header-logo">{logo}</span>
+              ) : (
+                logoUrl && <img className="tsh-header-logo" src={logoUrl} alt="" />
+              )}
               <span className="tsh-logo-toggle-icon">
                 <PanelLeftOpen size={16} />
               </span>
@@ -48,17 +61,19 @@ export const ShellSidebarHeader: React.FC<ShellSidebarHeaderProps> = ({
             {version && <span className="tsh-header-version">{version}</span>}
           </div>
         </div>
-        <ShellTooltip content="Close sidebar" shortcut={shortcut} enabled={!collapsed} side="right">
-          <button
-            className="tsh-header-toggle"
-            onClick={toggle}
-            aria-label="Close sidebar"
-            aria-hidden={collapsed}
-            tabIndex={collapsed ? -1 : 0}
-          >
-            <PanelLeftClose size={16} />
-          </button>
-        </ShellTooltip>
+        <IconButton
+          className="tsh-header-toggle"
+          label="Close sidebar"
+          shortcut={shortcut}
+          tooltip={collapsed ? false : undefined}
+          tooltipSide="right"
+          size="sm"
+          onClick={toggle}
+          aria-hidden={collapsed}
+          tabIndex={collapsed ? -1 : 0}
+        >
+          <PanelLeftClose size={16} />
+        </IconButton>
       </div>
     </div>
   );

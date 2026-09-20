@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
-  ChevronDown,
-  ChevronRight,
   CircleDot,
   ExternalLink,
   FileText,
@@ -22,18 +20,22 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
+  SidebarListRow,
+  SidebarListRowExpandable,
+  SidebarListRowSubItem,
   type DataTableColumn,
   type DataTableRowAction,
+  type SidebarListRowIcon,
 } from "@ivy-interactive/components/ui";
 import {
   BadgeSelect,
   PlanMarkdown,
   type BadgeSelectOption,
 } from "@ivy-interactive/components/tendril";
-import { ivyColorVar } from "@ivy-interactive/components";
 import { bridge } from "../api/bridge";
 import { describeBridgeError } from "../types/api";
 import type { GitHubIssue, InboxProposal, ProjectSummary, SweepReport } from "../types/api";
+import { ErrorBanner } from "../components/ErrorBanner";
 import { NoContentView } from "../components/NoContentView";
 import { AutoAcceptSettingsDialog } from "./dialogs/AutoAcceptSettingsDialog";
 
@@ -203,136 +205,77 @@ function buildIssueIntake(issue: GitHubIssue): string {
 }
 
 /**
- * One row of V1's inbox sidebar (`SidebarListRow.Build`): a full-width button, `Secondary` while
- * selected and `Ghost` otherwise, with the count badge suppressed unless it is greater than zero.
+ * V1's inbox sidebar rows (`Helpers/SidebarListRow.cs`), from the package's shared component - the
+ * same three shapes the Shell and the Settings rail draw, which this view used to reimplement.
+ *
+ * These three wrappers exist only to fix what is constant for this rail: every row is a tab in the
+ * `role="tablist"` above, and the expander is always V1's `Icons.Folder`. Everything visual - the
+ * `Secondary`/`Ghost` tones, the suppressed zero badge, the 1rem sub-item indent and V1's
+ * project-colour box - comes from the shared component.
  */
 const RailRow: React.FC<{
-  icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+  icon: SidebarListRowIcon;
   label: string;
   count?: number;
   selected: boolean;
   onClick: () => void;
   testId?: string;
-}> = ({ icon: IconCmp, label, count, selected, onClick, testId }) => (
-  <button
-    type="button"
-    role="tab"
-    aria-selected={selected}
-    data-testid={testId}
+}> = ({ icon, label, count, selected, onClick, testId }) => (
+  <SidebarListRow
+    icon={icon}
+    label={label}
+    count={count}
+    selected={selected}
     onClick={onClick}
-    className={`flex w-full items-center gap-2 rounded-field px-2 py-1.5 text-left text-xs transition-colors ${
-      selected
-        ? "bg-secondary text-secondary-foreground"
-        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-    }`}
-  >
-    <IconCmp className="size-4 shrink-0" aria-hidden />
-    <span className="truncate">{label}</span>
-    {count !== undefined && count > 0 && (
-      <Badge variant="secondary" density="Small" className="ml-auto">
-        {count}
-      </Badge>
-    )}
-  </button>
+    role="tab"
+    testId={testId}
+  />
 );
 
-/** V1 `SidebarListRow.BuildExpandable`: icon, label, spacer, then a chevron for the open state. */
+/**
+ * V1 `SidebarListRow.BuildExpandable`. The icon is not a prop because V1's inbox passes
+ * `Icons.Folder` at its single call site.
+ */
 const RailExpander: React.FC<{
   label: string;
   expanded: boolean;
   selected: boolean;
   onClick: () => void;
 }> = ({ label, expanded, selected, onClick }) => (
-  <button
-    type="button"
-    aria-expanded={expanded}
+  <SidebarListRowExpandable
+    icon={Folder}
+    label={label}
+    expanded={expanded}
+    selected={selected}
     onClick={onClick}
-    className={`flex w-full items-center gap-2 rounded-field px-2 py-1.5 text-left text-xs transition-colors ${
-      selected
-        ? "bg-secondary text-secondary-foreground"
-        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-    }`}
-  >
-    <Folder className="size-4 shrink-0" aria-hidden />
-    <span className="truncate">{label}</span>
-    {expanded ? (
-      <ChevronDown className="ml-auto size-3 shrink-0" aria-hidden />
-    ) : (
-      <ChevronRight className="ml-auto size-3 shrink-0" aria-hidden />
-    )}
-  </button>
+  />
 );
 
 /**
- * V1 `SidebarListRow.BuildSubItem`: a 1rem indent, then either an icon or a small colour box, then
- * the label. Icon *or* colour, never both — which is why the "No projects in settings" row keeps its
- * folder icon and gets no dot.
- *
- * The colour box is V1's, literally: `new Box().Background(color).BorderRadius(BorderRadius.Rounded)
- * .Width(Size.Units(3)).Height(Size.Units(3))` — a 0.75rem square at Ivy's `Rounded` radius, which
- * resolves to 0.5rem, so it reads as a dot without being a circle. That is why this is
- * `size-3 rounded-[0.5rem]` and not `size-2 rounded-full`, and it is the same marker the Settings
- * sidebar draws (`views/settings/SidebarListRow.tsx`) for the same projects.
- *
- * `color` is an Ivy `Colors` name, resolved through the package's `ivyColorVar` — the one
- * name-to-token mapping in the codebase, shared with `Badge` and `TuiBadge`. A row with neither an
- * icon nor a colour keeps the old neutral marker.
+ * V1 `SidebarListRow.BuildSubItem`. Icon *or* colour, never both - which is why the "No projects in
+ * settings" row keeps its folder icon and gets no dot, and why it is also the one sub-item here with
+ * no `onClick`: the shared component renders a handler-less sub-item as static text rather than as a
+ * tab nobody can select.
  */
 const RailSubItem: React.FC<{
   label: string;
-  icon?: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+  icon?: SidebarListRowIcon;
   /** An Ivy `Colors` name, e.g. the project's configured colour. */
   color?: string;
   selected?: boolean;
   onClick?: () => void;
   testId?: string;
-}> = ({ label, icon: IconCmp, color, selected = false, onClick, testId }) => {
-  const shared = `flex w-full items-center gap-2 rounded-field py-1.5 pl-4 pr-2 text-left text-xs transition-colors ${
-    selected
-      ? "bg-secondary text-secondary-foreground"
-      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-  }`;
-
-  const marker = IconCmp ? (
-    <IconCmp className="size-4 shrink-0" aria-hidden />
-  ) : color ? (
-    <span
-      aria-hidden
-      data-testid={testId ? `${testId}-dot` : undefined}
-      data-color={color}
-      className="size-3 shrink-0 rounded-[0.5rem]"
-      style={{ backgroundColor: ivyColorVar(color) }}
-    />
-  ) : (
-    <span
-      aria-hidden
-      className={`size-2 shrink-0 rounded-full ${selected ? "bg-primary" : "bg-muted-foreground/50"}`}
-    />
-  );
-
-  if (!onClick) {
-    return (
-      <span className={`${shared} cursor-default`} data-testid={testId}>
-        {marker}
-        <span className="truncate">{label}</span>
-      </span>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={selected}
-      data-testid={testId}
-      onClick={onClick}
-      className={shared}
-    >
-      {marker}
-      <span className="truncate">{label}</span>
-    </button>
-  );
-};
+}> = ({ label, icon, color, selected = false, onClick, testId }) => (
+  <SidebarListRowSubItem
+    label={label}
+    icon={icon}
+    color={color}
+    selected={selected}
+    onClick={onClick}
+    role={onClick ? "tab" : undefined}
+    testId={testId}
+  />
+);
 
 export interface InboxViewProps {
   projects?: ProjectSummary[];
@@ -1357,13 +1300,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
         )}
 
         {isMyIssues && proposalError && (
-          <div
-            role="alert"
-            data-testid="inbox-proposal-error"
-            className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-          >
-            {proposalError}
-          </div>
+          <ErrorBanner data-testid="inbox-proposal-error">{proposalError}</ErrorBanner>
         )}
 
         {isMyIssues && proposals.length > 0 && (
@@ -1386,7 +1323,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
               <div
                 key={proposal.id}
                 data-testid={`proposal-card-${proposal.id}`}
-                className="rounded-lg border border-info/40 bg-info/5 p-3"
+                className="rounded-box border border-info/40 bg-info/5 p-3"
               >
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
                   <div className="min-w-0">
@@ -1443,11 +1380,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
             Loading issues from GitHub...
           </div>
         ) : error ? (
-          <div
-            role="alert"
-            data-testid="inbox-error"
-            className="space-y-2 rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-xs text-destructive"
-          >
+          <ErrorBanner data-testid="inbox-error" className="space-y-2">
             <div className="font-semibold text-destructive">Failed to load GitHub issues</div>
             <p>{error}</p>
             {error.toLowerCase().includes("auth login") && (
@@ -1464,7 +1397,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
             >
               Retry
             </Button>
-          </div>
+          </ErrorBanner>
         ) : filteredIssues.length === 0 && issues.length === 0 && page === 1 ? (
           <div data-testid="inbox-empty">
             {/* V1's `NoContentView` strings, per category, and V1 passes neither of them a `cta`:
@@ -1538,7 +1471,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                       setSearchQuery(e.target.value);
                       resetToFirstPage();
                     }}
-                    className="w-72 rounded-field border border-input bg-transparent px-3 py-1.5 text-xs text-foreground placeholder-muted-foreground/70 focus:outline-none focus:ring-1 focus:ring-ring"
+                    className="w-72 rounded-field border border-input bg-transparent px-3 py-1.5 text-xs text-foreground placeholder-muted-foreground/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   />
                   {/* V1 sets `AllowFiltering = true` on the table, which gives the Labels and
                       Assignees columns a filter each; `BadgeSelect` is how `PullRequestsView`

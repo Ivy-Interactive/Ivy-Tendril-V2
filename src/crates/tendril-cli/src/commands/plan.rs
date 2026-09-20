@@ -830,6 +830,11 @@ pub async fn handle_plan_command(
                         }
                     }
                 }
+                // `read_dir` yields whatever order the filesystem happens to hand back - APFS
+                // returns these sorted, ext4 does not - so the ordering has to be imposed here to
+                // match the database branch's `ORDER BY p.Id DESC`. It is also what makes
+                // `--limit` mean "the newest N" rather than "an arbitrary N".
+                disk_plans.sort_by_key(|p| std::cmp::Reverse(p.metadata.id));
                 disk_plans.retain(|p| {
                     if let Some(state) = status_filter {
                         if p.metadata.state != state {
@@ -2059,11 +2064,16 @@ fn surviving_worktree_dirs(plan_folder: &std::path::Path) -> Vec<PathBuf> {
     let Ok(entries) = std::fs::read_dir(&worktrees_dir) else {
         return Vec::new();
     };
-    entries
+    let mut survivors: Vec<PathBuf> = entries
         .flatten()
         .map(|e| e.path())
         .filter(|p| p.is_dir())
-        .collect()
+        .collect();
+    // `read_dir` yields whatever order the filesystem happens to hand back - APFS returns these
+    // sorted, ext4 does not - and `plan cleanup` prints one "Could not remove worktree" line per
+    // survivor, so the failure report has to read the same way on every machine.
+    survivors.sort();
+    survivors
 }
 
 /// The plan id as everything else in Tendril addresses it: the folder's 5-digit prefix.

@@ -1,0 +1,182 @@
+/* Shared base layer for both public entry points.
+ *
+ * `globals.css` and `index.css` are both exported (`package.json` exports `./styles/*`) and both used
+ * to declare these keyframes and utility classes themselves, byte-for-byte identical. Both entry
+ * points now `@import` this file instead of duplicating the blocks.
+ *
+ * Add a shared keyframe or utility here, never in an entry point.
+ */
+
+@keyframes accordion-down {
+  from {
+    height: 0;
+    opacity: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height, var(--radix-collapsible-content-height));
+    opacity: 1;
+  }
+}
+
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height, var(--radix-collapsible-content-height));
+    opacity: 1;
+  }
+  to {
+    height: 0;
+    opacity: 0;
+  }
+}
+
+@keyframes alertGrowIn {
+  from {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes toastSlideIn {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes indeterminate {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(400%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-indeterminate {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
+@utility rounded-box {
+  border-radius: var(--radius-boxes);
+}
+
+@utility rounded-t-box {
+  border-top-left-radius: var(--radius-boxes);
+  border-top-right-radius: var(--radius-boxes);
+}
+
+@utility rounded-field {
+  border-radius: var(--radius-fields);
+}
+
+@utility rounded-l-field {
+  border-top-left-radius: var(--radius-fields);
+  border-bottom-left-radius: var(--radius-fields);
+}
+
+@utility rounded-r-field {
+  border-top-right-radius: var(--radius-fields);
+  border-bottom-right-radius: var(--radius-fields);
+}
+
+@utility rounded-selector {
+  border-radius: var(--radius-selectors);
+}
+
+@utility rounded-checkbox {
+  border-radius: calc(var(--radius-selectors) / 2);
+}
+
+@utility rounded-bubble {
+  border-radius: var(--radius-bubble);
+}
+
+@utility shadow-box {
+  box-shadow: var(--shadow-boxes);
+}
+
+@utility shadow-field {
+  box-shadow: var(--shadow-fields);
+}
+
+@utility shadow-selector {
+  box-shadow: var(--shadow-selectors);
+}
+
+@layer utilities {
+  .alert-animate-enter {
+    animation: alertGrowIn 200ms ease-out;
+  }
+  .toast-animate-enter {
+    animation: toastSlideIn 300ms ease-out;
+  }
+  .badge-tinted {
+    background-color: var(--badge-tint-bg-light);
+    color: var(--badge-tint-fg-light);
+  }
+  .dark .badge-tinted {
+    background-color: var(--badge-tint-bg-dark);
+    color: var(--badge-tint-fg-dark);
+  }
+
+  /* Thin themed scrollbar: was `.slim-scrollbar` in index.css only, which meant the Tendril
+     app and Storybook (both load globals.css) never actually got it. */
+  .thin-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+  }
+  .thin-scrollbar::-webkit-scrollbar {
+    width: 4px;
+    height: 4px;
+  }
+  .thin-scrollbar::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .thin-scrollbar::-webkit-scrollbar-thumb {
+    background: var(--border);
+    border-radius: var(--radius-xs);
+  }
+  .thin-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: var(--muted-foreground);
+  }
+
+  /* Fully hidden scrollbar: still scrollable, just without a visible track/thumb. */
+  .hidden-scrollbar {
+    scrollbar-width: none;
+  }
+  .hidden-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+/* Back-compat alias: `.slim-scrollbar` moved here (from index.css) so it reaches every consumer
+   of either entry point, not just index.css's. Prefer `.thin-scrollbar` in new code. */
+.slim-scrollbar {
+  scrollbar-width: thin;
+  scrollbar-color: var(--border) transparent;
+}
+.slim-scrollbar::-webkit-scrollbar {
+  width: 4px;
+  height: 4px;
+}
+.slim-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.slim-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: var(--radius-xs);
+}
+.slim-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--muted-foreground);
+}

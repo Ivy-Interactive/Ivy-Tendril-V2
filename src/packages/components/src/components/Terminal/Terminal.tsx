@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useImperativeHandle, useRef, useState } from "react";
 import type { ITheme, Terminal as XTerm } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
+import { Spinner } from "../ui/spinner";
 import "@xterm/xterm/css/xterm.css";
 import "./terminal.css";
 
@@ -437,7 +438,13 @@ export function Terminal({
       <div ref={containerRef} className="ivy-terminal" data-testid="terminal" />
       {showLoading && (
         <div className="ivy-terminal-loading" data-testid="terminal-loading">
-          <span className="ivy-terminal-spinner" aria-hidden="true" />
+          <Spinner
+            size={24}
+            duration="0.8s"
+            borderWidth="3px"
+            trackColor="rgba(128, 128, 128, 0.3)"
+            aria-hidden="true"
+          />
           <span>{loadingText}</span>
         </div>
       )}

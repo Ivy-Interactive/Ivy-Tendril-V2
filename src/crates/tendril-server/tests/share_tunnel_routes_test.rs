@@ -162,6 +162,10 @@ async fn the_control_routes_require_the_bearer_credential() {
         ("POST", "/api/tunnel/share"),
         ("DELETE", "/api/tunnel/share"),
         ("GET", "/api/tunnel/share/install"),
+        // Without the bearer, an anonymous caller could make the daemon fetch a binary or abort an
+        // operator's install. Both are owner-only, exactly like starting a tunnel.
+        ("POST", "/api/tunnel/share/install"),
+        ("DELETE", "/api/tunnel/share/install"),
     ] {
         let (status, _) = h.request(method, uri, &[]).await;
         assert_eq!(
@@ -227,6 +231,76 @@ async fn the_install_check_says_what_to_install_and_where() {
         "{url}"
     );
     assert!(url.ends_with(json["assetName"].as_str().expect("assetName")));
+
+    // The manual instructions are still the fallback, and the state now also says whether the daemon
+    // can fetch it, so the pane can offer Install rather than only quoting a URL.
+    assert!(
+        json["downloadable"].is_boolean(),
+        "the pane needs to know whether Install is on offer: {json}"
+    );
+}
+
+/// The install endpoints exist, are reachable by the owner, and do nothing until asked.
+///
+/// The fresh-install regression this feature fixes: a `GET` alone must never start a download, and the
+/// `POST` that does is a background job the caller watches through the same `GET`.
+#[tokio::test]
+async fn an_install_starts_only_when_it_is_asked_for_and_reports_progress_through_the_get() {
+    let h = harness();
+
+    // Reading the state is not an install. Nothing is in flight because nothing asked for one.
+    let (status, body) = h
+        .request(
+            "GET",
+            "/api/tunnel/share/install",
+            &[("authorization", &h.bearer())],
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK);
+    let json: serde_json::Value = serde_json::from_str(&body).expect("json");
+    let phase = json["progress"]["phase"].as_str().unwrap_or("idle");
+    assert_eq!(
+        phase, "idle",
+        "a status read must not start a download: {json}"
+    );
+
+    // Cancelling when nothing runs is not an error: the caller wanted no install running, and there is
+    // none. It is also the way out of one, so it must never 404 or 500.
+    let (status, body) = h
+        .request(
+            "DELETE",
+            "/api/tunnel/share/install",
+            &[("authorization", &h.bearer())],
+        )
+        .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+}
+
+/// An operator-set `shareTunnel.binaryPath` that does not resolve is refused rather than quietly
+/// downloading a second copy into `tools/` that `resolve_binary` would never use. The distinction
+/// between "your configured path is wrong" and "cloudflared is missing" has to survive the download.
+#[tokio::test]
+async fn an_install_is_refused_when_the_operator_configured_a_binary_path() {
+    let h = harness();
+    std::fs::write(
+        h.tendril_home.join("config.yaml"),
+        "shareTunnel:\n  binaryPath: /definitely/not/here/cloudflared\n",
+    )
+    .expect("write config");
+
+    let (status, body) = h
+        .request(
+            "POST",
+            "/api/tunnel/share/install",
+            &[("authorization", &h.bearer())],
+        )
+        .await;
+
+    assert_eq!(status, StatusCode::CONFLICT, "{body}");
+    assert!(
+        body.contains("shareTunnel.binaryPath"),
+        "the operator's own setting must be named, not 'cloudflared is not installed': {body}"
+    );
 }
 
 /// Starting with a `binaryPath` that does not exist must be a clear refusal, not a 500 and not a

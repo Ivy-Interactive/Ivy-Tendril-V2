@@ -297,6 +297,55 @@ describe("SettingsView", () => {
       expect(screen.getByLabelText("Balanced")).toHaveAttribute("placeholder", "sonnet");
     });
 
+    /**
+     * V1 puts the model select and its effort select on one line:
+     * `Layout.Horizontal() | model.Width(Size.Fraction(0.65f)) | effort.Width(Size.Fraction(0.35f))`,
+     * and Ivy renders a horizontal layout `flex-wrap: nowrap`.
+     *
+     * V2 had `flex-wrap` with `basis-[65%]` and `basis-[35%]`. Those bases are exactly 100% of the
+     * line *before* the `gap-2` between them, so the pair never fit and the effort select dropped to
+     * its own row at every width - which is what the operator saw. Asserted structurally because
+     * jsdom does no flex layout: the guard is that the two controls are siblings on a row that
+     * cannot wrap, and that neither carries a percentage basis that would re-create the overflow.
+     */
+    it("keeps each tier's model and effort on one line, as V1's Layout.Horizontal does", async () => {
+      await renderSettings();
+
+      const model = screen.getByLabelText("Deep");
+      const effort = screen.getAllByLabelText("Effort")[0];
+
+      const modelCol = model.closest("div")!.parentElement!;
+      const effortCol = effort.closest("div")!.parentElement!;
+      const row = modelCol.parentElement!;
+
+      // Same row, in V1's order.
+      expect(effortCol.parentElement).toBe(row);
+      expect(row.className).toContain("flex");
+      expect(row.className).not.toContain("flex-wrap");
+
+      // 0.65 / 0.35 carried as grow weights, so the gap comes out of the shared space rather than
+      // overflowing the line.
+      expect(modelCol.className).toContain("grow-[65]");
+      expect(effortCol.className).toContain("grow-[35]");
+      expect(row.innerHTML).not.toMatch(/basis-\[\d+%\]/);
+    });
+
+    /**
+     * `new Card(...)` in `CodingAgentSetupView`'s two grids is Ivy's `CardWidget` at its default
+     * medium density, which pads a header-less card with `p-6` around a 32px logo and leaves the
+     * label at the base font size - an 82px card. V2 drew `p-3`/`text-sm`, a 56px one.
+     */
+    it("pads the agent cards as V1's Card does, not a third shorter", async () => {
+      await renderSettings();
+
+      const card = screen.getByTestId("coding-agent-claude");
+      // Token-wise rather than by substring: "gap-3" contains "p-3".
+      const classes = card.className.split(/\s+/);
+      expect(classes).toContain("p-6");
+      expect(classes).not.toContain("p-3");
+      expect(card.querySelector("span.text-base")).not.toBeNull();
+    });
+
     it("writes the whole codingAgents array, since a config PUT replaces sequences", async () => {
       getConfig.mockResolvedValue({
         ...baseConfig,

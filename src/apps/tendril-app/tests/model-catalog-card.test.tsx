@@ -21,11 +21,22 @@ function status(overrides: Partial<ModelCatalogStatus> = {}): ModelCatalogStatus
   };
 }
 
+/**
+ * The status readout and the enrichment form live behind a disclosure, collapsed by default, so
+ * every case below opens it first. Radix does not render `CollapsibleContent`'s children while it is
+ * closed, so this is not cosmetic: without the click there is nothing in the DOM to assert on.
+ */
+function renderOpen() {
+  const result = render(<ModelCatalogCard />);
+  fireEvent.click(screen.getByTestId("model-catalog-toggle"));
+  return result;
+}
+
 describe("ModelCatalogCard", () => {
   it("renders the live badge, model count, and a fresh relative age with no stale marker", async () => {
     vi.spyOn(bridge, "getModelsStatus").mockResolvedValue(status());
 
-    render(<ModelCatalogCard />);
+    renderOpen();
 
     await waitFor(() => expect(screen.getByText("Live (models.dev)")).toBeInTheDocument());
     expect(screen.getByText("412")).toBeInTheDocument();
@@ -39,7 +50,7 @@ describe("ModelCatalogCard", () => {
       status({ source: "static", cachedAt: null }),
     );
 
-    render(<ModelCatalogCard />);
+    renderOpen();
 
     await waitFor(() => expect(screen.getByText("Static fallback")).toBeInTheDocument());
     expect(screen.getByText("Never (no cache file)")).toBeInTheDocument();
@@ -55,7 +66,7 @@ describe("ModelCatalogCard", () => {
     vi.spyOn(bridge, "getModelsStatus").mockResolvedValue(status({ cachedAt: tenDaysAgo }));
     vi.spyOn(bridge, "getConfig").mockRejectedValue(new Error("offline"));
 
-    render(<ModelCatalogCard />);
+    renderOpen();
 
     await waitFor(() => expect(screen.getByText(/Stale/)).toBeInTheDocument());
   });
@@ -65,7 +76,7 @@ describe("ModelCatalogCard", () => {
     vi.spyOn(bridge, "getModelsStatus").mockResolvedValue(status({ cachedAt: threeDaysAgo }));
     vi.spyOn(bridge, "getConfig").mockRejectedValue(new Error("offline"));
 
-    render(<ModelCatalogCard />);
+    renderOpen();
 
     await waitFor(() => expect(screen.getByText("3 days ago")).toBeInTheDocument());
     expect(screen.queryByText(/Stale/)).not.toBeInTheDocument();
@@ -76,7 +87,7 @@ describe("ModelCatalogCard", () => {
     vi.spyOn(bridge, "getModelsStatus").mockResolvedValue(status({ cachedAt: threeDaysAgo }));
     vi.spyOn(bridge, "getConfig").mockResolvedValue({ raw: { modelCacheWarnAgeDays: 1 } });
 
-    render(<ModelCatalogCard />);
+    renderOpen();
 
     await waitFor(() => expect(screen.getByText(/Stale/)).toBeInTheDocument());
   });
@@ -88,7 +99,7 @@ describe("ModelCatalogCard", () => {
       raw: { modelCacheWarnAgeDays: 0, modelCacheMaxAgeDays: 0 },
     });
 
-    render(<ModelCatalogCard />);
+    renderOpen();
 
     await waitFor(() => expect(screen.getByText(/400 days ago/)).toBeInTheDocument());
     expect(screen.queryByText(/Stale/)).not.toBeInTheDocument();
@@ -108,7 +119,7 @@ describe("ModelCatalogCard", () => {
       .mockResolvedValue({ raw: { enrichModels: false } });
     const putConfig = vi.spyOn(bridge, "putConfig").mockResolvedValue(undefined);
 
-    render(<ModelCatalogCard />);
+    renderOpen();
     await waitFor(() =>
       expect(screen.getByLabelText("Enrich the catalog from models.dev")).not.toBeChecked(),
     );
@@ -127,7 +138,7 @@ describe("ModelCatalogCard", () => {
     vi.spyOn(bridge, "getConfig").mockResolvedValue({ raw: {} });
     const putConfig = vi.spyOn(bridge, "putConfig").mockResolvedValue(undefined);
 
-    render(<ModelCatalogCard />);
+    renderOpen();
     await waitFor(() => expect(screen.getByLabelText("Cache Warn Age")).toHaveValue(7));
 
     fireEvent.change(screen.getByLabelText("Cache Warn Age"), { target: { value: "900" } });
@@ -145,7 +156,7 @@ describe("ModelCatalogCard", () => {
     vi.spyOn(bridge, "getModelsStatus").mockResolvedValue(status());
     vi.spyOn(bridge, "getConfig").mockResolvedValue({ raw: {} });
 
-    render(<ModelCatalogCard />);
+    renderOpen();
     await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).toBeDisabled());
 
     fireEvent.change(screen.getByLabelText("Refresh Interval"), { target: { value: "6" } });
@@ -159,7 +170,7 @@ describe("ModelCatalogCard", () => {
       .spyOn(bridge, "refreshModels")
       .mockResolvedValue(status({ dynamicModelCount: 400, totalModelCount: 414 }));
 
-    render(<ModelCatalogCard />);
+    renderOpen();
     await waitFor(() => expect(screen.getByText("Live (models.dev)")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "Refresh Now" }));
@@ -178,7 +189,7 @@ describe("ModelCatalogCard", () => {
       new Error("Failed to refresh models (503): models.dev unreachable"),
     );
 
-    render(<ModelCatalogCard />);
+    renderOpen();
     await waitFor(() => expect(screen.getByText("Live (models.dev)")).toBeInTheDocument());
 
     fireEvent.click(screen.getByRole("button", { name: "Refresh Now" }));
@@ -195,9 +206,28 @@ describe("ModelCatalogCard", () => {
   it("renders an error row instead of crashing when the initial load fails", async () => {
     vi.spyOn(bridge, "getModelsStatus").mockRejectedValue(new Error("daemon unreachable"));
 
-    render(<ModelCatalogCard />);
+    renderOpen();
 
     await waitFor(() => expect(screen.getByTestId("model-catalog-error")).toBeInTheDocument());
     expect(screen.getByText("daemon unreachable")).toBeInTheDocument();
+  });
+
+  /**
+   * The point of the disclosure: the catalogue is a diagnostic readout under the row the operator
+   * actually came to Coding Agent for, so it must not occupy the page until asked for.
+   */
+  it("keeps the status and settings collapsed until the disclosure is opened", async () => {
+    vi.spyOn(bridge, "getModelsStatus").mockResolvedValue(status());
+
+    render(<ModelCatalogCard />);
+
+    // The heading and its refresh action stay visible - only the body is behind the toggle.
+    expect(screen.getByText("Model Catalog")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Refresh Now" })).toBeInTheDocument();
+    expect(screen.queryByText("Live (models.dev)")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Refresh Interval (Hours)")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId("model-catalog-toggle"));
+    await waitFor(() => expect(screen.getByText("Live (models.dev)")).toBeInTheDocument());
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { buildPromptWithAttachments, chatStore } from "../src/state/chatStore";
+import { buildPromptWithAttachments, chatStore, ChatStore } from "../src/state/chatStore";
 import { chatApi } from "../src/api/chatApi";
 import { agentsApi } from "../src/api/agentsApi";
 import type { AgentOption } from "../src/types/agents";
@@ -276,6 +276,213 @@ describe("chat turn lifecycle parity", () => {
 
       await chatStore.cancelGeneration();
       expect(chatStore.getState().queuedItems).toEqual(queued);
+    });
+
+    it("says the stop was registered before the daemon has answered", async () => {
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([session("a")]);
+      vi.spyOn(chatApi, "getSession").mockResolvedValue(session("a"));
+      vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+      await chatStore.fetchSessions();
+      chatStore.handleChatEvent({
+        type: "chat.generating_state",
+        sessionId: "a",
+        isGenerating: true,
+      });
+
+      // `ChatExecutionService.CancelAsync` gives the agent process time to die, so the round trip
+      // is the slow part the user was pressing the button twice over.
+      let finishCancel: (() => void) | null = null;
+      vi.spyOn(chatApi, "cancelTurn").mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finishCancel = () => resolve({ cancelled: true });
+          }),
+      );
+
+      const pending = chatStore.cancelGeneration();
+
+      // Published synchronously, before the first await: the composer has already re-rendered by
+      // the time the user could press again.
+      expect(chatStore.getState().isCancelling).toBe(true);
+      expect(chatStore.getState().isGenerating).toBe(true);
+
+      finishCancel!();
+      await pending;
+
+      expect(chatStore.getState().isCancelling).toBe(false);
+      expect(chatStore.getState().isGenerating).toBe(false);
+    });
+
+    it("stays pending while the dying turn is still emitting", async () => {
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([session("a")]);
+      vi.spyOn(chatApi, "getSession").mockResolvedValue(session("a"));
+      vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+      await chatStore.fetchSessions();
+      chatStore.handleChatEvent({
+        type: "chat.generating_state",
+        sessionId: "a",
+        isGenerating: true,
+      });
+
+      let finishCancel: (() => void) | null = null;
+      vi.spyOn(chatApi, "cancelTurn").mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finishCancel = () => resolve({ cancelled: true });
+          }),
+      );
+
+      const pending = chatStore.cancelGeneration();
+      expect(chatStore.getState().isCancelling).toBe(true);
+
+      // `cancel_session` only signals the token; the agent process keeps writing until it notices,
+      // so deltas keep arriving after the stop was registered. Each one proves the session is still
+      // generating, and the flag has to outlive them or the button would go live again mid-stop -
+      // which is the second press the user was making.
+      chatStore.handleChatEvent({
+        type: "chat.stream_delta",
+        sessionId: "a",
+        messageId: "a-m2",
+        delta: "still winding down",
+      });
+      expect(chatStore.getState().isCancelling).toBe(true);
+      expect(chatStore.getState().isGenerating).toBe(true);
+
+      finishCancel!();
+      await pending;
+
+      expect(chatStore.getState().isCancelling).toBe(false);
+      expect(chatStore.getState().isGenerating).toBe(false);
+    });
+
+    it("lets the user press stop again when the stop itself failed", async () => {
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([session("a")]);
+      vi.spyOn(chatApi, "getSession").mockResolvedValue(session("a"));
+      vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+      await chatStore.fetchSessions();
+      chatStore.handleChatEvent({
+        type: "chat.generating_state",
+        sessionId: "a",
+        isGenerating: true,
+      });
+      vi.spyOn(chatApi, "cancelTurn").mockRejectedValue(new Error("daemon unreachable"));
+
+      await chatStore.cancelGeneration();
+
+      // The turn is still running and the stop never landed, so a pending button would be a lie
+      // the user could not get out of.
+      expect(chatStore.getState().isCancelling).toBe(false);
+      expect(chatStore.getState().isGenerating).toBe(true);
+      expect(chatStore.getState().error).toBe("daemon unreachable");
+    });
+
+    it("keeps the pending stop with its own session when another chat is opened", async () => {
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([session("a"), session("b")]);
+      vi.spyOn(chatApi, "getSession").mockImplementation(async (id) => session(id));
+      vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+      await chatStore.fetchSessions();
+      chatStore.handleChatEvent({
+        type: "chat.generating_state",
+        sessionId: "a",
+        isGenerating: true,
+      });
+
+      let finishCancel: (() => void) | null = null;
+      vi.spyOn(chatApi, "cancelTurn").mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finishCancel = () => resolve({ cancelled: true });
+          }),
+      );
+
+      const pending = chatStore.cancelGeneration();
+      expect(chatStore.getState().isCancelling).toBe(true);
+
+      // `state.isCancelling` describes the active session only, exactly as `isGenerating` does, so
+      // reading another chat while one is stopping must not show its composer a pending stop.
+      await chatStore.selectSession("b");
+      expect(chatStore.getState().isCancelling).toBe(false);
+
+      await chatStore.selectSession("a");
+      expect(chatStore.getState().isCancelling).toBe(true);
+
+      finishCancel!();
+      await pending;
+      expect(chatStore.getState().isCancelling).toBe(false);
+    });
+  });
+
+  describe("composer drafts", () => {
+    it("keeps an unsent prompt against the session it was typed in", async () => {
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([session("a"), session("b")]);
+      vi.spyOn(chatApi, "getSession").mockImplementation(async (id) => session(id));
+      vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+      await chatStore.fetchSessions();
+
+      chatStore.setComposerDraft("a", "half a thought");
+      chatStore.setComposerDraft("b", "a different half");
+
+      // Per session, never one global draft: a prompt appearing in the wrong chat is worse than
+      // the prompt being lost.
+      expect(chatStore.composerDraft("a")).toBe("half a thought");
+      expect(chatStore.composerDraft("b")).toBe("a different half");
+      expect(chatStore.composerDraft("never-typed-in")).toBe("");
+      expect(chatStore.composerDraft(null)).toBe("");
+    });
+
+    it("survives a store that is thrown away and built again", async () => {
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([session("a")]);
+      vi.spyOn(chatApi, "getSession").mockResolvedValue(session("a"));
+      vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+      await chatStore.fetchSessions();
+
+      chatStore.setComposerDraft("a", "written before the view went away");
+
+      // The Chat page is a lazy route, so leaving it unmounts the composer entirely. A draft that
+      // only lived in React state died here.
+      const reopened = new ChatStore();
+      try {
+        expect(reopened.composerDraft("a")).toBe("written before the view went away");
+      } finally {
+        reopened.destroy();
+      }
+    });
+
+    it("does not prune an empty session that is holding an unsent prompt", async () => {
+      const blank = session("blank", { messages: [] });
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([blank, session("a")]);
+      vi.spyOn(chatApi, "getSession").mockImplementation(async (id) =>
+        id === "blank" ? blank : session(id),
+      );
+      vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+      const deleteSpy = vi.spyOn(chatApi, "deleteSession").mockResolvedValue();
+      await chatStore.fetchSessions();
+
+      chatStore.setComposerDraft("blank", "typed but never sent");
+
+      // Pruning runs on the way out of the Chat page, which is the same moment the draft is being
+      // saved for. Deleting the session here would take the draft with it.
+      await chatStore.pruneEmptySessions("a");
+
+      expect(deleteSpy).not.toHaveBeenCalledWith("blank");
+      expect(chatStore.getState().sessions.map((s) => s.id)).toContain("blank");
+      expect(chatStore.composerDraft("blank")).toBe("typed but never sent");
+    });
+
+    it("forgets the draft of a deleted session", async () => {
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([session("a"), session("b")]);
+      vi.spyOn(chatApi, "getSession").mockImplementation(async (id) => session(id));
+      vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+      vi.spyOn(chatApi, "deleteSession").mockResolvedValue();
+      await chatStore.fetchSessions();
+
+      chatStore.setComposerDraft("a", "for a");
+      chatStore.setComposerDraft("b", "for b");
+
+      await chatStore.deleteSession("a");
+
+      expect(chatStore.composerDraft("a")).toBe("");
+      expect(chatStore.composerDraft("b")).toBe("for b");
     });
   });
 

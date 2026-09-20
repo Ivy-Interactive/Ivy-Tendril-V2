@@ -110,6 +110,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag_name }}
+          # Tag the exact commit this run built, not the default branch head.
+          target_commitish: ${{ github.sha }}
           files: |
             src/extensions/vscode/*.vsix
             src/extensions/vscode/*.vsix.sha256

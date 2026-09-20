@@ -4,22 +4,19 @@
    follows the host theme. */
 
 .tdb-root {
-  --tdb-bg: var(--background, #ffffff);
-  --tdb-block-bg: color-mix(in srgb, var(--foreground, #000000) 2%, var(--background, #ffffff));
-  --tdb-block-border: color-mix(in srgb, var(--foreground, #000000) 6%, var(--background, #ffffff));
-  --tdb-fg: var(--foreground, #000000);
-  --tdb-muted: color-mix(in srgb, var(--foreground, #000000) 60%, transparent);
-  --tdb-faint: color-mix(in srgb, var(--foreground, #000000) 28%, transparent);
-  --tdb-divider: color-mix(in srgb, var(--foreground, #000000) 20%, transparent);
-  --tdb-pill-bg: color-mix(in srgb, var(--foreground, #000000) 6%, transparent);
-  --tdb-popover: var(--popover, #ffffff);
+  --tdb-block-bg: color-mix(in srgb, var(--foreground) 2%, var(--background));
+  --tdb-block-border: color-mix(in srgb, var(--foreground) 6%, var(--background));
+  --tdb-fg: var(--foreground);
+  --tdb-muted: var(--foreground-muted);
+  --tdb-faint: color-mix(in srgb, var(--foreground) 28%, transparent);
+  --tdb-divider: color-mix(in srgb, var(--foreground) 20%, transparent);
+  --tdb-pill-bg: color-mix(in srgb, var(--foreground) 6%, transparent);
 
   /* Grey intensity ramp shared by the activity grid and the PR bars.
      Mixing from the foreground keeps it legible in both themes. */
-  --tdb-ramp-1: color-mix(in srgb, var(--foreground, #000000) 10%, transparent);
-  --tdb-ramp-2: color-mix(in srgb, var(--foreground, #000000) 26%, transparent);
-  --tdb-ramp-3: color-mix(in srgb, var(--foreground, #000000) 60%, transparent);
-  --tdb-ramp-4: var(--foreground, #000000);
+  --tdb-ramp-1: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --tdb-ramp-2: color-mix(in srgb, var(--foreground) 26%, transparent);
+  --tdb-ramp-3: var(--foreground-muted);
 
   /* KPI card tints. All four derive from the host theme's --primary so
      alternate themes (neon, retro, cupcake...) recolor the cards
@@ -27,14 +24,14 @@
      unordered rather than a straight ramp. The mix percentages double as the
      opacity modifier that keeps vivid theme colors (neon pink/cyan)
      readable behind the card text. */
-  --tdb-kpi-1: color-mix(in srgb, var(--primary, #66e0be) 28%, var(--tdb-block-bg));
-  --tdb-kpi-2: color-mix(in srgb, var(--primary, #66e0be) 13%, var(--tdb-block-bg));
-  --tdb-kpi-3: color-mix(in srgb, var(--primary, #66e0be) 20%, var(--tdb-block-bg));
-  --tdb-kpi-4: color-mix(in srgb, var(--primary, #66e0be) 7%, var(--tdb-block-bg));
+  --tdb-kpi-1: color-mix(in srgb, var(--primary) 28%, var(--tdb-block-bg));
+  --tdb-kpi-2: color-mix(in srgb, var(--primary) 13%, var(--tdb-block-bg));
+  --tdb-kpi-3: color-mix(in srgb, var(--primary) 20%, var(--tdb-block-bg));
+  --tdb-kpi-4: color-mix(in srgb, var(--primary) 7%, var(--tdb-block-bg));
 
-  font-family: var(--font-sans, "Geist", sans-serif);
+  font-family: var(--font-sans);
   color: var(--tdb-fg);
-  background: var(--tdb-bg);
+  background: var(--background);
   container-type: inline-size;
   container-name: tdb;
   height: 100%;
@@ -44,17 +41,13 @@
 }
 
 .dark .tdb-root {
-  --tdb-block-bg: color-mix(in srgb, var(--foreground, #f8f8f8) 4%, var(--background, #000000));
-  --tdb-block-border: color-mix(
-    in srgb,
-    var(--foreground, #f8f8f8) 10%,
-    var(--background, #000000)
-  );
+  --tdb-block-bg: color-mix(in srgb, var(--foreground) 4%, var(--background));
+  --tdb-block-border: color-mix(in srgb, var(--foreground) 10%, var(--background));
   /* Dark mode needs lower mixes so saturated theme colors stay muted. */
-  --tdb-kpi-1: color-mix(in srgb, var(--primary, #66e0be) 22%, var(--tdb-block-bg));
-  --tdb-kpi-2: color-mix(in srgb, var(--primary, #66e0be) 10%, var(--tdb-block-bg));
-  --tdb-kpi-3: color-mix(in srgb, var(--primary, #66e0be) 16%, var(--tdb-block-bg));
-  --tdb-kpi-4: color-mix(in srgb, var(--primary, #66e0be) 6%, var(--tdb-block-bg));
+  --tdb-kpi-1: color-mix(in srgb, var(--primary) 22%, var(--tdb-block-bg));
+  --tdb-kpi-2: color-mix(in srgb, var(--primary) 10%, var(--tdb-block-bg));
+  --tdb-kpi-3: color-mix(in srgb, var(--primary) 16%, var(--tdb-block-bg));
+  --tdb-kpi-4: color-mix(in srgb, var(--primary) 6%, var(--tdb-block-bg));
 }
 
 .tdb-root * {
@@ -74,7 +67,7 @@
 }
 
 .tdb-date {
-  font-size: 14px;
+  font-size: var(--text-sm);
   color: var(--tdb-muted);
   margin-bottom: 10px;
 }
@@ -137,11 +130,11 @@
 /* The status strip is the only bordered card on the dashboard. */
 .tdb-block {
   background: var(--tdb-block-bg);
-  border-radius: 16px;
+  border-radius: var(--radius-2xl);
 }
 
 .tdb-block-title {
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: 500;
   color: var(--tdb-fg);
 }
@@ -156,7 +149,7 @@
   gap: 8px 4px;
   min-height: 74px;
   padding: 14px 18px;
-  border: 1px solid var(--tdb-block-border);
+  border: var(--border-width) solid var(--tdb-block-border);
 }
 
 .tdb-status-item {
@@ -168,7 +161,7 @@
   background: none;
   font: inherit;
   padding: 8px 12px;
-  border-radius: 10px;
+  border-radius: var(--radius-menu);
   cursor: pointer;
 }
 
@@ -177,8 +170,8 @@
 }
 
 .tdb-status-item:focus-visible {
-  outline: 2px solid var(--tdb-muted);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .tdb-status-item svg {
@@ -187,13 +180,13 @@
 }
 
 .tdb-status-count {
-  font-size: 16px;
+  font-size: var(--text-base);
   font-weight: 600;
   color: var(--tdb-fg);
 }
 
 .tdb-status-label {
-  font-size: 14px;
+  font-size: var(--text-sm);
   color: var(--tdb-muted);
 }
 
@@ -214,7 +207,7 @@
 }
 
 .tdb-kpi {
-  border-radius: 16px;
+  border-radius: var(--radius-2xl);
   padding: 22px 24px;
   min-height: 110px;
   color: var(--tdb-fg);
@@ -233,9 +226,9 @@ button.tdb-kpi {
   text-align: left;
   cursor: pointer;
   transition:
-    transform 0.15s ease,
-    box-shadow 0.15s ease,
-    border-color 0.15s ease;
+    transform var(--duration-base) var(--ease-standard),
+    box-shadow var(--duration-base) var(--ease-standard),
+    border-color var(--duration-base) var(--ease-standard);
 }
 
 button.tdb-kpi:hover {
@@ -244,8 +237,8 @@ button.tdb-kpi:hover {
 }
 
 button.tdb-kpi:focus-visible {
-  outline: 2px solid var(--tdb-focus, var(--tdb-muted));
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .tdb-kpi[data-tone="0"] {
@@ -262,7 +255,7 @@ button.tdb-kpi:focus-visible {
 }
 
 .tdb-kpi-label {
-  font-size: 14px;
+  font-size: var(--text-sm);
   margin-bottom: 10px;
 }
 
@@ -304,9 +297,9 @@ button.tdb-kpi:focus-visible {
 }
 
 .tdb-kpi-subvalue {
-  font-size: 13px;
+  font-size: var(--text-sm-tight);
   font-weight: 500;
-  opacity: 0.75;
+  opacity: var(--opacity-subtle);
   white-space: nowrap;
 }
 
@@ -314,7 +307,7 @@ button.tdb-kpi:focus-visible {
   display: flex;
   align-items: center;
   gap: 4px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   white-space: nowrap;
 }
 
@@ -327,9 +320,9 @@ button.tdb-kpi:focus-visible {
    rather than competing with it. */
 .tdb-kpi-hint {
   margin-top: 8px;
-  font-size: 11px;
+  font-size: var(--text-xs-tight);
   line-height: 15px;
-  opacity: 0.7;
+  opacity: var(--opacity-subtle);
 }
 
 /* ---------- Trend chart block ---------- */
@@ -358,11 +351,11 @@ button.tdb-kpi:focus-visible {
   border: none;
   background: none;
   font: inherit;
-  font-size: 14px;
+  font-size: var(--text-sm);
   font-weight: 500;
   color: var(--tdb-faint);
   padding: 6px 10px;
-  border-radius: 8px;
+  border-radius: var(--radius-lg);
   cursor: pointer;
 }
 
@@ -387,7 +380,7 @@ button.tdb-kpi:focus-visible {
   display: flex;
   align-items: center;
   gap: 7px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--tdb-muted);
 }
 
@@ -403,7 +396,7 @@ button.tdb-kpi:focus-visible {
   width: 10px;
   height: 0;
   border-top: 1.5px dashed var(--tdb-muted);
-  opacity: 0.8;
+  opacity: var(--opacity-soft);
   flex-shrink: 0;
 }
 
@@ -434,7 +427,7 @@ button.tdb-kpi:focus-visible {
 }
 
 .tdb-axis-text {
-  font-size: 12px;
+  font-size: var(--text-xs);
   fill: var(--tdb-muted);
   font-family: inherit;
 }
@@ -455,19 +448,19 @@ button.tdb-kpi:focus-visible {
   stroke-dasharray: 4 4;
   stroke-linecap: round;
   stroke-linejoin: round;
-  opacity: 0.8;
+  opacity: var(--opacity-soft);
   pointer-events: none;
 }
 
 .tdb-chart-tooltip {
   position: absolute;
   pointer-events: none;
-  background: var(--tdb-popover);
-  border: 1px solid var(--tdb-block-border);
-  border-radius: 8px;
+  background: var(--popover);
+  border: var(--border-width) solid var(--tdb-block-border);
+  border-radius: var(--radius-lg);
   box-shadow: 0 4px 16px color-mix(in srgb, var(--tdb-fg) 10%, transparent);
   padding: 8px 10px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--tdb-fg);
   white-space: nowrap;
   transform: translate(-50%, calc(-100% - 10px));
@@ -508,9 +501,9 @@ button.tdb-kpi:focus-visible {
 }
 
 .tdb-side-tab {
-  font-size: 12px;
+  font-size: var(--text-xs);
   padding: 3px 8px;
-  border-radius: 6px;
+  border-radius: var(--radius-md);
 }
 
 .tdb-tunnel {
@@ -558,6 +551,10 @@ button.tdb-kpi:focus-visible {
   padding-right: 4px;
 }
 
+.tdb-activity-scroll::-webkit-scrollbar {
+  display: none;
+}
+
 .tdb-activity {
   display: flex;
   align-items: flex-end;
@@ -578,7 +575,7 @@ button.tdb-kpi:focus-visible {
   width: 100%;
   max-width: 22px;
   aspect-ratio: 1;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .tdb-activity-cell[data-level="0"] {
@@ -594,7 +591,7 @@ button.tdb-kpi:focus-visible {
   background: var(--tdb-ramp-3);
 }
 .tdb-activity-cell[data-level="4"] {
-  background: var(--tdb-ramp-4);
+  background: var(--foreground);
 }
 
 .tdb-activity-labels {
@@ -607,7 +604,7 @@ button.tdb-kpi:focus-visible {
   flex: 1 1 0;
   min-width: 9px;
   max-width: 22px;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--tdb-muted);
   text-align: left;
   white-space: nowrap;
@@ -627,7 +624,7 @@ button.tdb-kpi:focus-visible {
 }
 
 .tdb-empty-note {
-  font-size: 13px;
+  font-size: var(--text-sm-tight);
   color: var(--tdb-faint);
   align-self: center;
   margin: auto 0;
@@ -646,7 +643,7 @@ button.tdb-kpi:focus-visible {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  font-size: 12px;
+  font-size: var(--text-xs);
   color: var(--tdb-muted);
   text-align: left;
   padding-bottom: 36px;
@@ -687,7 +684,7 @@ button.tdb-kpi:focus-visible {
 
 .tdb-bar {
   width: 100%;
-  border-radius: 12px;
+  border-radius: var(--radius-xl);
   min-height: 6px;
 }
 
@@ -704,11 +701,11 @@ button.tdb-kpi:focus-visible {
   background: var(--tdb-ramp-3);
 }
 .tdb-bar[data-level="4"] {
-  background: var(--tdb-ramp-4);
+  background: var(--foreground);
 }
 
 .tdb-bar-label {
-  font-size: 11px;
+  font-size: var(--text-xs-tight);
   line-height: 1.2;
   color: var(--tdb-muted);
   text-align: center;
@@ -738,6 +735,10 @@ button.tdb-kpi:focus-visible {
   gap: 4px;
 }
 
+.tdb-jobs-list::-webkit-scrollbar {
+  display: none;
+}
+
 .tdb-job-row {
   display: flex;
   align-items: center;
@@ -748,7 +749,7 @@ button.tdb-kpi:focus-visible {
   text-align: left;
   color: var(--tdb-fg);
   padding: 8px 10px;
-  border-radius: 10px;
+  border-radius: var(--radius-menu);
   cursor: pointer;
   flex-shrink: 0;
 }
@@ -758,8 +759,8 @@ button.tdb-kpi:focus-visible {
 }
 
 .tdb-job-row:focus-visible {
-  outline: 2px solid var(--tdb-muted);
-  outline-offset: 2px;
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 .tdb-job-spinner {
@@ -769,28 +770,17 @@ button.tdb-kpi:focus-visible {
 
 .tdb-job-spinner[data-spinning="true"] {
   color: var(--tdb-fg);
-  animation: tdb-spin 1s linear infinite;
-}
-
-@keyframes tdb-spin {
-  to {
-    transform: rotate(360deg);
-  }
+  animation: tui-spin 1s linear infinite;
 }
 
 .tdb-job-tag {
-  font-size: 12px;
-  font-weight: 500;
   color: var(--tdb-muted);
   background: var(--tdb-pill-bg);
-  border-radius: 6px;
-  padding: 2px 6px;
   flex-shrink: 0;
-  font-variant-numeric: tabular-nums;
 }
 
 .tdb-job-title {
-  font-size: 13px;
+  font-size: var(--text-sm-tight);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

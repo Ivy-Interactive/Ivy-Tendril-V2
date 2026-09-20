@@ -1,8 +1,10 @@
 import React, { useState, useEffect, useRef } from "react";
 import { AgentViewer } from "@ivy-interactive/components/tendril";
-import { Callout } from "@ivy-interactive/components/ui";
-import { describeBridgeError, type Job, type JobDetail, type JobStatus } from "../types/api";
+import { Badge, Button, Callout, IconButton } from "@ivy-interactive/components/ui";
+import { X } from "lucide-react";
+import { describeBridgeError, type Job, type JobDetail } from "../types/api";
 import { isActiveStatus, jobsStore, type StreamEventItem } from "../state/jobsStore";
+import { JOB_STATUS_COLOR, UNMAPPED_COLOR, projectColor } from "../utils/jobStatus";
 import { ConfirmDialog } from "./dialogs";
 import { parseProjects } from "./PlansView";
 
@@ -22,28 +24,6 @@ interface JobSessionViewProps {
    */
   layout?: "page" | "sheet";
 }
-
-/**
- * Job status to badge classes, from `Constants.JobStatusColors` (V1 `src/Ivy.Tendril/Constants.cs`):
- * Running is Blue, Completed is Green, Failed and Timeout are Red, Queued and Pending are Amber,
- * Blocked is Orange, Stopped is Gray.
- *
- * Semantic tokens only, which collapses V1's Amber and Orange onto the one `warning` token the design
- * system has. That keeps Blocked reading the same as it does on a plan (`PLAN_STATE_BADGE_CLASS` maps
- * Blocked to warning too) at the cost of the amber/orange distinction, which carried no meaning V1
- * relied on. `--primary` is Ivy green and is never reached for here: a status badge that borrowed it
- * would read as "succeeded" on a job that has not run.
- */
-const JOB_STATUS_BADGE_CLASS: Record<JobStatus, string> = {
-  Running: "border-info/40 bg-info/10 text-info",
-  Completed: "border-success/40 bg-success/10 text-success",
-  Failed: "border-destructive/40 bg-destructive/10 text-destructive",
-  Timeout: "border-destructive/40 bg-destructive/10 text-destructive",
-  Queued: "border-warning/40 bg-warning/10 text-warning",
-  Pending: "border-warning/40 bg-warning/10 text-warning",
-  Blocked: "border-warning/40 bg-warning/10 text-warning",
-  Stopped: "border-border bg-transparent text-muted-foreground",
-};
 
 /** `JobsApp.Helpers.cs` `FormatTimeSpan`: hours drop the seconds, a sub-minute span is seconds only. */
 function formatTimeSpan(totalSeconds: number): string {
@@ -432,33 +412,27 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
             <span className="font-mono text-sm font-bold text-muted-foreground">
               {normalizeJobId(currentJob.id)}
             </span>
-            <span
+            {/* Same badge the Jobs table draws, on the same `Constants.JobStatusColors` mapping, so
+                the sheet header and the row behind it read identically. */}
+            <Badge
               data-testid="job-status-badge"
-              className={`rounded-full border px-2.5 py-0.5 text-xs font-semibold ${
-                JOB_STATUS_BADGE_CLASS[currentJob.status] ??
-                "border-border bg-transparent text-muted-foreground"
-              }`}
+              color={JOB_STATUS_COLOR[currentJob.status] ?? UNMAPPED_COLOR}
+              density="Small"
             >
               {currentJob.status}
-            </span>
+            </Badge>
             {/* `ProjectHelper.ParseProjects`: a job's project field can name several. */}
             {parseProjects(currentJob.project).map((project) => (
-              <span
-                key={project}
-                className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground"
-              >
+              <Badge key={project} color={projectColor(project)} density="Small">
                 {project}
-              </span>
+              </Badge>
             ))}
             {/* From 751bed8: a job supervised across a daemon restart, as opposed to one this
                 session started end to end. */}
             {currentJob.detached && (
-              <span
-                data-testid="job-detached-badge"
-                className="rounded-full border border-warning/40 bg-warning/10 px-2.5 py-0.5 text-xs font-medium text-warning"
-              >
+              <Badge data-testid="job-detached-badge" color="Orange" density="Small">
                 Detached (PID {currentJob.processId}) — Monitoring active process
-              </span>
+              </Badge>
             )}
           </div>
           {/* The output sheet's title: `$"{job.Type} {ExtractPlanId(job.PlanFile)}"`. Drawn here
@@ -497,55 +471,61 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
             and Debug needs `JobDebugSheet`. Both are reported rather than stubbed. */}
         <div className="flex flex-wrap items-center gap-2">
           {canStop && (
-            <button
+            <Button
               type="button"
+              size="sm"
+              variant="destructive"
               disabled={isStopping}
               onClick={handleStop}
               title="Stop this job"
-              className="rounded-selector bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground transition hover:bg-destructive/90 disabled:opacity-50"
+              className="h-auto rounded-selector px-3 py-1.5 text-xs"
             >
               {isStopping ? "Stopping..." : "Stop"}
-            </button>
+            </Button>
           )}
 
           {canForceStart && (
-            <button
+            <Button
               type="button"
+              size="sm"
+              variant="outline"
               data-testid="job-force-start"
               disabled={isForceStarting}
               onClick={handleForceStart}
               title="Force start this blocked job"
-              className="rounded-selector border border-border px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
+              className="h-auto rounded-selector px-3 py-1.5 text-xs"
             >
               {isForceStarting ? "Starting..." : "Force Start"}
-            </button>
+            </Button>
           )}
 
+          {/* Delete is `outline` with the destructive tint it already had rather than the solid
+              `destructive` fill: Stop is the loud one in this row, and two filled reds side by
+              side stop reading as a hierarchy. */}
           {canDelete && (
-            <button
+            <Button
               type="button"
+              size="sm"
+              variant="outline"
               data-testid="job-delete"
               onClick={() => {
                 setDeleteError(null);
                 setIsConfirmDeleteOpen(true);
               }}
               title="Delete this job"
-              className="rounded-selector border border-destructive/40 px-3 py-1.5 text-xs font-medium text-destructive transition hover:bg-destructive/10"
+              className="h-auto rounded-selector border-destructive/40 px-3 py-1.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
             >
               Delete
-            </button>
+            </Button>
           )}
 
-          {/* A sheet has its own close control; a second one beside Delete is noise. */}
+          {/* A sheet has its own close control; a second one beside Delete is noise. An X icon
+              rather than the "✕" glyph this used to draw: every other close in the app is
+              `lucide-react`'s, and a text glyph does not line up with one. */}
           {onCloseTab && !isSheet && (
-            <button
-              type="button"
-              onClick={onCloseTab}
-              aria-label="Close session tab"
-              className="rounded-selector p-1 text-muted-foreground hover:text-foreground"
-            >
-              ✕
-            </button>
+            <IconButton label="Close session tab" size="md" tone="muted" onClick={onCloseTab}>
+              <X className="size-4" />
+            </IconButton>
           )}
         </div>
       </div>

@@ -1,13 +1,16 @@
-import { describe, it, expect, vi } from "vitest";
+import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import "@testing-library/jest-dom/vitest";
 
 vi.mock("pdfjs-dist", () => ({ GlobalWorkerOptions: {}, getDocument: vi.fn() }));
-vi.mock("pdfjs-dist/build/pdf.worker.mjs?url", () => ({ default: "" }));
+vi.mock("pdfjs-dist/build/pdf.worker.mjs?url", () => ({
+  default: "/assets/pdf.worker-TGcf_-kp.mjs",
+}));
 
 import {
   ContentInput,
   type ContentInputProps,
+  loadPdfJs,
   PdfThumbnail,
   resetPdfJsCacheForTest,
 } from "./ContentInput";
@@ -111,7 +114,7 @@ describe("ContentInput", () => {
       <ContentInput id="civ-1" value="" onIvyEvent={onIvyEvent} transcriptionUrl="ws://test" />,
     );
 
-    const micButton = screen.getByTitle("Voice input transcription");
+    const micButton = screen.getByRole("button", { name: "Voice input transcription" });
     await act(async () => {
       fireEvent.click(micButton);
     });
@@ -148,7 +151,7 @@ describe("ContentInput", () => {
 
     render(<ContentInput id="civ-1" value="" transcriptionUrl="ws://test" />);
 
-    const micButton = screen.getByTitle("Voice input transcription");
+    const micButton = screen.getByRole("button", { name: "Voice input transcription" });
     await act(async () => {
       fireEvent.click(micButton);
     });
@@ -180,7 +183,7 @@ describe("ContentInput", () => {
 
     render(<ContentInput id="civ-1" value="" transcriptionUrl="ws://test" />);
 
-    const micButton = screen.getByTitle("Voice input transcription");
+    const micButton = screen.getByRole("button", { name: "Voice input transcription" });
     await act(async () => {
       fireEvent.click(micButton);
     });
@@ -219,7 +222,7 @@ describe("ContentInput", () => {
 
     render(<ContentInput id="civ-1" value="" transcriptionUrl="ws://test" />);
 
-    const micButton = screen.getByTitle("Voice input transcription");
+    const micButton = screen.getByRole("button", { name: "Voice input transcription" });
     await act(async () => {
       fireEvent.click(micButton);
     });
@@ -234,6 +237,91 @@ describe("ContentInput", () => {
     render(<ContentInput id="civ-1" value="" />);
     expect(document.querySelector(".civ-mode-selector-container")).toBeNull();
     expect(screen.queryByTitle("Select job execution mode")).toBeNull();
+  });
+
+  /**
+   * Pins the packaged-app worker fix. pdf.js decides a `workerSrc` is cross-origin whenever
+   * `window.location`'s origin serialises to the string `"null"` — which is what the packaged
+   * webview's `tauri://localhost` does on macOS and Linux, `tauri:` being a custom URL scheme. It
+   * then tries to load the worker through a `blob:` URL, the CSP refuses it, and pdf.js silently
+   * degrades to main-thread parsing, freezing the UI on every PDF thumbnail.
+   *
+   * Handing it a ready-made `workerPort` sidesteps that check entirely, so these assert we set the
+   * port and never the src. Reverting to `workerSrc` reintroduces the freeze and cannot be caught
+   * anywhere else in this suite: jsdom has no `Worker`, dev serves from a real origin, and pdf.js
+   * logs nothing when it falls back.
+   */
+  describe("pdf.js worker wiring", () => {
+    class FakeWorker {
+      static instances: { url: string | URL; options?: WorkerOptions }[] = [];
+      constructor(url: string | URL, options?: WorkerOptions) {
+        FakeWorker.instances.push({ url, options });
+      }
+      postMessage() {}
+      terminate() {}
+      addEventListener() {}
+      removeEventListener() {}
+    }
+
+    const withFakeWorker = async () => {
+      resetPdfJsCacheForTest();
+      FakeWorker.instances = [];
+      const pdfjs = (await import("pdfjs-dist")) as unknown as {
+        GlobalWorkerOptions: { workerSrc?: string; workerPort?: unknown };
+      };
+      pdfjs.GlobalWorkerOptions.workerSrc = undefined;
+      pdfjs.GlobalWorkerOptions.workerPort = undefined;
+      vi.stubGlobal("Worker", FakeWorker);
+      return pdfjs;
+    };
+
+    afterEach(() => {
+      vi.unstubAllGlobals();
+      resetPdfJsCacheForTest();
+    });
+
+    it("gives pdf.js a workerPort rather than a workerSrc", async () => {
+      const pdfjs = await withFakeWorker();
+      await loadPdfJs();
+
+      expect(pdfjs.GlobalWorkerOptions.workerPort).toBeInstanceOf(FakeWorker);
+      // A workerSrc is what sends pdf.js through the blocked blob: path under tauri://localhost.
+      expect(pdfjs.GlobalWorkerOptions.workerSrc).toBeUndefined();
+    });
+
+    it("constructs the worker from the bundled asset as an ES module", async () => {
+      await withFakeWorker();
+      await loadPdfJs();
+
+      expect(FakeWorker.instances).toHaveLength(1);
+      expect(FakeWorker.instances[0].url).toBe("/assets/pdf.worker-TGcf_-kp.mjs");
+      // The emitted worker is ESM; a classic worker fails to parse its top-level imports.
+      expect(FakeWorker.instances[0].options).toEqual({ type: "module" });
+    });
+
+    it("builds one shared worker no matter how many callers ask for pdf.js", async () => {
+      await withFakeWorker();
+      await Promise.all([loadPdfJs(), loadPdfJs()]);
+      await loadPdfJs();
+
+      expect(FakeWorker.instances).toHaveLength(1);
+    });
+
+    // jsdom (this suite) and SSR have no Worker constructor, so a port cannot be built there.
+    it("falls back to workerSrc where the Worker constructor is unavailable", async () => {
+      resetPdfJsCacheForTest();
+      const pdfjs = (await import("pdfjs-dist")) as unknown as {
+        GlobalWorkerOptions: { workerSrc?: string; workerPort?: unknown };
+      };
+      pdfjs.GlobalWorkerOptions.workerSrc = undefined;
+      pdfjs.GlobalWorkerOptions.workerPort = undefined;
+      vi.stubGlobal("Worker", undefined);
+
+      await loadPdfJs();
+
+      expect(pdfjs.GlobalWorkerOptions.workerPort).toBeUndefined();
+      expect(pdfjs.GlobalWorkerOptions.workerSrc).toBe("/assets/pdf.worker-TGcf_-kp.mjs");
+    });
   });
 
   it("loads PDF.js dynamically and renders canvas when given a PDF URL", async () => {

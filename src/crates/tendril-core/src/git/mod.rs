@@ -1,3 +1,4 @@
+pub mod clone;
 pub mod git_tab;
 pub mod github;
 pub mod issues;
@@ -10,6 +11,7 @@ pub mod worktree;
 pub mod worktree_log;
 pub mod worktree_reaper;
 
+pub use clone::*;
 pub use git_tab::*;
 pub use github::*;
 pub use issues::*;

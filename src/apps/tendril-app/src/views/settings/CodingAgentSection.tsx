@@ -14,11 +14,13 @@ import {
 } from "../../types/agents";
 import { formatEnvLines, parseEnvLines } from "./configValues";
 import { normalizeAgentName } from "./projectConfig";
+import { AgentTestDialog, type TestModelEntry } from "./AgentTestDialog";
+import { AgentUsageStrip } from "./AgentUsageStrip";
 import {
   LinesField,
   NativeSelectField,
   SaveError,
-  SectionCard,
+  SettingsSection,
   SubSection,
   TextField,
 } from "./fields";
@@ -55,8 +57,9 @@ import {
  * every one of those keys back for each launch, which is why they are written in the shapes
  * `codingAgents.ts` produces rather than as anything more convenient.
  *
- * Two of V1's blocks have no counterpart in this build and are stated rather than faked - see the
- * note at the foot of the pane.
+ * Above the profiles sits the usage strip - this agent's rate-limit windows - and below Save is Test
+ * Agent, which runs install, auth and one prompt per configured model. Both are V1 blocks; both read
+ * routes that V2 grew for them, since neither answer can be computed in a webview.
  */
 
 /** `EffortLevels.Claude`, V1's fallback when neither the model nor the descriptor names any. */
@@ -86,7 +89,14 @@ const unknownAgentMessage = (value: string): string =>
     .sort()
     .join(", ")}`;
 
-/** One card in either grid: `new Card(logo | label | Spacer | check).OnClick(...)`. */
+/**
+ * One card in either grid: `new Card(logo | label | Spacer | check).OnClick(...)`.
+ *
+ * `p-6` and `text-base` are what that `new Card` resolves to rather than arbitrary choices. Ivy's
+ * `CardWidget` at its default medium density pads a header-less card with `p-6` and applies no font
+ * override, so V1 draws an 82px card around its 32px logo. V2 had `p-3` and `text-sm`, which is the
+ * 56px card the operator is looking at - the same content in a box a third shorter.
+ */
 const AgentCard: React.FC<{
   id: string;
   label: string;
@@ -99,13 +109,13 @@ const AgentCard: React.FC<{
     aria-pressed={selected}
     onClick={onClick}
     data-testid={`coding-agent-${id}`}
-    className={`flex items-center gap-3 rounded-lg border p-3 text-left transition-colors ${
+    className={`flex items-center gap-3 rounded-box border p-6 text-left transition-colors ${
       selected ? "border-primary bg-primary/10" : "border-border bg-card hover:bg-muted/50"
     }`}
   >
-    <BrandIcon name={icon} size={32} className="text-foreground" />
-    <span className="text-sm font-medium text-foreground">{label}</span>
-    {selected && <Check className="ml-auto size-4 text-primary" aria-hidden="true" />}
+    <BrandIcon name={icon} size={32} className="shrink-0 text-foreground" />
+    <span className="min-w-0 truncate text-base font-medium text-foreground">{label}</span>
+    {selected && <Check className="ml-auto size-5 shrink-0 text-primary" aria-hidden="true" />}
   </button>
 );
 
@@ -131,6 +141,7 @@ export const CodingAgentSection: React.FC<{
   const [agents, setAgents] = React.useState<AgentOption[]>([]);
   const [isSaving, setIsSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  const [isTestOpen, setIsTestOpen] = React.useState(false);
 
   // Live discovery (`POST /api/agents/models`). `discovered` is per endpoint rather than global: it is
   // what *this* URL answered, and switching cards discards it.
@@ -286,6 +297,44 @@ export const CodingAgentSection: React.FC<{
     ? catalogAgent.supportsEffort
     : supportsEffort(finalAgent) && effortOptionsFor(DEFAULT_OPTION_ID).length > 0;
   const defaults = tierDefaults(finalAgent, baseUrl);
+
+  /**
+   * `getModels()` in `CodingAgentSetupView.cs:415-441`: what Test Agent validates.
+   *
+   * The three tiers in order, deduplicated - two tiers on one model is one prompt, not two, and the
+   * dialog charges a real request per row. An unset tier contributes a single row labelled "Default"
+   * however many tiers are unset, deduplicated on the literal key `default` rather than on the model
+   * id, because "whatever this agent defaults to" is one thing regardless of what it resolves to.
+   * Everything else dedupes case-insensitively and shows the catalogue's display name.
+   *
+   * Deliberately the *stored* value, not `shownTierModel`: a tier the operator has not touched must
+   * be tested as unset, which is what a launch would do with it. Testing the resolved model instead
+   * would validate a model the agent might never be asked for.
+   */
+  const testModels: TestModelEntry[] = React.useMemo(() => {
+    const entries: TestModelEntry[] = [];
+    const seen = new Set<string>();
+    for (const tier of PROFILE_TIERS) {
+      const model = profiles[tier].model;
+      if (isTierUnset(model)) {
+        if (!seen.has("default")) {
+          seen.add("default");
+          entries.push({ id: "", displayName: "Default" });
+        }
+        continue;
+      }
+      const key = model.toLowerCase();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const known = modelOptions.find((option) => option.value.toLowerCase() === key);
+      entries.push({ id: model, displayName: known?.label ?? model });
+    }
+    return entries;
+    // `modelOptions` is rebuilt every render, so it is read for labels but not depended on: a label
+    // that arrives with the catalogue does not need to rebuild this list, and depending on it would
+    // give the dialog a new `models` identity on every render of the pane.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [profiles]);
 
   const chooseCard = (next: string) => {
     setChosenCard(next);
@@ -472,13 +521,13 @@ export const CodingAgentSection: React.FC<{
   };
 
   return (
-    <SectionCard
+    <SettingsSection
       title="Coding Agent"
       hint="Tendril connects to your configured AI coding agent or bundled open source engines like OpenCode."
       testId="coding-agent-card"
     >
       <form
-        className="max-w-170 space-y-4"
+        className="space-y-4"
         onSubmit={(e) => {
           e.preventDefault();
           void save();
@@ -605,6 +654,10 @@ export const CodingAgentSection: React.FC<{
           }
           testId="profile-models-block"
         >
+          {/* V1 puts the strip above the whole `profileModels` stack, which in this build is the
+              section it heads. First child, so the quota is read before the models it constrains. */}
+          <AgentUsageStrip agent={finalAgent} />
+
           {isByo && modelOptions.length > 0 && (
             <div className="mb-3 flex items-center gap-3">
               <Switch
@@ -626,12 +679,22 @@ export const CodingAgentSection: React.FC<{
 
           <div className="space-y-3">
             {PROFILE_TIERS.map((tier) => (
-              <div key={tier} className="flex flex-wrap items-end gap-2">
-                {/* `Width(Size.Fraction(0.65f))` against the effort select's `0.35f`, and the whole
-                    row when there is no effort select to sit beside. */}
+              <div key={tier} className="flex items-start gap-2">
+                {/* `Width(Size.Fraction(0.65f))` against the effort select's `0.35f`, expressed as
+                    grow weights over a zero basis rather than as percentage bases.
+                    `basis-[65%] + basis-[35%]` is exactly 100% of the line before the `gap-2`
+                    between them is counted, so on a wrapping row the pair never fit and the effort
+                    select dropped to a line of its own at *every* width - which is not the layout
+                    V1 draws. Weights divide what is left after the gap, so the ratio holds and the
+                    row stays one line; `min-w-0` lets a long model name shrink rather than push its
+                    neighbour out.
+
+                    Aligned at the *start*, not the end: both columns open with the same `text-xs`
+                    label above the same `h-9` control, so aligning tops lines the labels and the
+                    selects up. */}
                 <div
                   className={
-                    effortEnabled ? "min-w-56 grow basis-[65%]" : "min-w-56 grow basis-full"
+                    effortEnabled ? "min-w-0 grow-[65] basis-0" : "min-w-0 grow basis-full"
                   }
                 >
                   {isCustomMode ? (
@@ -658,11 +721,6 @@ export const CodingAgentSection: React.FC<{
                          nothing sensible. */
                       value={shownTierModel(tier)}
                       options={modelOptions}
-                      hint={
-                        isTierUnset(profiles[tier].model)
-                          ? "Not set — this is the built-in default for this tier."
-                          : undefined
-                      }
                       onChange={(value) =>
                         setProfiles((prev) => ({
                           ...prev,
@@ -676,7 +734,7 @@ export const CodingAgentSection: React.FC<{
                     branch rather than a disabled control that would still look settable. Its options
                     are `GetEffortOptions(<this row's model>)`, so they follow the select beside them. */}
                 {effortEnabled && (
-                  <div className="min-w-32 basis-[35%]">
+                  <div className="min-w-0 grow-[35] basis-0">
                     <NativeSelectField
                       id={`profile-effort-${tier}`}
                       label="Effort"
@@ -731,24 +789,34 @@ export const CodingAgentSection: React.FC<{
 
         <SaveError message={error} />
 
-        <Button type="submit" disabled={!hasChanges || isSaving}>
-          {isSaving ? "Saving..." : "Save"}
-        </Button>
+        {/* `Layout.Horizontal() | Test Agent | Save`, in that order. `type="button"` because this
+            sits inside the settings form and a bare button in a form submits it - which would save
+            the pane every time someone tested it. */}
+        <div className="flex items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            data-testid="test-agent"
+            disabled={isFetchingModels}
+            onClick={() => setIsTestOpen(true)}
+          >
+            Test Agent
+          </Button>
+          <Button type="submit" disabled={!hasChanges || isSaving}>
+            {isSaving ? "Saving..." : "Save"}
+          </Button>
+        </div>
 
-        {/* Stated rather than offered, as in `SecurityTunnelingSection`. */}
-        <Callout.Info data-testid="agent-gaps-note">
-          <div className="space-y-1 text-xs">
-            <p>
-              V1&apos;s <strong>Test Agent</strong> dialog is missing because the daemon has no
-              route that runs a one-off prompt against an agent, so there is nothing for it to call.
-            </p>
-            <p>
-              V1&apos;s usage strip (the rate-limit windows above the profiles) needs a per-agent
-              usage snapshot, which this build does not collect.
-            </p>
-          </div>
-        </Callout.Info>
+        {/* Tests the agent as *saved*, which is what a launch would use. Unsaved edits to the model
+            fields are still what `testModels` reads, so the dialog checks what the pane shows - but
+            an unsaved API key is not sent, because the daemon reads the key from `config.yaml`. */}
+        <AgentTestDialog
+          isOpen={isTestOpen}
+          onClose={() => setIsTestOpen(false)}
+          agent={finalAgent}
+          models={testModels}
+        />
       </form>
-    </SectionCard>
+    </SettingsSection>
   );
 };

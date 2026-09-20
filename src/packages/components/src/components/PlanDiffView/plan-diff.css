@@ -121,14 +121,14 @@
 .pmv-comment-avatar {
   width: 18px;
   height: 18px;
-  border-radius: 9999px;
+  border-radius: var(--radius-full);
   background-color: var(--primary);
   color: var(--primary-foreground);
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font-weight: 700;
-  font-size: 9px;
+  font-size: var(--text-3xs);
   text-transform: uppercase;
   user-select: none;
   flex-shrink: 0;
@@ -162,8 +162,8 @@ td.diff-gutter-delete::after {
   /* Two bars instead of a "+" text glyph: text ink is positioned by font
      metrics, not by the box, so the glyph rendered 1.5px low (#1941). */
   background-image:
-    linear-gradient(var(--primary-foreground, #ffffff), var(--primary-foreground, #ffffff)),
-    linear-gradient(var(--primary-foreground, #ffffff), var(--primary-foreground, #ffffff));
+    linear-gradient(var(--primary-foreground), var(--primary-foreground)),
+    linear-gradient(var(--primary-foreground), var(--primary-foreground));
   background-size:
     8px 2px,
     2px 8px;
@@ -219,7 +219,7 @@ td.diff-gutter-empty::after {
   align-items: stretch;
   min-height: 0;
   min-width: 0;
-  font-family: var(--font-sans, sans-serif);
+  font-family: var(--font-sans);
 }
 
 .ivy-changes-tree {
@@ -228,7 +228,7 @@ td.diff-gutter-empty::after {
   min-height: 0;
   overflow: auto;
   padding: 0 0.75rem 2.5rem 0;
-  font-size: 0.8125rem;
+  font-size: var(--text-sm-tight);
 }
 
 .ivy-changes-view-narrow {
@@ -242,7 +242,7 @@ td.diff-gutter-empty::after {
   gap: 0.5rem;
   padding: 0.375rem 0.75rem;
   margin-bottom: 0.375rem;
-  border-radius: 0.375rem;
+  border-radius: var(--radius-md);
   background-color: var(--muted);
 }
 
@@ -273,7 +273,7 @@ td.diff-gutter-empty::after {
   min-width: 0;
   margin: 1px 0;
   padding: 0.25rem 0.5rem 0.25rem 0;
-  border-radius: 0.375rem;
+  border-radius: var(--radius-md);
   color: var(--foreground);
   cursor: pointer;
   user-select: none;
@@ -282,7 +282,7 @@ td.diff-gutter-empty::after {
 
 .ivy-changes-tree-row:hover {
   background-color: var(--accent);
-  color: var(--accent-foreground, var(--foreground));
+  color: var(--accent-foreground);
 }
 
 .ivy-changes-tree-row:focus-visible {
@@ -293,7 +293,7 @@ td.diff-gutter-empty::after {
 .ivy-changes-tree-row-selected,
 .ivy-changes-tree-row-selected:hover {
   background-color: var(--accent);
-  color: var(--accent-foreground, var(--foreground));
+  color: var(--accent-foreground);
 }
 
 .ivy-changes-tree-chevron {
@@ -322,7 +322,7 @@ td.diff-gutter-empty::after {
   gap: 0.25rem;
   flex-shrink: 0;
   font-family: var(--font-mono);
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   font-variant-numeric: tabular-nums;
 }
 
@@ -395,16 +395,16 @@ td.diff-gutter-empty::after {
 .diff-comment-markdown code {
   font-family: var(--font-mono);
   background: color-mix(in srgb, var(--muted) 60%, transparent);
-  border: 1px solid var(--border);
-  border-radius: 3px;
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius-xs);
   padding: 0 3px;
   font-size: 0.9em;
 }
 
 .diff-comment-markdown pre {
   background: color-mix(in srgb, var(--muted) 60%, transparent);
-  border: 1px solid var(--border);
-  border-radius: 3px;
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius-xs);
   padding: 0.5rem;
   overflow-x: auto;
   margin: 0.35rem 0;
@@ -431,7 +431,7 @@ td.diff-gutter-empty::after {
 }
 
 .diff-comment-markdown blockquote {
-  border-left: 2px solid var(--border);
+  border-left: var(--border-width-thick) solid var(--border);
   padding-left: 0.5rem;
   color: var(--muted-foreground);
   margin: 0.35rem 0;
@@ -461,7 +461,7 @@ td.diff-gutter-empty::after {
 
 .diff-comment-markdown th,
 .diff-comment-markdown td {
-  border: 1px solid var(--border);
+  border: var(--border-width) solid var(--border);
   padding: 0.25rem 0.5rem;
   text-align: left;
 }
@@ -494,7 +494,7 @@ td.diff-gutter-empty::after {
 .diff-code .token.property,
 .diff-code .token.atrule,
 .diff-code .token.rule {
-  color: var(--purple, #c084fc) !important;
+  color: var(--purple) !important;
   font-weight: 500;
 }
 
@@ -504,7 +504,7 @@ td.diff-gutter-empty::after {
 .diff-code .token.regex,
 .diff-code .token.char,
 .diff-code .token.color {
-  color: var(--primary, #34d399) !important;
+  color: var(--primary) !important;
 }
 
 .diff-code .token.function,
@@ -514,18 +514,18 @@ td.diff-gutter-empty::after {
 .diff-code .token.builtin,
 .diff-code .token.entity,
 .diff-code .token.boolean {
-  color: var(--cyan, #38bdf8) !important;
+  color: var(--cyan) !important;
 }
 
 .diff-code .token.attr-name {
-  color: var(--pink, #ec4899) !important;
+  color: var(--pink) !important;
 }
 
 .diff-code .token.constant,
 .diff-code .token.symbol,
 .diff-code .token.selector,
 .diff-code .token.directive {
-  color: var(--violet, #8b5cf6) !important;
+  color: var(--violet) !important;
 }
 
 .diff-code .token.number,

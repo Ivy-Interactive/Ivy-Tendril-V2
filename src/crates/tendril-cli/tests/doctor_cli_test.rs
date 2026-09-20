@@ -4,22 +4,37 @@
 //! lines appear, how they are tagged, what order the `--rebuild-search-index` note lands in, and the
 //! exit code.
 //!
-//! Two things are deliberately taken out of the ambient environment's hands:
-//!   * `--home` is always an isolated temp directory (the real `TENDRIL_HOME` is cleared), and
+//! Three things are deliberately taken out of the ambient environment's hands:
+//!   * `--home` is always an isolated temp directory (the real `TENDRIL_HOME` is cleared),
 //!   * `PATH` is set explicitly wherever a check probes it, so the installation checks are
-//!     deterministic rather than a function of what the developer happens to have installed.
+//!     deterministic rather than a function of what the developer happens to have installed, and
+//!   * the tools on `PATH` are an explicit, per-fixture set rather than the machine's `/usr/bin`,
+//!     so a `gh` that happens to be installed cannot decide what these tests assert
+//!     (see [`Fixture::base_path`]).
 
 use std::path::PathBuf;
 use std::process::{Command, Output, Stdio};
 use tendril_core::db::SCHEMA_VERSION;
 
-/// The minimum `PATH` the probes need: `which` lives in `/usr/bin`, and `git`/`gh` are looked up
-/// through it. Nothing named `tendril` is in either directory, so the "not on PATH" branch is
-/// reachable from here.
+/// The tools the probes are *allowed* to find, linked into a per-fixture directory by
+/// [`Fixture::base_path`]. `which` backs the "is `tendril` on PATH" check and `git` backs the git
+/// prerequisite check; everything else a check probes for - `gh`, `dotnet`, every agent CLI - is
+/// deliberately absent, so its "not installed" branch is what the tests exercise.
 #[cfg(unix)]
-const BASE_PATH: &str = "/usr/bin:/bin";
+const BASE_TOOLS: &[&str] = &["which", "git", "sh"];
 #[cfg(windows)]
-const BASE_PATH: &str = r"C:\Windows\System32;C:\Windows";
+const BASE_TOOLS: &[&str] = &["where.exe", "git.exe"];
+
+/// Where [`Fixture::base_path`] looks for the real binaries to link. Not the ambient `PATH`: the
+/// point is to pick up a known set and leave everything else behind.
+#[cfg(unix)]
+const TOOL_SEARCH_DIRS: &[&str] = &["/usr/bin", "/bin", "/usr/local/bin", "/opt/homebrew/bin"];
+#[cfg(windows)]
+const TOOL_SEARCH_DIRS: &[&str] = &[
+    r"C:\Windows\System32",
+    r"C:\Windows",
+    r"C:\Program Files\Git\cmd",
+];
 
 struct Fixture {
     home: PathBuf,
@@ -36,15 +51,57 @@ impl Fixture {
         Self { home }
     }
 
+    /// A `PATH` holding only [`BASE_TOOLS`], symlinked out of [`TOOL_SEARCH_DIRS`] into this
+    /// fixture's own directory.
+    ///
+    /// This replaces a `BASE_PATH` constant of `/usr/bin:/bin`, which promised in its own comment to
+    /// keep the checks "deterministic rather than a function of what the developer happens to have
+    /// installed" and did not: `gh` is a real shell-out, Linux ships it in `/usr/bin`, and the
+    /// `gh auth status` check reports an installed-but-logged-out `gh` as `[FAIL]`. So on CI six
+    /// tests asserting exit 0 got exit 1, while macOS - where `gh` lives in `/usr/local/bin`, outside
+    /// that constant - never reproduced it. Linking a known set in is the isolation the comment
+    /// always claimed.
+    fn base_path(&self) -> String {
+        let bin = self.home.join("base-bin");
+        std::fs::create_dir_all(&bin).unwrap();
+        for tool in BASE_TOOLS {
+            let link = bin.join(tool);
+            if link.exists() {
+                continue;
+            }
+            let Some(real) = TOOL_SEARCH_DIRS
+                .iter()
+                .map(|dir| PathBuf::from(dir).join(tool))
+                .find(|candidate| candidate.exists())
+            else {
+                // `sh` and `git` are expected everywhere, but a missing optional tool should degrade
+                // into that tool's "not installed" branch rather than fail the run outright.
+                continue;
+            };
+            #[cfg(unix)]
+            std::os::unix::fs::symlink(&real, &link).unwrap();
+            #[cfg(windows)]
+            std::fs::copy(&real, &link).map(|_| ()).unwrap();
+        }
+        bin.display().to_string()
+    }
+
     fn command(&self, args: &[&str]) -> Command {
         let mut cmd = Command::new(env!("CARGO_BIN_EXE_tendril"));
         cmd.arg("--home")
             .arg(&self.home)
             .args(args)
-            .env("PATH", BASE_PATH)
+            .env("PATH", self.base_path())
             .env_remove("TENDRIL_HOME")
             .env_remove("TENDRIL_PLANS")
             .env_remove("TENDRIL_CONFIG")
+            // A logged-in `gh` on the ambient PATH must not be able to decide what these tests
+            // assert, so credentials are neutralised alongside the PATH isolation below.
+            .env("GH_CONFIG_DIR", self.home.join("gh-config"))
+            .env_remove("GH_TOKEN")
+            .env_remove("GITHUB_TOKEN")
+            .env_remove("GH_ENTERPRISE_TOKEN")
+            .env_remove("GITHUB_ENTERPRISE_TOKEN")
             .stdin(Stdio::null());
         cmd
     }
@@ -58,7 +115,7 @@ impl Fixture {
     }
 
     /// Creates a directory of stub executables that answer `--version`, and returns a `PATH` with it
-    /// in front of [`BASE_PATH`]. The agent probes shell out to `<name> --version`, so a stub is all
+    /// in front of [`Fixture::base_path`]. The agent probes shell out to `<name> --version`, so a stub is all
     /// they need — and it makes the agent checks deterministic instead of a function of which coding
     /// agents the developer happens to have installed.
     fn path_with_stubs(&self, names: &[&str]) -> String {
@@ -73,7 +130,7 @@ impl Fixture {
                 std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
             }
         }
-        format!("{}:{}", bin.display(), BASE_PATH)
+        format!("{}:{}", bin.display(), self.base_path())
     }
 }
 
@@ -338,7 +395,7 @@ fn doctor_reports_ok_when_tendril_on_path_is_this_build() {
 
     let out = fx
         .command(&["doctor"])
-        .env("PATH", format!("{}:{}", bin_dir.display(), BASE_PATH))
+        .env("PATH", format!("{}:{}", bin_dir.display(), fx.base_path()))
         .output()
         .expect("run tendril");
     let stdout = stdout_of(&out);
@@ -352,7 +409,7 @@ fn doctor_reports_ok_when_tendril_on_path_is_this_build() {
 }
 
 /// No `tendril` on `PATH` at all is a WARN, not a failure — the binary can legitimately be invoked
-/// by absolute path. Nothing named `tendril` is in the stub directory or in [`BASE_PATH`], and the
+/// by absolute path. Nothing named `tendril` is in the stub directory or on the fixture PATH, and the
 /// agent CLI is stubbed so the only interesting line is the PATH one.
 #[test]
 fn doctor_warns_when_tendril_is_not_on_path() {

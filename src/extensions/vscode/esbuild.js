@@ -1,44 +1,41 @@
-const esbuild = require('esbuild');
+const esbuild = require("esbuild");
 
-const fs = require('fs');
-const path = require('path');
+const fs = require("fs");
+const path = require("path");
 
-const isProduction = process.argv.includes('--production');
-const isWatch = process.argv.includes('--watch');
+const isProduction = process.argv.includes("--production");
+const isWatch = process.argv.includes("--watch");
 
 async function main() {
   const extensionCtx = await esbuild.context({
-    entryPoints: ['src/extension.ts'],
+    entryPoints: ["src/extension.ts"],
     bundle: true,
-    format: 'cjs',
+    format: "cjs",
     minify: isProduction,
     sourcemap: !isProduction,
     sourcesContent: false,
-    platform: 'node',
-    outfile: 'out/extension.js',
-    external: ['vscode'],
-    logLevel: 'info'
+    platform: "node",
+    outfile: "out/extension.js",
+    external: ["vscode"],
+    logLevel: "info",
   });
 
-  const testSuiteDir = path.join(__dirname, 'src/test/suite');
-  const testFiles = fs.readdirSync(testSuiteDir)
-    .filter(f => f.endsWith('.test.ts'))
-    .map(f => `src/test/suite/${f}`);
+  const testSuiteDir = path.join(__dirname, "src/test/suite");
+  const testFiles = fs
+    .readdirSync(testSuiteDir)
+    .filter((f) => f.endsWith(".test.ts"))
+    .map((f) => `src/test/suite/${f}`);
 
   const testCtx = await esbuild.context({
-    entryPoints: [
-      'src/test/runTest.ts',
-      'src/test/suite/index.ts',
-      ...testFiles
-    ],
+    entryPoints: ["src/test/runTest.ts", "src/test/suite/index.ts", ...testFiles],
     bundle: true,
-    format: 'cjs',
+    format: "cjs",
     sourcemap: true,
     sourcesContent: false,
-    platform: 'node',
-    outdir: 'out/test',
-    external: ['vscode', 'mocha'],
-    logLevel: 'info'
+    platform: "node",
+    outdir: "out/test",
+    external: ["vscode", "mocha"],
+    logLevel: "info",
   });
 
   if (isWatch) {
@@ -49,7 +46,7 @@ async function main() {
   }
 }
 
-main().catch(err => {
+main().catch((err) => {
   console.error(err);
   process.exit(1);
 });

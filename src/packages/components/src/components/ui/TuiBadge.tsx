@@ -1,8 +1,18 @@
 import React from "react";
+import { X } from "lucide-react";
 import { ivyColorVar } from "@/lib/ivy-color";
 import "./ui.css";
 
-export type BadgeKind = "neutral" | "project" | "success" | "warning" | "danger" | "color";
+export type BadgeKind =
+  | "neutral"
+  | "primary"
+  | "project"
+  | "success"
+  | "warning"
+  | "danger"
+  | "color";
+export type BadgeSize = "sm" | "md";
+export type BadgeShape = "rounded" | "pill";
 
 export interface TuiBadgeProps {
   kind?: BadgeKind;
@@ -11,7 +21,19 @@ export interface TuiBadgeProps {
   children: React.ReactNode;
   /** Numeric styling: a fixed minimum width and tabular figures, so a ticking count is steady. */
   numeric?: boolean;
+  size?: BadgeSize;
+  shape?: BadgeShape;
+  /** Absolutely positions the badge at the top-right corner of a `position: relative` parent. */
+  floating?: boolean;
+  mono?: boolean;
+  caps?: boolean;
+  /** A leading icon, rendered before the label. */
+  icon?: React.ReactNode;
+  /** Renders an accessible remove button after the label. */
+  onRemove?: () => void;
+  removeLabel?: string;
   className?: string;
+  style?: React.CSSProperties;
   /** Native title, for a badge whose label is abbreviated. */
   title?: string;
   "aria-label"?: string;
@@ -28,7 +50,16 @@ export const TuiBadge: React.FC<TuiBadgeProps> = ({
   color,
   children,
   numeric = false,
+  size,
+  shape,
+  floating = false,
+  mono = false,
+  caps = false,
+  icon,
+  onRemove,
+  removeLabel = "Remove",
   className = "",
+  style,
   title,
   "aria-label": ariaLabel,
 }) => (
@@ -37,11 +68,29 @@ export const TuiBadge: React.FC<TuiBadgeProps> = ({
       .replace(/\s+/g, " ")
       .trim()}
     data-kind={color ? "color" : kind}
-    style={color ? ({ "--tui-badge-color": ivyColorVar(color) } as React.CSSProperties) : undefined}
+    data-size={size}
+    data-shape={shape}
+    data-floating={floating ? "true" : undefined}
+    data-mono={mono ? "true" : undefined}
+    data-caps={caps ? "true" : undefined}
+    style={
+      color ? ({ "--tui-badge-color": ivyColorVar(color), ...style } as React.CSSProperties) : style
+    }
     title={title}
     aria-label={ariaLabel}
   >
+    {icon}
     {children}
+    {onRemove && (
+      <button
+        type="button"
+        className="tui-badge-remove"
+        aria-label={removeLabel}
+        onClick={onRemove}
+      >
+        <X size={10} aria-hidden="true" />
+      </button>
+    )}
   </span>
 );
 
@@ -85,6 +134,10 @@ export interface StatusDotProps {
   tone?: DotTone;
   /** Pulses while something is in flight. */
   pulse?: boolean;
+  /** Absolutely positions the dot at the top-right corner of a `position: relative` parent. */
+  floating?: boolean;
+  /** The ring color around a floating dot; defaults to the theme background. */
+  ring?: string;
   className?: string;
   label?: string;
 }
@@ -93,6 +146,8 @@ export interface StatusDotProps {
 export const StatusDot: React.FC<StatusDotProps> = ({
   tone = "neutral",
   pulse = false,
+  floating = false,
+  ring,
   className = "",
   label,
 }) => (
@@ -100,6 +155,8 @@ export const StatusDot: React.FC<StatusDotProps> = ({
     className={`tui-dot ${className}`.trim()}
     data-tone={tone}
     data-pulse={pulse}
+    data-floating={floating ? "true" : undefined}
+    style={ring ? ({ "--tui-dot-ring": ring } as React.CSSProperties) : undefined}
     role={label ? "img" : undefined}
     aria-label={label}
     aria-hidden={label ? undefined : true}

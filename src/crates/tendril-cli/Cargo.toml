@@ -2,6 +2,7 @@
 name = "tendril-cli"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 
@@ -50,3 +51,7 @@ axum = { workspace = true }
 # So `generate-certs`' tests can parse the pair back the way a TLS listener does, without standing
 # one up.
 rustls-pemfile = "2"
+# The real consumer of the PEM pair, so `tls_pem_round_trip_test` can load it exactly as
+# `tendril serve --tls-cert/--tls-key` does rather than approximating with a bare parser.
+axum-server = { workspace = true }
+rustls = { workspace = true }

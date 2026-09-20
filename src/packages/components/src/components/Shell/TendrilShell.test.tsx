@@ -64,6 +64,43 @@ describe("TendrilShell", () => {
     expect(container.querySelector('[data-testid="tab-strip"]')).not.toBeNull();
   });
 
+  it("renders a logo node in the header brand row, and nothing when given neither", () => {
+    const handler = vi.fn();
+    const renderHeader = (props: Partial<Parameters<typeof ShellSidebarHeader>[0]>) =>
+      act(() => {
+        root.render(
+          <TendrilShell
+            id="test-shell"
+            eventHandler={handler}
+            slots={{
+              SidebarHeader: (
+                <ShellSidebarHeader id="header" title="Tendril" eventHandler={handler} {...props} />
+              ),
+              Content: <div>Content</div>,
+            }}
+          />,
+        );
+      });
+
+    // A node has to land on `.tsh-header-logo` like the <img> branch does: that class is what the
+    // rail's hover-to-expand rule fades out to reveal the panel icon, so a mark outside it would
+    // sit on top of the icon in the collapsed rail.
+    renderHeader({ logo: <svg data-testid="brand-mark" /> });
+    const logoEl = container.querySelector(".tsh-header-logo");
+    expect(logoEl).not.toBeNull();
+    expect(logoEl?.querySelector('[data-testid="brand-mark"]')).not.toBeNull();
+
+    // The node wins over a URL rather than stacking two marks in the same slot.
+    renderHeader({ logo: <svg data-testid="brand-mark" />, logoUrl: "/tendril.svg" });
+    expect(container.querySelectorAll(".tsh-header-logo").length).toBe(1);
+    expect(container.querySelector("img.tsh-header-logo")).toBeNull();
+
+    // With neither, the toggle is just the panel icon - no empty wrapper to size against.
+    renderHeader({});
+    expect(container.querySelector(".tsh-header-logo")).toBeNull();
+    expect(container.querySelector(".tsh-logo-toggle-icon")).not.toBeNull();
+  });
+
   it("verifies collapse toggle state changes when toggle button is clicked or Cmd/Ctrl+B is pressed", () => {
     const handler = vi.fn();
     act(() => {

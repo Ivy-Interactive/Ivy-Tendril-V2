@@ -13,6 +13,10 @@ use base64::Engine;
 use reqwest::header::{HeaderMap, HeaderValue, AUTHORIZATION, CONTENT_TYPE};
 use serde_json::json;
 
+/// How long a request that may clone is given. Long enough for a real repository over a slow link,
+/// short enough that a wedged daemon still returns something.
+const CLONE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(600);
+
 #[derive(Debug, Clone)]
 pub struct TendrilClient {
     base_url: String,
@@ -752,6 +756,63 @@ impl TendrilClient {
                 "FETCH_PROVIDER_MODELS_FAILED",
                 format!("The service could not look up the provider's models ({status})"),
                 text,
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    /// Runs V1's Test Agent checks against one agent, via `POST /api/agents/{agent}/test`.
+    ///
+    /// The generous client timeout this inherits is load-bearing: the daemon gives Claude and
+    /// Copilot thirty seconds per model, so a three-model test on a slow provider legitimately runs
+    /// past a minute. A transport timeout here would report "the service is down" for an agent that
+    /// is merely thinking.
+    pub async fn test_agent(
+        &self,
+        agent: &str,
+        request: serde_json::Value,
+    ) -> Result<serde_json::Value, BridgeError> {
+        let url = format!("{}/api/agents/{}/test", self.base_url, urlencoding(agent));
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .header(reqwest::header::ACCEPT, "application/json")
+            .json(&request)
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            // The daemon redacts credentials from everything this route produces, so the body is
+            // safe to carry through - and a stale daemon predating the route answers 404, which is
+            // the one failure the operator can actually act on.
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::with_details(
+                "TEST_AGENT_FAILED",
+                format!("The service could not test this agent ({status})"),
+                text,
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    /// The rate-limit windows behind the settings pane's usage strip.
+    ///
+    /// `Ok(null)` for an agent whose provider publishes no usage. That is the common case for four
+    /// of the seven agents and is not an error.
+    pub async fn get_agent_usage(&self, agent: &str) -> Result<serde_json::Value, BridgeError> {
+        let url = format!("{}/api/agents/{}/usage", self.base_url, urlencoding(agent));
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "GET_AGENT_USAGE_FAILED",
+                format!("Failed to read agent usage ({status}): {text}"),
             ));
         }
 
@@ -1625,6 +1686,87 @@ impl TendrilClient {
         Ok(())
     }
 
+    /// `config.yaml` verbatim, with every secret replaced by the mask sentinel
+    /// (`GET /api/config/text`).
+    ///
+    /// Deliberately not `get_config`, which parses into `TendrilConfigDto`: a serde round-trip loses
+    /// the comments, key order and blank lines the operator wrote, and preserving those is the whole
+    /// reason the raw editor exists. This route serves the file's own bytes and the app never
+    /// re-renders them from a tree.
+    ///
+    /// A failure carries the daemon's `error` string and nothing else - no `details` with the raw
+    /// body, unlike most calls here. The body of this route *is* `config.yaml`, and the daemon fails
+    /// this route closed precisely when it could not mask a value confidently, so echoing the
+    /// response would be the one place in the bridge that hands a credential to the webview.
+    pub async fn get_config_text(&self) -> Result<serde_json::Value, BridgeError> {
+        let url = format!("{}/api/config/text", self.base_url);
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            return Err(BridgeError::new(
+                "GET_CONFIG_TEXT_FAILED",
+                Self::service_error(resp)
+                    .await
+                    .unwrap_or_else(|| format!("Failed to read config.yaml ({status})")),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    /// Writes an edited `config.yaml` back (`PUT /api/config/text`).
+    ///
+    /// `text` is the operator's own bytes, mask sentinels and all. Resolving those back to the stored
+    /// secrets is the daemon's job because it is the only side allowed to read them, so nothing here
+    /// inspects the text - and nothing traces it either. Mid-edit it can hold a credential that has
+    /// been typed and not yet saved, which makes a log line the cheapest possible way to leak one.
+    ///
+    /// `409 CONFLICT` maps onto a `CONFLICT` code carrying the daemon's own message, the same way
+    /// `expect_success` does for the plan lifecycle: it means the file changed underneath the editor,
+    /// and the view offers Reload on it, so the reason has to survive the trip. A `400` is a
+    /// validation failure the daemon has already re-run against the still-masked submission, so its
+    /// message carries placeholders rather than credentials.
+    pub async fn put_config_text(&self, text: &str) -> Result<serde_json::Value, BridgeError> {
+        let url = format!("{}/api/config/text", self.base_url);
+        let resp = self
+            .client
+            .put(&url)
+            .headers(self.headers())
+            .json(&json!({ "text": text }))
+            .send()
+            .await?;
+
+        let status = resp.status();
+        if !status.is_success() {
+            let message = Self::service_error(resp)
+                .await
+                .unwrap_or_else(|| format!("Failed to save config.yaml ({status})"));
+            let code = if status == reqwest::StatusCode::CONFLICT {
+                "CONFLICT"
+            } else {
+                "PUT_CONFIG_TEXT_FAILED"
+            };
+            return Err(BridgeError::new(code, message));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    /// The `error` field of a failed response, and nothing else from the body.
+    ///
+    /// `expect_success` reads the same field, but keeps the raw body as `details` as well. The
+    /// config-text routes cannot: their bodies are the config file, so `error` is the only part the
+    /// daemon promises is free of credentials.
+    async fn service_error(resp: reqwest::Response) -> Option<String> {
+        let text = resp.text().await.ok()?;
+        serde_json::from_str::<serde_json::Value>(&text)
+            .ok()?
+            .get("error")
+            .and_then(|e| e.as_str())
+            .map(|s| s.to_string())
+    }
+
     pub async fn get_onboarding_status(&self) -> Result<OnboardingStatusDto, BridgeError> {
         let url = format!("{}/api/onboarding", self.base_url);
         let resp = self.client.get(&url).headers(self.headers()).send().await?;
@@ -1716,6 +1858,11 @@ impl TendrilClient {
 
     /// Creates a project. A duplicate name comes back as 409, which surfaces here as a
     /// `CREATE_PROJECT_FAILED` error carrying the server's message.
+    ///
+    /// The shared client's 10s timeout is overridden here because this one route can clone: a repo
+    /// given by URL is fetched by the daemon inside this request, and a large one takes minutes. At
+    /// 10s the app would report a failure over a clone that then succeeds, leaving a project the UI
+    /// says was never created.
     pub async fn create_project(
         &self,
         request: CreateProjectDto,
@@ -1725,6 +1872,7 @@ impl TendrilClient {
             .client
             .post(&url)
             .headers(self.headers())
+            .timeout(CLONE_TIMEOUT)
             .json(&request)
             .send()
             .await?;
@@ -1735,6 +1883,122 @@ impl TendrilClient {
             return Err(BridgeError::new(
                 "CREATE_PROJECT_FAILED",
                 format!("Failed to create project ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    /// Adds one repository to an existing project, cloning it first when it is a URL
+    /// (`POST /api/projects/:name/repos`).
+    ///
+    /// This has to be the route the settings screen uses, and the alternative is not a style choice.
+    /// `PUT /api/config` merges what it is handed and saves it, so a remote added that way is written
+    /// into `config.yaml` as the URL itself — which persists any credential the URL carries, and
+    /// leaves the project unusable besides, because `resolve_working_directory` only ever picks a
+    /// repo whose path is a directory on disk. This route clones first and stores the clone.
+    ///
+    /// Same `CLONE_TIMEOUT` as [`TendrilClient::create_project`], for the same reason: the clone runs
+    /// inside this request and a large repository takes minutes.
+    ///
+    /// `repo_path` is deliberately absent from the error. The daemon has already put every URL it
+    /// mentions through `tendril_core::git::redact_credentials`, so its own message is the safe one
+    /// to relay; re-adding the URL here would undo that.
+    pub async fn add_project_repo(
+        &self,
+        project_name: &str,
+        repo_path: &str,
+    ) -> Result<serde_json::Value, BridgeError> {
+        let url = format!(
+            "{}/api/projects/{}/repos",
+            self.base_url,
+            path_segment(project_name)
+        );
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .timeout(CLONE_TIMEOUT)
+            .json(&json!({ "path": repo_path }))
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "ADD_PROJECT_REPO_FAILED",
+                format!("Failed to add repository ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    /// Renames a project (`PUT /api/projects/:name` with `newName`).
+    ///
+    /// This route rather than `PUT /api/config`, and not as a matter of taste: `update_config_raw`
+    /// merges the `projects` sequence **by name**, so a renamed entry matches nothing and is
+    /// appended beside the original — the operator ends up with two projects instead of one
+    /// renamed. Only this route renames.
+    ///
+    /// It also cascades. The daemon rewrites every plan naming the project and updates the Plans,
+    /// Jobs and Recommendations tables, none of which `PUT /api/config` would touch. A cascade that
+    /// only partly succeeds is logged daemon-side and still answers 200, because the rename itself
+    /// did happen; the reply is the renamed project either way.
+    ///
+    /// 404 when the project is gone, 409 when the new name is taken or the project was renamed out
+    /// from under the request, 400 when the name is empty. The daemon's own message is relayed
+    /// verbatim — it names projects, never repository URLs.
+    pub async fn rename_project(
+        &self,
+        name: &str,
+        new_name: &str,
+    ) -> Result<serde_json::Value, BridgeError> {
+        let url = format!("{}/api/projects/{}", self.base_url, path_segment(name));
+        let resp = self
+            .client
+            .put(&url)
+            .headers(self.headers())
+            .json(&json!({ "newName": new_name }))
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "RENAME_PROJECT_FAILED",
+                format!("Failed to rename project ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    /// Removes a project from `config.yaml` (`DELETE /api/projects/:name`).
+    ///
+    /// `PUT /api/config` cannot do this at all: omitting a project from the sequence leaves it
+    /// exactly as it was, because the merge treats omission as "unchanged" rather than "deleted".
+    ///
+    /// What this does **not** remove is as important as what it does, and the caller has to say so
+    /// before asking: the project's plans, its rows in Plans/Jobs/Recommendations, and any
+    /// repository the daemon cloned for it all stay on disk. Only the `config.yaml` entry goes.
+    pub async fn delete_project(&self, name: &str) -> Result<serde_json::Value, BridgeError> {
+        let url = format!("{}/api/projects/{}", self.base_url, path_segment(name));
+        let resp = self
+            .client
+            .delete(&url)
+            .headers(self.headers())
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "DELETE_PROJECT_FAILED",
+                format!("Failed to delete project ({status}): {text}"),
             ));
         }
 

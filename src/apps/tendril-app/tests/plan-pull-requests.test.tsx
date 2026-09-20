@@ -202,3 +202,26 @@ describe("canonicalPrUrl", () => {
     expect(canonicalPrUrl("not a url")).toBeNull();
   });
 });
+
+/**
+ * Audit item B5: this panel was wrapped in `CARD_SURFACE`, a hand-written
+ * `rounded-box border border-border bg-card/40`.
+ *
+ * It is not replaced with the shared `Card`, which would be heavier still - full-opacity `bg-card`
+ * plus `shadow`, and byte-for-byte the class string the Ivy Framework's own `Card` renders, so
+ * there is no lighter shared variant to reach for. It is removed, because V1 draws no card here:
+ * `GitTabView.cs:59` renders the PR section as `Text.Block("Pull Requests").Bold()` over a bare
+ * `TableBuilder<PrTableRow>`. The heading pair is the section; the box was V2's addition.
+ */
+describe("PlanPullRequests draws no card", () => {
+  it("renders the heading and rows on the bare surface V1 uses", async () => {
+    vi.spyOn(bridge, "listPullRequests").mockResolvedValue([]);
+
+    render(<PlanPullRequests planId="00021" prs={[PR_2]} />);
+
+    const panel = screen.getByText("Pull Requests").closest("div")?.parentElement;
+    expect(panel).not.toBeNull();
+    expect(panel!.className).not.toContain("bg-card");
+    expect(panel!.className).not.toContain("border");
+  });
+});

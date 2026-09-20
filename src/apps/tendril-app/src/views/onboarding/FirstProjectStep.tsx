@@ -1,4 +1,5 @@
 import React from "react";
+import { Button, IconButton } from "@ivy-interactive/components/ui";
 import { FolderOpen, Plus, X } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
 import {
@@ -16,8 +17,6 @@ export interface FirstProjectStepProps {
   onProjectNameChange: (name: string) => void;
   repoPaths: string[];
   onReposChange: (paths: string[]) => void;
-  /** Starts `SetupProject` for a project that has already been registered. */
-  onConfigureVerifications: () => void;
   /** True once Create Project has registered the project and handed off to `AddProject`. */
   projectRegistered: boolean;
   /**
@@ -46,7 +45,6 @@ export function FirstProjectStep({
   onProjectNameChange,
   repoPaths,
   onReposChange,
-  onConfigureVerifications,
   projectRegistered,
   nameExists,
   onUseExisting,
@@ -70,16 +68,6 @@ export function FirstProjectStep({
       return;
     }
 
-    // V1 clones a remote into `<TendrilHome>/<project>/<owner>/<repo>` before it writes the
-    // project (`OnboardingRepoHelper.ResolveReposAsync`). V2 has no clone path in the daemon, so
-    // storing the URL as a repository path would write a project nothing downstream can use.
-    if (classifyRepoPath(path) !== "local") {
-      setAddError(
-        `Tendril cannot clone ${path} during setup. Clone it yourself, then add the local folder.`,
-      );
-      return;
-    }
-
     if (repoPaths.some((existing) => existing.toLowerCase() === path.toLowerCase())) {
       setRepoInput("");
       return;
@@ -94,8 +82,9 @@ export function FirstProjectStep({
     }
   };
 
-  // V1 replaces this whole step with its sub-step 1 once the project is committed, so nothing here
-  // is editable any more; V2 stays on the step, and disabling says the same thing.
+  // Coming back to this sub-step with the project already written, nothing here can change what is
+  // in config.yaml any more - V1 never shows it in that state at all, because its commit and its
+  // sub-step 1 are the same effect.
   const locked = projectRegistered;
 
   // V1 keeps the sanitized value in the state itself, so what the operator sees is what gets
@@ -154,54 +143,68 @@ export function FirstProjectStep({
             placeholder="Repository URL or Local Path"
             disabled={locked}
             data-testid="onboarding-repo-input"
-            className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
+            className="w-full rounded-field border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
             onKeyDown={(e) => {
               if (e.key !== "Enter") return;
               e.preventDefault();
               addRepo(e.currentTarget.value);
             }}
           />
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onClick={() => void browse()}
             disabled={locked}
             data-testid="onboarding-pick-repos"
-            className="flex shrink-0 items-center gap-1.5 rounded-md border border-border px-2.5 py-2 text-xs text-foreground hover:bg-muted disabled:opacity-50"
+            className="shrink-0 text-xs"
           >
             <FolderOpen className="size-3.5" aria-hidden="true" />
             Browse
-          </button>
+          </Button>
         </div>
 
         {repoPaths.length > 0 && (
-          <ul className="divide-y divide-border rounded-lg border border-border">
+          <ul className="divide-y divide-border rounded-box border border-border">
             {repoPaths.map((path) => (
               <li key={path} className="flex items-center justify-between gap-3 p-2">
-                <span className="min-w-0 break-all font-mono text-xs text-primary">{path}</span>
-                <button
-                  type="button"
-                  onClick={() => onReposChange(repoPaths.filter((p) => p !== path))}
+                <span className="min-w-0 break-all font-mono text-xs text-primary">
+                  {path}
+                  {classifyRepoPath(path) !== "local" && (
+                    <span className="ml-2 font-sans text-muted-foreground">
+                      will be cloned on Create Project
+                    </span>
+                  )}
+                </span>
+                {/* The path, not "Remove repository": a list of them all offering the same name
+                    is unusable by voice or by screen reader. */}
+                <IconButton
+                  label={`Remove ${path}`}
+                  size="sm"
+                  variant="outline"
+                  tone="muted"
                   disabled={locked}
-                  aria-label={`Remove ${path}`}
-                  className="shrink-0 rounded-md border border-border p-1 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50"
+                  onClick={() => onReposChange(repoPaths.filter((p) => p !== path))}
                 >
                   <X className="size-3" aria-hidden="true" />
-                </button>
+                </IconButton>
               </li>
             ))}
           </ul>
         )}
 
-        <button
+        <Button
           type="button"
+          variant="outline"
+          size="sm"
           onClick={() => addRepo(repoInput)}
           disabled={locked || !repoInput.trim()}
           data-testid="onboarding-add-repo"
-          className="flex items-center gap-1.5 rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-50"
+          className="self-start text-xs"
         >
           <Plus className="size-3.5" aria-hidden="true" />
           Add Repository
-        </button>
+        </Button>
       </div>
 
       <div className="space-y-1">
@@ -218,7 +221,7 @@ export function FirstProjectStep({
           disabled={locked}
           onChange={(e) => onProjectNameChange(sanitizeProjectName(e.target.value))}
           data-testid="onboarding-project-name"
-          className="w-full rounded-md border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
+          className="w-full rounded-field border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
         />
         {nameError && (
           <p className="text-xs text-destructive" data-testid="onboarding-project-name-error">
@@ -231,7 +234,7 @@ export function FirstProjectStep({
           both rather than just refusing. */}
       {nameExists && (
         <div
-          className="space-y-2 rounded-md border border-destructive p-2"
+          className="space-y-2 rounded-box border border-destructive p-2"
           data-testid="onboarding-project-name-exists"
         >
           <p className="text-xs font-bold text-destructive">
@@ -242,35 +245,24 @@ export function FirstProjectStep({
             the existing project&apos;s configuration (its repository path and settings will be
             preserved).
           </p>
-          <button
+          <Button
             type="button"
+            variant="outline"
+            size="sm"
             onClick={onUseExisting}
             disabled={busy}
             data-testid="onboarding-use-existing-project"
-            className="rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-50"
+            className="text-xs"
           >
             Use Existing Project Configuration
-          </button>
+          </Button>
         </div>
       )}
 
       {projectRegistered && (
-        <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs text-muted-foreground">
-          <p data-testid="onboarding-project-registered">
-            Tendril is detecting your tech stack and configuring your agentic harness. This will
-            take a few minutes, so treat yourself to a ☕ while you wait. You can watch{" "}
-            {projectName} under Jobs.
-          </p>
-          <button
-            type="button"
-            onClick={onConfigureVerifications}
-            disabled={busy}
-            data-testid="onboarding-configure-verifications"
-            className="mt-2 rounded-md border border-border px-2.5 py-1 text-xs text-foreground hover:bg-muted disabled:opacity-50"
-          >
-            Configure verifications now
-          </button>
-        </div>
+        <p className="text-xs text-muted-foreground" data-testid="onboarding-project-registered">
+          {projectName} is registered. Next shows its setup run.
+        </p>
       )}
     </div>
   );

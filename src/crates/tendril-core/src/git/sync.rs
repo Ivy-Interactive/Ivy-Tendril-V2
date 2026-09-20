@@ -22,6 +22,7 @@
 //! branch — so a divergence on `main` and a worktree reclaim cannot fight over the same ref.
 
 use crate::config::expand_variables;
+use crate::git::clone::redact_credentials;
 use crate::git::service::run_git;
 use crate::models::{ProjectConfig, RepoRef};
 use std::path::Path;
@@ -109,10 +110,37 @@ fn count_divergence(repo: &Path, remote_ref: &str) -> Option<BranchDivergence> {
 
 /// Fast-forwards one repo's base branch onto its remote tracking branch.
 ///
+/// Every string this hands back has been through [`redact_credentials`]. The redaction is here, at
+/// the one exit, rather than at the fourteen places a `ProjectSyncResult` is built: three of those
+/// interpolate git's stderr, git echoes the remote URL it was handed straight back into it
+/// userinfo and all, and a fifteenth site added later would otherwise silently not be covered.
+///
+/// It matters for all three fields. `repo_path` can be a URL, `message` folds stderr in at the
+/// fetch and status failures, and `git_error_details` is stderr verbatim. The CLI already redacted
+/// two of them and printed `message` raw on the line between; `RepoSyncResultDto` copied all four
+/// unredacted into the HTTP response, and [`diagnostic_prompt`] pastes them into text handed to an
+/// agent.
+pub fn sync_repository(
+    repo_path: &str,
+    base_branch: Option<&str>,
+    tendril_home: &Path,
+) -> ProjectSyncResult {
+    let result = sync_repository_inner(repo_path, base_branch, tendril_home);
+    ProjectSyncResult {
+        message: redact_credentials(&result.message),
+        repo_path: redact_credentials(&result.repo_path),
+        git_error_details: result.git_error_details.as_deref().map(redact_credentials),
+        ..result
+    }
+}
+
 /// The checks run in the original's order and return on the first failure, because each one is
 /// what makes the next safe: there is no point resolving a branch in a directory that is not a
 /// repository, and no point merging into a tree with uncommitted work in it.
-pub fn sync_repository(
+///
+/// Private, and every caller goes through [`sync_repository`], because what this builds is
+/// unredacted.
+fn sync_repository_inner(
     repo_path: &str,
     base_branch: Option<&str>,
     tendril_home: &Path,

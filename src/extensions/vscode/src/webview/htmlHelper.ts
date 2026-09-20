@@ -1,6 +1,6 @@
 export function getNonce(): string {
-  let text = '';
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let text = "";
+  const possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   for (let i = 0; i < 32; i++) {
     text += possible.charAt(Math.floor(Math.random() * possible.length));
   }
@@ -9,7 +9,7 @@ export function getNonce(): string {
 
 export function getWebviewContent(
   externalUri: string,
-  initialTheme: 'dark' | 'light' | 'hc' = 'dark'
+  initialTheme: "dark" | "light" | "hc" = "dark",
 ): string {
   const nonce = getNonce();
 

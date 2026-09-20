@@ -134,7 +134,53 @@ async fn spawn_mock(behaviour: Behaviour) -> (SocketAddr, tokio::task::JoinHandl
                                 "installed": false,
                                 "expectedPath": "/tmp/home/tools/cloudflared",
                                 "assetName": "cloudflared-darwin-arm64.tgz",
-                                "downloadUrl": "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-arm64.tgz"
+                                "downloadUrl": "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-arm64.tgz",
+                                "downloadable": true,
+                                "progress": {
+                                    "phase": "downloading",
+                                    "downloadedBytes": 1048576,
+                                    "totalBytes": 20971520
+                                }
+                            })),
+                        )
+                    })
+                    // The daemon answers a started install with `202 Accepted` and the state to poll.
+                    // The bridge has to treat that as success, not as an unexpected status.
+                    .post(move |headers: HeaderMap| async move {
+                        if !authorised(&headers) {
+                            return (
+                                StatusCode::UNAUTHORIZED,
+                                Json(json!({ "error": "Unauthorized" })),
+                            );
+                        }
+                        (
+                            StatusCode::ACCEPTED,
+                            Json(json!({
+                                "installed": false,
+                                "expectedPath": "/tmp/home/tools/cloudflared",
+                                "assetName": "cloudflared-darwin-arm64.tgz",
+                                "downloadUrl": "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-arm64.tgz",
+                                "downloadable": true,
+                                "progress": { "phase": "resolving", "downloadedBytes": 0 }
+                            })),
+                        )
+                    })
+                    .delete(move |headers: HeaderMap| async move {
+                        if !authorised(&headers) {
+                            return (
+                                StatusCode::UNAUTHORIZED,
+                                Json(json!({ "error": "Unauthorized" })),
+                            );
+                        }
+                        (
+                            StatusCode::OK,
+                            Json(json!({
+                                "installed": false,
+                                "expectedPath": "/tmp/home/tools/cloudflared",
+                                "assetName": "cloudflared-darwin-arm64.tgz",
+                                "downloadUrl": "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-arm64.tgz",
+                                "downloadable": true,
+                                "progress": { "phase": "cancelled", "downloadedBytes": 0 }
                             })),
                         )
                     }),
@@ -226,6 +272,37 @@ async fn the_install_check_reports_where_to_get_cloudflared() {
     assert!(state.binary_path.is_none());
     assert_eq!(state.expected_path, "/tmp/home/tools/cloudflared");
     assert!(state.download_url.ends_with(&state.asset_name));
+    // The same read carries the progress of a running install, which is how the pane draws a bar
+    // without a second endpoint or a stream.
+    let progress = state.progress.expect("a running install reports progress");
+    assert_eq!(progress.phase, "downloading");
+    assert_eq!(progress.downloaded_bytes, 1_048_576);
+    assert_eq!(progress.total_bytes, Some(20_971_520));
+
+    server.abort();
+}
+
+/// Starting an install and getting out of one, over the bridge.
+///
+/// `202 Accepted` is the daemon's answer to a started download — it has begun, it is not finished — and
+/// the bridge must read it as success. Without that, the Install button would report a failure for a
+/// download that is in fact running.
+#[tokio::test]
+async fn an_install_can_be_started_and_cancelled_over_the_bridge() {
+    let (addr, server) = spawn_mock(Behaviour::Normal).await;
+    let client = client(addr, Some(SECRET));
+
+    let started = client.install().await.expect("install starts");
+    assert_eq!(
+        started.progress.expect("progress").phase,
+        "resolving",
+        "a started install reports as running, not done"
+    );
+    assert!(started.downloadable);
+
+    let cancelled = client.cancel_install().await.expect("install cancels");
+    assert_eq!(cancelled.progress.expect("progress").phase, "cancelled");
+    assert!(!cancelled.installed, "cancelling installs nothing");
 
     server.abort();
 }
@@ -242,6 +319,10 @@ async fn a_missing_secret_is_reported_as_unauthenticated() {
         client.start().await.expect_err("start"),
         client.stop().await.expect_err("stop"),
         client.install_state().await.expect_err("install"),
+        // Starting or cancelling a download is owner-only too: neither may be driven without the
+        // bearer secret.
+        client.install().await.expect_err("install start"),
+        client.cancel_install().await.expect_err("install cancel"),
     ] {
         assert_eq!(err.code, "UNAUTHENTICATED", "{err}");
     }

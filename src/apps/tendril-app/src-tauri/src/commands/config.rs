@@ -33,6 +33,37 @@ pub async fn cmd_put_config(key: String, value: serde_json::Value) -> Result<(),
     get_client_from_master()?.put_config(&key, value).await
 }
 
+/// `config.yaml` as text, with its secrets already masked daemon-side (`GET /api/config/text`).
+///
+/// A command rather than a `fetch` for the reason every route on this file is one: the daemon's
+/// bearer secret is read from `.master` natively and never crosses into the webview, and there is no
+/// `/api` proxy outside the dev server, so a relative `fetch` from the packaged app resolves against
+/// the asset origin and reaches neither the daemon nor a credential. `api/configTextApi.ts` picks
+/// between this and `fetch` once, by host - the two paths are exclusive rather than a fallback
+/// chain, so a real rejection here stays the reason the operator sees.
+///
+/// The reply comes back untouched. It is `config.yaml` itself, so this side neither parses it nor
+/// traces it: the daemon is the only side that may see the unmasked values, and it fails this route
+/// closed rather than serving a file whose secrets it could not confidently mask.
+#[tauri::command]
+pub async fn cmd_get_config_text() -> Result<serde_json::Value, BridgeError> {
+    get_client_from_master()?.get_config_text().await
+}
+
+/// Writes an edited `config.yaml` back (`PUT /api/config/text`).
+///
+/// A command for the same reason as `cmd_get_config_text`, plus one of its own: the daemon resolves
+/// the mask sentinels the operator left in place back to the stored secrets, which only it can read.
+///
+/// Deliberately no `tracing` line carrying `text`, unlike most write commands. Mid-edit the buffer
+/// can hold an API key the operator has typed and not yet saved, and a log line is the cheapest way
+/// for one to end up in a bug report. `text` is passed straight through and the reply handed back
+/// untouched - a property that holds only as long as this stays a delegation.
+#[tauri::command]
+pub async fn cmd_put_config_text(text: String) -> Result<serde_json::Value, BridgeError> {
+    get_client_from_master()?.put_config_text(&text).await
+}
+
 #[tauri::command]
 pub async fn cmd_get_onboarding_status() -> Result<OnboardingStatusDto, BridgeError> {
     get_client_from_master()?.get_onboarding_status().await
@@ -63,6 +94,56 @@ pub async fn cmd_create_project(
     request: CreateProjectDto,
 ) -> Result<serde_json::Value, BridgeError> {
     get_client_from_master()?.create_project(request).await
+}
+
+/// Adds one repository to an existing project (`POST /api/projects/:name/repos`).
+///
+/// The project settings screen used to add a repository by writing the whole `repos` list back
+/// through `cmd_put_config`, which is `PUT /api/config` and does not clone: a remote URL was stored
+/// verbatim, credentials and all, and `resolve_working_directory` then skipped the entry because its
+/// path is not a directory. Only this route clones, so only this route may add a repository.
+///
+/// No `tracing` line, for the reason `cmd_put_config_text` has none: `path` can be a URL with a
+/// token embedded in it, and a log line is the cheapest way for one to reach a bug report. The reply
+/// is the stored `RepoRef` — the clone's path, never the URL — and is handed back untouched.
+#[tauri::command]
+pub async fn cmd_add_project_repo(
+    project_name: String,
+    path: String,
+) -> Result<serde_json::Value, BridgeError> {
+    get_client_from_master()?
+        .add_project_repo(&project_name, &path)
+        .await
+}
+
+/// Renames a project (`PUT /api/projects/:name`).
+///
+/// Not expressible through `cmd_put_config`: `PUT /api/config` merges the `projects` sequence by
+/// name, so a renamed entry matches nothing and is appended alongside the original rather than
+/// replacing it. This route also cascades the new name into the project's plans and its
+/// Plans/Jobs/Recommendations rows, which a config write would leave pointing at a name that no
+/// longer exists.
+#[tauri::command]
+pub async fn cmd_rename_project(
+    name: String,
+    new_name: String,
+) -> Result<serde_json::Value, BridgeError> {
+    get_client_from_master()?
+        .rename_project(&name, &new_name)
+        .await
+}
+
+/// Removes a project from `config.yaml` (`DELETE /api/projects/:name`).
+///
+/// Also not expressible through `cmd_put_config`, for the opposite reason to the rename: the merge
+/// reads an omitted project as unchanged, never as deleted, so the only way to remove one is the
+/// route that removes it.
+///
+/// Scope worth repeating wherever this is called: the config entry is all that goes. Plans, the
+/// project's database rows and any repository the daemon cloned for it remain on disk.
+#[tauri::command]
+pub async fn cmd_delete_project(name: String) -> Result<serde_json::Value, BridgeError> {
+    get_client_from_master()?.delete_project(&name).await
 }
 
 /// Starts a review action and returns the session the webview must address to talk to it.

@@ -318,10 +318,28 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/agents/models",
             post(agents::fetch_provider_models_handler),
         )
+        // V1's Test Agent dialog: install, then auth, then one validation per model. A POST because
+        // it launches real processes and spends real provider quota - this is not a safe GET.
+        .route("/api/agents/:agent/test", post(agents::test_agent_handler))
+        // The rate-limit windows behind the settings pane's usage strip. Cached for a minute in
+        // core, so the pane's own poll does not become the thing that rate-limits the account.
+        .route(
+            "/api/agents/:agent/usage",
+            get(agents::get_agent_usage_handler),
+        )
         // Config
         .route(
             "/api/config",
             get(config::get_config_handler).put(config::put_config_handler),
+        )
+        // The raw file behind the in-app editor, V2's replacement for V1 shelling out to the OS editor
+        // (`RawConfigEditorView.cs`). Separate from `/api/config` because the structured route round-trips
+        // through `serde` and loses comments, key order and blank lines - preserving those is the entire
+        // point of the editor. Secrets are masked daemon-side on the way out and resolved back on the way
+        // in, and this path is deliberately NOT in the share allowlist (`share::policy`).
+        .route(
+            "/api/config/text",
+            get(config::get_config_text_handler).put(config::put_config_text_handler),
         )
         // Version check
         .route("/api/version", get(health::get_version_handler))
@@ -371,9 +389,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                 .post(tunnel::start_share_tunnel)
                 .delete(tunnel::stop_share_tunnel),
         )
+        // The install check, the install itself, and the way out of one. `POST` is only ever reached
+        // from an explicit Install press — nothing downloads on start or on a status read — and
+        // `DELETE` cancels a transfer in flight rather than deleting an installed binary.
         .route(
             "/api/tunnel/share/install",
-            get(tunnel::get_cloudflared_install_state),
+            get(tunnel::get_cloudflared_install_state)
+                .post(tunnel::install_cloudflared)
+                .delete(tunnel::cancel_cloudflared_install),
         )
         // Models
         .route("/api/models", get(models::list_models))

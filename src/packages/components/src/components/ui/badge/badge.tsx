@@ -28,10 +28,10 @@ function tintStyle(color: string): React.CSSProperties {
     // Against `--card` rather than a literal white, so one expression serves both themes: the card is
     // pale in light mode and near-black in dark, and the same 18%/28% mix reads as a pale or a deep
     // tint accordingly. The text keeps 60% of the hue in both, which is what holds contrast.
-    "--badge-tint-bg-light": `color-mix(in srgb, ${hue} 18%, var(--card, #ffffff))`,
-    "--badge-tint-fg-light": `color-mix(in srgb, ${hue} 60%, var(--foreground, #000000))`,
-    "--badge-tint-bg-dark": `color-mix(in srgb, ${hue} 28%, var(--card, #000000))`,
-    "--badge-tint-fg-dark": `color-mix(in srgb, ${hue} 60%, var(--foreground, #ffffff))`,
+    "--badge-tint-bg-light": `color-mix(in srgb, ${hue} 18%, var(--card))`,
+    "--badge-tint-fg-light": `color-mix(in srgb, ${hue} 60%, var(--foreground))`,
+    "--badge-tint-bg-dark": `color-mix(in srgb, ${hue} 28%, var(--card))`,
+    "--badge-tint-fg-dark": `color-mix(in srgb, ${hue} 60%, var(--foreground))`,
   } as React.CSSProperties;
 }
 

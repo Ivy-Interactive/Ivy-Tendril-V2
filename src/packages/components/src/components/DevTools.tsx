@@ -3,6 +3,7 @@ import "./devtools.css";
 import { widgetCallSiteRegistry, type CallSite } from "@/types/widgets";
 import { LuSend, LuPlus, LuChevronUp } from "react-icons/lu";
 import { setThemeGlobal } from "@/components/theme-provider";
+import { IconButton } from "@/components/ui/IconButton";
 
 export interface WidgetInfo {
   id: string;
@@ -367,19 +368,33 @@ export function DevTools() {
             placeholder="Write anything..."
             className="ivy-devtools-input"
           />
-          <button onClick={handleSend} className="ivy-devtools-icon-btn" title="Send (Enter)">
+          <IconButton
+            onClick={handleSend}
+            className="ivy-devtools-icon-btn"
+            label="Send (Enter)"
+            size="lg"
+            tone="muted"
+          >
             <LuSend size={14} />
-          </button>
-          <button onClick={handleAdd} className="ivy-devtools-icon-btn" title="Queue (Shift+Enter)">
+          </IconButton>
+          <IconButton
+            onClick={handleAdd}
+            className="ivy-devtools-icon-btn"
+            label="Queue (Shift+Enter)"
+            size="lg"
+            tone="muted"
+          >
             <LuPlus size={14} />
-          </button>
-          <button
+          </IconButton>
+          <IconButton
             onClick={handleSelectParent}
             className="ivy-devtools-icon-btn"
-            title="Select parent"
+            label="Select parent"
+            size="lg"
+            tone="muted"
           >
             <LuChevronUp size={14} />
-          </button>
+          </IconButton>
         </div>
       )}
     </div>

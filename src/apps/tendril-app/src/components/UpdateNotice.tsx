@@ -1,4 +1,5 @@
 import React from "react";
+import { Button } from "@ivy-interactive/components/ui";
 import type { VersionInfo } from "../types/api";
 
 interface UpdateNoticeProps {
@@ -30,20 +31,28 @@ export const UpdateNotice: React.FC<UpdateNoticeProps> = ({
         </span>
       </div>
       <div className="flex items-center space-x-2">
-        <button
+        {/* The banner is one `info` surface, so its buttons keep that colour rather than taking
+            `Button`'s own `info` variant, which would paint a solid fill inside an already tinted
+            strip. What they take from `Button` is the shape, the height, the focus ring and the
+            disabled behaviour — the parts that were being redrawn by hand at every call site. */}
+        <Button
           type="button"
+          size="sm"
+          variant="ghost"
           onClick={onCopyCommand}
-          className="rounded bg-info/60 px-3 py-1 text-xs font-medium text-info transition hover:bg-info/90 focus:outline-none focus:ring-2 focus:ring-info"
+          className="bg-info/60 text-xs text-info hover:bg-info/90 hover:text-info"
         >
           Copy Command
-        </button>
-        <button
+        </Button>
+        <Button
           type="button"
+          size="sm"
+          variant="ghost"
           onClick={() => onDismiss(info.latestVersion as string)}
-          className="rounded px-3 py-1 text-xs font-medium text-info transition hover:bg-info/20 focus:outline-none focus:ring-2 focus:ring-info"
+          className="text-xs text-info hover:bg-info/20 hover:text-info"
         >
           Dismiss
-        </button>
+        </Button>
       </div>
     </div>
   );

@@ -1,5 +1,7 @@
 import React, { useCallback } from "react";
 import { Copy, GitBranchPlus, GitCommitHorizontal } from "lucide-react";
+import { Card } from "../ui/card";
+import { IconButton } from "../ui/IconButton";
 
 /**
  * Whether a ref still holds a commit the plan recorded, in the repo it was made in.
@@ -147,7 +149,7 @@ const CommitTable: React.FC<{
             <td className="py-1 pr-3 align-top text-foreground">
               {row.title || <span className="text-muted-foreground/70">(unresolved commit)</span>}
               {badge && (
-                <span className="ml-2 rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-destructive">
+                <span className="ml-2 rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide text-destructive">
                   {badge}
                 </span>
               )}
@@ -240,24 +242,26 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
         </h4>
 
         {data.worktrees.length === 0 ? (
-          <div className="mt-2 flex flex-col items-center gap-1 rounded-xl border border-border bg-card/40 p-4 text-center">
+          <Card className="mt-2 flex flex-col items-center gap-1 p-4 text-center">
             <GitBranchPlus className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
             <p className="text-sm text-muted-foreground/70">{noWorktreesReason(planState)}</p>
-          </div>
+          </Card>
         ) : (
-          <div className="mt-2 space-y-3">
+          <div className="mt-2 space-y-8">
             {data.worktrees.map((worktree) => (
-              <div key={worktree.path} className="rounded-xl border border-border bg-card/40 p-4">
+              <div key={worktree.path}>
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-semibold text-foreground">{worktree.name}</span>
-                  <button
-                    type="button"
+                  <IconButton
+                    label={`Copy path to ${worktree.name}`}
+                    tooltip={false}
+                    size="xs"
+                    variant="outline"
+                    className="border-border bg-transparent hover:bg-muted"
                     onClick={() => copyPath(normalizePath(worktree.path))}
-                    aria-label={`Copy path to ${worktree.name}`}
-                    className="rounded-md border border-border p-1 text-muted-foreground hover:bg-muted"
                   >
                     <Copy className="h-3 w-3" />
-                  </button>
+                  </IconButton>
                 </div>
 
                 <dl className="mt-2 space-y-1 text-xs">
@@ -291,13 +295,13 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
                 {worktree.commits.length > 0 ? (
                   <CommitTable rows={worktree.commits} />
                 ) : (
-                  <div className="mt-3 flex flex-col items-center gap-1 rounded-lg border border-border bg-card/40 p-3 text-center">
+                  <Card className="mt-3 flex flex-col items-center gap-1 p-3 text-center">
                     <GitCommitHorizontal
                       className="h-4 w-4 text-muted-foreground"
                       aria-hidden="true"
                     />
                     <p className="text-sm text-muted-foreground/70">(no commits)</p>
-                  </div>
+                  </Card>
                 )}
               </div>
             ))}
@@ -314,9 +318,7 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
             Recorded on the plan but reached from no worktree the plan still has — usually because
             the worktree was removed once the PR merged.
           </p>
-          <div className="mt-2 rounded-xl border border-border bg-card/40 p-4">
-            <CommitTable rows={data.unassociatedCommits} statusOf={statusOf} />
-          </div>
+          <CommitTable rows={data.unassociatedCommits} statusOf={statusOf} />
         </section>
       )}
 

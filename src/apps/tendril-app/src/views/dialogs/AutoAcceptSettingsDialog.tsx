@@ -4,7 +4,7 @@ import { Button, Callout, Switch } from "@ivy-interactive/components/ui";
 import { bridge } from "../../api/bridge";
 import { describeBridgeError } from "../../types/api";
 import { DialogShell } from "./DialogShell";
-import { ALERT_CLASS, FIELD_CLASS } from "./fieldStyles";
+import { SELECT_FIELD_CLASS } from "./selectField";
 
 export interface AutoAcceptSettingsDialogProps {
   isOpen: boolean;
@@ -172,7 +172,7 @@ export function AutoAcceptSettingsDialog({
           value={interval}
           disabled={isLoading}
           onChange={(event) => setInterval(Number(event.target.value))}
-          className={FIELD_CLASS}
+          className={SELECT_FIELD_CLASS}
         >
           {INTERVAL_OPTIONS.map((minutes) => (
             <option key={minutes} value={minutes}>
@@ -201,11 +201,7 @@ export function AutoAcceptSettingsDialog({
         </Callout.Success>
       )}
 
-      {error && (
-        <div role="alert" className={ALERT_CLASS}>
-          {error}
-        </div>
-      )}
+      {error && <Callout.Error className="mt-4">{error}</Callout.Error>}
     </DialogShell>
   );
 }

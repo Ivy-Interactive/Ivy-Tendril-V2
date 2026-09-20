@@ -160,6 +160,11 @@ describe("useChatAutoScroll message pinning", () => {
   /**
    * The pin effect measures with getBoundingClientRect, so the harness has to describe a layout
    * rather than just set heights: a 400px viewport holding a 40px row that starts 900px down.
+   *
+   * `scrollHeight` grows with the spacer because that is what the effect reads to find the end of
+   * the content: the thread renders a scroll anchor below the spacer, so the spacer's own top is
+   * short of the true bottom and the reservation has to be worked back from the scroll height
+   * instead. Here nothing follows the spacer, so the two agree and the expectations are unchanged.
    */
   function buildThread({ rowTop = 900, contentEnd = 1000, clientHeight = 400 } = {}) {
     const container = document.createElement("div");
@@ -167,6 +172,8 @@ describe("useChatAutoScroll message pinning", () => {
     row.setAttribute("data-message-id", "m-pinned");
     const spacer = document.createElement("div");
     container.append(row, spacer);
+
+    const spacerHeight = () => parseFloat(spacer.style.height || "0") || 0;
 
     let scrollTop = 0;
     Object.defineProperty(container, "scrollTop", {
@@ -177,12 +184,17 @@ describe("useChatAutoScroll message pinning", () => {
       configurable: true,
     });
     Object.defineProperty(container, "clientHeight", { value: clientHeight, configurable: true });
+    Object.defineProperty(container, "scrollHeight", {
+      get: () => contentEnd + spacerHeight(),
+      configurable: true,
+    });
 
     // Absolute page coordinates: the container's own top is 0, so a row at document offset
     // `rowTop` reads back as `rowTop - scrollTop` once the container has scrolled.
     container.getBoundingClientRect = () => ({ top: 0 }) as DOMRect;
     row.getBoundingClientRect = () => ({ top: rowTop - scrollTop }) as DOMRect;
-    spacer.getBoundingClientRect = () => ({ top: contentEnd - scrollTop }) as DOMRect;
+    spacer.getBoundingClientRect = () =>
+      ({ top: contentEnd - scrollTop, height: spacerHeight() }) as DOMRect;
 
     // Stable ref objects: a fresh one per render would re-run the follow-the-tail effect, which
     // scrolls to `scrollHeight` — 0 under jsdom — and would undo the pin's own scroll.

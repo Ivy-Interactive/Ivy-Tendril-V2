@@ -27,14 +27,16 @@ describe("dashboard.css KPI grid", () => {
   });
 
   it("styles the hint as a footnote under the value", () => {
+    // opacity 0.7 == var(--opacity-subtle) (tokens.css); the computed value is unchanged.
     expect(css).toContain(".tdb-kpi-hint {");
-    expect(css).toMatch(/\.tdb-kpi-hint\s*\{[^}]*opacity: 0\.7;/);
+    expect(css).toMatch(/\.tdb-kpi-hint\s*\{[^}]*opacity: var\(--opacity-subtle\);/);
   });
 
   it("styles the subvalue alongside the primary value", () => {
+    // font-size 13px == var(--text-sm-tight) (tokens.css); the computed value is unchanged.
     expect(css).toContain(".tdb-kpi-subvalue {");
-    expect(css).toMatch(/\.tdb-kpi-subvalue\s*\{[^}]*font-size:\s*13px;/);
-    expect(css).toMatch(/\.tdb-kpi-subvalue\s*\{[^}]*opacity:\s*0\.75;/);
+    expect(css).toMatch(/\.tdb-kpi-subvalue\s*\{[^}]*font-size:\s*var\(--text-sm-tight\);/);
+    expect(css).toMatch(/\.tdb-kpi-subvalue\s*\{[^}]*opacity:\s*var\(--opacity-subtle\);/);
   });
 
   it("defines cursor pointer, transition, hover, and focus-visible on .tdb-kpi", () => {
@@ -189,11 +191,13 @@ describe("dashboard.css rolling average curve and legend", () => {
 
 describe("dashboard.css side tabs", () => {
   it("defines compact tab controls for side card headers", () => {
+    // font-size 12px == var(--text-xs), border-radius 6px == var(--radius-md) (tokens.css); the
+    // computed values are unchanged.
     expect(css).toContain(".tdb-side-tabs {");
     expect(css).toContain(".tdb-side-tab {");
-    expect(css).toMatch(/\.tdb-side-tab\s*\{[^}]*font-size:\s*12px;/);
+    expect(css).toMatch(/\.tdb-side-tab\s*\{[^}]*font-size:\s*var\(--text-xs\);/);
     expect(css).toMatch(/\.tdb-side-tab\s*\{[^}]*padding:\s*3px 8px;/);
-    expect(css).toMatch(/\.tdb-side-tab\s*\{[^}]*border-radius:\s*6px;/);
+    expect(css).toMatch(/\.tdb-side-tab\s*\{[^}]*border-radius:\s*var\(--radius-md\);/);
   });
 });
 

@@ -44,7 +44,18 @@ function distIsMissingOrStale(): boolean {
 beforeAll(() => {
   if (!distIsMissingOrStale()) return;
   try {
-    execFileSync("pnpm", ["build"], { cwd: repoRoot, stdio: "inherit", timeout: 300_000 });
+    // `NODE_ENV: "production"` for the same reason `code-splitting.test.tsx` passes it, and it
+    // matters more here than there: whichever of the two hooks finds `dist/` stale first is the one
+    // that builds, and the other then measures whatever it left behind. Without this, a stale `dist`
+    // in a full-suite run is rebuilt by *this* hook, inheriting vitest's `NODE_ENV=test`, which
+    // resolves React to its development build - `vendor-react` comes out 392,082 bytes instead of
+    // 189,604 and code-splitting's eager budget fails by ~155 kB on a tree that did not grow.
+    execFileSync("pnpm", ["build"], {
+      cwd: repoRoot,
+      stdio: "inherit",
+      timeout: 300_000,
+      env: { ...process.env, NODE_ENV: "production" },
+    });
   } catch (error) {
     buildError = error instanceof Error ? error.message : String(error);
   }

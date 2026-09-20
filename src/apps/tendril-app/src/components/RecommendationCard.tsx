@@ -1,4 +1,5 @@
 import React from "react";
+import { Button } from "@ivy-interactive/components/ui";
 import type { RecommendationItem } from "../types/api";
 
 export interface RecommendationCardProps {
@@ -42,7 +43,7 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
   return (
     <div
       data-testid={`recommendation-card-${recommendation.title}`}
-      className="flex flex-col gap-3 rounded-lg border border-border bg-background p-4 sm:flex-row sm:items-start sm:justify-between"
+      className="flex flex-col gap-3 rounded-box border border-border bg-background p-4 sm:flex-row sm:items-start sm:justify-between"
     >
       <div className="space-y-1">
         <div className="flex flex-wrap items-center gap-2">
@@ -67,22 +68,25 @@ export const RecommendationCard: React.FC<RecommendationCardProps> = ({
 
       {(!recommendation.state || recommendation.state === "Pending") && (
         <div className="flex shrink-0 items-center space-x-2">
-          <button
+          <Button
             type="button"
+            size="sm"
             disabled={disabled}
             onClick={() => onAccept(recommendation.title)}
-            className="rounded bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
+            className="px-2.5 text-xs"
           >
             Accept
-          </button>
-          <button
+          </Button>
+          <Button
             type="button"
+            size="sm"
+            variant="secondary"
             disabled={disabled}
             onClick={() => onDecline(recommendation.title)}
-            className="rounded bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-accent disabled:opacity-50"
+            className="bg-muted px-2.5 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
           >
             Decline
-          </button>
+          </Button>
         </div>
       )}
     </div>

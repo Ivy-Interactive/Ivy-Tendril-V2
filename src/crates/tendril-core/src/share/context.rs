@@ -91,7 +91,10 @@ mod tests {
 
     #[test]
     fn each_of_the_originals_signals_is_enough_on_its_own() {
-        let cases: [(&str, fn(&mut ShareSignals)); 6] = [
+        /// One signal's label and the setter that raises just that signal.
+        type Case = (&'static str, fn(&mut ShareSignals));
+
+        let cases: [Case; 6] = [
             ("?share", |s| s.has_share_query = true),
             ("?mode=share", |s| s.mode_is_share = true),
             ("X-Tendril-Share", |s| s.has_share_header = true),

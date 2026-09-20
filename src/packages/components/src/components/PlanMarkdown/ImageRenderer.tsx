@@ -1,5 +1,6 @@
 import React, { useState, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
+import { IconButton } from "../ui/IconButton";
 
 interface ImageRendererProps extends React.ImgHTMLAttributes<HTMLImageElement> {
   src?: string;
@@ -99,13 +100,17 @@ export const ImageRenderer: React.FC<ImageRendererProps> = ({ src, alt, title, .
       {isOverlayOpen &&
         createPortal(
           <div className="pmv-img-overlay" onClick={handleBackdropClick}>
-            <button
+            <IconButton
               className="pmv-img-overlay-close"
+              label="Close"
+              tooltip={false}
+              size="2xl"
+              shape="round"
+              variant="overlay"
               onClick={handleCloseOverlay}
-              aria-label="Close"
             >
               ×
-            </button>
+            </IconButton>
             <img src={src} alt={alt} title={title} />
           </div>,
           document.body,

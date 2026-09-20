@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import {
   JobsView,
   buildJobRowActions,
@@ -7,16 +7,14 @@ import {
   buildStatusSegments,
   formatJobCost,
   formatTokens,
-  projectColor,
   truncatePrompt,
   jobStatusMessage,
   agentOutputLabel,
   AGENT_OUTPUT_STARTING,
-  JOB_STATUS_COLOR,
-  JOB_TYPE_COLOR,
   RERUN_UNAVAILABLE_REASON,
   type JobRowActionCapabilities,
 } from "../src/views/JobsView";
+import { JOB_STATUS_COLOR, JOB_TYPE_COLOR, projectColor } from "../src/utils/jobStatus";
 import { bridge } from "../src/api/bridge";
 import {
   resetTableQueryTransport,
@@ -509,6 +507,46 @@ describe("JobsView chrome", () => {
     renderJobs([]);
     await waitFor(() => expect(screen.getByTestId("jobs-empty")).toBeInTheDocument());
     expect(screen.getByTestId("jobs-empty")).toHaveTextContent("No jobs yet");
+  });
+
+  it("holds the empty state through a poll rather than flashing a skeleton", async () => {
+    /* The bug: the table's `loading` prop was `isLoading || table.loading`, and the shell fed the
+       first from `jobsStore.isLoading` - which describes `bridge.listJobs`, a request the table does
+       not render. Every 5s poll and every job event flipped it, so an empty Jobs table alternated
+       between "No jobs yet" and five skeleton rows, forever. That is the flicker; V1 cannot have it,
+       because its table has neither a loading body nor an empty view and its poll touches the table
+       only when the structural signature differs (`JobsApp.Hooks.cs:66-68`).
+
+       `isLoading` is passed here through a cast because the fix was to delete the prop: the shell can
+       no longer wire the store's flag in (that is now a type error at the one call site), and this
+       asserts the other half - that an external loading flag reaching the view anyway cannot take
+       over the table's chrome. Held true across re-renders with a fresh `jobs` array, which is what a
+       poll that found nothing new produces: the store replaces its array on every response whether or
+       not the contents moved. */
+    const calls = installDaemon([]);
+    const polling = { isLoading: true } as Record<string, unknown>;
+    const view = (
+      <JobsView jobs={[]} onStopAllQueued={() => {}} onStopAll={() => {}} {...polling} />
+    );
+    const { rerender } = render(view);
+    await waitFor(() => expect(screen.getByTestId("jobs-empty")).toBeInTheDocument());
+
+    const skeletons = () => document.querySelectorAll(".animate-pulse").length;
+    for (let poll = 0; poll < 3; poll++) {
+      await act(async () => {
+        rerender(
+          <JobsView jobs={[]} onStopAllQueued={() => {}} onStopAll={() => {}} {...polling} />,
+        );
+      });
+      expect(
+        screen.getByTestId("jobs-empty"),
+        `poll ${poll} replaced the empty state`,
+      ).toBeInTheDocument();
+      expect(skeletons(), `poll ${poll} rendered a skeleton body`).toBe(0);
+    }
+
+    // And it did not refetch to stand still: an unchanged signature is not a structural change.
+    expect(queries(calls)).toHaveLength(1);
   });
 
   // `JobsApp.cs:110`: no progress bar at all for an empty list.

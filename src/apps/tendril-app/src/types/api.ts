@@ -168,6 +168,32 @@ export interface ServiceInfo {
   crashCount?: number;
 }
 
+/**
+ * What the app's autostart registration did. Mirrors the Rust `AutostartOutcome`, which is tagged:
+ * `kind` names the case and `detail` carries the unit path or the reason.
+ */
+export interface AutostartOutcome {
+  kind: "registered" | "alreadyRegistered" | "skipped" | "failed";
+  detail: string;
+}
+
+/**
+ * The result of installing the bundled daemon into `<tendril home>/bin` and registering it to start
+ * with the session. The app does this on first run; the Service pane can retry it.
+ */
+export interface ProvisionReport {
+  /** Sidecars copied this run. */
+  installed: string[];
+  /** Sidecars that were already current. */
+  upToDate: string[];
+  /** Sidecars this build does not carry - ordinary in a dev build, a packaging bug in a bundle. */
+  missing: string[];
+  binDir: string;
+  autostart: AutostartOutcome;
+  /** Non-fatal failures: a run can install one binary, fail the other and still register autostart. */
+  errors: string[];
+}
+
 export interface ReviewActionConfig {
   name: string;
   condition: string;
@@ -298,7 +324,31 @@ export interface DoctorCheck {
 export interface CreateProjectRequest {
   name: string;
   color?: string;
+  /**
+   * Local paths, or remote URLs for the daemon to clone. A URL is never stored: the route clones it
+   * into `<TendrilHome>/Projects/<name>/Repos/<owner>/<repo>` and keeps that path, which is why the
+   * caller has to read {@link CreatedProject.repos} back rather than reuse what it sent.
+   */
   repos?: string[];
+}
+
+/**
+ * What `POST /api/projects` answers with: the project as it was written, whose `repos` are the
+ * resolved paths. Narrowed to the fields the create callers read.
+ */
+export interface CreatedProject {
+  name: string;
+  repos?: { path: string; baseBranch?: string }[];
+}
+
+/**
+ * What `POST /api/projects/:name/repos` answers with: the repository as it was stored. For a remote
+ * that is the clone's directory rather than the URL that was sent - the route clones before it
+ * writes, and the response is the only place the caller can learn where to.
+ */
+export interface AddedProjectRepo {
+  path: string;
+  baseBranch?: string;
 }
 
 export type ModelCatalogSource = "models.dev" | "static";

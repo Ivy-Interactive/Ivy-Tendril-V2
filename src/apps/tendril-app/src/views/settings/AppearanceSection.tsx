@@ -19,7 +19,7 @@ import {
 import { notificationsStore } from "../../state/notificationsStore";
 import { describeBridgeError } from "../../types/api";
 import type { AppearanceSettings, ChatMode } from "../../state/appearance";
-import { NativeSelectField, SaveError, SectionCard, SubSection } from "./fields";
+import { NativeSelectField, SaveError, SettingsSection, SubSection } from "./fields";
 
 /**
  * `Apps/Settings/AppearanceSetupView.cs`.
@@ -135,12 +135,12 @@ export const AppearanceSection: React.FC<{
   const active = getThemePreset(theme);
 
   return (
-    <SectionCard
+    <SettingsSection
       title="Appearance"
       hint="Choose how Tendril appears. System matches your OS setting."
       testId="appearance-card"
     >
-      <div className="max-w-170 space-y-4">
+      <div className="space-y-4">
         <div className="flex flex-wrap gap-2">
           {THEME_MODES.map((mode) => (
             <Button
@@ -256,6 +256,6 @@ export const AppearanceSection: React.FC<{
           </div>
         </Callout.Info>
       </div>
-    </SectionCard>
+    </SettingsSection>
   );
 };

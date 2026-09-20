@@ -1,0 +1,12 @@
+# Sidecars are built (`tendril`) or downloaded (`opencode`) into this directory, never committed.
+#
+# Tauri bundles whatever it finds here, and it resolves a sidecar by target triple
+# (`binary-name-<triple>{.exe}`). Committed placeholders for the triples a given runner is not
+# building therefore ship *inside the installer* for every other platform — which is how four
+# 163-byte "stub running" shell scripts came to be part of the release. Keep the directory, keep
+# nothing in it.
+#
+# `scripts/fetch-opencode-sidecar.sh` populates `opencode-*`; the release workflow's
+# "Build companion CLI binary" step populates `tendril-*`.
+*
+!.gitignore

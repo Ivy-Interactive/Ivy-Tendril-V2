@@ -7,14 +7,16 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
+  IconButton,
   Input,
+  TooltipScope,
 } from "@ivy-interactive/components/ui";
 import { bridge } from "../api/bridge";
 import { usePublishSidebarList, type ShellSidebarList } from "../state/sidebarListStore";
 import { chatStore, type ChatState, type ChatStore } from "../state/chatStore";
 import { jobsStore } from "../state/jobsStore";
 import { plansStore } from "../state/plansStore";
-import type { ChatMessage, ChatSession, ChatAttachment, ChatQueuedItem } from "../types/chat";
+import type { ChatSession, ChatAttachment, ChatQueuedItem } from "../types/chat";
 import type { Job, PlanSummary } from "../types/api";
 import { PIN_TOP_PADDING, useChatAutoScroll } from "../hooks/useChatAutoScroll";
 import {
@@ -27,6 +29,7 @@ import { ChatMessageRow } from "./ChatMessageRow";
 import { ChatHeader, JobsMenu } from "./ChatHeader";
 import { AgentPicker } from "../components/chat/AgentPicker";
 import { ImageLightbox, type LightboxImage } from "../components/chat/ImageLightbox";
+import { ComposerAttachment } from "../components/chat/ComposerAttachment";
 import { useWebviewFileDrop } from "../hooks/useWebviewFileDrop";
 import { resolveJobState } from "../utils/jobStatus";
 import {
@@ -50,7 +53,6 @@ import { usePendingChatQuestions } from "../hooks/usePendingChatQuestions";
 import { useWireframeBaseUrl } from "../api/proxyOrigin";
 
 interface ChatViewProps {
-  onCreatePlan?: (initialDescription: string) => void;
   /** Opens the plan a system event or a spawned job refers to. */
   onOpenPlan?: (planId: string) => void;
   /**
@@ -436,7 +438,6 @@ export const needsMultipleLines = (
  * textarea, and every registered `useShortcut` in the app belongs to `App.tsx` or `PlanWorkspace`.
  */
 export const ChatView: React.FC<ChatViewProps> = ({
-  onCreatePlan,
   onOpenPlan,
   store = chatStore,
   embedded = false,
@@ -454,7 +455,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const [isQueueExpanded, setIsQueueExpanded] = useState(true);
   const [editingQueuedId, setEditingQueuedId] = useState<string | null>(null);
   const [editingQueuedText, setEditingQueuedText] = useState("");
-  const [copiedMessageId, setCopiedMessageId] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   // The chat beside a plan resolves `wireframe` fences against that plan; the general chat page
@@ -479,6 +479,27 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const pinnedMessageRef = useRef<{ id: string; content: string } | null>(null);
   /** The copy being made of each attached file, keyed by the path the user attached it by. */
   const stagingRef = useRef(new Map<string, Promise<string>>());
+  /**
+   * The attached paths whose copy has not landed yet, as state rather than as the ref above, because
+   * the composer's thumbnails have to re-render when one settles.
+   *
+   * Asking for a preview of a path that is still being staged can only answer `NOT_FOUND` — that is
+   * the whole reason staging exists — and the refusal would be cached against the picked path, so
+   * the thumbnail would never appear even after the copy landed.
+   */
+  const [stagingPaths, setStagingPaths] = useState<string[]>([]);
+  /**
+   * What the composer holds right now, so callers that *append* to the prompt (the transcriber) do
+   * not need the functional form of `setInputPrompt` - a functional updater cannot also write the
+   * draft through to the store, because React may run it twice.
+   */
+  const composerTextRef = useRef("");
+  /**
+   * Which session {@link composerTextRef} belongs to. Compared before seeding so a re-render that
+   * did not change the conversation leaves a prompt being typed alone, and so the text of the chat
+   * being left is never written against the id of the chat being opened.
+   */
+  const composerSessionRef = useRef<string | null>(null);
 
   const requestComposerFocus = useCallback(() => {
     textareaRef.current?.focus();
@@ -518,13 +539,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
   }, [syncMultiline]);
 
   useEffect(() => () => recorderRef.current?.stop(), []);
-
-  // Keyed on the token, not the text, so asking twice re-drafts the same line over an edited one.
-  const draftToken = draftPrompt?.token ?? 0;
-  const draftText = draftPrompt?.text ?? "";
-  useEffect(() => {
-    if (draftToken > 0) setInputPrompt(draftText);
-  }, [draftToken, draftText]);
 
   useEffect(() => {
     setStoreState({ ...store.getState() });
@@ -569,12 +583,68 @@ export const ChatView: React.FC<ChatViewProps> = ({
     activeSession,
     queuedItems,
     isGenerating,
+    isCancelling,
     error,
     agents,
     selectedAgentId,
     selectedModelId,
     selectedEffort,
   } = storeState;
+
+  /**
+   * The single way the composer's text changes, so the store's per-session draft cannot drift from
+   * what is on screen.
+   *
+   * It writes through `composerSessionRef` rather than `activeSessionId` so the callback identity
+   * stays stable and a write can never land against a session the composer has already left.
+   */
+  const applyComposerText = useCallback(
+    (text: string) => {
+      composerTextRef.current = text;
+      setInputPrompt(text);
+      store.setComposerDraft(composerSessionRef.current, text);
+    },
+    [store],
+  );
+
+  /**
+   * Seeds the composer from the session's saved draft whenever the conversation on screen changes,
+   * mount included.
+   *
+   * This is what makes a half-typed prompt survive leaving the Chat page: it is a `React.lazy`
+   * route, so navigating away unmounts this component and everything in `useState` with it. V1 has
+   * no equivalent because its `ChatWidget` stays mounted and keeps the prompt in plain component
+   * state (`const [promptText, setPromptText] = useState("")`); the store is standing in for that
+   * continuity, per session so one chat's prompt never appears in another's box.
+   */
+  useEffect(() => {
+    const previous = composerSessionRef.current;
+    if (previous === activeSessionId) return;
+    composerSessionRef.current = activeSessionId;
+
+    // A session that appeared *under* a prompt already being typed adopts it: the empty state has
+    // no session until the first send creates one, and wiping the box at that moment would throw
+    // away the very prompt that caused it.
+    if (previous === null && composerTextRef.current) {
+      store.setComposerDraft(activeSessionId, composerTextRef.current);
+      return;
+    }
+
+    const draft = store.composerDraft(activeSessionId);
+    composerTextRef.current = draft;
+    setInputPrompt(draft);
+    // The field's height is styled from its content, and the content arrived after this render.
+    if (typeof requestAnimationFrame !== "undefined") {
+      requestAnimationFrame(adjustTextareaHeight);
+    }
+  }, [store, activeSessionId, adjustTextareaHeight]);
+
+  // Keyed on the token, not the text, so asking twice re-drafts the same line over an edited one.
+  const draftToken = draftPrompt?.token ?? 0;
+  const draftText = draftPrompt?.text ?? "";
+  useEffect(() => {
+    if (draftToken > 0) applyComposerText(draftText);
+  }, [draftToken, draftText, applyComposerText]);
 
   /**
    * The jobs this conversation started. A job that has aged out of the live list keeps its place,
@@ -691,11 +761,14 @@ export const ChatView: React.FC<ChatViewProps> = ({
           pending = bridge.uploadChatAttachment(source, sessionId).then((staged) => staged.path);
           stagingRef.current.set(source, pending);
         }
+        setStagingPaths((prev) => (prev.includes(source) ? prev : [...prev, source]));
         try {
           applyStagedPath(source, await pending);
         } catch {
           // Retried if the file is attached again.
           stagingRef.current.delete(source);
+        } finally {
+          setStagingPaths((prev) => prev.filter((path) => path !== source));
         }
       }),
     );
@@ -810,9 +883,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
     }
   };
 
-  /** Clears the composer after a send or a queue, and lets the field collapse to one line. */
+  /**
+   * Clears the composer after a send or a queue, and lets the field collapse to one line. The
+   * saved draft goes with it: the prompt is in the transcript now, so restoring it on the way back
+   * would put a message the user already sent back in their box.
+   */
   const resetComposer = () => {
-    setInputPrompt("");
+    applyComposerText("");
     setAttachments([]);
     // The next message attaching the same file gets its own copy: this one has been sent, and a second
     // chip pointing at the first message's file would be re-using something the user cannot see.
@@ -867,7 +944,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
   };
 
   const handleComposerChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
-    setInputPrompt(e.target.value);
+    applyComposerText(e.target.value);
     adjustTextareaHeight();
   };
 
@@ -898,7 +975,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
           setVoiceError("Nothing was transcribed. Please try again.");
           return;
         }
-        setInputPrompt((prev) => (prev ? `${prev} ${trimmed}` : trimmed));
+        const previous = composerTextRef.current;
+        applyComposerText(previous ? `${previous} ${trimmed}` : trimmed);
         requestComposerFocus();
         requestAnimationFrame(adjustTextareaHeight);
       },
@@ -916,7 +994,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
     const summary = spawnedJobs
       .map((job) => `- ${job.type} ${job.id}${job.planTitle ? ` (${job.planTitle})` : ""}`)
       .join("\n");
-    setInputPrompt(
+    applyComposerText(
       `Review the outcomes of the jobs this conversation started and tell me what changed:\n${summary}`,
     );
     requestComposerFocus();
@@ -954,23 +1032,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
       // Handled in store
     }
   };
-
-  const handleCopyMessage = useCallback((msg: ChatMessage) => {
-    void navigator.clipboard.writeText(msg.content);
-    setCopiedMessageId(msg.id);
-    setTimeout(() => {
-      setCopiedMessageId(null);
-    }, 2000);
-  }, []);
-
-  const handleCreatePlanFromMessage = useCallback(
-    (content: string) => {
-      if (onCreatePlan) {
-        onCreatePlan(content);
-      }
-    },
-    [onCreatePlan],
-  );
 
   const messages = activeSession?.messages ?? [];
 
@@ -1075,21 +1136,27 @@ export const ChatView: React.FC<ChatViewProps> = ({
    * that measurement is what decides whether the toolbar sits beside the prompt or above it. Four
    * pixels of field height is not worth putting a second set of numbers under that.
    */
+  /* The composer's controls are {@link IconButton}s, as V1's are
+     (`Ivy-Tendril/src/Ivy.Tendril.Widgets/frontend/src/ChatWidget/ChatWidget.tsx`), so `buttonSize`
+     names an IconButton step rather than a Tailwind box: "md" is its 28px square and "lg" its 32px
+     one, which is exactly what the two hand-rolled `size-7`/`size-8` targets used to be. The resting
+     dim and the hover surface come from `.tui-icon-btn` too, so there is no `ghost` entry left to
+     carry — only the embedded composer's tighter corner, which the base radius does not cover. */
   const composerStyle = embedded
     ? {
         box: "rounded-xl",
-        button: "size-7 rounded-md",
+        buttonSize: "md" as const,
+        buttonRadius: "rounded-field",
         icon: "size-4",
         attachOffset: "",
-        ghost: "opacity-90 hover:opacity-100",
         tools: "gap-1.5",
       }
     : {
-        box: "rounded-2xl",
-        button: "size-8 rounded-lg",
+        box: "rounded-bubble",
+        buttonSize: "lg" as const,
+        buttonRadius: "",
         icon: "size-5",
         attachOffset: "-ml-1.5",
-        ghost: "opacity-60 hover:opacity-100",
         tools: "gap-3",
       };
 
@@ -1142,78 +1209,86 @@ export const ChatView: React.FC<ChatViewProps> = ({
   }, [sessions, searchQuery]);
 
   return (
-    <div
-      className="flex h-full w-full overflow-hidden bg-background text-foreground"
-      data-embedded={embedded}
-      data-testid={embedded ? "embedded-chat-view" : "chat-view"}
-    >
-      {/* Main Chat Thread Area. A file may be dropped anywhere in it, not only on the composer. */}
-      <main
-        className="relative flex flex-1 flex-col overflow-hidden"
-        onDragOver={handleDragOver}
-        onDragEnter={handleDragEnter}
-        onDragLeave={handleDragLeave}
-        onDrop={handleDrop}
+    /* One tooltip Provider for the whole composer, the way V1 registers the chat widget:
+       `const ChatWidget = withTooltipScope(ChatWidgetBase)` in
+       `Ivy-Tendril/src/Ivy.Tendril.Widgets/frontend/src/index.ts`. Radix arbitrates the hover
+       hand-off inside a Provider, so without one shared scope every icon button in the toolbar
+       would wait out the full open delay again instead of handing over instantly. Nesting is free:
+       a scope inside another one reuses the outer Provider, so the plan panel's embedded chat and
+       the standalone page both work. */
+    <TooltipScope>
+      <div
+        className="flex h-full w-full overflow-hidden bg-background text-foreground"
+        data-embedded={embedded}
+        data-testid={embedded ? "embedded-chat-view" : "chat-view"}
       >
-        {isDraggingOver && (
-          <div className="absolute inset-2 z-50 flex items-center justify-center rounded-2xl border-2 border-dashed border-foreground bg-background/90 backdrop-blur-xs pointer-events-none">
-            <div className="flex flex-col items-center gap-2.5 text-center text-foreground">
-              <Upload className="size-9 opacity-80" />
-              <span className="font-medium">Drop files here to attach to message</span>
+        {/* Main Chat Thread Area. A file may be dropped anywhere in it, not only on the composer. */}
+        <main
+          className="relative flex flex-1 flex-col overflow-hidden"
+          onDragOver={handleDragOver}
+          onDragEnter={handleDragEnter}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          {isDraggingOver && (
+            <div className="absolute inset-2 z-50 flex items-center justify-center rounded-box border-2 border-dashed border-foreground bg-background/90 backdrop-blur-xs pointer-events-none">
+              <div className="flex flex-col items-center gap-2.5 text-center text-foreground">
+                <Upload className="size-9 opacity-80" />
+                <span className="font-medium">Drop files here to attach to message</span>
+              </div>
             </div>
-          </div>
-        )}
-        {/* Error Banner */}
-        {error && (
-          <div className="border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-xs text-destructive flex items-center justify-between">
-            <span>{error}</span>
-          </div>
-        )}
+          )}
+          {/* Error Banner */}
+          {error && (
+            <div className="border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-xs text-destructive flex items-center justify-between">
+              <span>{error}</span>
+            </div>
+          )}
 
-        {/*
+          {/*
           Header Toolbar. Embedded there is none: `ChatWidget` renders
           `activeSession && headerJobs.length > 0 && <div className="chat-header--embedded"><JobsMenu/></div>`
           in its place, right-aligned with no border, because the page hosting the panel already
           carries the plan's name and its actions. That is also where the new-chat button goes — the
           plan's chat is the plan's, and `PlanChatView` passes `startNewChat: () => { }`.
         */}
-        {embedded ? (
-          activeSession &&
-          spawnedJobs.length > 0 && (
-            <div
-              data-testid="embedded-chat-jobs"
-              className="flex shrink-0 items-center justify-end px-4 pb-2"
-            >
-              <JobsMenu
-                jobs={spawnedJobs}
-                spawned
-                onOpenPlan={onOpenPlan}
-                onReviewJobs={handleReviewJobs}
-              />
-            </div>
-          )
-        ) : (
-          <ChatHeader
-            key={activeSessionId ?? "none"}
-            title={activeSession ? displayTitle(activeSession) : "No Active Chat"}
-            editable={Boolean(activeSession)}
-            autoScrollEnabled={autoScrollEnabled}
-            onToggleAutoScroll={toggleAutoScroll}
-            jobs={spawnedJobs}
-            onOpenPlan={onOpenPlan}
-            onReviewJobs={handleReviewJobs}
-            onNewChat={handleCreateSession}
-            onRename={(next) => {
-              if (activeSession) void store.renameSession(activeSession.id, next);
-            }}
-            onDelete={() => activeSession && setDeletingSessionId(activeSession.id)}
-          />
-        )}
+          {embedded ? (
+            activeSession &&
+            spawnedJobs.length > 0 && (
+              <div
+                data-testid="embedded-chat-jobs"
+                className="flex shrink-0 items-center justify-end px-4 pb-2"
+              >
+                <JobsMenu
+                  jobs={spawnedJobs}
+                  spawned
+                  onOpenPlan={onOpenPlan}
+                  onReviewJobs={handleReviewJobs}
+                />
+              </div>
+            )
+          ) : (
+            <ChatHeader
+              key={activeSessionId ?? "none"}
+              title={activeSession ? displayTitle(activeSession) : "No Active Chat"}
+              editable={Boolean(activeSession)}
+              autoScrollEnabled={autoScrollEnabled}
+              onToggleAutoScroll={toggleAutoScroll}
+              jobs={spawnedJobs}
+              onOpenPlan={onOpenPlan}
+              onReviewJobs={handleReviewJobs}
+              onNewChat={handleCreateSession}
+              onRename={(next) => {
+                if (activeSession) void store.renameSession(activeSession.id, next);
+              }}
+              onDelete={() => activeSession && setDeletingSessionId(activeSession.id)}
+            />
+          )}
 
-        {/* Message Thread List */}
-        <div className="flex-1 overflow-hidden relative">
-          {!activeSession || activeSession.messages.length === 0 ? (
-            /* V1's empty thread: the greeting, the headline, and the prompts it suggests. No
+          {/* Message Thread List */}
+          <div className="flex-1 overflow-hidden relative">
+            {!activeSession || activeSession.messages.length === 0 ? (
+              /* V1's empty thread: the greeting, the headline, and the prompts it suggests. No
                explanation of what a chat is - the composer below says that.
 
                `chat-widget.css`'s embedded block gives the same markup the panel's measurements:
@@ -1222,583 +1297,611 @@ export const ChatView: React.FC<ChatViewProps> = ({
                the chips flush left in a horizontal scroller rather than centred and wrapped -
                "centering an overflowing nowrap scroller would push leading chips past the scroll
                origin". */
-            <div
-              className={`flex h-full flex-col items-center justify-center px-4 text-center ${
-                embedded ? "gap-0 py-8" : "gap-1 py-12"
-              }`}
-            >
               <div
-                className={
-                  embedded
-                    ? "w-full truncate text-xl font-light leading-relaxed text-muted-foreground"
-                    : "text-2xl font-normal leading-tight text-muted-foreground"
-                }
-                title={embedded ? greeting : undefined}
-              >
-                {greeting}
-              </div>
-              <div
-                className={
-                  embedded
-                    ? "text-xl font-medium leading-relaxed text-foreground"
-                    : "text-2xl font-semibold leading-tight text-foreground"
-                }
-              >
-                {headline}
-              </div>
-              {/* Wraps in both modes. Embedded, the panel is only as wide as the plan page leaves it,
-                  so a nowrap row put the later chips off the edge — and with no room for a horizontal
-                  scrollbar they were simply unreachable. A chip that does not fit takes the next line. */}
-              <div
-                className={`mt-4 flex flex-wrap gap-2 ${
-                  embedded ? "w-full justify-start" : "justify-center"
+                /* `max-w-3xl mx-auto` is `.chat-thread`'s `max-width: var(--tch-thread-width)`
+                 (775px) with `margin: 0 auto`, which is the element V1's empty state sits inside -
+                 and it is the same cap `ChatMessageList` and the composer below already apply, so
+                 the chips line up with the thread they are about to start. Without it the row had
+                 the whole window to spread across, which is why five chips never wrapped.
+                 Embedded there is no cap: `.chat-widget-root[data-embedded="true"]
+                 .chat-empty-state` is `width: 100%`, because the plan panel is already the
+                 constraint. */
+                className={`flex h-full flex-col items-center justify-center px-4 text-center ${
+                  embedded ? "w-full gap-0 py-8" : "mx-auto w-full max-w-3xl gap-1 py-12"
                 }`}
-                data-testid="sample-prompts"
               >
-                {samplePrompts.map((item) => (
-                  <button
-                    key={item.label}
-                    type="button"
-                    title={item.prompt}
-                    onClick={() => {
-                      setInputPrompt(item.prompt);
-                      requestComposerFocus();
-                    }}
-                    className="max-w-full rounded-2xl border border-border bg-background px-4 py-2 text-left font-medium text-foreground transition-colors hover:border-muted-foreground hover:bg-accent"
-                  >
-                    {item.label}
-                  </button>
-                ))}
+                <div
+                  className={
+                    embedded
+                      ? "w-full truncate text-xl font-light leading-relaxed text-muted-foreground"
+                      : "text-2xl font-normal leading-tight text-muted-foreground"
+                  }
+                  title={embedded ? greeting : undefined}
+                >
+                  {greeting}
+                </div>
+                <div
+                  className={
+                    embedded
+                      ? "text-xl font-medium leading-relaxed text-foreground"
+                      : "text-2xl font-semibold leading-tight text-foreground"
+                  }
+                >
+                  {headline}
+                </div>
+                {/* `.chat-sample-prompts`: `flex-wrap: wrap` + `justify-content: center`. V1 counts
+                  nothing - the "3 above, 2 beneath" the report describes is just what greedy flex
+                  wrapping does once the row has a width to wrap at, which the cap above now
+                  supplies: the chips that fit take the first line and the remainder centre
+                  underneath, so the top row is the longer one. Every other count falls out of the
+                  same rule, which is why V1 needs no special case for five.
+
+                  `w-full` is load-bearing: as a shrink-to-fit flex item the row would size to its
+                  content and wrap against the window rather than the cap.
+
+                  Embedded, V1 switches to `flex-wrap: nowrap` + `overflow-x: auto`, but we keep
+                  wrapping - the panel is only as wide as the plan page leaves it, so a nowrap row
+                  put the later chips off the edge with no room for a scrollbar to reach them. */}
+                <div
+                  className={`mt-4 flex w-full flex-wrap gap-2 ${
+                    embedded ? "justify-start" : "justify-center"
+                  }`}
+                  data-testid="sample-prompts"
+                >
+                  {samplePrompts.map((item) => (
+                    <button
+                      key={item.label}
+                      type="button"
+                      title={item.prompt}
+                      onClick={() => {
+                        applyComposerText(item.prompt);
+                        requestComposerFocus();
+                      }}
+                      className="max-w-full rounded-bubble border border-border bg-background px-4 py-2 text-left font-medium text-foreground transition-colors hover:border-muted-foreground hover:bg-accent"
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
-          ) : (
-            <ChatMessageList
-              ref={scrollContainerRef}
-              /* `.chat-thread` embedded is `padding: 10px var(--tch-embedded-inset) 0` — the rows
+            ) : (
+              <ChatMessageList
+                ref={scrollContainerRef}
+                /* `.chat-thread` embedded is `padding: 10px var(--tch-embedded-inset) 0` — the rows
                  inset themselves 16px because `.pws-chat` adds no horizontal padding, so the list
                  scrolls at the panel's full width and the scrollbar sits clear of the text. */
-              className={embedded ? "h-full px-4" : "h-full"}
-              style={{ paddingTop: PIN_TOP_PADDING }}
-              enableAutoScroll={false}
-              showScrollButton={false}
-            >
-              {isVirtualized ? (
-                <div
-                  style={{ height: totalSize, position: "relative" }}
-                  data-testid="chat-virtual-container"
-                >
-                  {items.map((item) => {
-                    const msg = messages[item.index];
-                    return (
-                      <div
-                        key={item.key}
-                        ref={item.measureRef}
-                        data-index={item.index}
-                        data-testid="chat-virtual-row"
-                        style={{
-                          position: "absolute",
-                          top: item.start,
-                          left: 0,
-                          width: "100%",
-                          paddingBottom: 24,
-                        }}
-                      >
-                        <ChatMessageRow
-                          message={msg}
-                          isCopied={copiedMessageId === msg.id}
-                          onCopy={handleCopyMessage}
-                          onCreatePlan={handleCreatePlanFromMessage}
-                          inProgressAnswers={storeState.inProgressAnswers[msg.id]}
-                          isSubmittingAnswer={store.isSubmittingAnswer(msg.id)}
-                          onOpenPlan={onOpenPlan}
-                          onOpenImage={setActiveLightboxImage}
-                          wireframeBaseUrl={wireframeBaseUrl}
-                          jobs={jobs}
-                          threadMessages={messages}
-                        />
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                messages.map((msg, index) => (
-                  <div key={msg.id} data-index={index}>
-                    <ChatMessageRow
-                      message={msg}
-                      isCopied={copiedMessageId === msg.id}
-                      onCopy={handleCopyMessage}
-                      onCreatePlan={handleCreatePlanFromMessage}
-                      inProgressAnswers={storeState.inProgressAnswers[msg.id]}
-                      isSubmittingAnswer={store.isSubmittingAnswer(msg.id)}
-                      onOpenPlan={onOpenPlan}
-                      onOpenImage={setActiveLightboxImage}
-                      wireframeBaseUrl={wireframeBaseUrl}
-                      jobs={jobs}
-                      threadMessages={messages}
-                    />
+                className={embedded ? "h-full px-4" : "h-full"}
+                style={{ paddingTop: PIN_TOP_PADDING }}
+                enableAutoScroll={false}
+                showScrollButton={false}
+              >
+                {isVirtualized ? (
+                  <div
+                    style={{ height: totalSize, position: "relative" }}
+                    data-testid="chat-virtual-container"
+                  >
+                    {items.map((item) => {
+                      const msg = messages[item.index];
+                      return (
+                        <div
+                          key={item.key}
+                          ref={item.measureRef}
+                          data-index={item.index}
+                          data-testid="chat-virtual-row"
+                          style={{
+                            position: "absolute",
+                            top: item.start,
+                            left: 0,
+                            width: "100%",
+                            paddingBottom: 24,
+                          }}
+                        >
+                          <ChatMessageRow
+                            message={msg}
+                            inProgressAnswers={storeState.inProgressAnswers[msg.id]}
+                            isSubmittingAnswer={store.isSubmittingAnswer(msg.id)}
+                            onOpenPlan={onOpenPlan}
+                            onOpenImage={setActiveLightboxImage}
+                            wireframeBaseUrl={wireframeBaseUrl}
+                            jobs={jobs}
+                            threadMessages={messages}
+                          />
+                        </div>
+                      );
+                    })}
                   </div>
-                ))
-              )}
-
-              {/* The live turn's own status line, as V1 renders it: muted, in the thread, at the
-                  leading edge where the reply will appear. */}
-              {isGenerating && (
-                <div className="flex min-h-6 w-full items-center gap-2 text-muted-foreground">
-                  <Loader2 className="size-4 animate-spin" />
-                  <span>Working...</span>
-                </div>
-              )}
-
-              {/* Sized by the pin so the pinned row can sit at the top of the viewport. */}
-              <div
-                ref={spacerRef}
-                data-testid="chat-pin-spacer"
-                aria-hidden="true"
-                className="w-full shrink-0 pointer-events-none"
-                style={{ height: 0 }}
-              />
-
-              <div
-                ref={anchorRef}
-                data-testid="chat-scroll-anchor"
-                className="h-px w-full pointer-events-none"
-              />
-            </ChatMessageList>
-          )}
-
-          {/* Floating Actions: Jump to Pending Question & Scroll to Tail */}
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-2 pointer-events-none">
-            {targetPendingQuestion && (
-              <button
-                type="button"
-                data-testid="chat-jump-to-question-button"
-                onClick={() => handleJumpToQuestion(targetPendingQuestion.messageIndex)}
-                className="pointer-events-auto flex cursor-pointer items-center gap-2 rounded-full border border-warning/40 bg-warning/10 px-3.5 py-1.5 text-xs font-medium text-warning shadow-lg backdrop-blur transition-colors hover:bg-warning/20"
-              >
-                <HelpCircle className="size-3.5 text-warning" />
-                <span>
-                  Jump to pending question {targetPendingQuestion.direction === "down" ? "↓" : "↑"}
-                </span>
-              </button>
-            )}
-
-            {!isAtBottom && (
-              <button
-                type="button"
-                data-testid="chat-scroll-tail-button"
-                onClick={() => scrollToTail(true)}
-                className="pointer-events-auto flex cursor-pointer items-center gap-2 rounded-full border border-border bg-popover/90 px-3.5 py-1.5 text-xs font-medium text-foreground shadow-lg backdrop-blur transition-colors hover:bg-accent"
-              >
-                <ArrowDown className="size-3.5 text-muted-foreground" />
-                {isGenerating ? (
-                  <>
-                    <span>Scroll to streaming tail</span>
-                    <span className="flex size-1.5 animate-pulse rounded-full bg-current" />
-                  </>
                 ) : (
-                  <span>Scroll to bottom</span>
+                  messages.map((msg, index) => (
+                    <div key={msg.id} data-index={index}>
+                      <ChatMessageRow
+                        message={msg}
+                        inProgressAnswers={storeState.inProgressAnswers[msg.id]}
+                        isSubmittingAnswer={store.isSubmittingAnswer(msg.id)}
+                        onOpenPlan={onOpenPlan}
+                        onOpenImage={setActiveLightboxImage}
+                        wireframeBaseUrl={wireframeBaseUrl}
+                        jobs={jobs}
+                        threadMessages={messages}
+                      />
+                    </div>
+                  ))
                 )}
-              </button>
-            )}
-          </div>
-        </div>
 
-        {/*
+                {/* The live turn's own status line, as V1 renders it: muted, in the thread, at the
+                  leading edge where the reply will appear. */}
+                {isGenerating && (
+                  <div className="flex min-h-6 w-full items-center gap-2 text-muted-foreground">
+                    <Loader2 className="size-4 animate-spin" />
+                    <span>Working...</span>
+                  </div>
+                )}
+
+                {/* Sized by the pin so the pinned row can sit at the top of the viewport. */}
+                <div
+                  ref={spacerRef}
+                  data-testid="chat-pin-spacer"
+                  aria-hidden="true"
+                  className="w-full shrink-0 pointer-events-none"
+                  style={{ height: 0 }}
+                />
+
+                <div
+                  ref={anchorRef}
+                  data-testid="chat-scroll-anchor"
+                  className="h-px w-full pointer-events-none"
+                />
+              </ChatMessageList>
+            )}
+
+            {/* Floating Actions: Jump to Pending Question & Scroll to Tail */}
+            <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-2 pointer-events-none">
+              {targetPendingQuestion && (
+                <button
+                  type="button"
+                  data-testid="chat-jump-to-question-button"
+                  onClick={() => handleJumpToQuestion(targetPendingQuestion.messageIndex)}
+                  className="pointer-events-auto flex cursor-pointer items-center gap-2 rounded-full border border-warning/40 bg-warning/10 px-3.5 py-1.5 text-xs font-medium text-warning shadow-lg backdrop-blur transition-colors hover:bg-warning/20"
+                >
+                  <HelpCircle className="size-3.5 text-warning" />
+                  <span>
+                    Jump to pending question{" "}
+                    {targetPendingQuestion.direction === "down" ? "↓" : "↑"}
+                  </span>
+                </button>
+              )}
+
+              {!isAtBottom && (
+                <button
+                  type="button"
+                  data-testid="chat-scroll-tail-button"
+                  onClick={() => scrollToTail(true)}
+                  className="pointer-events-auto flex cursor-pointer items-center gap-2 rounded-full border border-border bg-popover/90 px-3.5 py-1.5 text-xs font-medium text-foreground shadow-lg backdrop-blur transition-colors hover:bg-accent"
+                >
+                  <ArrowDown className="size-3.5 text-muted-foreground" />
+                  {isGenerating ? (
+                    <>
+                      <span>Scroll to streaming tail</span>
+                      <span className="flex size-1.5 animate-pulse rounded-full bg-current" />
+                    </>
+                  ) : (
+                    <span>Scroll to bottom</span>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+
+          {/*
           The composer, as V1 builds it: one rounded surface holding the attachment affordance, the
           prompt, and the agent picker, mic and send button, with the queue that feeds it directly
           above and the whole thing capped to the thread's width.
         */}
-        {/* No divider above the composer: its own surface separates it from the thread.
+          {/* No divider above the composer: its own surface separates it from the thread.
             `.chat-footer` embedded is `padding: 12px var(--tch-embedded-inset) 0` — no bottom
             padding, because `.pws-chat` already ends in `padding: 0 0 14px`. */}
-        <div
-          data-testid="chat-composer-area"
-          className={embedded ? "shrink-0 px-4 pt-3" : "shrink-0 px-3 py-4"}
-        >
-          <div className="mx-auto flex w-full max-w-3xl flex-col gap-2.5">
-            {queuedItems.length > 0 && (
-              <div className="rounded-2xl border border-border bg-muted/60 p-2.5">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="flex min-w-0 items-center gap-2">
-                    <span className="font-medium text-foreground">Queued Messages</span>
-                    <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-background px-1.5 text-xs text-foreground">
-                      {queuedItems.length}
-                    </span>
-                    <span className="truncate text-xs text-muted-foreground">
-                      Sends after agent finishes working
-                    </span>
+          <div
+            data-testid="chat-composer-area"
+            className={embedded ? "shrink-0 px-4 pt-3" : "shrink-0 px-3 py-4"}
+          >
+            <div className="mx-auto flex w-full max-w-3xl flex-col gap-2.5">
+              {queuedItems.length > 0 && (
+                <div className="rounded-box border border-border bg-muted/60 p-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <span className="font-medium text-foreground">Queued Messages</span>
+                      <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-background px-1.5 text-xs text-foreground">
+                        {queuedItems.length}
+                      </span>
+                      <span className="truncate text-xs text-muted-foreground">
+                        Sends after agent finishes working
+                      </span>
+                    </div>
+                    <IconButton
+                      data-testid="chat-queue-collapse"
+                      label={
+                        isQueueExpanded ? "Collapse queued messages" : "Expand queued messages"
+                      }
+                      size="sm"
+                      tone="muted"
+                      aria-expanded={isQueueExpanded}
+                      onClick={() => setIsQueueExpanded(!isQueueExpanded)}
+                    >
+                      <ChevronDown
+                        className={`size-4 transition-transform ${isQueueExpanded ? "" : "-rotate-90"}`}
+                      />
+                    </IconButton>
                   </div>
-                  <button
-                    type="button"
-                    data-testid="chat-queue-collapse"
-                    aria-label={
-                      isQueueExpanded ? "Collapse queued messages" : "Expand queued messages"
-                    }
-                    aria-expanded={isQueueExpanded}
-                    onClick={() => setIsQueueExpanded(!isQueueExpanded)}
-                    className="inline-flex size-6 shrink-0 items-center justify-center rounded-selector text-muted-foreground hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                  >
-                    <ChevronDown
-                      className={`size-4 transition-transform ${isQueueExpanded ? "" : "-rotate-90"}`}
-                    />
-                  </button>
-                </div>
 
-                {isQueueExpanded && (
-                  <div className="mt-2 max-h-40 space-y-1 overflow-y-auto">
-                    {queuedItems.map((item) => (
-                      <div
-                        key={item.id}
-                        data-testid="queued-item"
-                        className="flex items-center justify-between gap-2 rounded-selector bg-background px-2 py-1"
-                      >
-                        {editingQueuedId === item.id ? (
-                          <>
-                            <Input
-                              data-testid="queued-item-input"
-                              aria-label="Edit queued prompt"
-                              value={editingQueuedText}
-                              ref={(node) => {
-                                // Focus once per edit: re-focusing on every keystroke would fight
-                                // the caret the user is moving.
-                                if (node && queuedEditFocusedIdRef.current !== item.id) {
-                                  queuedEditFocusedIdRef.current = item.id;
-                                  node.focus();
-                                  node.select();
-                                }
-                              }}
-                              onChange={(e) => setEditingQueuedText(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === "Enter") {
-                                  e.preventDefault();
-                                  void handleSaveEditQueued(item.id);
-                                }
-                                if (e.key === "Escape") {
-                                  e.preventDefault();
-                                  handleCancelEditQueued();
-                                }
-                              }}
-                              className="h-7 flex-1 border-border bg-background px-1.5 py-0.5 text-foreground"
-                            />
-                            <button
-                              type="button"
-                              data-testid="queued-item-save"
-                              onClick={() => void handleSaveEditQueued(item.id)}
-                              className="text-muted-foreground hover:text-foreground"
-                              title="Save queued prompt"
-                            >
-                              <Check className="size-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              data-testid="queued-item-cancel"
-                              onClick={handleCancelEditQueued}
-                              className="text-muted-foreground hover:text-destructive"
-                              title="Cancel edit"
-                            >
-                              <X className="size-3.5" />
-                            </button>
-                          </>
-                        ) : (
-                          <>
-                            <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                              <span className="truncate text-foreground">
-                                {item.prompt ||
-                                  (item.attachments && item.attachments.length > 0
-                                    ? `${item.attachments.length} attachment${item.attachments.length > 1 ? "s" : ""}`
-                                    : "")}
-                              </span>
-                              {item.attachments && item.attachments.length > 0 && (
-                                <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 text-[11px] text-muted-foreground">
-                                  <Paperclip className="size-2.5" />
-                                  {item.attachments.length}
+                  {isQueueExpanded && (
+                    <div className="mt-2 max-h-40 space-y-1 overflow-y-auto">
+                      {queuedItems.map((item) => (
+                        <div
+                          key={item.id}
+                          data-testid="queued-item"
+                          className="flex items-center justify-between gap-2 rounded-selector bg-background px-2 py-1"
+                        >
+                          {editingQueuedId === item.id ? (
+                            <>
+                              <Input
+                                data-testid="queued-item-input"
+                                aria-label="Edit queued prompt"
+                                value={editingQueuedText}
+                                ref={(node) => {
+                                  // Focus once per edit: re-focusing on every keystroke would fight
+                                  // the caret the user is moving.
+                                  if (node && queuedEditFocusedIdRef.current !== item.id) {
+                                    queuedEditFocusedIdRef.current = item.id;
+                                    node.focus();
+                                    node.select();
+                                  }
+                                }}
+                                onChange={(e) => setEditingQueuedText(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    void handleSaveEditQueued(item.id);
+                                  }
+                                  if (e.key === "Escape") {
+                                    e.preventDefault();
+                                    handleCancelEditQueued();
+                                  }
+                                }}
+                                className="h-7 flex-1 border-border bg-background px-1.5 py-0.5 text-foreground"
+                              />
+                              <IconButton
+                                data-testid="queued-item-save"
+                                label="Save queued prompt"
+                                size="sm"
+                                tone="muted"
+                                onClick={() => void handleSaveEditQueued(item.id)}
+                              >
+                                <Check className="size-3.5" />
+                              </IconButton>
+                              <IconButton
+                                data-testid="queued-item-cancel"
+                                label="Cancel edit"
+                                size="sm"
+                                variant="danger"
+                                tone="muted"
+                                onClick={handleCancelEditQueued}
+                              >
+                                <X className="size-3.5" />
+                              </IconButton>
+                            </>
+                          ) : (
+                            <>
+                              <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                                <span className="truncate text-foreground">
+                                  {item.prompt ||
+                                    (item.attachments && item.attachments.length > 0
+                                      ? `${item.attachments.length} attachment${item.attachments.length > 1 ? "s" : ""}`
+                                      : "")}
                                 </span>
-                              )}
-                            </span>
-                            <div className="flex shrink-0 items-center gap-1.5">
-                              <button
-                                type="button"
-                                data-testid="queued-item-send-now"
-                                onClick={() => void handleSendQueuedNow(item)}
-                                className="text-muted-foreground hover:text-foreground"
-                                title="Send now"
-                              >
-                                <ArrowRight className="size-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                data-testid="queued-item-edit"
-                                onClick={() => handleStartEditQueued(item.id, item.prompt)}
-                                className="text-muted-foreground hover:text-foreground"
-                                title="Edit queued prompt"
-                              >
-                                <Pencil className="size-3.5" />
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => store.deleteQueuedMessage(item.id)}
-                                className="text-muted-foreground hover:text-destructive"
-                                title="Remove from queue"
-                              >
-                                <Trash2 className="size-3.5" />
-                              </button>
-                            </div>
-                          </>
-                        )}
-                      </div>
-                    ))}
+                                {item.attachments && item.attachments.length > 0 && (
+                                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 text-xs-tight text-muted-foreground">
+                                    <Paperclip className="size-2.5" />
+                                    {item.attachments.length}
+                                  </span>
+                                )}
+                              </span>
+                              <div className="flex shrink-0 items-center gap-1.5">
+                                <IconButton
+                                  data-testid="queued-item-send-now"
+                                  label="Send now"
+                                  size="sm"
+                                  tone="muted"
+                                  onClick={() => void handleSendQueuedNow(item)}
+                                >
+                                  <ArrowRight className="size-3.5" />
+                                </IconButton>
+                                <IconButton
+                                  data-testid="queued-item-edit"
+                                  label="Edit queued prompt"
+                                  size="sm"
+                                  tone="muted"
+                                  onClick={() => handleStartEditQueued(item.id, item.prompt)}
+                                >
+                                  <Pencil className="size-3.5" />
+                                </IconButton>
+                                <IconButton
+                                  label="Remove from queue"
+                                  size="sm"
+                                  variant="danger"
+                                  tone="muted"
+                                  onClick={() => store.deleteQueuedMessage(item.id)}
+                                >
+                                  <Trash2 className="size-3.5" />
+                                </IconButton>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div
+                className={`flex flex-col gap-2 ${composerStyle.box} border bg-muted py-2 pl-3.5 pr-2 transition-colors ${
+                  isDraggingOver
+                    ? "border-dashed border-foreground"
+                    : "border-transparent focus-within:border-input"
+                }`}
+              >
+                {voiceError && (
+                  <div
+                    role="alert"
+                    className="flex items-center gap-2 rounded-field border border-destructive bg-destructive/10 px-2.5 py-1.5 text-xs font-medium text-destructive"
+                  >
+                    <span className="min-w-0 flex-1">{voiceError}</span>
+                    {/* `text-current` so it stays the alert's destructive colour: `.tui-icon-btn`
+                      sets `color` in `@layer components`, which an unlayered utility outranks. */}
+                    <IconButton
+                      label="Dismiss voice input error"
+                      tooltip="Dismiss"
+                      size="xs"
+                      onClick={() => setVoiceError(null)}
+                      className="text-current"
+                    >
+                      <X className="size-3.5" />
+                    </IconButton>
                   </div>
                 )}
-              </div>
-            )}
 
-            <div
-              className={`flex flex-col gap-2 ${composerStyle.box} border bg-muted py-2 pl-3.5 pr-2 transition-colors ${
-                isDraggingOver
-                  ? "border-dashed border-foreground"
-                  : "border-transparent focus-within:border-input"
-              }`}
-            >
-              {voiceError && (
-                <div
-                  role="alert"
-                  className="flex items-center gap-2 rounded-field border border-destructive bg-destructive/10 px-2.5 py-1.5 text-xs font-medium text-destructive"
-                >
-                  <span className="min-w-0 flex-1">{voiceError}</span>
-                  <button
-                    type="button"
-                    onClick={() => setVoiceError(null)}
-                    aria-label="Dismiss voice input error"
-                    title="Dismiss"
-                    className="inline-flex size-5 shrink-0 items-center justify-center rounded-selector text-current"
+                {attachments.length > 0 && (
+                  <div
+                    data-testid="composer-attachment-chips"
+                    className="flex flex-wrap items-center gap-1.5"
                   >
-                    <X className="size-3.5" />
-                  </button>
-                </div>
-              )}
-
-              {attachments.length > 0 && (
-                <div
-                  data-testid="composer-attachment-chips"
-                  className="flex flex-wrap items-center gap-1.5"
-                >
-                  {attachments.map((att, index) => (
-                    <div
-                      key={`${att.path}-${index}`}
-                      className="flex max-w-full items-center gap-1.5 rounded-md bg-background px-1.5 py-1 text-foreground"
-                      title={att.path}
-                    >
-                      <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
-                      <span className="max-w-[220px] truncate">{att.name}</span>
+                    {attachments.map((att, index) => (
+                      <ComposerAttachment
+                        key={`${att.path}-${index}`}
+                        attachment={att}
+                        isStaging={stagingPaths.includes(att.path)}
+                        onRemove={() => handleRemoveAttachment(index)}
+                      />
+                    ))}
+                    {attachments.length > 1 && (
                       <button
                         type="button"
-                        onClick={() => handleRemoveAttachment(index)}
-                        className="rounded-selector p-0.5 text-muted-foreground hover:text-destructive"
-                        title={`Remove ${att.name}`}
+                        onClick={() => setAttachments([])}
+                        className="rounded-selector px-1.5 py-0.5 text-xs-tight text-muted-foreground transition-colors hover:text-destructive"
                       >
-                        <X className="size-3" />
+                        Clear all
                       </button>
-                    </div>
-                  ))}
-                  {attachments.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => setAttachments([])}
-                      className="rounded-selector px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:text-destructive"
-                    >
-                      Clear all
-                    </button>
-                  )}
-                </div>
-              )}
+                    )}
+                  </div>
+                )}
 
-              {/* One line: buttons sit beside the text. More than one: the buttons line up as a
+                {/* One line: buttons sit beside the text. More than one: the buttons line up as a
                   toolbar above it and the text takes the whole width. */}
-              <div
-                ref={inputRowRef}
-                data-multiline={multiline}
-                className={`flex min-h-8 items-end gap-3 ${multiline ? "flex-wrap" : ""}`}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  className="hidden"
-                  data-testid="file-upload-input"
-                  onChange={handleFileInputChange}
-                />
-                <button
-                  type="button"
-                  data-testid="composer-attach-button"
-                  onClick={handleAttachClick}
-                  title="Attach file"
-                  aria-label="Attach file"
-                  className={`${composerStyle.attachOffset} inline-flex ${composerStyle.button} shrink-0 items-center justify-center text-foreground ${composerStyle.ghost} transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                    multiline ? "order-0" : ""
-                  }`}
-                >
-                  <Paperclip className={composerStyle.icon} />
-                </button>
-
-                <ChatInput
-                  ref={textareaRef}
-                  id="chat-composer"
-                  aria-label="Chat prompt"
-                  placeholder={COMPOSER_PLACEHOLDER}
-                  value={inputPrompt}
-                  onChange={handleComposerChange}
-                  onKeyDown={handleComposerKeyDown}
-                  onPaste={handleComposerPaste}
-                  className={multiline ? "order-2 basis-full" : ""}
-                />
-
                 <div
-                  className={`flex shrink-0 items-center ${composerStyle.tools} ${multiline ? "order-1 ml-auto" : ""}`}
+                  ref={inputRowRef}
+                  data-multiline={multiline}
+                  className={`flex min-h-8 items-end gap-3 ${multiline ? "flex-wrap" : ""}`}
                 >
-                  {/* `compact={embedded}` in `ChatWidget.tsx`: icon-only beside a plan. */}
-                  {renderAgentPicker(embedded)}
-
-                  <button
-                    type="button"
-                    data-testid="composer-voice-button"
-                    onClick={() => void toggleVoiceRecording()}
-                    title="Voice input"
-                    aria-label="Voice input"
-                    className={`inline-flex ${composerStyle.button} shrink-0 items-center justify-center transition-opacity focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
-                      voiceStatus === "recording"
-                        ? "animate-pulse text-destructive opacity-100"
-                        : voiceStatus === "idle"
-                          ? `text-foreground ${composerStyle.ghost}`
-                          : "text-foreground opacity-100"
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    multiple
+                    className="hidden"
+                    data-testid="file-upload-input"
+                    onChange={handleFileInputChange}
+                  />
+                  <IconButton
+                    data-testid="composer-attach-button"
+                    label="Attach file"
+                    size={composerStyle.buttonSize}
+                    onClick={handleAttachClick}
+                    className={`${composerStyle.attachOffset} ${composerStyle.buttonRadius} ${
+                      multiline ? "order-0" : ""
                     }`}
                   >
-                    {voiceStatus === "connecting" || voiceStatus === "processing" ? (
-                      <Loader2 className={`${composerStyle.icon} animate-spin`} />
-                    ) : voiceStatus === "recording" ? (
-                      <Square className={composerStyle.icon} />
-                    ) : (
-                      <Mic className={composerStyle.icon} />
-                    )}
-                  </button>
+                    <Paperclip className={composerStyle.icon} />
+                  </IconButton>
 
-                  {isGenerating ? (
-                    <>
-                      {hasComposerContent && (
-                        <button
-                          type="button"
-                          data-testid="composer-queue-button"
-                          onClick={() => void handleSendMessage()}
-                          title="Queue message"
-                          aria-label="Queue message"
-                          className={`inline-flex ${composerStyle.button} shrink-0 items-center justify-center bg-primary text-primary-foreground transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
-                        >
-                          <ListPlus className="size-4" />
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => store.cancelGeneration()}
-                        title="Stop agent"
-                        aria-label="Stop agent"
-                        className={`inline-flex ${composerStyle.button} shrink-0 items-center justify-center border border-input bg-muted text-foreground transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
-                      >
-                        <Square className="size-3 fill-current" />
-                      </button>
-                    </>
-                  ) : (
-                    <button
-                      type="button"
-                      onClick={() => void handleSendMessage()}
-                      disabled={!hasComposerContent}
-                      title="Send message"
-                      aria-label="Send message"
-                      className={`inline-flex ${composerStyle.button} shrink-0 items-center justify-center bg-primary text-primary-foreground transition-colors hover:bg-primary/90 disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring`}
+                  <ChatInput
+                    ref={textareaRef}
+                    id="chat-composer"
+                    aria-label="Chat prompt"
+                    placeholder={COMPOSER_PLACEHOLDER}
+                    value={inputPrompt}
+                    onChange={handleComposerChange}
+                    onKeyDown={handleComposerKeyDown}
+                    onPaste={handleComposerPaste}
+                    className={multiline ? "order-2 basis-full" : ""}
+                  />
+
+                  <div
+                    className={`flex shrink-0 items-center ${composerStyle.tools} ${multiline ? "order-1 ml-auto" : ""}`}
+                  >
+                    {/* `compact={embedded}` in `ChatWidget.tsx`: icon-only beside a plan. */}
+                    {renderAgentPicker(embedded)}
+
+                    {/* Idle is the shared resting dim; the other two states pin it fully opaque,
+                      recording in the destructive colour. `.tui-icon-btn` sets `opacity` and
+                      `color` in `@layer components`, so these utilities win without `!important`. */}
+                    <IconButton
+                      data-testid="composer-voice-button"
+                      label="Voice input"
+                      size={composerStyle.buttonSize}
+                      onClick={() => void toggleVoiceRecording()}
+                      className={`${composerStyle.buttonRadius} ${
+                        voiceStatus === "recording"
+                          ? "animate-pulse text-destructive opacity-100"
+                          : voiceStatus === "idle"
+                            ? ""
+                            : "opacity-100"
+                      }`}
                     >
-                      <SendHorizontal className="size-4" />
-                    </button>
-                  )}
+                      {voiceStatus === "connecting" || voiceStatus === "processing" ? (
+                        <Loader2 className={`${composerStyle.icon} animate-spin`} />
+                      ) : voiceStatus === "recording" ? (
+                        <Square className={composerStyle.icon} />
+                      ) : (
+                        <Mic className={composerStyle.icon} />
+                      )}
+                    </IconButton>
+
+                    {isGenerating ? (
+                      <>
+                        {hasComposerContent && (
+                          <IconButton
+                            data-testid="composer-queue-button"
+                            label="Queue message"
+                            size={composerStyle.buttonSize}
+                            variant="solid"
+                            onClick={() => void handleSendMessage()}
+                            className={composerStyle.buttonRadius}
+                          >
+                            <ListPlus className="size-4" />
+                          </IconButton>
+                        )}
+                        {/* Stopping is a round trip: `cancel_session` signals the cancellation
+                          token and the agent process then takes its own time to die, so between
+                          the press and the turn ending there is a window in which nothing had
+                          changed on screen and people pressed again. The store marks the session
+                          cancelling before it awaits anything, and the button spends itself here -
+                          spinner, "Stopping agent", disabled - until the turn actually ends. A
+                          failed stop puts it back, because then pressing again is the right move.
+                          V1 needs none of this: `ChatWidget.handleCancelStream` clears its own
+                          `optimisticStreaming` synchronously and the button is gone that tick. */}
+                        <IconButton
+                          data-testid="composer-stop-button"
+                          label={isCancelling ? "Stopping agent" : "Stop agent"}
+                          tooltip={isCancelling ? "Stopping agent..." : "Stop agent"}
+                          size={composerStyle.buttonSize}
+                          variant="outline"
+                          disabled={isCancelling}
+                          onClick={() => void store.cancelGeneration()}
+                          className={composerStyle.buttonRadius}
+                        >
+                          {isCancelling ? (
+                            <Loader2
+                              data-testid="composer-stop-spinner"
+                              className={`${composerStyle.icon} animate-spin`}
+                            />
+                          ) : (
+                            <Square className="size-3 fill-current" />
+                          )}
+                        </IconButton>
+                      </>
+                    ) : (
+                      <IconButton
+                        label="Send message"
+                        size={composerStyle.buttonSize}
+                        variant="solid"
+                        disabled={!hasComposerContent}
+                        onClick={() => void handleSendMessage()}
+                        className={composerStyle.buttonRadius}
+                      >
+                        <SendHorizontal className="size-4" />
+                      </IconButton>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
 
-        <ImageLightbox image={activeLightboxImage} onClose={() => setActiveLightboxImage(null)} />
+          <ImageLightbox image={activeLightboxImage} onClose={() => setActiveLightboxImage(null)} />
 
-        {/* The app's confirmation contract, rather than a bare `AlertDialog`: `AlertDialogAction`
+          {/* The app's confirmation contract, rather than a bare `AlertDialog`: `AlertDialogAction`
             renders the *primary* treatment, so deleting a chat looked like the safe choice, and a
             rejected delete had nowhere to report itself. `ConfirmDialog` carries the destructive
             variant, the inline error surface, and the Escape/outside-click rules from `DialogShell`. */}
-        <ConfirmDialog
-          isOpen={deletingSessionId !== null}
-          onClose={() => {
-            setDeletingSessionId(null);
-            setDeleteSessionError(null);
-          }}
-          title="Delete Session"
-          body={`Are you sure you want to delete ${sessionPendingDeletionLabel}? This action cannot be undone.`}
-          confirmLabel="Delete"
-          confirmVariant="destructive"
-          onConfirm={() => void confirmDeleteSession()}
-          isBusy={isDeletingSession}
-          error={deleteSessionError}
-          testId="chat-delete-session-dialog"
-        />
+          <ConfirmDialog
+            isOpen={deletingSessionId !== null}
+            onClose={() => {
+              setDeletingSessionId(null);
+              setDeleteSessionError(null);
+            }}
+            title="Delete Session"
+            body={`Are you sure you want to delete ${sessionPendingDeletionLabel}? This action cannot be undone.`}
+            confirmLabel="Delete"
+            confirmVariant="destructive"
+            onConfirm={() => void confirmDeleteSession()}
+            isBusy={isDeletingSession}
+            error={deleteSessionError}
+            testId="chat-delete-session-dialog"
+          />
 
-        {/* `Apps/Chat/Dialogs/ChatSearchDialog`: search over chat titles, opened from the Chats
+          {/* `Apps/Chat/Dialogs/ChatSearchDialog`: search over chat titles, opened from the Chats
             section's search icon, and picking a row selects that chat. It belongs to the chat app,
             not the shell - the shell's own search icon opens the *plan* search dialog, which is why
             the published list carries its own `onSearch`.
 
             Embedded there is no published list, so nothing can open this; it is also the wrong
             offer, since the panel follows the plan's session and cannot be pointed at another. */}
-        {!embedded && (
-          <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
-            <DialogContent data-testid="chat-search-dialog" className="max-w-[560px]">
-              <DialogHeader>
-                <DialogTitle>Search Chats</DialogTitle>
-              </DialogHeader>
-              <div className="flex flex-col gap-2">
-                <Input
-                  autoFocus
-                  type="search"
-                  aria-label="Search chats"
-                  placeholder="Search chats"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-                {searchResults.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">No chats found.</p>
-                ) : (
-                  <div className="flex max-h-80 flex-col overflow-y-auto">
-                    {searchResults.map((session) => (
-                      <button
-                        key={session.id}
-                        type="button"
-                        data-testid="chat-search-result"
-                        onClick={() => {
-                          setIsSearchOpen(false);
-                          void store.selectSession(session.id);
-                        }}
-                        className="flex items-center justify-between gap-2 rounded-selector px-2.5 py-2 text-left text-sm text-foreground hover:bg-accent hover:text-accent-foreground"
-                      >
-                        <span className="truncate">{displayTitle(session)}</span>
-                        <span className="shrink-0 text-xs text-muted-foreground">
-                          {new Date(session.updatedAt).toLocaleDateString(undefined, {
-                            month: "short",
-                            day: "numeric",
-                          })}
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            </DialogContent>
-          </Dialog>
-        )}
-      </main>
-    </div>
+          {!embedded && (
+            <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
+              <DialogContent data-testid="chat-search-dialog" className="max-w-[560px]">
+                <DialogHeader>
+                  <DialogTitle>Search Chats</DialogTitle>
+                </DialogHeader>
+                <div className="flex flex-col gap-2">
+                  <Input
+                    autoFocus
+                    type="search"
+                    aria-label="Search chats"
+                    placeholder="Search chats"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                  {searchResults.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">No chats found.</p>
+                  ) : (
+                    <div className="flex max-h-80 flex-col overflow-y-auto">
+                      {searchResults.map((session) => (
+                        <button
+                          key={session.id}
+                          type="button"
+                          data-testid="chat-search-result"
+                          onClick={() => {
+                            setIsSearchOpen(false);
+                            void store.selectSession(session.id);
+                          }}
+                          className="flex items-center justify-between gap-2 rounded-selector px-2.5 py-2 text-left text-sm text-foreground hover:bg-accent hover:text-accent-foreground"
+                        >
+                          <span className="truncate">{displayTitle(session)}</span>
+                          <span className="shrink-0 text-xs text-muted-foreground">
+                            {new Date(session.updatedAt).toLocaleDateString(undefined, {
+                              month: "short",
+                              day: "numeric",
+                            })}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </DialogContent>
+            </Dialog>
+          )}
+        </main>
+      </div>
+    </TooltipScope>
   );
 };
 

@@ -1,7 +1,7 @@
-import * as vscode from 'vscode';
-import * as cp from 'child_process';
-import * as net from 'net';
-import { CONFIG_KEYS } from '../constants';
+import * as vscode from "vscode";
+import * as cp from "child_process";
+import * as net from "net";
+import { CONFIG_KEYS } from "../constants";
 import {
   DEFAULT_MASTER_HOST,
   discoverMaster,
@@ -10,10 +10,15 @@ import {
   fetchRecentPlans,
   isWorkspaceManaged,
   pingServer,
-  resolveTendrilHome
-} from './masterDiscovery';
-import { assertIsolatedTendrilHome } from './homeGuard';
-import { DiscoveryResult, ServerHealthInfo, TendrilPlanSummary, TendrilProjectSummary } from './types';
+  resolveTendrilHome,
+} from "./masterDiscovery";
+import { assertIsolatedTendrilHome } from "./homeGuard";
+import {
+  DiscoveryResult,
+  ServerHealthInfo,
+  TendrilPlanSummary,
+  TendrilProjectSummary,
+} from "./types";
 
 /**
  * The daemon's own default port (`Commands::Run`'s `--port` default in tendril-cli's main.rs). Used
@@ -38,16 +43,16 @@ const PORT_SEARCH_ATTEMPTS = 64;
  * which is what V1 delegated to `--find-available-port`.
  */
 export function buildServerArgs(port: number = DEFAULT_SERVER_PORT): string[] {
-  const resolved = typeof port === 'number' && port > 0 ? port : DEFAULT_SERVER_PORT;
-  return ['run', `--port=${resolved}`, `--host=${DEFAULT_MASTER_HOST}`];
+  const resolved = typeof port === "number" && port > 0 ? port : DEFAULT_SERVER_PORT;
+  return ["run", `--port=${resolved}`, `--host=${DEFAULT_MASTER_HOST}`];
 }
 
 /** True when a loopback listener cannot be bound at `port`, mirroring the CLI's `is_port_in_use`. */
 export function isPortInUse(port: number): Promise<boolean> {
-  return new Promise(resolve => {
+  return new Promise((resolve) => {
     const probe = net.createServer();
-    probe.once('error', () => resolve(true));
-    probe.once('listening', () => probe.close(() => resolve(false)));
+    probe.once("error", () => resolve(true));
+    probe.once("listening", () => probe.close(() => resolve(false)));
     probe.listen(port, DEFAULT_MASTER_HOST);
   });
 }
@@ -61,7 +66,7 @@ export function isPortInUse(port: number): Promise<boolean> {
  */
 export async function findAvailablePort(
   basePort = DEFAULT_SERVER_PORT,
-  attempts = PORT_SEARCH_ATTEMPTS
+  attempts = PORT_SEARCH_ATTEMPTS,
 ): Promise<number> {
   for (let offset = 0; offset < attempts; offset++) {
     const candidate = basePort + offset;
@@ -75,7 +80,7 @@ export async function findAvailablePort(
 
   throw new Error(
     `No free port found in ${basePort}-${Math.min(basePort + attempts - 1, 65535)}. ` +
-      'Set tendril.server.port to a specific free port.'
+      "Set tendril.server.port to a specific free port.",
   );
 }
 
@@ -90,7 +95,7 @@ export class ServerManager implements vscode.Disposable {
   public lastStartupError: Error | undefined;
 
   constructor() {
-    this.outputChannel = vscode.window.createOutputChannel('Tendril Server');
+    this.outputChannel = vscode.window.createOutputChannel("Tendril Server");
   }
 
   public get tendrilHome(): string {
@@ -105,10 +110,10 @@ export class ServerManager implements vscode.Disposable {
 
   public async getHealthInfo(): Promise<ServerHealthInfo> {
     const discovery = discoverMaster(this.tendrilHome, true);
-    if (discovery.status !== 'found') {
+    if (discovery.status !== "found") {
       return {
         isAlive: false,
-        activeJobsCount: 0
+        activeJobsCount: 0,
       };
     }
 
@@ -121,7 +126,7 @@ export class ServerManager implements vscode.Disposable {
         activeJobsCount: 0,
         baseUrl: discovery.result.baseUrl,
         port: discovery.result.port,
-        pid: discovery.result.pid
+        pid: discovery.result.pid,
       };
     }
 
@@ -130,14 +135,14 @@ export class ServerManager implements vscode.Disposable {
       baseUrl: discovery.result.baseUrl,
       port: discovery.result.port,
       pid: discovery.result.pid,
-      activeJobsCount: await fetchActiveJobsCount(discovery.result.baseUrl, discovery.result, 2000)
+      activeJobsCount: await fetchActiveJobsCount(discovery.result.baseUrl, discovery.result, 2000),
     };
   }
 
   /** The reachable daemon plus its credentials, or undefined when nothing is serving. */
   private async getAuthenticatedTarget(): Promise<DiscoveryResult | undefined> {
     const discovery = discoverMaster(this.tendrilHome, true);
-    if (discovery.status !== 'found') {
+    if (discovery.status !== "found") {
       return undefined;
     }
     if (!(await pingServer(discovery.result.baseUrl, 2000))) {
@@ -191,15 +196,15 @@ export class ServerManager implements vscode.Disposable {
     return {
       isManaged: result.isManaged,
       projectName: result.projectName,
-      workspacePath
+      workspacePath,
     };
   }
 
   public async executeCli(args: string[]): Promise<string> {
-    assertIsolatedTendrilHome(this.tendrilHome, `run 'tendril ${args.join(' ')}'`);
+    assertIsolatedTendrilHome(this.tendrilHome, `run 'tendril ${args.join(" ")}'`);
 
     const config = vscode.workspace.getConfiguration();
-    const executable = config.get<string>(CONFIG_KEYS.executablePath, 'tendril');
+    const executable = config.get<string>(CONFIG_KEYS.executablePath, "tendril");
 
     return new Promise((resolve, reject) => {
       cp.execFile(
@@ -208,8 +213,8 @@ export class ServerManager implements vscode.Disposable {
         {
           env: {
             ...process.env,
-            TENDRIL_HOME: this.tendrilHome
-          }
+            TENDRIL_HOME: this.tendrilHome,
+          },
         },
         (error, stdout, stderr) => {
           if (error) {
@@ -217,14 +222,14 @@ export class ServerManager implements vscode.Disposable {
           } else {
             resolve(stdout);
           }
-        }
+        },
       );
     });
   }
 
   public async ensureServerRunning(): Promise<DiscoveryResult> {
     const existing = discoverMaster(this.tendrilHome, true);
-    if (existing.status === 'found') {
+    if (existing.status === "found") {
       const ping = await pingServer(existing.result.baseUrl, 2000);
       if (ping) {
         return existing.result;
@@ -235,9 +240,7 @@ export class ServerManager implements vscode.Disposable {
     const autoStart = config.get<boolean>(CONFIG_KEYS.serverAutoStart, true);
 
     if (!autoStart) {
-      throw new Error(
-        'Tendril server is not running and tendril.server.autoStart is disabled.'
-      );
+      throw new Error("Tendril server is not running and tendril.server.autoStart is disabled.");
     }
 
     return this.startServer();
@@ -252,49 +255,49 @@ export class ServerManager implements vscode.Disposable {
   private async waitUntilDiscoverable(
     timeoutMs: number,
     requireSpawnedChild: boolean,
-    describeFailure?: () => string
+    describeFailure?: () => string,
   ): Promise<DiscoveryResult> {
     const startTime = Date.now();
-    let lastStatus = 'not_found';
+    let lastStatus = "not_found";
 
     while (Date.now() - startTime < timeoutMs) {
       if (requireSpawnedChild && !this.spawnedChild) {
         throw new Error(
-          `Tendril server process exited unexpectedly during startup.${describeFailure?.() ?? ''}`
+          `Tendril server process exited unexpectedly during startup.${describeFailure?.() ?? ""}`,
         );
       }
 
       const current = discoverMaster(this.tendrilHome, true);
       lastStatus = current.status;
-      if (current.status === 'found') {
+      if (current.status === "found") {
         const isUp = await pingServer(current.result.baseUrl, 1500);
         if (isUp) {
           return current.result;
         }
       }
 
-      await new Promise(resolve => setTimeout(resolve, 500));
+      await new Promise((resolve) => setTimeout(resolve, 500));
     }
 
     throw new Error(
       `Tendril server did not become discoverable at ${this.tendrilHome} within ${timeoutMs}ms ` +
-        `(last status: ${lastStatus}).${describeFailure?.() ?? ''}`
+        `(last status: ${lastStatus}).${describeFailure?.() ?? ""}`,
     );
   }
 
   public async startServer(): Promise<DiscoveryResult> {
-    assertIsolatedTendrilHome(this.tendrilHome, 'start a Tendril server');
+    assertIsolatedTendrilHome(this.tendrilHome, "start a Tendril server");
 
     if (this.isSpawning) {
-      throw new Error('Tendril server is already in the process of starting.');
+      throw new Error("Tendril server is already in the process of starting.");
     }
 
     const existing = discoverMaster(this.tendrilHome, true);
-    if (existing.status === 'found') {
+    if (existing.status === "found") {
       const ping = await pingServer(existing.result.baseUrl, 2000);
       if (ping) {
         this.outputChannel.appendLine(
-          `Tendril server is already running on ${existing.result.baseUrl} (PID ${existing.result.pid}).`
+          `Tendril server is already running on ${existing.result.baseUrl} (PID ${existing.result.pid}).`,
         );
         this.notifyStateChanged();
         return existing.result;
@@ -311,7 +314,7 @@ export class ServerManager implements vscode.Disposable {
           `on port ${existing.result.port} but is not answering ${existing.result.baseUrl}/api/ping. ` +
           'Tendril refuses to take mastership from a live process and has no "release" command, so ' +
           `starting another server against this home cannot succeed. Stop PID ${existing.result.pid}, ` +
-          'or point tendril.homeDirectory at a different TENDRIL_HOME.'
+          "or point tendril.homeDirectory at a different TENDRIL_HOME.",
       );
       this.outputChannel.appendLine(this.lastStartupError.message);
       throw this.lastStartupError;
@@ -320,26 +323,26 @@ export class ServerManager implements vscode.Disposable {
     this.isSpawning = true;
     try {
       const config = vscode.workspace.getConfiguration();
-      const executable = config.get<string>(CONFIG_KEYS.executablePath, 'tendril');
+      const executable = config.get<string>(CONFIG_KEYS.executablePath, "tendril");
       const configuredPort = config.get<number>(CONFIG_KEYS.serverPort, 0);
       const pollTimeoutMs = config.get<number>(CONFIG_KEYS.serverPollTimeout, 15000);
 
       const port =
-        typeof configuredPort === 'number' && configuredPort > 0
+        typeof configuredPort === "number" && configuredPort > 0
           ? configuredPort
           : await findAvailablePort();
       const args = buildServerArgs(port);
 
       this.outputChannel.show(true);
-      this.outputChannel.appendLine(`Starting Tendril server: ${executable} ${args.join(' ')}`);
+      this.outputChannel.appendLine(`Starting Tendril server: ${executable} ${args.join(" ")}`);
       this.outputChannel.appendLine(`Using TENDRIL_HOME: ${this.tendrilHome}`);
 
       const child = cp.spawn(executable, args, {
         env: {
           ...process.env,
-          TENDRIL_HOME: this.tendrilHome
+          TENDRIL_HOME: this.tendrilHome,
         },
-        stdio: ['ignore', 'pipe', 'pipe']
+        stdio: ["ignore", "pipe", "pipe"],
       });
 
       this.spawnedChild = child;
@@ -355,32 +358,32 @@ export class ServerManager implements vscode.Disposable {
         }
       };
       const describeFailure = (): string => {
-        const tail = recentOutput.join('').trim();
-        return tail.length > 0 ? ` Server output: ${tail}` : '';
+        const tail = recentOutput.join("").trim();
+        return tail.length > 0 ? ` Server output: ${tail}` : "";
       };
 
-      child.stdout?.on('data', (data: Buffer) => {
+      child.stdout?.on("data", (data: Buffer) => {
         const text = data.toString();
         record(text);
         this.outputChannel.append(text);
       });
 
-      child.stderr?.on('data', (data: Buffer) => {
+      child.stderr?.on("data", (data: Buffer) => {
         const text = data.toString();
         record(text);
         this.outputChannel.append(text);
       });
 
-      child.on('error', (err: Error) => {
+      child.on("error", (err: Error) => {
         record(err.message);
         this.outputChannel.appendLine(`Failed to start Tendril server: ${err.message}`);
         this.spawnedChild = null;
         this.notifyStateChanged();
       });
 
-      child.on('exit', (code: number | null, signal: string | null) => {
+      child.on("exit", (code: number | null, signal: string | null) => {
         this.outputChannel.appendLine(
-          `Tendril server exited with code ${code ?? 'null'} (signal: ${signal ?? 'none'}).`
+          `Tendril server exited with code ${code ?? "null"} (signal: ${signal ?? "none"}).`,
         );
         this.spawnedChild = null;
         this.notifyStateChanged();
@@ -390,7 +393,7 @@ export class ServerManager implements vscode.Disposable {
         const result = await this.waitUntilDiscoverable(pollTimeoutMs, true, describeFailure);
         this.lastStartupError = undefined;
         this.outputChannel.appendLine(
-          `Tendril server successfully connected at ${result.baseUrl} (PID ${result.pid}).`
+          `Tendril server successfully connected at ${result.baseUrl} (PID ${result.pid}).`,
         );
         this.notifyStateChanged();
         return result;
@@ -405,46 +408,46 @@ export class ServerManager implements vscode.Disposable {
 
   public async stopServer(): Promise<void> {
     if (this.spawnedChild && !this.spawnedChild.killed) {
-      this.outputChannel.appendLine('Stopping spawned Tendril server...');
+      this.outputChannel.appendLine("Stopping spawned Tendril server...");
       const child = this.spawnedChild;
       this.spawnedChild = null;
 
-      child.kill('SIGTERM');
+      child.kill("SIGTERM");
 
-      await new Promise<void>(resolve => {
+      await new Promise<void>((resolve) => {
         const timeout = setTimeout(() => {
           try {
-            child.kill('SIGKILL');
+            child.kill("SIGKILL");
           } catch {
             // Ignore error if already dead
           }
           resolve();
         }, 3000);
 
-        child.once('exit', () => {
+        child.once("exit", () => {
           clearTimeout(timeout);
           resolve();
         });
       });
 
-      this.outputChannel.appendLine('Tendril server stopped.');
+      this.outputChannel.appendLine("Tendril server stopped.");
       this.notifyStateChanged();
       return;
     }
 
     const discovery = discoverMaster(this.tendrilHome, true);
-    if (discovery.status === 'found') {
+    if (discovery.status === "found") {
       try {
-        process.kill(discovery.result.pid, 'SIGTERM');
+        process.kill(discovery.result.pid, "SIGTERM");
         this.outputChannel.appendLine(
-          `Sent SIGTERM to external Tendril server process (PID ${discovery.result.pid}).`
+          `Sent SIGTERM to external Tendril server process (PID ${discovery.result.pid}).`,
         );
       } catch (err: unknown) {
         const message = err instanceof Error ? err.message : String(err);
         vscode.window.showWarningMessage(`Could not stop Tendril server: ${message}`);
       }
     } else {
-      vscode.window.showInformationMessage('No active Tendril server found.');
+      vscode.window.showInformationMessage("No active Tendril server found.");
     }
 
     this.notifyStateChanged();
@@ -452,12 +455,12 @@ export class ServerManager implements vscode.Disposable {
 
   public async restartServer(): Promise<DiscoveryResult> {
     await this.stopServer();
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     return this.startServer();
   }
 
   public notifyStateChanged(): void {
-    void this.getHealthInfo().then(info => {
+    void this.getHealthInfo().then((info) => {
       this.onDidChangeStateEmitter.fire(info);
     });
   }

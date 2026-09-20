@@ -1,29 +1,15 @@
 import React, { useCallback, useEffect, useState } from "react";
+import { Badge, Button } from "@ivy-interactive/components/ui";
 import { bridge } from "../api/bridge";
 import { onPlanEvent } from "../api/events";
-import { bridgeErrorCode, describeBridgeError, type PrState, type PrStatus } from "../types/api";
+import { bridgeErrorCode, describeBridgeError, type PrStatus } from "../types/api";
+import { PR_STATE_COLOR } from "../utils/prStatus";
 
 interface PlanPullRequestsProps {
   planId: string;
   /** The URLs recorded on the plan. These are the rows; the daemon's cache only adds status. */
   prs: string[];
 }
-
-/**
- * PR state to badge classes, mirroring the `BadgeColorMapping` V1's `PullRequestApp` gives its
- * Status column (`src/Ivy.Tendril/Apps/PullRequest/PullRequestApp.cs`): Open is Green, Merged is
- * Purple, Closed is Zinc. `Unknown` is not in that map, so it renders as the default neutral
- * badge here too.
- *
- * These are the design system's own named colour tokens, not Tailwind palette literals: the
- * mapping is V1's, so the colours have to be the ones V1 names.
- */
-const STATE_CLASS: Record<PrState, string> = {
-  Open: "border-green/40 bg-green/10 text-green",
-  Merged: "border-purple/40 bg-purple/10 text-purple",
-  Closed: "border-zinc/40 bg-zinc/10 text-zinc",
-  Unknown: "border-border bg-muted text-muted-foreground",
-};
 
 /** `https://github.com/{owner}/{repo}/pull/{n}`, so `/pull/7/files` and `/pull/7` are one row. */
 export function canonicalPrUrl(url: string): string | null {
@@ -90,7 +76,7 @@ export const PlanPullRequests: React.FC<PlanPullRequestsProps> = ({ planId, prs 
     void load();
   }, [load]);
 
-  // A completed sync arrives on the plan channel, so the card refreshes without polling.
+  // A completed sync arrives on the plan channel, so the list refreshes without polling.
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
     let cancelled = false;
@@ -108,7 +94,7 @@ export const PlanPullRequests: React.FC<PlanPullRequestsProps> = ({ planId, prs 
         else unsubscribe = un;
       })
       .catch(() => {
-        // Without the event stream the card is merely not live; Refresh still works.
+        // Without the event stream the list is merely not live; Refresh still works.
       });
     return () => {
       cancelled = true;
@@ -143,19 +129,21 @@ export const PlanPullRequests: React.FC<PlanPullRequestsProps> = ({ planId, prs 
   });
 
   return (
-    <div className="rounded-xl border border-border bg-card/40 p-4">
+    <div>
       <div className="flex items-center justify-between gap-2">
         <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Pull Requests
         </h4>
-        <button
+        <Button
           type="button"
+          size="sm"
+          variant="outline"
           onClick={handleRefresh}
           disabled={syncing}
-          className="rounded-md border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted disabled:opacity-50"
+          className="h-auto px-2 py-1 text-xs text-muted-foreground"
         >
           {syncing ? "Refreshing..." : "Refresh"}
-        </button>
+        </Button>
       </div>
 
       {notice && <p className="mt-2 text-xs text-warning">{notice}</p>}
@@ -165,13 +153,9 @@ export const PlanPullRequests: React.FC<PlanPullRequestsProps> = ({ planId, prs 
         {rows.length > 0 ? (
           rows.map(({ url, key, status }) => (
             <li key={key} className="flex flex-wrap items-center gap-2">
-              <span
-                className={`rounded-full border px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide ${
-                  STATE_CLASS[status?.status ?? "Unknown"] ?? STATE_CLASS.Unknown
-                }`}
-              >
+              <Badge color={PR_STATE_COLOR[status?.status ?? "Unknown"]} density="Small">
                 {status?.status ?? "Unknown"}
-              </span>
+              </Badge>
               {/* V1's PR table pairs a Repository column with the PR link; the repo is what
                   tells two PRs of a multi-repo plan apart. */}
               <span className="font-mono text-xs text-muted-foreground">{prRepo(url)}</span>

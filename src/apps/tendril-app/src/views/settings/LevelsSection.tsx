@@ -9,7 +9,7 @@ import {
 } from "@ivy-interactive/components/ui";
 import { notificationsStore } from "../../state/notificationsStore";
 import { describeBridgeError } from "../../types/api";
-import { SaveError, SectionCard, TextField } from "./fields";
+import { SaveError, SettingsSection, TextField } from "./fields";
 import { useRemovalConfirm } from "./useRemovalConfirm";
 import type { LevelEntry } from "./projectConfig";
 
@@ -89,7 +89,7 @@ export const LevelsSection: React.FC<LevelsSectionProps> = ({ levels, onSaveRaw 
   };
 
   return (
-    <SectionCard
+    <SettingsSection
       title="Priority Levels"
       hint="Define priority levels used to categorize plans."
       testId="levels-card"
@@ -105,7 +105,7 @@ export const LevelsSection: React.FC<LevelsSectionProps> = ({ levels, onSaveRaw 
         </Button>
       }
     >
-      <div className="max-w-170 space-y-4">
+      <div className="space-y-4">
         <DataTable<LevelEntry>
           data-testid="levels-table"
           paginated={false}
@@ -139,7 +139,7 @@ export const LevelsSection: React.FC<LevelsSectionProps> = ({ levels, onSaveRaw 
 
         {draft && (
           <form
-            className="space-y-3 border-t border-border pt-4"
+            className="space-y-3"
             data-testid="level-editor"
             onSubmit={(e) => {
               e.preventDefault();
@@ -184,6 +184,6 @@ export const LevelsSection: React.FC<LevelsSectionProps> = ({ levels, onSaveRaw 
 
         {removalDialog}
       </div>
-    </SectionCard>
+    </SettingsSection>
   );
 };

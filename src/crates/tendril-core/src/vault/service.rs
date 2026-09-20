@@ -14,6 +14,7 @@ use crate::config::{
     TendrilSettings,
 };
 use crate::error::{Result, TendrilError};
+use crate::git::clone::redact_credentials;
 use crate::git::issues::run_gh_command_raw;
 use crate::git::service::run_git;
 use crate::models::{
@@ -1943,11 +1944,9 @@ async fn clone_repo_if_missing(path: &Path, repo: &VaultRepoRef, gh: GhRunner<'_
         return;
     }
 
-    tracing::info!(
-        "Cloning repository {} into {}...",
-        remote_url,
-        path.display()
-    );
+    // A vault's `remoteUrl` is whatever the team wrote into it, credentials included.
+    let safe_url = redact_credentials(remote_url);
+    tracing::info!("Cloning repository {} into {}...", safe_url, path.display());
     git_run(
         parent,
         &["clone", remote_url, path.to_string_lossy().as_ref()],
@@ -1968,7 +1967,11 @@ async fn clone_repo_if_missing(path: &Path, repo: &VaultRepoRef, gh: GhRunner<'_
     )
     .await;
     if let Err(e) = result {
-        tracing::warn!("Failed to auto-clone {}: {}", remote_url, e);
+        tracing::warn!(
+            "Failed to auto-clone {}: {}",
+            safe_url,
+            redact_credentials(&e.to_string())
+        );
     }
 }
 

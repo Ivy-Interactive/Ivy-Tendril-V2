@@ -604,3 +604,42 @@ fn an_enabled_flag_in_config_does_not_start_a_share_by_itself() {
     );
     assert!(share_state::read(&fx.home).is_none());
 }
+
+/// The full-access refusal carries its remediation, and that remediation names the *control* rather
+/// than the page.
+///
+/// This pins the fix for a duplicated instruction: the message said "Set one under Security &
+/// Tunneling" while the Settings pane appended "Set one under Session Protection above", so a user got
+/// two sentences, and the daemon's one named the page they were already on. The remediation now lives
+/// only here (see the note on `TunnelError`), which is what makes it correct for the pane, the share
+/// dialog and a CLI caller at once — so this test guards both halves: exactly one instruction, naming
+/// the control.
+#[tokio::test]
+async fn the_full_access_refusal_names_the_control_and_says_it_once() {
+    let fx = Fixture::new("password-remediation");
+    fx.write_master(5010);
+    // A resolvable binary, so the password gate is the only thing that can refuse this start.
+    fx.write_config("shareTunnel:\n  binaryPath: /bin/sh\n");
+
+    let service = TunnelService::new(TunnelKind::FullAccess, fx.home.clone());
+    let message = service
+        .start()
+        .await
+        .expect_err("no password, no full-access tunnel")
+        .to_string();
+
+    assert!(
+        message.contains("Set one under Session Protection, then activate the tunnel."),
+        "the remediation must name the Session Protection control: {message}"
+    );
+    assert!(
+        !message.contains("Security & Tunneling"),
+        "naming the settings page the user is already looking at is not a remediation: {message}"
+    );
+    // One instruction, not two: "Set one under" appearing twice is the duplication this pins.
+    assert_eq!(
+        message.matches("Set one under").count(),
+        1,
+        "exactly one remediation sentence belongs in the message: {message}"
+    );
+}

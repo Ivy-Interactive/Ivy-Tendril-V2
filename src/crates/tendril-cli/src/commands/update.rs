@@ -8,9 +8,30 @@ use std::time::Duration;
 const RELEASES_URL: &str =
     "https://api.github.com/repos/Ivy-Interactive/Ivy-Tendril-V2/releases?per_page=30";
 
-/// Tag prefix for CLI releases. The same repository also publishes `app-v*` tags for the Tauri
+/// Tag prefix for CLI-only releases. The same repository also publishes `app-v*` tags for the Tauri
 /// bundle, so `/releases/latest` would frequently return the wrong thing.
 const CLI_TAG_PREFIX: &str = "cli-v";
+
+/// Tag prefix for the combined release `release-full.yml` publishes. It carries the same
+/// `tendril-<version>-<target>` CLI archives as a `cli-v*` release, under a plain `v*` tag, so an
+/// update run that only looked at `cli-v*` would report "up to date" indefinitely once the project
+/// started releasing everything together.
+const FULL_TAG_PREFIX: &str = "v";
+
+/// Whether a release tag carries CLI archives this command can install.
+///
+/// `app-v*` and `server-v*` must not match. `starts_with("v")` alone would be enough for `v1.2.3`,
+/// but only because those two happen not to begin with a `v` - so require a digit after the prefix
+/// rather than rely on that.
+fn is_cli_bearing_tag(tag: &str) -> bool {
+    if let Some(rest) = tag.strip_prefix(CLI_TAG_PREFIX) {
+        return rest.starts_with(|c: char| c.is_ascii_digit());
+    }
+    if let Some(rest) = tag.strip_prefix(FULL_TAG_PREFIX) {
+        return rest.starts_with(|c: char| c.is_ascii_digit());
+    }
+    false
+}
 
 #[derive(clap::Args)]
 pub struct UpdateArgs {
@@ -62,12 +83,13 @@ pub fn is_newer(current: &str, available: &str) -> bool {
     }
 }
 
-/// Picks the highest-versioned `cli-v*` release. Prereleases are considered only when
-/// `include_prerelease` is set (`TENDRIL_BETA=1`), mirroring the original's beta channel.
+/// Picks the highest-versioned release that carries CLI archives - `cli-v*` or the combined `v*`.
+/// Prereleases are considered only when `include_prerelease` is set (`TENDRIL_BETA=1`), mirroring
+/// the original's beta channel.
 pub fn select_cli_release(releases: &[Release], include_prerelease: bool) -> Option<&Release> {
     releases
         .iter()
-        .filter(|release| release.tag_name.starts_with(CLI_TAG_PREFIX))
+        .filter(|release| is_cli_bearing_tag(&release.tag_name))
         .filter(|release| include_prerelease || !release.prerelease)
         .filter_map(|release| parse_semver(&release.tag_name).map(|version| (version, release)))
         .max_by_key(|(version, _)| *version)
@@ -169,9 +191,13 @@ pub async fn handle_update(args: UpdateArgs) -> anyhow::Result<()> {
         std::process::exit(1);
     };
 
+    // Both prefixes, because `select_cli_release` accepts both. This string goes straight into
+    // `asset_names`, so leaving a `v` on a combined release's tag would ask for
+    // `tendril-v1.2.3-<target>.tar.gz` and 404.
     let available_version = release
         .tag_name
         .trim_start_matches(CLI_TAG_PREFIX)
+        .trim_start_matches(FULL_TAG_PREFIX)
         .to_string();
 
     println!("Current version:   {current_version}");
@@ -435,6 +461,36 @@ mod tests {
         let releases = vec![release("app-v2.0.0", false)];
         assert!(select_cli_release(&releases, false).is_none());
         assert!(select_cli_release(&[], false).is_none());
+    }
+
+    #[test]
+    fn select_cli_release_accepts_the_combined_v_tag() {
+        // `release-full.yml` publishes the same `tendril-<version>-<target>` archives under `v*`.
+        // Before this was accepted, a project that had switched to combined releases left
+        // `tendril update` reporting "up to date" forever.
+        let releases = vec![release("cli-v0.2.0", false), release("v0.4.0", false)];
+
+        assert_eq!(
+            select_cli_release(&releases, false).map(|r| r.tag_name.as_str()),
+            Some("v0.4.0")
+        );
+    }
+
+    #[test]
+    fn select_cli_release_still_ignores_the_other_component_tags() {
+        // `app-v*` and `server-v*` carry no CLI archive. Neither may be mistaken for the combined
+        // `v*` tag just because it contains a `v`.
+        let releases = vec![
+            release("app-v9.0.0", false),
+            release("server-v9.0.0", false),
+            release("v0.1.0", false),
+        ];
+
+        assert_eq!(
+            select_cli_release(&releases, false).map(|r| r.tag_name.as_str()),
+            Some("v0.1.0")
+        );
+        assert!(select_cli_release(&releases[..2], false).is_none());
     }
 
     #[test]

@@ -12,6 +12,9 @@ pub mod model_cache;
 pub mod model_sorting;
 pub mod model_specs;
 pub mod pricing;
+// Deliberately not re-exported below: `probe::check_install`, `check_auth` and `validate_model` are
+// too generically named to live in `agents::*`. Use `agents::probe::*`.
+pub mod probe;
 // Deliberately not re-exported below: `provider_models::redact` and `select_model` are too generically
 // named to live in `agents::*` alongside everything else. Use `agents::provider_models::*`.
 pub mod provider_models;
@@ -20,6 +23,9 @@ pub mod reconcile;
 pub mod resolution;
 pub mod runner;
 pub mod truncation;
+// Deliberately not re-exported below: `usage::format_window` and friends are too generically named
+// to live in `agents::*`. Use `agents::usage::*`.
+pub mod usage;
 
 pub use catalog::*;
 pub use model_cache::*;

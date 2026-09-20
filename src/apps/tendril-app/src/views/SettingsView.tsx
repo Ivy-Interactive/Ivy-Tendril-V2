@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { openPath } from "@tauri-apps/plugin-opener";
 import {
   Button,
   Input,
@@ -16,6 +15,7 @@ import {
 import { Plus } from "lucide-react";
 import { bridge } from "../api/bridge";
 import { notificationsStore } from "../state/notificationsStore";
+import { uiStore } from "../state/uiStore";
 import { readAppearance } from "../state/appearance";
 import { describeBridgeError, type ServiceInfo, type TendrilConfig } from "../types/api";
 import { ModelCatalogCard } from "../components/ModelCatalogCard";
@@ -36,7 +36,7 @@ import {
   LinesField,
   NumberField,
   SaveError,
-  SectionCard,
+  SettingsSection,
   SelectField,
   asOptions,
 } from "./settings/fields";
@@ -45,6 +45,14 @@ import { readLevels, readProjectEntries, readVerificationDefs } from "./settings
 import { PROFILE_TIERS, readAgentEntries } from "./settings/codingAgents";
 import { ProjectSettingsView } from "./settings/ProjectSettingsView";
 import { AddProjectView } from "./settings/AddProjectView";
+/**
+ * `React.lazy` rather than a plain import, for the reason `App.tsx` lazies every view: this one
+ * reaches CodeMirror and the whole embedded chat, and Settings is opened far more often than
+ * `config.yaml` is hand-edited. Bundling it in would make every visit to Settings pay for both.
+ */
+const ConfigEditorView = React.lazy(() =>
+  import("./settings/ConfigEditorView").then((m) => ({ default: m.ConfigEditorView })),
+);
 import { AppearanceSection } from "./settings/AppearanceSection";
 import { CodingAgentSection } from "./settings/CodingAgentSection";
 import { LevelsSection } from "./settings/LevelsSection";
@@ -244,7 +252,7 @@ const PromptwaresCard: React.FC<{
   };
 
   return (
-    <SectionCard
+    <SettingsSection
       title="Promptware Configuration"
       hint="Configure agent profile and tool permissions for each promptware."
       testId="promptwares-card"
@@ -329,7 +337,7 @@ const PromptwaresCard: React.FC<{
           </Button>
         </div>
 
-        <div className="flex flex-wrap items-end gap-2 border-t border-border pt-4">
+        <div className="flex flex-wrap items-end gap-2 pt-2">
           <div className="space-y-1">
             <Label
               htmlFor="promptware-new-name"
@@ -358,7 +366,7 @@ const PromptwaresCard: React.FC<{
           </Button>
         </div>
       </div>
-    </SectionCard>
+    </SettingsSection>
   );
 };
 
@@ -376,6 +384,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   );
   /** The "Add Project" sub-item. V1 opens `AddProjectDialog`; this area owns no dialog files. */
   const [isAddingProject, setIsAddingProject] = useState(false);
+  /**
+   * The "Open config.yaml" action row, which is a branch of the content pane and not a section — the
+   * same shape as {@link isAddingProject}, and for the same reason: V1 reaches both from the sidebar
+   * without either becoming the selection.
+   */
+  const [isEditingConfig, setIsEditingConfig] = useState(false);
+  /** The project the Add Project blade wrote, so its harness step can read it back off the config. */
+  const [createdProjectName, setCreatedProjectName] = useState<string | null>(null);
   // `saved` is what config.yaml last said; `form` is what the operator has typed. Every section's
   // Save is disabled until the two differ, which is V1's `hasChanges` gate.
   const [saved, setSaved] = useState<SettingsForm>(DEFAULTS);
@@ -520,6 +536,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const selectSection = (tag: string) => {
     setIsAddingProject(false);
+    setIsEditingConfig(false);
     setSelected(tag);
   };
 
@@ -534,31 +551,103 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     return projects[index ?? 0] ?? projects[0];
   })();
 
-  /** `AddProjectDialog`'s `onCreated`: the new project becomes the selection. */
+  /**
+   * Step 0 of `AddProjectBladeView`: write the project row and re-read the config. It deliberately
+   * does *not* move the selection - `AddProjectView` stays open for its agent and harness steps, and
+   * V1's own `Pop(this)` (with the success toast) only happens at Finish. That is what
+   * {@link finishAddProject} is.
+   *
+   * The created name is remembered so the harness step can read the project back once the setup
+   * agent has written to it.
+   */
   const createProject = async (name: string, repos: string[]) => {
-    await bridge.createProject({ name, repos });
-    const next = await bridge.getConfig();
-    applyConfig(next);
-    const index = readProjectEntries(next).findIndex(
-      (project) => project.name.toLowerCase() === name.toLowerCase(),
-    );
-    setIsAddingProject(false);
+    const created = await bridge.createProject({ name, repos });
+    applyConfig(await bridge.getConfig());
+    setCreatedProjectName(name);
     setIsProjectsExpanded(true);
-    setSelected(index >= 0 ? projectTag(index) : SettingsTag.Projects);
-    notificationsStore.notifySuccess("Success", `Project '${name}' added successfully`);
+    // A remote was cloned into TENDRIL_HOME; the response is where the caller learns the path.
+    return created?.repos?.map((repo) => repo.path) ?? repos;
+  };
+
+  /** Re-reads config.yaml. The setup agent edits it through the `tendril` CLI, behind the app's back. */
+  const reloadConfig = async () => {
+    try {
+      applyConfig(await bridge.getConfig());
+    } catch {
+      // A failed refresh leaves the last good config in place; the harness step says as much.
+    }
   };
 
   /**
-   * `ConfigYamlUiHelper.OpenOrNavigate`. On a desktop shell V1 opens `config.yaml` in the configured
-   * editor; V2 is always the desktop shell, so it hands the path to the OS. V1's web fallback
-   * (`ConfigEditorApp`) has no V2 counterpart, so there is nothing to navigate to instead.
+   * `AddProjectBladeView`'s two exits, both of which pop the blade and toast. V1 toasts
+   * "Created background job for project '<name>'" from `onBgJob` and "Project '<name>' added
+   * successfully" from the Crud step's Next.
+   *
+   * The name comes from the blade rather than from {@link createdProjectName}, which the background
+   * exit races: it fires inside the same call that registered the project, before that state has
+   * reached the blade's `onFinish` closure.
+   */
+  const finishAddProject = (outcome: "created" | "background", name: string) => {
+    // Only the Finish exit lands on the project. V1's background `Pop(this)` returns to the list it
+    // was opened from, and it has to: the hand-off happens in the same call that registered the
+    // project, so this closure's `projects` predates the config refresh and could not find it.
+    const index =
+      outcome === "created"
+        ? projects.findIndex((project) => project.name.toLowerCase() === name.toLowerCase())
+        : -1;
+    setIsAddingProject(false);
+    setCreatedProjectName(null);
+    setSelected(index >= 0 ? projectTag(index) : SettingsTag.Projects);
+    if (outcome === "background") {
+      notificationsStore.notifySuccess(
+        "Job Started",
+        `Created background job for project '${name}'`,
+      );
+    } else {
+      notificationsStore.notifySuccess("Success", `Project '${name}' added successfully`);
+    }
+  };
+
+  /**
+   * `SettingsApp`'s `onDeleteProject`, minus the write: the dialog has already called
+   * `DELETE /api/projects/:name`. What is left is V1's two lines - re-read, then fall back to the
+   * first remaining project, or to Coding Agent when that was the last one - and V1's toast.
+   *
+   * The config is re-read here rather than trusted from local state, because the daemon is the only
+   * thing that knows what the file holds now: the `tendril` CLI writes to it too.
+   */
+  const selectAfterDelete = (name: string) => {
+    void (async () => {
+      let remaining = projects.filter((project) => project.name !== name);
+      try {
+        const cfg = await bridge.getConfig();
+        applyConfig(cfg);
+        remaining = readProjectEntries(cfg);
+      } catch {
+        // A failed re-read leaves the last good config in place; the selection below still moves,
+        // because the entry this handler was called for is gone whatever the refresh did.
+      }
+      setSelected(remaining.length > 0 ? projectTag(0) : SettingsTag.CodingAgent);
+      notificationsStore.notifySuccess("Deleted", `Deleted project '${name}'`);
+    })();
+  };
+
+  /**
+   * `ConfigYamlUiHelper.OpenOrNavigate`, now taking its *navigate* arm.
+   *
+   * V1's helper has two: hand the file to the operator's editor, or navigate to `ConfigEditorApp`.
+   * V2 took only the first, on the reasoning that V2 is always the desktop shell — which is true and
+   * still gave the wrong answer, because it made "Open config.yaml" leave the app for TextEdit. The
+   * second arm now exists ({@link ConfigEditorView}), so this navigates to it, and the daemon is
+   * edited through the daemon rather than behind its back: the editor writes over the config route,
+   * which validates the document before it lands and masks every secret on the way out.
+   *
+   * Like Add Project this is a branch of the content pane rather than a section, so the row it is
+   * fired from never becomes the selection.
    */
   const openConfigYaml = () => {
-    const home = serviceInfo?.tendrilHome;
-    if (!home) return;
-    void openPath(`${home.replace(/[/\\]+$/, "")}/config.yaml`).catch((err) => {
-      notificationsStore.notifyError(`Failed to open config.yaml: ${describeBridgeError(err)}`);
-    });
+    setIsAddingProject(false);
+    setIsEditingConfig(true);
   };
 
   const isProjectTag = selected === SettingsTag.Projects || selected.startsWith(PROJECT_TAG_PREFIX);
@@ -568,18 +657,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     ...sections.map((section) => section.tag),
     SettingsTag.Tunnel,
   ]);
-  const showsProject = !isAddingProject && isProjectTag && selectedProject !== null;
+  const showsProject =
+    !isEditingConfig && !isAddingProject && isProjectTag && selectedProject !== null;
   /** V1's two fallbacks to `CodingAgentSetupView`: no projects to show, and an unrecognised tag. */
   const fallsBackToCodingAgent =
+    !isEditingConfig &&
     !isAddingProject &&
     ((isProjectTag && selectedProject === null) || (!isProjectTag && !knownTags.has(selected)));
-  const on = (tag: string) => !isAddingProject && selected === tag;
+  const on = (tag: string) => !isEditingConfig && !isAddingProject && selected === tag;
   const showCodingAgent = on(SettingsTag.CodingAgent) || fallsBackToCodingAgent;
 
   const projectNames = projects.map((project) => project.name);
-  const currentLabel = isAddingProject
-    ? "Add Project"
-    : sectionLabel(selected, sections, projectNames);
+  const currentLabel = isEditingConfig
+    ? "config.yaml"
+    : isAddingProject
+      ? "Add Project"
+      : sectionLabel(selected, sections, projectNames);
 
   return (
     <div className="flex h-full min-h-0" data-testid="settings-view">
@@ -643,7 +736,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               label={section.label}
               selected={
                 section.tag === SettingsTag.Security
-                  ? securitySelected && !isAddingProject
+                  ? securitySelected && !isEditingConfig && !isAddingProject
                   : on(section.tag)
               }
               onClick={() => selectSection(section.tag)}
@@ -691,333 +784,387 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </Select>
         </div>
 
-        {showsProject && selectedProject ? (
+        {isEditingConfig ? (
+          // No scroller and no inset, unlike the two branches below: the editor is a
+          // `PlanWorkspace`, which owns its own chrome and expects the whole pane. Wrapping it in
+          // `overflow-auto py-4 pl-4` would give the split pane a height of its content and collapse
+          // the CodeMirror host, which sizes itself from the box it is given.
+          <React.Suspense fallback={null}>
+            <ConfigEditorView
+              tendrilHome={serviceInfo?.tendrilHome}
+              // `App.handleSelectPlan`'s navigation, minus its detail prefetch: a plan is
+              // `PlansApp` plus args, so the app id carries the number and the args carry it again
+              // for the page that reads them.
+              onOpenPlan={(planId) => {
+                uiStore.setSelectedPlanId(planId);
+                uiStore.navigate({ appId: `plan-${planId}`, args: { planId } });
+              }}
+            />
+          </React.Suspense>
+        ) : showsProject && selectedProject ? (
           // The same inset and the same scroll owner as the section branch below. Settings is a
           // full-bleed page (V1's `SidebarLayout`), so the content pane is what supplies both;
           // leaving this branch bare made it the one settings section that took its padding from the
           // shell and scrolled the whole page instead of itself.
-          <div className="min-h-0 flex-1 overflow-auto p-4">
-            <ProjectSettingsView
-              key={selectedProject.name}
-              project={selectedProject}
-              verificationDefs={verificationDefs}
-              agent={saved.codingAgent}
-              isBeta={isBeta}
-              onSaveRaw={saveRawKey}
-            />
+          //
+          // The right padding is on the inner wrapper rather than here: a scrollbar is painted on
+          // the padding edge, so `p-4` on the scroller pushed it 16px in from the pane and it read
+          // as floating rather than riding the edge.
+          <div className="min-h-0 flex-1 overflow-auto py-4 pl-4">
+            <div className="pr-4">
+              <ProjectSettingsView
+                key={selectedProject.name}
+                project={selectedProject}
+                verificationDefs={verificationDefs}
+                agent={saved.codingAgent}
+                isBeta={isBeta}
+                onSaveRaw={saveRawKey}
+                onReloadConfig={reloadConfig}
+                siblingNames={projectNames.filter((name) => name !== selectedProject.name)}
+                onDeleted={selectAfterDelete}
+              />
+            </div>
           </div>
         ) : (
-          <div className="min-h-0 flex-1 space-y-6 overflow-auto p-4">
-            {isAddingProject && (
-              <AddProjectView existingNames={projectNames} onCreate={createProject} />
-            )}
+          <div className="min-h-0 flex-1 overflow-auto py-4 pl-4">
+            <div className="space-y-10 pr-4">
+              {/* Sections draw no box of their own, as V1's draw none, so the gap between them is the
+                only thing separating one from the next - wider than the `space-y-6` that was only
+                ever spacing between two already-bordered boxes. */}
+              {isAddingProject && (
+                <AddProjectView
+                  existingNames={projectNames}
+                  onCreate={createProject}
+                  createdProject={
+                    createdProjectName
+                      ? (projects.find(
+                          (project) =>
+                            project.name.toLowerCase() === createdProjectName.toLowerCase(),
+                        ) ?? null)
+                      : null
+                  }
+                  onFinish={finishAddProject}
+                  onReloadConfig={reloadConfig}
+                />
+              )}
 
-            {/* Row order follows `SettingsApp.Build`: Coding Agent, Plans, Appearance, Projects,
+              {/* Row order follows `SettingsApp.Build`: Coding Agent, Plans, Appearance, Projects,
                 Team Vault (beta), Promptwares, Levels, Notifications, Security & Tunneling,
                 Advanced, Newsletter, then the "Open config.yaml" action row. */}
-            {showCodingAgent && (
-              <>
-                <CodingAgentSection
-                  config={config}
-                  savedAgent={saved.codingAgent}
-                  onSaveRaw={saveRawKey}
-                />
+              {showCodingAgent && (
+                <>
+                  <CodingAgentSection
+                    config={config}
+                    savedAgent={saved.codingAgent}
+                    onSaveRaw={saveRawKey}
+                  />
 
-                {/* No V1 counterpart: V2 resolves models itself, and the catalogue governs which model
+                  {/* No V1 counterpart: V2 resolves models itself, and the catalogue governs which model
                     the agent above is launched with, so it sits inside that row rather than as its own. */}
-                <ModelCatalogCard />
-              </>
-            )}
+                  <ModelCatalogCard />
+                </>
+              )}
 
-            {on(SettingsTag.Plans) && (
-              <SectionCard
-                title="Plans"
-                hint="Configure the default plan template used when creating new plans."
-                testId="plans-settings-card"
-              >
-                <form
-                  className="max-w-120 space-y-4"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    void saveSection("planTemplate", ["planTemplate"], "Plan template saved");
-                  }}
+              {on(SettingsTag.Plans) && (
+                <SettingsSection
+                  title="Plans"
+                  hint="Configure the default plan template used when creating new plans."
+                  testId="plans-settings-card"
                 >
-                  <div className="space-y-1">
-                    <Label
-                      htmlFor="plan-template-input"
-                      className="text-xs font-medium text-muted-foreground"
-                    >
-                      Plan Template
-                    </Label>
-                    <Textarea
-                      id="plan-template-input"
-                      placeholder="Plan template..."
-                      value={form.planTemplate}
-                      onChange={(e) => set("planTemplate", e.target.value)}
-                      className="h-80 font-mono text-xs"
-                    />
-                  </div>
-
-                  <SaveError message={errors.planTemplate ?? null} />
-
-                  <Button type="submit" disabled={!planChanged || savingSection === "planTemplate"}>
-                    {savingSection === "planTemplate" ? "Saving..." : "Save"}
-                  </Button>
-                </form>
-              </SectionCard>
-            )}
-
-            {on(SettingsTag.Appearance) && (
-              <AppearanceSection settings={appearance} onSaveRaw={saveRawKey} />
-            )}
-
-            {/* `if (isBeta) rows.Add(("Team Vault", ...))`: gated, and labelled as V1 labels it. */}
-            {isBeta && on(SettingsTag.Vault) && (
-              <SectionCard
-                title="Team Vault"
-                hint="Share and synchronize Tendril projects, custom skills, MCP servers, and security rules across your team via a versioned Git repository."
-                testId="vault-card"
-              >
-                <VaultSettingsView tendrilHome={serviceInfo?.tendrilHome} />
-              </SectionCard>
-            )}
-
-            {on(SettingsTag.Promptwares) && (
-              <PromptwaresCard
-                config={config}
-                profileOptions={[
-                  ...new Set([
-                    ...PROFILE_TIERS,
-                    ...agentEntries.flatMap((entry) => entry.profiles.map((p) => asString(p.name))),
-                  ]),
-                ].filter((name) => name !== "")}
-                onSave={saveRawKey}
-              />
-            )}
-
-            {on(SettingsTag.Levels) && <LevelsSection levels={levels} onSaveRaw={saveRawKey} />}
-
-            {on(SettingsTag.Notifications) && (
-              <SectionCard
-                title="Notifications"
-                hint="Configure how Tendril notifies you about job completions, failures, and other events."
-                testId="notifications-card"
-              >
-                <form
-                  className="max-w-120 space-y-4"
-                  onSubmit={(e) => {
-                    e.preventDefault();
-                    // The store has to be told the moment the setting is saved so routing follows without a
-                    // reload, which is what reading the setting at notification time gave V1.
-                    void saveSection(
-                      "desktopNotifications",
-                      ["desktopNotifications"],
-                      "Notification settings saved",
-                      () => notificationsStore.setDesktopNotifications(form.desktopNotifications),
-                    );
-                  }}
-                >
-                  <div className="flex items-center gap-3">
-                    <Switch
-                      id="desktop-notifications-switch"
-                      aria-labelledby="desktop-notifications-label"
-                      checked={form.desktopNotifications}
-                      onCheckedChange={(checked) => set("desktopNotifications", checked)}
-                    />
-                    <Label
-                      id="desktop-notifications-label"
-                      htmlFor="desktop-notifications-switch"
-                      className="text-xs font-medium text-foreground"
-                    >
-                      Enable Desktop Notifications
-                    </Label>
-                  </div>
-
-                  <SaveError message={errors.desktopNotifications ?? null} />
-
-                  <Button
-                    type="submit"
-                    disabled={!notificationsChanged || savingSection === "desktopNotifications"}
-                  >
-                    {savingSection === "desktopNotifications" ? "Saving..." : "Save"}
-                  </Button>
-                </form>
-              </SectionCard>
-            )}
-
-            {securitySelected && !isAddingProject && <SecurityTunnelingSection />}
-
-            {on(SettingsTag.Advanced) && (
-              <>
-                <SectionCard
-                  title="Advanced"
-                  hint="Configure timeouts and concurrency limits."
-                  testId="advanced-settings-card"
-                >
-                  {/* `noValidate`: `min`/`max` still drive the spinners, but an out-of-range value is refused
-            with `ParseBoundedInt`'s message rather than a browser bubble. */}
                   <form
-                    noValidate
                     className="max-w-120 space-y-4"
                     onSubmit={(e) => {
                       e.preventDefault();
-                      void saveSection(
-                        "advanced",
-                        ["jobTimeout", "staleOutputTimeout", "maxConcurrentJobs", "beta"],
-                        "Settings saved and applied",
-                      );
+                      void saveSection("planTemplate", ["planTemplate"], "Plan template saved");
                     }}
                   >
-                    <h3 className="text-sm font-semibold text-foreground">Timeouts</h3>
-                    {/* The bounds are `ConfigService.ValidateSettings`', not `AdvancedSetupView`'s: V1's own
-              number input caps Job Timeout at 120 while its config service accepts up to 480, and a
-              config.yaml holding 300 must stay editable here rather than be silently rejected. */}
-                    <NumberField
-                      id="job-timeout-input"
-                      label="Job Timeout"
-                      value={form.jobTimeout}
-                      min={NUMERIC_BOUNDS.jobTimeout![0]}
-                      max={NUMERIC_BOUNDS.jobTimeout![1]}
-                      suffix="min"
-                      onChange={(value) => set("jobTimeout", value)}
-                    />
-                    <NumberField
-                      id="stale-output-timeout-input"
-                      label="Stale Output Timeout"
-                      value={form.staleOutputTimeout}
-                      min={NUMERIC_BOUNDS.staleOutputTimeout![0]}
-                      max={NUMERIC_BOUNDS.staleOutputTimeout![1]}
-                      suffix="min"
-                      onChange={(value) => set("staleOutputTimeout", value)}
-                    />
-                    <NumberField
-                      id="max-concurrent-jobs-input"
-                      label="Max Concurrent Jobs"
-                      value={form.maxConcurrentJobs}
-                      min={NUMERIC_BOUNDS.maxConcurrentJobs![0]}
-                      max={NUMERIC_BOUNDS.maxConcurrentJobs![1]}
-                      onChange={(value) => set("maxConcurrentJobs", value)}
-                    />
-
-                    <h3 className="text-sm font-semibold text-foreground">Beta Features</h3>
-                    <div className="flex items-center gap-3">
-                      <Switch
-                        id="beta-switch"
-                        aria-labelledby="beta-label"
-                        checked={form.beta}
-                        onCheckedChange={(checked) => set("beta", checked)}
-                      />
+                    <div className="space-y-1">
                       <Label
-                        id="beta-label"
-                        htmlFor="beta-switch"
-                        className="text-xs font-medium text-foreground"
+                        htmlFor="plan-template-input"
+                        className="text-xs font-medium text-muted-foreground"
                       >
-                        Opt-in to beta features
+                        Plan Template
                       </Label>
+                      <Textarea
+                        id="plan-template-input"
+                        placeholder="Plan template..."
+                        value={form.planTemplate}
+                        onChange={(e) => set("planTemplate", e.target.value)}
+                        className="h-80 font-mono text-xs"
+                      />
                     </div>
 
-                    <p className="text-xs text-muted-foreground">
-                      A Tendril restart is required for changes to take effect.
-                    </p>
-
-                    {/* V1 clamps an out-of-range value on load and logs it; V2 keeps it and honours it, so the
-              only place it can be pointed out is here. */}
-                    {outOfBoundsOnDisk.length > 0 && (
-                      <Callout.Warning data-testid="advanced-out-of-bounds">
-                        {outOfBoundsOnDisk.join(" ")}
-                      </Callout.Warning>
-                    )}
-
-                    <SaveError message={errors.advanced ?? null} />
+                    <SaveError message={errors.planTemplate ?? null} />
 
                     <Button
                       type="submit"
-                      disabled={!advancedChanged || savingSection === "advanced"}
+                      disabled={!planChanged || savingSection === "planTemplate"}
                     >
-                      {savingSection === "advanced" ? "Saving..." : "Save"}
+                      {savingSection === "planTemplate" ? "Saving..." : "Save"}
                     </Button>
                   </form>
-                </SectionCard>
+                </SettingsSection>
+              )}
 
-                {/* No V1 counterpart: V2 supervises the daemon itself, so its diagnostics live here rather
+              {on(SettingsTag.Appearance) && (
+                <AppearanceSection settings={appearance} onSaveRaw={saveRawKey} />
+              )}
+
+              {/* `if (isBeta) rows.Add(("Team Vault", ...))`: gated, and labelled as V1 labels it. */}
+              {isBeta && on(SettingsTag.Vault) && (
+                <SettingsSection
+                  title="Team Vault"
+                  hint="Share and synchronize Tendril projects, custom skills, MCP servers, and security rules across your team via a versioned Git repository."
+                  testId="vault-card"
+                >
+                  <VaultSettingsView tendrilHome={serviceInfo?.tendrilHome} />
+                </SettingsSection>
+              )}
+
+              {on(SettingsTag.Promptwares) && (
+                <PromptwaresCard
+                  config={config}
+                  profileOptions={[
+                    ...new Set([
+                      ...PROFILE_TIERS,
+                      ...agentEntries.flatMap((entry) =>
+                        entry.profiles.map((p) => asString(p.name)),
+                      ),
+                    ]),
+                  ].filter((name) => name !== "")}
+                  onSave={saveRawKey}
+                />
+              )}
+
+              {on(SettingsTag.Levels) && <LevelsSection levels={levels} onSaveRaw={saveRawKey} />}
+
+              {on(SettingsTag.Notifications) && (
+                <SettingsSection
+                  title="Notifications"
+                  hint="Configure how Tendril notifies you about job completions, failures, and other events."
+                  testId="notifications-card"
+                >
+                  <form
+                    className="max-w-120 space-y-4"
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      // The store has to be told the moment the setting is saved so routing follows without a
+                      // reload, which is what reading the setting at notification time gave V1.
+                      void saveSection(
+                        "desktopNotifications",
+                        ["desktopNotifications"],
+                        "Notification settings saved",
+                        () => notificationsStore.setDesktopNotifications(form.desktopNotifications),
+                      );
+                    }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <Switch
+                        id="desktop-notifications-switch"
+                        aria-labelledby="desktop-notifications-label"
+                        checked={form.desktopNotifications}
+                        onCheckedChange={(checked) => set("desktopNotifications", checked)}
+                      />
+                      <Label
+                        id="desktop-notifications-label"
+                        htmlFor="desktop-notifications-switch"
+                        className="text-xs font-medium text-foreground"
+                      >
+                        Enable Desktop Notifications
+                      </Label>
+                    </div>
+
+                    <SaveError message={errors.desktopNotifications ?? null} />
+
+                    <Button
+                      type="submit"
+                      disabled={!notificationsChanged || savingSection === "desktopNotifications"}
+                    >
+                      {savingSection === "desktopNotifications" ? "Saving..." : "Save"}
+                    </Button>
+                  </form>
+                </SettingsSection>
+              )}
+
+              {securitySelected && !isEditingConfig && !isAddingProject && (
+                <SecurityTunnelingSection />
+              )}
+
+              {on(SettingsTag.Advanced) && (
+                <>
+                  <SettingsSection
+                    title="Advanced"
+                    hint="Configure timeouts and concurrency limits."
+                    testId="advanced-settings-card"
+                  >
+                    {/* `noValidate`: `min`/`max` still drive the spinners, but an out-of-range value is refused
+            with `ParseBoundedInt`'s message rather than a browser bubble. */}
+                    <form
+                      noValidate
+                      className="max-w-120 space-y-4"
+                      onSubmit={(e) => {
+                        e.preventDefault();
+                        void saveSection(
+                          "advanced",
+                          ["jobTimeout", "staleOutputTimeout", "maxConcurrentJobs", "beta"],
+                          "Settings saved and applied",
+                        );
+                      }}
+                    >
+                      <h3 className="text-sm font-semibold text-foreground">Timeouts</h3>
+                      {/* The bounds are `ConfigService.ValidateSettings`', not `AdvancedSetupView`'s: V1's own
+              number input caps Job Timeout at 120 while its config service accepts up to 480, and a
+              config.yaml holding 300 must stay editable here rather than be silently rejected. */}
+                      <NumberField
+                        id="job-timeout-input"
+                        label="Job Timeout"
+                        value={form.jobTimeout}
+                        min={NUMERIC_BOUNDS.jobTimeout![0]}
+                        max={NUMERIC_BOUNDS.jobTimeout![1]}
+                        suffix="min"
+                        onChange={(value) => set("jobTimeout", value)}
+                      />
+                      <NumberField
+                        id="stale-output-timeout-input"
+                        label="Stale Output Timeout"
+                        value={form.staleOutputTimeout}
+                        min={NUMERIC_BOUNDS.staleOutputTimeout![0]}
+                        max={NUMERIC_BOUNDS.staleOutputTimeout![1]}
+                        suffix="min"
+                        onChange={(value) => set("staleOutputTimeout", value)}
+                      />
+                      <NumberField
+                        id="max-concurrent-jobs-input"
+                        label="Max Concurrent Jobs"
+                        value={form.maxConcurrentJobs}
+                        min={NUMERIC_BOUNDS.maxConcurrentJobs![0]}
+                        max={NUMERIC_BOUNDS.maxConcurrentJobs![1]}
+                        onChange={(value) => set("maxConcurrentJobs", value)}
+                      />
+
+                      <h3 className="text-sm font-semibold text-foreground">Beta Features</h3>
+                      <div className="flex items-center gap-3">
+                        <Switch
+                          id="beta-switch"
+                          aria-labelledby="beta-label"
+                          checked={form.beta}
+                          onCheckedChange={(checked) => set("beta", checked)}
+                        />
+                        <Label
+                          id="beta-label"
+                          htmlFor="beta-switch"
+                          className="text-xs font-medium text-foreground"
+                        >
+                          Opt-in to beta features
+                        </Label>
+                      </div>
+
+                      <p className="text-xs text-muted-foreground">
+                        A Tendril restart is required for changes to take effect.
+                      </p>
+
+                      {/* V1 clamps an out-of-range value on load and logs it; V2 keeps it and honours it, so the
+              only place it can be pointed out is here. */}
+                      {outOfBoundsOnDisk.length > 0 && (
+                        <Callout.Warning data-testid="advanced-out-of-bounds">
+                          {outOfBoundsOnDisk.join(" ")}
+                        </Callout.Warning>
+                      )}
+
+                      <SaveError message={errors.advanced ?? null} />
+
+                      <Button
+                        type="submit"
+                        disabled={!advancedChanged || savingSection === "advanced"}
+                      >
+                        {savingSection === "advanced" ? "Saving..." : "Save"}
+                      </Button>
+                    </form>
+                  </SettingsSection>
+
+                  {/* No V1 counterpart: V2 supervises the daemon itself, so its diagnostics live here rather
           than in the C# app. They are part of Advanced rather than a top-level row, because V1's
           sidebar has no row for them and an extra row is itself a structural divergence. */}
-                <SectionCard
-                  title="Daemon Diagnostics"
-                  action={
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      disabled={isPinging}
-                      onClick={handlePing}
-                    >
-                      {isPinging ? "Pinging..." : "Test Latency (Ping)"}
-                    </Button>
-                  }
-                >
-                  {pingResult && (
-                    <div className="mb-3 rounded bg-background p-2 font-mono text-xs text-success">
-                      {pingResult}
-                    </div>
-                  )}
-
-                  <dl className="space-y-3 text-sm">
-                    <div className="flex justify-between">
-                      <dt className="text-muted-foreground">Connection State:</dt>
-                      <dd className="font-semibold text-foreground">
-                        {serviceInfo?.state || "NotRunning"}
-                      </dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt className="text-muted-foreground">Daemon Host & Port:</dt>
-                      <dd className="font-mono text-xs text-muted-foreground">
-                        {serviceInfo?.host || "127.0.0.1"}:{serviceInfo?.port || "N/A"}
-                      </dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt className="text-muted-foreground">Process PID:</dt>
-                      <dd className="font-mono text-xs text-muted-foreground">
-                        {serviceInfo?.pid || "N/A"}
-                      </dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt className="text-muted-foreground">TENDRIL_HOME:</dt>
-                      <dd
-                        className="max-w-50 truncate font-mono text-xs text-muted-foreground"
-                        title={serviceInfo?.tendrilHome}
+                  <SettingsSection
+                    title="Daemon Diagnostics"
+                    action={
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        disabled={isPinging}
+                        onClick={handlePing}
                       >
-                        {serviceInfo?.tendrilHome || "~/.tendril"}
-                      </dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt className="text-muted-foreground">Security / Secret:</dt>
-                      <dd className="font-mono text-xs text-success">
-                        Managed natively (hidden from webview storage)
-                      </dd>
-                    </div>
-                    <div className="flex justify-between">
-                      <dt className="text-muted-foreground">Capabilities:</dt>
-                      <dd className="text-xs text-muted-foreground">
-                        {serviceInfo?.capabilities?.join(", ") || "None reported"}
-                      </dd>
-                    </div>
-                  </dl>
-                </SectionCard>
+                        {isPinging ? "Pinging..." : "Test Latency (Ping)"}
+                      </Button>
+                    }
+                  >
+                    {pingResult && (
+                      <div className="mb-3 rounded bg-background p-2 font-mono text-xs text-success">
+                        {pingResult}
+                      </div>
+                    )}
 
-                <ServiceSettingsView serviceInfo={serviceInfo} onRefreshHealth={onRefreshHealth} />
-              </>
-            )}
+                    <dl className="space-y-3 text-sm">
+                      <div className="flex justify-between">
+                        <dt className="text-muted-foreground">Connection State:</dt>
+                        <dd className="font-semibold text-foreground">
+                          {serviceInfo?.state || "NotRunning"}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-muted-foreground">Daemon Host & Port:</dt>
+                        <dd className="font-mono text-xs text-muted-foreground">
+                          {serviceInfo?.host || "127.0.0.1"}:{serviceInfo?.port || "N/A"}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-muted-foreground">Process PID:</dt>
+                        <dd className="font-mono text-xs text-muted-foreground">
+                          {serviceInfo?.pid || "N/A"}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-muted-foreground">TENDRIL_HOME:</dt>
+                        <dd
+                          className="max-w-50 truncate font-mono text-xs text-muted-foreground"
+                          title={serviceInfo?.tendrilHome}
+                        >
+                          {serviceInfo?.tendrilHome || "~/.tendril"}
+                        </dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-muted-foreground">Security / Secret:</dt>
+                        <dd className="font-mono text-xs text-success">
+                          Managed natively (hidden from webview storage)
+                        </dd>
+                      </div>
+                      <div className="flex justify-between">
+                        <dt className="text-muted-foreground">Capabilities:</dt>
+                        <dd className="text-xs text-muted-foreground">
+                          {serviceInfo?.capabilities?.join(", ") || "None reported"}
+                        </dd>
+                      </div>
+                    </dl>
+                  </SettingsSection>
 
-            {on(SettingsTag.Newsletter) && (
-              <SectionCard
-                title="Newsletter"
-                hint="Subscribe to the Ivy & Tendril newsletter to receive updates, feature highlights, and release notes."
-                testId="newsletter-card"
-              >
-                <NewsletterSignup />
-              </SectionCard>
-            )}
+                  <ServiceSettingsView
+                    serviceInfo={serviceInfo}
+                    onRefreshHealth={onRefreshHealth}
+                  />
+                </>
+              )}
+
+              {on(SettingsTag.Newsletter) && (
+                <SettingsSection
+                  title="Newsletter"
+                  hint="Subscribe to the Ivy & Tendril newsletter to receive updates, feature highlights, and release notes."
+                  testId="newsletter-card"
+                >
+                  <NewsletterSignup />
+                </SettingsSection>
+              )}
+            </div>
           </div>
         )}
       </div>

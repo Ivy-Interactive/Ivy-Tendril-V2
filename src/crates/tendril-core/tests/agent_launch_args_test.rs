@@ -37,6 +37,36 @@ fn full_config() -> AgentLaunchConfig {
     }
 }
 
+/// The `tendril` MCP server from [`full_config`], as OpenCode declares one.
+///
+/// OpenCode takes no `--mcp-config` flag - `opencode run` has no such option, and passing one failed
+/// the launch - so the server arrives in `OPENCODE_CONFIG_CONTENT` instead, in OpenCode's own shape:
+/// key `mcp`, `"type": "local"`, and one argv array rather than a command plus separate args.
+fn assert_opencode_mcp_env(spec: &AgentProcessSpec) {
+    let raw = spec
+        .environment
+        .get("OPENCODE_CONFIG_CONTENT")
+        .expect("an opencode spec with MCP servers should declare them in OPENCODE_CONFIG_CONTENT");
+    let parsed: serde_json::Value =
+        serde_json::from_str(raw).expect("OPENCODE_CONFIG_CONTENT should be a JSON document");
+    assert_eq!(
+        parsed,
+        serde_json::json!({
+            "mcp": {
+                "tendril": {
+                    "type": "local",
+                    "command": ["tendril", "mcp"],
+                    "enabled": true,
+                }
+            }
+        })
+    );
+    assert!(
+        !spec.args.iter().any(|a| a == "--mcp-config"),
+        "opencode takes no --mcp-config flag"
+    );
+}
+
 /// The MCP config lands in a temp file whose name is random, so it is compared by extension. Returns
 /// the args with the path replaced by a stable placeholder, and deletes the temp file.
 fn args_with_mcp_placeholder(spec: &AgentProcessSpec) -> Vec<String> {
@@ -229,11 +259,10 @@ fn opencode_renders_neither_tools_nor_directories() {
             "anthropic/opus",
             "--variant",
             "max",
-            "--mcp-config",
-            "<mcp.json>",
             "--flag",
         ])
     );
+    assert_opencode_mcp_env(&spec);
 }
 
 #[test]
@@ -393,11 +422,10 @@ fn ivy_delegates_to_opencode_with_the_proxy_model() {
             "anthropic/opus",
             "--variant",
             "max",
-            "--mcp-config",
-            "<mcp.json>",
             "--flag",
         ])
     );
+    assert_opencode_mcp_env(&spec);
     assert_eq!(
         spec.environment.get("ANTHROPIC_BASE_URL"),
         Some(&"https://llmproxy.ivy.app".to_string())
@@ -426,11 +454,10 @@ fn openai_proxy_delegates_to_opencode() {
             &expected_model,
             "--variant",
             "max",
-            "--mcp-config",
-            "<mcp.json>",
             "--flag",
         ])
     );
+    assert_opencode_mcp_env(&spec);
 }
 
 /// The interactive command line, which is not the one-shot one: an agent that draws its own terminal

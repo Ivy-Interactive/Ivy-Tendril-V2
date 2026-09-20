@@ -8,9 +8,11 @@ import {
   type ReviewActionSession,
 } from "./events";
 import type {
+  AddedProjectRepo,
   AgentCostBreakdown,
   Annotation,
   CreateProjectRequest,
+  CreatedProject,
   CrossPlanRecommendation,
   DashboardActivity,
   DiscoveredVaultRepo,
@@ -31,6 +33,7 @@ import type {
   PrSyncReport,
   ProjectAssets,
   ProjectSummary,
+  ProvisionReport,
   RecentMergedPr,
   RecentPlanCost,
   RecommendationItem,
@@ -325,6 +328,20 @@ const tauriClient = {
 
   async switchServiceMode(this: void, mode: string): Promise<ServiceInfo> {
     return invoke<ServiceInfo>("cmd_switch_service_mode", { mode });
+  },
+
+  /**
+   * Installs the bundled `tendril` and `opencode` sidecars into `<tendril home>/bin` and registers
+   * the daemon to start with the session. The app already does this on first run; this is the retry
+   * for a machine that refused it then.
+   */
+  async installService(this: void): Promise<ProvisionReport> {
+    return invoke<ProvisionReport>("cmd_install_service");
+  },
+
+  /** Stops the daemon starting at login. The installed binaries stay where they are. */
+  async uninstallServiceAutostart(this: void): Promise<string> {
+    return invoke<string>("cmd_uninstall_service_autostart");
   },
 
   async listPlans(this: void, query?: PlanQuery): Promise<PlanSummary[]> {
@@ -656,8 +673,63 @@ const tauriClient = {
     return run.session;
   },
 
-  async createProject(this: void, request: CreateProjectRequest): Promise<unknown> {
-    return invoke<unknown>("cmd_create_project", { request });
+  /**
+   * Creates a project, cloning any remote among `repos` first. The returned project's `repos` are
+   * the resolved local paths - the only place the caller can learn where a URL was cloned to.
+   */
+  async createProject(this: void, request: CreateProjectRequest): Promise<CreatedProject> {
+    return invoke<CreatedProject>("cmd_create_project", { request });
+  },
+
+  /**
+   * Adds one repository to an existing project, cloning it first when `path` is a remote URL.
+   *
+   * `putConfig("projects", ...)` cannot stand in for this. It merges and saves whatever it is given,
+   * so a URL added that way is what lands in `config.yaml` - persisting any credential embedded in
+   * it, and leaving a repo entry the daemon skips, because a working directory has to be a directory.
+   * Only this route clones. The returned `path` is what was stored, which is the clone's directory
+   * for a remote and the typed path for a local one.
+   */
+  async addProjectRepo(this: void, projectName: string, path: string): Promise<AddedProjectRepo> {
+    return invoke<AddedProjectRepo>("cmd_add_project_repo", { projectName, path });
+  },
+
+  /**
+   * Renames a project, cascading the new name into its plans and database rows.
+   *
+   * `putConfig("projects", ...)` cannot stand in for this either. That merges the sequence by name,
+   * so a renamed entry matches no existing project and is appended next to the original - leaving
+   * two projects where there was one. Only this route renames, and only this route rewrites the
+   * plans and the Plans/Jobs/Recommendations rows that name the old project.
+   *
+   * Rejects with `RENAME_PROJECT_FAILED` carrying the daemon's status: 400 for an empty name, 404
+   * when the project is gone, 409 when the target name is already taken.
+   *
+   * Resolves to the new name rather than to the project. The route answers the whole stored
+   * `ProjectConfig` - the unprojected wire shape, whose `repos` are objects rather than the name
+   * strings {@link ProjectSummary} carries - so typing it as a `ProjectSummary` would be wrong, and
+   * projecting it here would duplicate `cmd_list_projects`'s mapping for a value whose only use is
+   * to re-read the list. The name is what a caller needs to reselect the project it just renamed.
+   */
+  async renameProject(this: void, name: string, newName: string): Promise<string> {
+    const renamed = await invoke<{ name?: string }>("cmd_rename_project", { name, newName });
+    /* Trusting the daemon's echo rather than `newName`: it trims before it stores, so the stored
+       name is the one that will match on the next read. */
+    return renamed?.name ?? newName;
+  },
+
+  /**
+   * Removes a project from `config.yaml`.
+   *
+   * `putConfig("projects", ...)` cannot do this at all: the merge reads an omitted project as
+   * unchanged rather than deleted, so a project can only be removed by the route that removes it.
+   *
+   * Removes the config entry and nothing else - the project's plans, its Plans/Jobs/Recommendations
+   * rows and any repository the daemon cloned for it all stay on disk. Any caller must say so
+   * before it asks the user to confirm.
+   */
+  async deleteProject(this: void, name: string): Promise<void> {
+    await invoke<unknown>("cmd_delete_project", { name });
   },
 
   async getConfig(this: void): Promise<TendrilConfig> {

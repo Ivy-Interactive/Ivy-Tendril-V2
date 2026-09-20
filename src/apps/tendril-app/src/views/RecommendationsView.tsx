@@ -1,12 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Check, CircleCheck, ExternalLink, RefreshCw, X } from "lucide-react";
 import type { ShellBadgeDto } from "@ivy-interactive/components/tendril";
+import { Button } from "@ivy-interactive/components/ui";
 import { bridge } from "../api/bridge";
 import {
   describeBridgeError,
   type CrossPlanRecommendation,
   type RecommendationState,
 } from "../types/api";
+import { ErrorBanner } from "../components/ErrorBanner";
 import { NoContentView } from "../components/NoContentView";
 import { REC_IMPACT_CLASS } from "../components/RecommendationCard";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
@@ -278,30 +280,10 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
   return (
     <div data-testid="recommendations-view" className="space-y-4">
       {actionError && (
-        <div
-          role="alert"
-          className="flex items-center justify-between rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-        >
-          <span>{actionError}</span>
-          <button
-            type="button"
-            onClick={() => setActionError(null)}
-            aria-label="Dismiss error"
-            className="ml-2 font-bold"
-          >
-            <X className="h-3.5 w-3.5" />
-          </button>
-        </div>
+        <ErrorBanner onDismiss={() => setActionError(null)}>{actionError}</ErrorBanner>
       )}
 
-      {error && (
-        <div
-          role="alert"
-          className="rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-xs text-destructive"
-        >
-          {error}
-        </div>
-      )}
+      {error && <ErrorBanner>{error}</ErrorBanner>}
 
       {!selected ? (
         <NoContentView
@@ -344,57 +326,69 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
                 </span>{" "}
                 recommendations
               </span>
-              <button
+              {/* `outline` and the default fill are exactly what these two were drawing by hand;
+                  only the `text-xs` is a call-site choice, because this bar sits above a dense
+                  detail pane rather than in a page header. */}
+              <Button
                 type="button"
+                size="sm"
+                variant="outline"
                 disabled={isBusy}
                 onClick={() => setActiveDialog({ rec: selected, action: "Decline" })}
-                className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
+                className="text-xs"
               >
                 <X className="h-3.5 w-3.5" />
                 Decline
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                size="sm"
                 data-testid="recommendation-accept"
                 disabled={isBusy}
                 onClick={() => void handleSetState(selected, "Accepted")}
-                className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground shadow-xs transition hover:bg-primary/90 disabled:opacity-50"
+                className="text-xs"
               >
                 <Check className="h-3.5 w-3.5" />
                 {pendingId === recommendationId(selected) ? "Accepting..." : "Accept"}
-              </button>
+              </Button>
             </div>
           </div>
 
           {/* `FooterLayout`'s action bar: Accept with Notes, then View Plan. Refresh is V2's own -
               V1 re-reads on the inbox auto-refresh hook instead of a button. */}
           <div className="flex flex-wrap items-center gap-2">
-            <button
+            <Button
               type="button"
+              size="sm"
+              variant="outline"
               disabled={isBusy}
               onClick={() => setActiveDialog({ rec: selected, action: "Accept" })}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
+              className="text-xs"
             >
               <CircleCheck className="h-3.5 w-3.5" />
               Accept with Notes
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              size="sm"
+              variant="outline"
               onClick={() => onSelectPlan(selected.planId)}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-background px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted"
+              className="text-xs"
             >
               <ExternalLink className="h-3.5 w-3.5" />
               View Plan
-            </button>
-            <button
+            </Button>
+            <Button
               type="button"
+              size="sm"
+              variant="outline"
               onClick={() => void load()}
               disabled={isLoading}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-border bg-card px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
+              className="bg-card text-xs"
             >
               <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
               Refresh
-            </button>
+            </Button>
           </div>
 
           {/* The recommendation itself, which is the whole scrollable content in V1. */}

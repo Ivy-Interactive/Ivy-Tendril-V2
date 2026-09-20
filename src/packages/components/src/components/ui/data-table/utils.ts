@@ -188,8 +188,14 @@ export function rowIdentity(rowIds: readonly string[]): string {
  * the rows, and the viewport belongs at the top of the new ones. An appended window under infinite
  * scroll replaces nothing, and returning to the top there would undo the very scroll that asked for
  * it — which is the difference between infinite scroll working and being unusable.
+ *
+ * Growing from *no* rows counts as an append, because nothing was replaced. Treating it as a
+ * replacement looks harmless — an empty table is already at the top — but the reset it triggers runs
+ * in an effect, one commit after the rows themselves render. A scroll that lands in that gap is
+ * silently rewound to zero, and under infinite scroll that also swallows the window it asked for: the
+ * load-more check then reads the distance to the end from the top of the table and declines.
  */
 export function isRowIdentityAppend(previous: string, next: string): boolean {
-  if (previous.length === 0) return false;
+  if (previous.length === 0) return next.length > 0;
   return next.startsWith(`${previous}${ROW_IDENTITY_SEPARATOR}`);
 }

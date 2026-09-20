@@ -145,7 +145,16 @@ export function useDataTableVirtualization({
 
   const virtualizer = useVirtualizer<HTMLDivElement, HTMLTableRowElement>({
     count,
-    getScrollElement: () => (active ? containerRef.current : null),
+    /* The container whether or not windowing is on. Returning null while inactive looks harmless -
+       nothing reads `virtualItems` then - but virtual-core compares this against the element it
+       holds on every render and calls `cleanup()` when it differs, dropping the scroll element, the
+       measured rect and the listeners. The next render that flips `active` back on therefore
+       attaches to an unmeasured container, `outerSize` is 0, `calculateRange` returns null, and the
+       commit renders an empty `<tbody>` for one frame: the table blanking mid-scroll the instant the
+       row count crosses the threshold, and again on every loading toggle. Staying attached costs a
+       resize listener on a container that is mounted anyway; `active` still governs whether the
+       window is consumed, below. */
+    getScrollElement: () => containerRef.current,
     estimateSize,
     overscan,
     getItemKey,

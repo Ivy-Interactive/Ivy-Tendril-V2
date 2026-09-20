@@ -253,6 +253,7 @@ mod tests {
     fn everything_outside_review_and_plans_is_refused() {
         for path in [
             "/api/config",
+            "/api/config/text",
             "/api/ws",
             "/api/events",
             "/api/events/backfill",
@@ -286,6 +287,32 @@ mod tests {
                 !share_token_allows("GET", path),
                 "GET {path} must be refused"
             );
+        }
+    }
+
+    /// The in-app config editor's route, called out on its own because it is the newest way to read
+    /// `config.yaml` and the deny-by-default is exactly the protection this module's header warns not to
+    /// lean on: nothing stops a later edit from adding a `/api/config` prefix rule for some benign
+    /// reason and sweeping the editor in with it.
+    ///
+    /// What is behind it: `GET` serves the whole file including `llm`, `api` and every project path —
+    /// secrets are masked, but the structure, the hostnames and the paths are not — and `PUT` writes the
+    /// daemon's own configuration, which is remote code execution one `codingAgent` entry later. Neither
+    /// is anything a reviewer was invited to do.
+    #[test]
+    fn the_config_editor_is_not_something_a_share_may_read_or_write() {
+        for method in ["GET", "HEAD", "PUT", "POST", "PATCH", "DELETE"] {
+            for path in [
+                "/api/config/text",
+                "/api/config/text/",
+                "/API/CONFIG/TEXT",
+                "/api/config/text?baseHash=abc",
+            ] {
+                assert!(
+                    !share_token_allows(method, path),
+                    "{method} {path} must be refused"
+                );
+            }
         }
     }
 
@@ -326,6 +353,7 @@ mod tests {
                 "/api/plans/00021/diff-comments",
                 "/api/plans/00021/annotations",
                 "/api/config",
+                "/api/config/text",
             ] {
                 assert!(
                     !share_token_allows(method, path),

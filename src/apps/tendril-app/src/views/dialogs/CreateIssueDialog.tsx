@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Button } from "@ivy-interactive/components/ui";
+import { Button, Callout, Input, Textarea } from "@ivy-interactive/components/ui";
 import { PlanActionsController } from "../../controllers/plan_actions";
 import {
   describeBridgeError,
@@ -8,7 +8,7 @@ import {
   type StartJobResponse,
 } from "../../types/api";
 import { DialogShell } from "./DialogShell";
-import { ALERT_CLASS, FIELD_CLASS } from "./fieldStyles";
+import { SELECT_FIELD_CLASS } from "./selectField";
 
 export interface CreateIssueDialogProps {
   isOpen: boolean;
@@ -138,7 +138,7 @@ export function CreateIssueDialog({
             aria-label="Repository"
             value={repo}
             onChange={(event) => setRepo(event.target.value)}
-            className={FIELD_CLASS}
+            className={SELECT_FIELD_CLASS}
           >
             {repos.map((path) => (
               <option key={path} value={path}>
@@ -156,13 +156,12 @@ export function CreateIssueDialog({
         <label htmlFor="create-issue-assignee" className="mb-1 block text-xs text-muted-foreground">
           Assignee
         </label>
-        <input
+        <Input
           id="create-issue-assignee"
           aria-label="Assignee"
           value={assignee}
           onChange={(event) => setAssignee(event.target.value)}
           placeholder="octocat"
-          className={FIELD_CLASS}
         />
       </div>
 
@@ -170,13 +169,12 @@ export function CreateIssueDialog({
         <label htmlFor="create-issue-labels" className="mb-1 block text-xs text-muted-foreground">
           Labels
         </label>
-        <input
+        <Input
           id="create-issue-labels"
           aria-label="Labels"
           value={labels}
           onChange={(event) => setLabels(event.target.value)}
           placeholder="bug, ui"
-          className={FIELD_CLASS}
         />
         <p className="mt-1 text-xs text-muted-foreground">
           Comma-separated. Assignee and labels are free text: the service exposes issue metadata,
@@ -188,22 +186,18 @@ export function CreateIssueDialog({
         <label htmlFor="create-issue-comment" className="mb-1 block text-xs text-muted-foreground">
           Comment
         </label>
-        <textarea
+        <Textarea
           id="create-issue-comment"
           aria-label="Comment"
           rows={3}
           value={comment}
           onChange={(event) => setComment(event.target.value)}
           placeholder="Extra context to append to the issue body…"
-          className={FIELD_CLASS}
+          className="text-sm"
         />
       </div>
 
-      {error && (
-        <div role="alert" className={ALERT_CLASS}>
-          {error}
-        </div>
-      )}
+      {error && <Callout.Error className="mt-4">{error}</Callout.Error>}
     </DialogShell>
   );
 }

@@ -33,7 +33,7 @@ pub(crate) fn generate_certs(output_dir: &Path) -> Result<std::path::PathBuf> {
 
     std::fs::write(&cert_path, generated.cert.pem())
         .with_context(|| format!("could not write {}", cert_path.display()))?;
-    std::fs::write(&key_path, generated.key_pair.serialize_pem())
+    std::fs::write(&key_path, generated.signing_key.serialize_pem())
         .with_context(|| format!("could not write {}", key_path.display()))?;
 
     // The private key is written world-readable by default, which on a shared machine hands it to

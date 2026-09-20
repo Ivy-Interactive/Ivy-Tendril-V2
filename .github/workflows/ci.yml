@@ -111,6 +111,7 @@ jobs:
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
+          toolchain: 1.98.1
           components: clippy, rustfmt
 
       - name: Rust Cache
@@ -131,6 +132,13 @@ jobs:
             patchelf \
             build-essential \
             file
+
+      # `tauri.conf.json` declares two `externalBin` sidecars, and tauri-build resolves them on any
+      # cargo command that compiles the app crate - clippy and test included, not just `tauri build`.
+      # Without them every Rust step here dies in the build script before it lints a line. CI never
+      # bundles or runs them, so empty placeholders are enough; release-app.yml stages the real ones.
+      - name: Stage placeholder Tauri sidecars
+        run: ./src/apps/tendril-app/scripts/ci/stub-sidecars.sh
 
       - name: Format check
         run: cargo fmt --check

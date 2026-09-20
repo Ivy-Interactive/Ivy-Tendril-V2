@@ -195,8 +195,9 @@ export function applyAnnotationHighlights(
         if (initials) {
           const badge = document.createElement("span");
           badge.className = annotation.isResolved
-            ? "pmv-annotation-initials-badge pmv-badge-resolved"
-            : "pmv-annotation-initials-badge";
+            ? "tui-badge pmv-annotation-initials-badge pmv-badge-resolved"
+            : "tui-badge pmv-annotation-initials-badge";
+          badge.dataset.kind = "primary";
           badge.textContent = initials;
           badge.title = annotation.isResolved ? `[Resolved] ${author}` : author;
           mark.appendChild(badge);

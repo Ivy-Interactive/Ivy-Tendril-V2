@@ -59,6 +59,12 @@ enum Commands {
     #[command(subcommand, about = "Tendril configuration")]
     Config(commands::config::ConfigCommands),
 
+    #[command(
+        subcommand,
+        about = "Install, remove or inspect the background service registration"
+    )]
+    Service(commands::service::ServiceCommands),
+
     #[command(about = "Check system health")]
     Doctor {
         #[arg(
@@ -212,6 +218,10 @@ fn init_logging() {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
+    // `service install` bakes a `--home` into the unit it writes only when the operator actually
+    // named one: the daemon's own resolution honours the `.tendril_location` pointer file, so
+    // pinning a defaulted `~/.tendril` would quietly override a home they relocate later.
+    let home_was_explicit = cli.home.is_some();
     let tendril_home = cli.home.unwrap_or_else(get_default_tendril_home);
 
     // Before any command runs, so nothing it logs is lost.
@@ -224,10 +234,14 @@ async fn main() -> anyhow::Result<()> {
     // debug build of `tendril` overflowed before reaching any command - `tendril version` included.
     // Boxing moves the state to the heap and leaves main's own frame small. Release builds lay the
     // future out more tightly, which is why this only ever showed up locally.
-    Box::pin(dispatch(cli.command, tendril_home)).await
+    Box::pin(dispatch(cli.command, tendril_home, home_was_explicit)).await
 }
 
-async fn dispatch(command: Commands, tendril_home: PathBuf) -> anyhow::Result<()> {
+async fn dispatch(
+    command: Commands,
+    tendril_home: PathBuf,
+    home_was_explicit: bool,
+) -> anyhow::Result<()> {
     let tendril_home = &tendril_home;
     match command {
         Commands::Plan(cmd) => commands::plan::handle_plan_command(cmd, tendril_home).await?,
@@ -248,6 +262,9 @@ async fn dispatch(command: Commands, tendril_home: PathBuf) -> anyhow::Result<()
             commands::promptware::handle_promptware_command(cmd, tendril_home).await?
         }
         Commands::Config(cmd) => commands::config::handle_config_command(cmd, tendril_home)?,
+        Commands::Service(cmd) => {
+            commands::service::handle_service_command(cmd, tendril_home, home_was_explicit)?
+        }
         Commands::Doctor {
             rebuild_search_index,
         } => commands::doctor::handle_doctor(tendril_home, rebuild_search_index)?,

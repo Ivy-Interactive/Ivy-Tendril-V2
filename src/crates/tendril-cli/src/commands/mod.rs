@@ -18,6 +18,7 @@ pub mod report_bug;
 pub mod reset;
 pub mod run;
 pub mod serve;
+pub mod service;
 pub mod update;
 pub mod update_promptwares;
 pub mod vault;

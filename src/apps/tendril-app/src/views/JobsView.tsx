@@ -22,7 +22,6 @@ import {
   type RemoteSortColumn,
   type RemoteTableFetcher,
   type RemoteTableFilter,
-  type StackedProgressColor,
   type StackedProgressSegment,
   dataTableLinkClass,
   useResponsiveDensity,
@@ -32,6 +31,14 @@ import {
 import { fetchTableColumnValues, queryJobsPage } from "../api/tableQuery";
 import { describeBridgeError, type Job, type JobDetail, type JobStatus } from "../types/api";
 import { isActiveStatus, jobsStore } from "../state/jobsStore";
+import {
+  JOB_STATUS_COLOR,
+  JOB_STATUS_SEGMENT_COLOR,
+  JOB_TYPE_COLOR,
+  UNMAPPED_COLOR,
+  projectColor,
+} from "../utils/jobStatus";
+import { ErrorBanner } from "../components/ErrorBanner";
 import { ConfirmDialog } from "./dialogs";
 import { parseProjects } from "./PlansView";
 
@@ -78,6 +85,13 @@ const PROMPT_DISPLAY_MAX_LENGTH = 500;
 const JOBS_PAGE_SIZE = 50;
 
 /**
+ * V1's `RefreshCoalescer` window (`JobsApp.Hooks.cs:13`, `JobRefreshWindow =
+ * TimeSpan.FromMilliseconds(400)`): how long a structural change waits for the rest of its burst
+ * before the table refetches.
+ */
+const JOBS_REFRESH_WINDOW_MS = 400;
+
+/**
  * `JobsApp.Data.cs` / `JobCostSheet.cs` use this for "nothing recorded here", and `JobSessionView`
  * already does the same. Keeping the em dash rather than an empty cell is what stops a job that
  * reported no cost from reading as one that cost nothing: `—` and `$0.00` are different claims, and
@@ -100,95 +114,6 @@ const NO_TIME = "-";
  * the reason instead of pretending to work.
  */
 export const RERUN_UNAVAILABLE_REASON = "Cannot rerun: original args were not preserved.";
-
-/**
- * `Constants.JobStatusColors` (`src/Ivy.Tendril/Constants.cs:54-64`), value for value.
- *
- * V1 renders the Status cell through a `LabelsDisplayRenderer` whose `BadgeColorMapping` is this
- * dictionary (`JobsApp.DataTable.cs:61-67`), so a status's colour *is* its name here. The design system
- * publishes one token per Ivy colour (`styles/tokens.css`) and `Badge`'s `color` prop tints from it, so
- * these are V1's colours rather than an approximation of them — including the two that no semantic
- * token could tell apart: Queued/Pending **Amber** and Blocked **Orange**.
- */
-export const JOB_STATUS_COLOR: Record<JobStatus, string> = {
-  Running: "Blue",
-  Completed: "Green",
-  Failed: "Red",
-  Timeout: "Red",
-  Queued: "Amber",
-  Pending: "Amber",
-  Stopped: "Gray",
-  Blocked: "Orange",
-};
-
-/**
- * `Constants.JobTypeColors` (`Constants.cs:66-79`), the Type column's `BadgeColorMapping`
- * (`JobsApp.DataTable.cs:68-74`). Eleven job types, eleven hues.
- *
- * A type not listed here renders on `Slate`, which is what V1's renderer does with a value its mapping
- * has no entry for — a new job type gets a neutral chip rather than borrowing another type's colour.
- */
-export const JOB_TYPE_COLOR: Record<string, string> = {
-  CreatePlan: "Purple",
-  ExecutePlan: "Blue",
-  UpdatePlan: "Cyan",
-  ExpandPlan: "Teal",
-  SplitPlan: "Indigo",
-  CreatePr: "Green",
-  CreateIssue: "Rose",
-  RetryPlan: "Orange",
-  SetupProject: "Slate",
-  SyncRepo: "Amber",
-  AddProject: "Purple",
-};
-
-/** V1's fallback hue for a value outside a `BadgeColorMapping`. */
-const UNMAPPED_COLOR = "Slate";
-
-/**
- * The Project column's palette.
- *
- * V1 colours each project from configuration (`ProjectHelper.BuildColorMapping(config)`, passed as the
- * Project column's `BadgeColorMapping` at `JobsApp.DataTable.cs:75-78`), so two projects are always
- * distinguishable at a glance. V2's `ProjectSummary` does not carry the configured colour — the daemon
- * has one (`bridge.createProject` sets it) and the DTO drops it — so the colour is derived from the
- * project's name instead: stable, distinct, and the same colour in every view that uses this. Reported
- * rather than worked around: the moment the DTO carries `color`, this becomes a lookup.
- */
-const PROJECT_COLORS = [
-  "Blue",
-  "Purple",
-  "Teal",
-  "Amber",
-  "Rose",
-  "Cyan",
-  "Indigo",
-  "Green",
-  "Orange",
-  "Violet",
-];
-
-export function projectColor(project: string): string {
-  let hash = 0;
-  for (let index = 0; index < project.length; index += 1) {
-    // The classic 31-multiplier string hash. Deterministic and stable across runs, which is the only
-    // property that matters: a project whose colour changed between renders would be worse than grey.
-    hash = (hash * 31 + project.charCodeAt(index)) | 0;
-  }
-  return PROJECT_COLORS[Math.abs(hash) % PROJECT_COLORS.length];
-}
-
-/** The same mapping for the header's `StackedProgress` segments (`JobsApp.Data.cs` `GetStatusColor`). */
-const JOB_STATUS_SEGMENT_COLOR: Record<JobStatus, StackedProgressColor> = {
-  Running: "info",
-  Completed: "success",
-  Failed: "destructive",
-  Timeout: "destructive",
-  Queued: "warning",
-  Pending: "warning",
-  Blocked: "warning",
-  Stopped: "muted",
-};
 
 /** The four statuses `FormatTimer` reports a duration for. */
 const FINISHED_STATUSES: readonly JobStatus[] = ["Completed", "Failed", "Timeout", "Stopped"];
@@ -737,7 +662,12 @@ export interface JobsViewProps {
   jobs: Job[];
   /** Fetched details, for the `detached` flag the list projection omits. */
   jobDetails?: Record<string, JobDetail>;
-  isLoading?: boolean;
+  /* No `isLoading` here, deliberately. `jobsStore.isLoading` describes `bridge.listJobs`, whose
+     result this view uses only as the live-cell overlay; the *table* is fed by `fetchJobsPage`
+     through `useRemoteDataTable`, which reports its own request. Passing the first as the table's
+     loading state made every 5s poll and every job event swap the empty state for a skeleton and
+     back - the flicker on an empty Jobs table - because a request the table does not render was
+     driving the table's chrome. */
   /** Opens the plan. See the Plan Id column for how V1's three-way routing collapses. */
   onSelectPlan?: (planId: string) => void;
   /** The two bulk sweeps' confirms, which the shell owns because they are shell-level dialogs. */
@@ -748,7 +678,6 @@ export interface JobsViewProps {
 export const JobsView: React.FC<JobsViewProps> = ({
   jobs,
   jobDetails,
-  isLoading = false,
   onSelectPlan,
   onStopAllQueued,
   onStopAll,
@@ -893,7 +822,12 @@ export const JobsView: React.FC<JobsViewProps> = ({
     lastSignature.current = structuralSignature;
     // The first sighting only records a baseline: the table's own first window is already in flight.
     if (previous === null || previous === structuralSignature) return;
-    refreshTable();
+    /* V1's `RefreshCoalescer` (`JobsApp.Hooks.cs:13`, `JobRefreshWindow = 400ms`). A plan starting
+       moves several jobs at once and each transition is its own structural change, so without this
+       one burst costs one refetch per job. Trailing rather than leading: the last signature in the
+       burst is the one worth fetching for. */
+    const timer = setTimeout(refreshTable, JOBS_REFRESH_WINDOW_MS);
+    return () => clearTimeout(timer);
   }, [structuralSignature, refreshTable]);
 
   const rows = useMemo(
@@ -1311,31 +1245,15 @@ export const JobsView: React.FC<JobsViewProps> = ({
   return (
     <div className="flex h-full min-h-0 flex-col gap-3" data-testid="jobs-view">
       {tableError && (
-        <div
-          role="alert"
-          data-testid="jobs-table-error"
-          className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-        >
+        <ErrorBanner data-testid="jobs-table-error">
           Could not read the jobs table: {tableError}
-        </div>
+        </ErrorBanner>
       )}
 
       {actionError && (
-        <div
-          role="alert"
-          data-testid="jobs-action-error"
-          className="flex items-start justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-        >
-          <span>{actionError}</span>
-          <button
-            type="button"
-            onClick={() => setActionError(null)}
-            aria-label="Dismiss error"
-            className="text-destructive hover:text-destructive/80"
-          >
-            ✕
-          </button>
-        </div>
+        <ErrorBanner data-testid="jobs-action-error" onDismiss={() => setActionError(null)}>
+          {actionError}
+        </ErrorBanner>
       )}
 
       <DataTable<JobRow>
@@ -1354,7 +1272,9 @@ export const JobsView: React.FC<JobsViewProps> = ({
            the other windows were chosen by. */
         rows={rows}
         getRowId={(row) => row.id}
-        loading={(isLoading || table.loading) && table.rows.length === 0}
+        /* `table.loading` unqualified: `useRemoteDataTable` already narrows it to "and there are no
+           rows yet" for an infinite table, so repeating that here only hid which flag was at fault. */
+        loading={table.loading}
         /* Infinite scroll, `c.BatchSize = 50`. `paginated={false}` because V1's table has no pager at
            all: scrolling is the pager, and `hasMore` is what says whether there is anything left to
            scroll to. `fillHeight` is `.Height(Size.Full())` — it is also what makes the header sticky

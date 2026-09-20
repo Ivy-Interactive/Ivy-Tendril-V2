@@ -215,3 +215,67 @@ describe("the project screen as a whole", () => {
     expect(body).toHaveClass("min-w-0");
   });
 });
+
+/**
+ * The same cap, on the *section* screens rather than the project one.
+ *
+ * Every section repeated `max-w-170` by hand on its own body wrapper, and three of them — Team Vault,
+ * Daemon Diagnostics and Newsletter — never did, so they ran the full width of the pane while
+ * everything around them stopped at the same column. The cap now lives on `SettingsSection` itself, so
+ * a section is bounded by being a section; this pins that, because the failure mode is silent (a new
+ * section that forgets the class simply looks wrong, and nothing else fails).
+ */
+async function renderSection(section: string) {
+  vi.spyOn(bridge, "getConfig").mockResolvedValue(projectConfig({}));
+  await act(async () => {
+    render(
+      <SettingsView serviceInfo={serviceInfo} onRefreshHealth={vi.fn()} initialSection={section} />,
+    );
+  });
+}
+
+describe("every settings section shares one width", () => {
+  it.each([
+    ["newsletter", "newsletter-card"],
+    ["advanced", "advanced-settings-card"],
+    ["plans", "plans-settings-card"],
+  ])("caps %s at the shared settings container", async (section, testId) => {
+    await renderSection(section);
+
+    const card = screen.getByTestId(testId);
+    expect(card.className).toMatch(/\bmax-w-170\b/);
+    // Without `min-w-0` the cap holds but the element cannot shrink below its content as a flex item.
+    expect(card).toHaveClass("min-w-0");
+  });
+
+  /**
+   * `ServiceSettingsView` and `ModelCatalogCard` are the two that render outside `SettingsView`'s own
+   * JSX, which is how they came to miss the cap in the first place.
+   */
+  it("caps the sections that live in their own components", async () => {
+    await renderSection("advanced");
+
+    const service = screen.getByTestId("service-settings-view");
+    // It renders two `SettingsSection`s rather than carrying the cap itself, so assert on those.
+    const sections = service.querySelectorAll("section");
+    expect(sections.length).toBeGreaterThan(0);
+    sections.forEach((section) => expect(section.className).toMatch(/\bmax-w-170\b/));
+  });
+});
+
+/**
+ * V1 draws no rule between settings blocks: across all 14 `*SetupView.cs` only `AccountSetupView` and
+ * `TunnelSetupView` contain a separator at all. V2 had one on every `SubSection` — and because
+ * `first:border-t-0` only fires for a true first child, which none of the three consumers has, all 17
+ * instances drew one. Blocks are separated by spacing.
+ */
+describe("settings blocks are separated by spacing, not rules", () => {
+  it("draws no rule above any project sub-section", async () => {
+    await renderProject(projectConfig({}));
+
+    const body = screen.getByTestId("project-settings-Tendril");
+    const sections = body.querySelectorAll("section");
+    expect(sections.length).toBeGreaterThan(0);
+    sections.forEach((section) => expect(section.className).not.toMatch(/\bborder-t\b/));
+  });
+});

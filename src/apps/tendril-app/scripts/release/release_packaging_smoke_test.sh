@@ -3,7 +3,13 @@ set -euo pipefail
 
 echo "==> Running Release Packaging Smoke Tests..."
 
-# 1. Verify companion sidecars exist in src-tauri/binaries/
+# 1. Verify the sidecars this host's build needs exist in src-tauri/binaries/
+#
+# Only the *host* triple, deliberately. Tauri resolves an externalBin by target triple and a build
+# only stages the triple it is building, so the other three were dead weight - and when they were
+# committed placeholders, four 163-byte "stub running" shell scripts rode into every installer. The
+# release workflow builds `tendril-<host>` and fetches `opencode-<host>` per runner; this checks the
+# same pair.
 echo "==> Checking companion sidecar binaries..."
 SIDECAR_DIR="src-tauri/binaries"
 if [ ! -d "$SIDECAR_DIR" ]; then
@@ -11,28 +17,40 @@ if [ ! -d "$SIDECAR_DIR" ]; then
     exit 1
 fi
 
+HOST_TRIPLE="$(rustc -vV | sed -n 's|host: ||p')"
+case "$HOST_TRIPLE" in
+    *windows*) HOST_EXE=".exe" ;;
+    *)         HOST_EXE="" ;;
+esac
+
 REQUIRED_SIDECARS=(
-    "tendril-aarch64-apple-darwin"
-    "tendril-x86_64-apple-darwin"
-    "tendril-x86_64-unknown-linux-gnu"
-    "tendril-x86_64-pc-windows-msvc.exe"
+    "tendril-${HOST_TRIPLE}${HOST_EXE}"
+    "opencode-${HOST_TRIPLE}${HOST_EXE}"
 )
 
 for sidecar in "${REQUIRED_SIDECARS[@]}"; do
     path="$SIDECAR_DIR/$sidecar"
     if [ ! -f "$path" ]; then
-        echo "ERROR: Missing required companion binary: $path" >&2
+        echo "ERROR: Missing required sidecar: $path" >&2
+        case "$sidecar" in
+            opencode-*) echo "       Run: ./scripts/release/fetch-opencode-sidecar.sh" >&2 ;;
+            tendril-*)  echo "       Run: cargo build --release --bin tendril, then copy it here" >&2 ;;
+        esac
         exit 1
     fi
     echo "  [OK] Found sidecar: $sidecar"
 done
 
-# 2. Verify binary executable permissions on unix sidecars
-if [ -x "$SIDECAR_DIR/tendril-aarch64-apple-darwin" ]; then
-    echo "  [OK] Unix permissions executable: tendril-aarch64-apple-darwin"
-else
-    echo "ERROR: tendril-aarch64-apple-darwin is not executable." >&2
-    exit 1
+# 2. Verify executable permissions (a sidecar Tauri cannot exec fails at runtime, not at bundle time)
+if [ -z "$HOST_EXE" ]; then
+    for sidecar in "${REQUIRED_SIDECARS[@]}"; do
+        if [ -x "$SIDECAR_DIR/$sidecar" ]; then
+            echo "  [OK] Unix permissions executable: $sidecar"
+        else
+            echo "ERROR: $sidecar is not executable." >&2
+            exit 1
+        fi
+    done
 fi
 
 # 3. Verify tauri.conf.json externalBin bundle configuration
@@ -41,10 +59,12 @@ grep -q '"externalBin"' src-tauri/tauri.conf.json || {
     echo "ERROR: externalBin is not configured in tauri.conf.json" >&2
     exit 1
 }
-grep -q '"binaries/tendril"' src-tauri/tauri.conf.json || {
-    echo "ERROR: binaries/tendril is not listed in externalBin" >&2
-    exit 1
-}
+for entry in "binaries/tendril" "binaries/opencode"; do
+    grep -q "\"$entry\"" src-tauri/tauri.conf.json || {
+        echo "ERROR: $entry is not listed in externalBin" >&2
+        exit 1
+    }
+done
 echo "  [OK] tauri.conf.json externalBin configured correctly"
 
 # 4. Verify release signing stubs exist and are executable

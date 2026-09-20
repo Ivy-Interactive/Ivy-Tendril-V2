@@ -6,6 +6,10 @@ use tendril_core::config::{
     load_config, move_project_verification, read_master, sanitize_project_name, save_config,
     MasterInfo, TendrilSettings, VerificationPlacement,
 };
+use tendril_core::git::clone::{
+    clone_or_refresh_with, extract_repo_name, import_remote_repo, is_remote_url,
+    redact_credentials, CloneFailure, CloneOptions,
+};
 use tendril_core::git::service::run_git;
 use tendril_core::git::sync::{diagnostic_prompt, sync_project, ProjectSyncResult};
 use tendril_core::git::worktree::derive_worktree_relative_path;
@@ -547,7 +551,10 @@ fn print_project(p: &ProjectConfig) {
     println!("Color: {}", p.color);
     println!("Repos:");
     for r in &p.repos {
-        println!("  - {}", r.path);
+        // `add-repo` clones a remote and stores the clone's directory, so a well-formed config has
+        // nothing here to redact. A config written before that was true, or hand-edited, still can
+        // — and `project get` is exactly the command whose output gets pasted into an issue.
+        println!("  - {}", redact_credentials(&r.path));
     }
     println!("Verifications:");
     for v in &p.verifications {
@@ -591,15 +598,20 @@ fn print_sync_result(result: &ProjectSyncResult) -> bool {
         .map(|b| format!(" ({})", b))
         .unwrap_or_default();
 
+    // `git_error_details` is git's own stderr, and git echoes the remote URL it was handed straight
+    // back into it — including the userinfo. That is the case `redact_credentials` exists for, and
+    // `repo_path` goes through it for the same reason `print_project` does.
+    let repo_path = redact_credentials(&result.repo_path);
+
     if result.success {
-        println!("✓ {}{}: {}", result.repo_path, branch_info, result.message);
+        println!("✓ {}{}: {}", repo_path, branch_info, result.message);
         return true;
     }
 
-    println!("✗ {}{}: {}", result.repo_path, branch_info, result.message);
+    println!("✗ {}{}: {}", repo_path, branch_info, result.message);
     if let Some(details) = result.git_error_details.as_deref() {
         if !details.trim().is_empty() {
-            println!("  {}", details.trim());
+            println!("  {}", redact_credentials(details.trim()));
         }
     }
     if result.can_fix_with_agent {
@@ -640,11 +652,16 @@ fn resolve_import_repo(
         return Ok(path.canonicalize().unwrap_or(path));
     }
 
-    if is_git_url(&expanded) {
+    if is_remote_url(&expanded) {
         return clone_for_import(&expanded, tendril_home);
     }
 
-    anyhow::bail!("Repository path not found: {}", expanded);
+    // Reached by anything that is neither a directory nor a transport `is_remote_url` knows, which
+    // includes credential-bearing URLs on a scheme it rejects (`ftp://u:p@host/o/r`).
+    anyhow::bail!(
+        "Repository path not found: {}",
+        redact_credentials(&expanded)
+    );
 }
 
 fn final_path_segment(path: &str) -> &str {
@@ -660,46 +677,37 @@ fn ends_with_segment(path: &str, segment: &str) -> bool {
     lower.ends_with(&format!("/{}", needle)) || lower.ends_with(&format!("\\{}", needle))
 }
 
-fn is_git_url(value: &str) -> bool {
-    let lower = value.to_lowercase();
-    lower.starts_with("http://")
-        || lower.starts_with("https://")
-        || lower.starts_with("ssh://")
-        || lower.starts_with("git@")
-}
-
 /// Shallow-clones `url` into `<TendrilHome>/Cache/Imports/<repo-name>`, refreshing an existing
-/// clone with `git pull --depth 1` and re-cloning from scratch if that fails.
+/// clone rather than re-fetching it.
+///
+/// The clone itself is [`tendril_core::git::clone::clone_or_refresh_with`], which is also what the
+/// daemon's project routes use — so the credential redaction around git's stderr is written once.
+/// This cache is only ever read by the `import*` scanners, hence `--depth 1`; a project repo is
+/// cloned in full.
 fn clone_for_import(url: &str, tendril_home: &Path) -> anyhow::Result<PathBuf> {
-    let repo_name = final_path_segment(url.trim_end_matches(".git"));
-    let sanitized = sanitize_project_name(repo_name);
+    let repo_name = extract_repo_name(url).unwrap_or_else(|| final_path_segment(url).to_string());
+    let sanitized = sanitize_project_name(&repo_name);
     let name = if sanitized.is_empty() {
         "remote-repo".to_string()
     } else {
         sanitized
     };
 
-    let cache_root = tendril_home.join("Cache").join("Imports");
-    let target_dir = cache_root.join(&name);
+    let target_dir = tendril_home.join("Cache").join("Imports").join(&name);
+    let options = CloneOptions { depth: Some(1) };
 
-    if target_dir.is_dir() {
-        match run_git(&["pull", "--depth", "1"], &target_dir) {
-            Ok((0, _, _)) => return Ok(target_dir),
-            _ => {
-                // A stale or half-written clone is not worth diagnosing: throw it away and clone
-                // again, which is what the user asked for anyway.
-                let _ = std::fs::remove_dir_all(&target_dir);
-            }
+    match clone_or_refresh_with(url, &target_dir, options) {
+        Ok(cloned) => Ok(cloned.path),
+        // A cache entry that is stale, half-written, or left over from a different remote of the
+        // same name is not worth diagnosing: throw it away and clone again, which is what the user
+        // asked for anyway. Only the cache is disposable like this — the daemon's project repos
+        // are not, and it reports the same conflict instead.
+        Err(e) if e.kind == CloneFailure::DestinationConflict && target_dir.exists() => {
+            std::fs::remove_dir_all(&target_dir)?;
+            Ok(clone_or_refresh_with(url, &target_dir, options)?.path)
         }
+        Err(e) => anyhow::bail!("{}", e.message),
     }
-
-    std::fs::create_dir_all(&cache_root)?;
-    let target = target_dir.to_string_lossy().to_string();
-    let (code, _, stderr) = run_git(&["clone", "--depth", "1", url, &target], &cache_root)?;
-    if code != 0 || !target_dir.is_dir() {
-        anyhow::bail!("Git clone failed: {}", stderr.trim());
-    }
-    Ok(target_dir)
 }
 
 pub async fn handle_project_command(
@@ -935,7 +943,14 @@ async fn handle_project_command_daemon(
                 anyhow::bail!("Failed to add repo to project '{}': {}", name, err);
             }
 
-            println!("Repo '{}' added to project '{}'.", path, name);
+            // Redacted for the same reason the offline arm redacts: `path` is whatever the operator
+            // pasted, and a `https://user:token@host/...` remote is a legitimate thing to paste.
+            // The daemon has already stored the clone's directory rather than this URL.
+            println!(
+                "Repo '{}' added to project '{}'.",
+                redact_credentials(path),
+                name
+            );
         }
         ProjectCommands::RemoveRepo { name, path } => {
             let resp = match client
@@ -957,7 +972,11 @@ async fn handle_project_command_daemon(
                 anyhow::bail!("Failed to remove repo from project '{}': {}", name, err);
             }
 
-            println!("Repo '{}' removed from project '{}'.", path, name);
+            println!(
+                "Repo '{}' removed from project '{}'.",
+                redact_credentials(path),
+                name
+            );
         }
         ProjectCommands::AddVerification {
             name,
@@ -1508,37 +1527,121 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
             settings.projects[proj_idx].name = trimmed.clone();
             save_config(&cfg_path, &settings)?;
 
+            // `config.yaml` is already saved, so neither cascade can fail the command — bailing
+            // here would report failure for a rename that happened. They are reported instead,
+            // because a plan or a row still naming the old project is not something a second
+            // `rename` can fix: it would find the old name gone and do nothing.
             let plans_dir =
                 tendril_core::config::get_plans_dir_with_settings(tendril_home, Some(&settings));
-            tendril_core::plans::rename_project_in_plans(&plans_dir, &name, &trimmed)?;
+            match tendril_core::plans::rename_project_in_plans(&plans_dir, &name, &trimmed) {
+                Ok(outcome) if outcome.is_partial() => {
+                    eprintln!(
+                        "Warning: renamed the project but {}. Edit each plan.yaml by hand to finish the rename.",
+                        outcome.failure_summary()
+                    );
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    eprintln!(
+                        "Warning: renamed the project but could not sweep {}: {}. Plans still name '{}'.",
+                        plans_dir.display(),
+                        e,
+                        name
+                    );
+                }
+            }
 
             let db_path = tendril_core::config::get_database_path(tendril_home);
-            if let Ok(conn) = tendril_core::db::open_database(&db_path) {
-                let _ = tendril_core::db::rename_project(&conn, &name, &trimmed);
+            match tendril_core::db::open_database(&db_path) {
+                Ok(conn) => {
+                    if let Err(e) = tendril_core::db::rename_project(&conn, &name, &trimmed) {
+                        eprintln!(
+                            "Warning: renamed the project but could not update the database: {}. Plans, jobs and recommendations still name '{}'.",
+                            e, name
+                        );
+                    }
+                }
+                Err(e) => {
+                    eprintln!(
+                        "Warning: renamed the project but could not open the database: {}. Plans, jobs and recommendations still name '{}'.",
+                        e, name
+                    );
+                }
             }
 
             println!("Project '{}' renamed to '{}'.", name, trimmed);
         }
+        // Cloning here rather than refusing the URL, because this arm's whole contract is to be the
+        // daemon arm's equal: `materialize_repos` in the server's project routes turns a URL into a
+        // clone before `save_config`, and an offline arm that stored the URL verbatim would write a
+        // project nothing downstream can run. `resolve_working_directory` only ever picks a repo
+        // whose path `is_dir()`, so the URL entry is skipped in silence and every job for the
+        // project runs in TENDRIL_HOME instead of a repo. The CLI already owns the offline half of
+        // this — `clone_for_import` clones a URL for the `import*` scanners through the same
+        // `tendril-core` helper — so cloning costs nothing new and bailing would make `add-repo`
+        // the one verb whose fallback is not a fallback.
         ProjectCommands::AddRepo { name, path } => {
             let proj = settings
                 .projects
                 .iter_mut()
                 .find(|p| p.name.eq_ignore_ascii_case(&name))
                 .ok_or_else(|| anyhow::anyhow!("Project '{}' not found", name))?;
+            let project_name = proj.name.clone();
 
-            if !proj
+            // Deduped on the URL before the clone as well as on the path after it, matching
+            // `add_project_repo`: pasting the same remote twice answers from config rather than
+            // going back to the network.
+            let already_present = proj
                 .repos
                 .iter()
-                .any(|r| r.path.eq_ignore_ascii_case(&path))
-            {
-                proj.repos.push(RepoRef {
-                    path: path.clone(),
-                    base_branch: None,
-                    extra: Default::default(),
-                });
-                save_config(&cfg_path, &settings)?;
-            }
-            println!("Repo '{}' added to project '{}'.", path, name);
+                .any(|r| r.path.eq_ignore_ascii_case(&path));
+
+            // `path` may carry `https://user:token@host/...`, so every line below that could reach
+            // a terminal, a CI log or shell history prints the redaction, never the argument. The
+            // stored path is the clone's directory, which has no userinfo in it at all.
+            let stored = if already_present {
+                path.clone()
+            } else {
+                let repo_ref = if is_remote_url(&path) {
+                    let cloned = import_remote_repo(tendril_home, &project_name, &path)
+                        .map_err(|e| anyhow::anyhow!("{}", e.message))?;
+                    RepoRef {
+                        path: cloned.path.to_string_lossy().to_string(),
+                        base_branch: cloned.default_branch,
+                        extra: Default::default(),
+                    }
+                } else {
+                    RepoRef {
+                        path: path.clone(),
+                        base_branch: None,
+                        extra: Default::default(),
+                    }
+                };
+
+                // Re-found rather than reusing `proj`: the clone above borrows `settings` for its
+                // project name and can run for minutes on a large repository.
+                let stored = repo_ref.path.clone();
+                let proj = settings
+                    .projects
+                    .iter_mut()
+                    .find(|p| p.name.eq_ignore_ascii_case(&name))
+                    .ok_or_else(|| anyhow::anyhow!("Project '{}' not found", name))?;
+                if !proj
+                    .repos
+                    .iter()
+                    .any(|r| r.path.eq_ignore_ascii_case(&stored))
+                {
+                    proj.repos.push(repo_ref);
+                    save_config(&cfg_path, &settings)?;
+                }
+                stored
+            };
+
+            println!(
+                "Repo '{}' added to project '{}'.",
+                redact_credentials(&stored),
+                name
+            );
         }
         ProjectCommands::RemoveRepo { name, path } => {
             let proj = settings
@@ -1549,7 +1652,11 @@ fn handle_project_command_fs(cmd: ProjectCommands, tendril_home: &Path) -> anyho
 
             proj.repos.retain(|r| !r.path.eq_ignore_ascii_case(&path));
             save_config(&cfg_path, &settings)?;
-            println!("Repo '{}' removed from project '{}'.", path, name);
+            println!(
+                "Repo '{}' removed from project '{}'.",
+                redact_credentials(&path),
+                name
+            );
         }
         ProjectCommands::AddVerification {
             name,

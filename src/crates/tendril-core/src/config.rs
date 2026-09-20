@@ -1263,9 +1263,16 @@ pub fn update_config_raw(config_path: &Path, incoming: &serde_json::Value) -> Re
 }
 
 pub fn generate_bearer_secret() -> String {
-    use rand::RngCore;
+    // `try_fill_bytes` rather than `fill_bytes`: as of rand 0.9 `OsRng` implements only `TryRngCore`,
+    // because a read from the OS entropy source is genuinely fallible. There is nothing sensible to
+    // do with that failure here — a secret we cannot make random must not be returned — and the
+    // callers up the chain (`share_state::mint`, `persona::generate_random`) all return `String`, so
+    // the panic stops short of handing out a predictable token.
+    use rand::TryRngCore;
     let mut bytes = [0u8; 32];
-    rand::rngs::OsRng.fill_bytes(&mut bytes);
+    rand::rngs::OsRng
+        .try_fill_bytes(&mut bytes)
+        .expect("the OS entropy source must be readable to mint a bearer secret");
     bytes.iter().map(|b| format!("{:02x}", b)).collect()
 }
 

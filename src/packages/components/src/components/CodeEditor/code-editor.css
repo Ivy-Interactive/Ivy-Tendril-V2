@@ -1,0 +1,110 @@
+/*
+ * The host is the box `className` lands on and the positioning context for the fallback, so a caller
+ * that says `h-full` sizes the whole editor. Same shape as `.ivy-terminal-host` in terminal.css, and
+ * for the same reason: an editor that measures its container needs one with a box.
+ */
+.ivy-code-editor-host {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-fields);
+  background: var(--card);
+}
+
+/*
+ * The mount point CodeMirror is handed. It has to be the flex child that grows, because CodeMirror's
+ * scroller is `height: 100%` of whatever it is opened into: a shrink-wrapping parent gives it nothing
+ * to scroll inside and the whole document renders at full height instead.
+ */
+.ivy-code-editor {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/*
+ * What is on screen for the one frame (or the one network round trip on a cold cache) between mount
+ * and the dynamic `import()` resolving. It renders the same text in the same font at the same metrics
+ * as the editor that replaces it, so the swap is not a visible reflow — which is also what makes the
+ * two indistinguishable to a screenshot taken too early, hence the `data-editor-ready` gate the
+ * stories wait on.
+ */
+.ivy-code-editor-fallback {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 4px 8px;
+  overflow: auto;
+  font-family: var(--font-mono);
+  font-size: var(--text-sm-tight);
+  line-height: 1.5;
+  color: var(--foreground);
+  white-space: pre;
+  tab-size: 2;
+}
+
+/*
+ * CodeMirror's own chrome, re-pointed at the app's tokens. These land as plain CSS rather than
+ * through `EditorView.theme` so they can be read and overridden by a host stylesheet the same way
+ * every other component in this package can, and so the rules exist before the editor does — a theme
+ * built inside the dynamic import would repaint a frame after it mounts.
+ */
+.ivy-code-editor .cm-editor {
+  height: 100%;
+  background: transparent;
+  color: var(--foreground);
+  font-family: var(--font-mono);
+  font-size: var(--text-sm-tight);
+}
+
+.ivy-code-editor .cm-editor.cm-focused {
+  /* CodeMirror draws a UA outline on the content element; the ring belongs on the host instead, which
+     is what the `:focus-within` rule below paints. */
+  outline: none;
+}
+
+.ivy-code-editor-host:focus-within {
+  outline: 1px solid var(--ring);
+  outline-offset: -1px;
+}
+
+.ivy-code-editor .cm-scroller {
+  font-family: var(--font-mono);
+  line-height: 1.5;
+  overflow: auto;
+}
+
+.ivy-code-editor .cm-content {
+  padding: 4px 0;
+  caret-color: var(--foreground);
+}
+
+.ivy-code-editor .cm-gutters {
+  background: transparent;
+  border-right: 1px solid var(--border);
+  color: var(--muted-foreground);
+}
+
+.ivy-code-editor .cm-activeLine,
+.ivy-code-editor .cm-activeLineGutter {
+  background: color-mix(in srgb, var(--foreground) 5%, transparent);
+}
+
+/* A read-only editor still shows a caret unless told otherwise, which invites typing that goes
+   nowhere — the same lie `Terminal` refuses to tell a dead pty. */
+.ivy-code-editor[data-read-only="true"] .cm-content {
+  caret-color: transparent;
+}
+
+.ivy-code-editor[data-read-only="true"] .cm-cursor {
+  display: none;
+}
+
+.ivy-code-editor .cm-selectionBackground,
+.ivy-code-editor .cm-content ::selection {
+  background: color-mix(in srgb, var(--primary) 25%, transparent);
+}

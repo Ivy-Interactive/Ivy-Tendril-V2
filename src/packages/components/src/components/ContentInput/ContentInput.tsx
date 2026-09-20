@@ -1,12 +1,44 @@
 import React, { useState, useRef, useEffect } from "react";
+import { Spinner } from "../ui/spinner";
+import { TuiKbd } from "../ui/TuiKbd";
+import { IconButton } from "../ui/IconButton";
+import { TuiBadge } from "../ui/TuiBadge";
 import { VoiceRecorder, type VoiceStatus } from "./voice-recorder";
 import "./content-input.css";
-
-const isMac = typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/.test(navigator.userAgent);
 
 type PdfJsLib = typeof import("pdfjs-dist");
 let pdfjsPromise: Promise<PdfJsLib> | null = null;
 
+/**
+ * Hands pdf.js a worker we constructed ourselves, instead of a URL for it to construct one from.
+ *
+ * THE BUG. Given a `workerSrc` URL, pdf.js first asks `PDFWorker._isSameOrigin(window.location,
+ * workerSrc)`, which opens with `if (!base?.origin || base.origin === "null") return false`. In the
+ * packaged app on macOS and Linux the frontend is served from `tauri://localhost`, and because
+ * `tauri:` is a custom (non-special) URL scheme, WHATWG origin serialisation gives the literal
+ * string `"null"`. So that check fails no matter which URL we supply, and pdf.js routes the load
+ * through `_createCDNWrapper` — `URL.createObjectURL(new Blob([...], { type: "text/javascript" }))`.
+ * Our CSP refuses the `blob:` worker, `new Worker` throws, and pdf.js quietly falls back to
+ * `#setupFakeWorker()`: every page parses on the main thread and the UI freezes while a thumbnail
+ * renders, with no error surfaced. Windows and Android are served from `http(s)://tauri.localhost`
+ * — a real origin — so they never took that path, and `pnpm dev` serves from
+ * `http://127.0.0.1:5173`, which is why this never showed up outside a packaged macOS/Linux build.
+ *
+ * THE FIX. `GlobalWorkerOptions.workerPort` is read by `getDocument` and passed to
+ * `PDFWorker.create`, whose constructor takes the `#initializeFromPort` branch — `_isSameOrigin` is
+ * never consulted and no blob is minted. Pointing `workerSrc` at the bundled asset would NOT have
+ * worked: under a null origin no URL can satisfy that check. The `worker-src 'self' blob:` widening
+ * in `src-tauri/tauri.conf.json` is the belt to this braces (see `tests/tauri-csp.test.ts` in the
+ * app for why both exist); `'self'` is what authorises the `new Worker` below.
+ *
+ * `PDFWorker.create` caches per port, so the single worker built here is shared by every
+ * `PdfThumbnail` on screen. Nothing calls `loadingTask.destroy()` today; if that changes, note that
+ * `PDFWorker.destroy()` terminates a port-provided worker too, so `pdfjsPromise` would have to be
+ * invalidated alongside it or later thumbnails would talk to a dead worker.
+ *
+ * The `workerSrc` assignment is kept as a fallback for environments with no `Worker` constructor —
+ * jsdom under the test runner, and SSR — where a port cannot be built at all.
+ */
 export const loadPdfJs = async (): Promise<PdfJsLib> => {
   if (!pdfjsPromise) {
     pdfjsPromise = Promise.all([
@@ -18,7 +50,13 @@ export const loadPdfJs = async (): Promise<PdfJsLib> => {
           ? pdfjsLib
           : ((pdfjsLib as any).default ?? pdfjsLib);
         if (typeof window !== "undefined" && lib.GlobalWorkerOptions) {
-          lib.GlobalWorkerOptions.workerSrc = workerModule.default;
+          if (typeof Worker !== "undefined") {
+            lib.GlobalWorkerOptions.workerPort = new Worker(workerModule.default, {
+              type: "module",
+            });
+          } else {
+            lib.GlobalWorkerOptions.workerSrc = workerModule.default;
+          }
         }
         return lib;
       })
@@ -173,23 +211,6 @@ const parseValue = (val: string) => {
     return "";
   });
   return { cleanText, filePaths };
-};
-
-const renderShortcut = (isMac: boolean) => {
-  if (isMac) {
-    return (
-      <>
-        <span>⌘</span>
-        <span className="civ-shortcut-enter">↵</span>
-      </>
-    );
-  }
-  return (
-    <>
-      <span>Ctrl</span>
-      <span className="civ-shortcut-enter">↵</span>
-    </>
-  );
 };
 
 export const ContentInput: React.FC<ContentInputProps> = ({
@@ -752,9 +773,14 @@ export const ContentInput: React.FC<ContentInputProps> = ({
             />
           </svg>
           <span>{recordError}</span>
-          <button className="civ-error-close" onClick={() => setRecordError(null)}>
+          <IconButton
+            className="civ-error-close"
+            label="Dismiss error"
+            size="2xs"
+            onClick={() => setRecordError(null)}
+          >
             ×
-          </button>
+          </IconButton>
         </div>
       )}
 
@@ -767,7 +793,7 @@ export const ContentInput: React.FC<ContentInputProps> = ({
       >
         {/* Render Attached Files as Thumbnails */}
         {files.length > 0 && (
-          <div className="civ-attachments-list">
+          <div className="civ-attachments-list thin-scrollbar">
             {files.map((filePath, idx) => {
               const isImage = isImageFile(filePath);
               const isPdf = isPdfFile(filePath);
@@ -793,14 +819,16 @@ export const ContentInput: React.FC<ContentInputProps> = ({
                   )}
 
                   {/* Overlaid Close Button */}
-                  <button
+                  <IconButton
                     className="civ-thumbnail-card-remove"
+                    label="Remove file"
+                    size="2xs"
+                    shape="round"
+                    variant="outline"
                     onClick={() => handleRemoveFile(filePath)}
-                    type="button"
-                    title="Remove file"
                   >
                     ×
-                  </button>
+                  </IconButton>
 
                   {/* Overlaid File Metadata & Badge */}
                   <div className="civ-thumbnail-content">
@@ -812,7 +840,9 @@ export const ContentInput: React.FC<ContentInputProps> = ({
                     ) : (
                       <div />
                     )}
-                    <div className="civ-thumbnail-doc-badge">{meta.badge}</div>
+                    <TuiBadge className="civ-thumbnail-doc-badge" caps>
+                      {meta.badge}
+                    </TuiBadge>
                   </div>
                 </div>
               );
@@ -862,16 +892,18 @@ export const ContentInput: React.FC<ContentInputProps> = ({
                   }
                 }}
               />
-              <button
+              <IconButton
                 className="civ-plus-btn"
+                label="Attach files"
+                size="lg"
+                shape="round"
+                variant="outline"
                 onClick={() => fileInputRef.current?.click()}
-                type="button"
-                title="Attach files"
               >
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                   <path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48" />
                 </svg>
-              </button>
+              </IconButton>
             </div>
 
             {slots?.ProjectPicker || slots?.LeftActions}
@@ -892,16 +924,29 @@ export const ContentInput: React.FC<ContentInputProps> = ({
                   </div>
                 </div>
               )}
-              <button
+              <IconButton
                 className={`civ-mic-btn civ-status-${voiceStatus}`}
+                label="Voice input transcription"
+                size="lg"
+                shape="round"
+                variant="outline"
+                active={voiceStatus !== "idle"}
                 onClick={toggleRecording}
-                type="button"
-                title="Voice input transcription"
               >
                 {voiceStatus === "connecting" ? (
-                  <div className="civ-spinner" />
+                  <Spinner
+                    size={14}
+                    duration="0.8s"
+                    color="var(--accent)"
+                    trackColor="var(--border)"
+                  />
                 ) : voiceStatus === "processing" ? (
-                  <div className="civ-spinner processing" />
+                  <Spinner
+                    size={14}
+                    duration="0.8s"
+                    color="var(--destructive)"
+                    trackColor="var(--border)"
+                  />
                 ) : voiceStatus === "recording" ? (
                   <svg
                     viewBox="0 0 24 24"
@@ -917,7 +962,7 @@ export const ContentInput: React.FC<ContentInputProps> = ({
                     <path d="M19 10v1a7 7 0 0 1-14 0v-1M12 19v3M8 22h8" />
                   </svg>
                 )}
-              </button>
+              </IconButton>
             </div>
 
             {/* Submit Button or Split Button */}
@@ -934,7 +979,12 @@ export const ContentInput: React.FC<ContentInputProps> = ({
                   title={submitLabel || "Send"}
                 >
                   <span className="civ-submit-text">{submitLabel}</span>
-                  <kbd className="civ-submit-shortcut">{renderShortcut(isMac)}</kbd>
+                  <TuiKbd
+                    keys="Ctrl+Enter"
+                    platform
+                    variant="outline"
+                    className="civ-submit-shortcut"
+                  />
                 </button>
                 <button
                   className="civ-split-btn-arrow"
@@ -978,7 +1028,12 @@ export const ContentInput: React.FC<ContentInputProps> = ({
                 {submitLabel ? (
                   <>
                     <span className="civ-submit-text">{submitLabel}</span>
-                    <kbd className="civ-submit-shortcut">{renderShortcut(isMac)}</kbd>
+                    <TuiKbd
+                      keys="Ctrl+Enter"
+                      platform
+                      variant="outline"
+                      className="civ-submit-shortcut"
+                    />
                   </>
                 ) : (
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">

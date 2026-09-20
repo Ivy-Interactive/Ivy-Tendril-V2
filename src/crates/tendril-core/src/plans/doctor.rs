@@ -3,7 +3,7 @@ use crate::git::github::{block_on_gh, fetch_pr_status, PrInfo};
 use crate::models::{canonical_pr_url, PrState};
 use crate::plans::reader::read_plan_yaml;
 use std::collections::BTreeMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 #[derive(Debug, Clone)]
 pub struct PlanDoctorIssue {
@@ -109,12 +109,22 @@ pub fn check_all_plans_health(plans_dir: &Path) -> Result<Vec<PlanDoctorIssue>> 
     let mut all_issues = Vec::new();
 
     if plans_dir.exists() {
+        let mut folders: Vec<PathBuf> = Vec::new();
         for entry in std::fs::read_dir(plans_dir)? {
             let entry = entry?;
             if entry.file_type()?.is_dir() {
-                let issues = check_plan_health(&entry.path());
-                all_issues.extend(issues);
+                folders.push(entry.path());
             }
+        }
+
+        // `read_dir` yields whatever order the filesystem happens to hand back - APFS returns these
+        // sorted, ext4 does not - and `tendril plan doctor` prints these issues verbatim, so without
+        // an order imposed here the same home reports the same problems in a different sequence on
+        // every machine. Plan folders are `NNNNN-Title`, so sorting by name is sorting by plan id.
+        folders.sort();
+
+        for folder in &folders {
+            all_issues.extend(check_plan_health(folder));
         }
     }
 
@@ -164,8 +174,16 @@ pub fn check_pr_health_with_progress(
         return Ok(issues);
     }
 
-    for entry in std::fs::read_dir(plans_dir)?.flatten() {
-        let folder = entry.path();
+    let mut folders: Vec<PathBuf> = std::fs::read_dir(plans_dir)?
+        .flatten()
+        .map(|e| e.path())
+        .collect();
+    // Same reason as `check_all_plans_health`, whose issue list these are appended to: filesystem
+    // order is not guaranteed, and both the malformed-URL warnings raised below and the per-plan
+    // findings that follow are printed in the order they are pushed.
+    folders.sort();
+
+    for folder in folders {
         if !folder.is_dir() || !folder.join("plan.yaml").exists() {
             continue;
         }

@@ -46,6 +46,45 @@ export interface TunnelSnapshot {
   passwordConfigured?: boolean;
 }
 
+/**
+ * `tendril_core::tunnel::installer::InstallProgress`. How a running `cloudflared` download is getting
+ * on.
+ *
+ * `phase` is a plain string rather than a union on the wire, so a daemon that grows a phase does not
+ * break an older app; the section treats anything it does not recognise as "working".
+ */
+export interface CloudflaredInstallProgress {
+  phase: string;
+  downloadedBytes: number;
+  /** Absent when the server sent no `Content-Length`, which is why the bar can be indeterminate. */
+  totalBytes?: number | null;
+  /** Set only in the `failed` phase. */
+  error?: string | null;
+}
+
+/**
+ * `tendril_core::tunnel::installer::InstallState` — `GET /api/tunnel/share/install`.
+ *
+ * Both the "is it there?" answer and the progress of a download, because the section polls one endpoint
+ * for both rather than opening a stream.
+ */
+export interface CloudflaredInstallState {
+  installed: boolean;
+  binaryPath?: string | null;
+  expectedPath: string;
+  assetName: string;
+  /** Where a human would fetch it by hand — the fallback when the download is unavailable or fails. */
+  downloadUrl: string;
+  /** Whether offering an Install button makes sense at all. */
+  downloadable: boolean;
+  progress?: CloudflaredInstallProgress | null;
+  /**
+   * Set when `shareTunnel.binaryPath` points at something unusable. Distinct from `installed: false`:
+   * the operator pointed at a binary, so the fix is their config and not a download.
+   */
+  configuredPathError?: string | null;
+}
+
 /** `GET /api/auth/status`, and the reply from `PUT`/`DELETE /api/auth/password`. */
 export interface PasswordStatus {
   passwordAuthEnabled: boolean;
@@ -71,6 +110,25 @@ export const tunnelApi = {
   },
   async stopShareTunnel(): Promise<TunnelSnapshot> {
     return invoke<TunnelSnapshot>("cmd_stop_share_tunnel");
+  },
+
+  // --- cloudflared: V1's `CloudflaredInstaller` -------------------------------------------------
+  async getCloudflaredInstallState(): Promise<CloudflaredInstallState> {
+    return invoke<CloudflaredInstallState>("cmd_get_cloudflared_install_state");
+  },
+  /**
+   * Starts the daemon's download of `cloudflared`. Resolves as soon as it is running, not when it is
+   * finished — the caller polls {@link tunnelApi.getCloudflaredInstallState} for progress, the same way
+   * it polls a `connecting` tunnel.
+   *
+   * Only ever called from an explicit Install press. Nothing fetches on app start.
+   */
+  async installCloudflared(): Promise<CloudflaredInstallState> {
+    return invoke<CloudflaredInstallState>("cmd_install_cloudflared");
+  },
+  /** Cancels a running download. Installs nothing and removes nothing already installed. */
+  async cancelCloudflaredInstall(): Promise<CloudflaredInstallState> {
+    return invoke<CloudflaredInstallState>("cmd_cancel_cloudflared_install");
   },
 
   // --- Full-access tunnel: V1's `ICloudflaredService` -------------------------------------------

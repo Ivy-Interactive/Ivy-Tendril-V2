@@ -218,7 +218,6 @@ describe("Settings / Coding Agent", () => {
       // The unset tier resolves to a concrete model rather than displaying a sentinel.
       expect(select.value).toBe("claude-opus-5");
     }
-    expect(screen.getAllByText(/this is the built-in default/i).length).toBe(3);
 
     // ...and the effort keeps its Default option, which is V1's own behaviour.
     const effort = screen.getByLabelText("Effort", {

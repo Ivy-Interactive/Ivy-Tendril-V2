@@ -10,7 +10,7 @@ import {
 import { TuiBadge, StatusDot } from "../ui/TuiBadge";
 import { IconButton } from "../ui/IconButton";
 import { TuiKbd } from "../ui/TuiKbd";
-import { Tooltip } from "../ui/TuiTooltip";
+import { Tooltip, TooltipScope } from "../ui/TuiTooltip";
 import { useOutsideClick } from "../../hooks/use-outside-click";
 import { ActionIcon } from "./icons";
 import { shortcutKeys, useActionShortcuts } from "./shortcuts";
@@ -59,7 +59,7 @@ const IconAction: React.FC<{ action: PlanActionDto; onFire: (tag: string) => voi
       <ActionIcon icon={action.icon} />
     )}
     {action.badge && (
-      <TuiBadge numeric className="pws-icon-badge">
+      <TuiBadge numeric shape="pill" floating>
         {action.badge}
       </TuiBadge>
     )}
@@ -252,7 +252,7 @@ const TabTool: React.FC<TabToolProps> = ({
         onPointerLeave={scheduleClose}
       >
         <Icon size={16} />
-        {indicator && <StatusDot tone="warning" className="pws-tool-dot" />}
+        {indicator && <StatusDot tone="warning" floating />}
       </IconButton>
       {open && (
         <div
@@ -297,7 +297,9 @@ export const PlanWorkspace: React.FC<PlanWorkspaceProps> = ({
   type ToolKey = "verifications" | "questions";
   const rootRef = useRef<HTMLDivElement>(null);
   const [rootWidth, setRootWidth] = useState<number | null>(null);
-  const [width, setWidth] = useState(() => readStoredChatWidth() ?? chatWidth);
+  // Keyed by `id`, so two workspaces in the same app remember their own widths. `chatWidth` is the
+  // default only until one has been dragged; after that the stored value under this id wins.
+  const [width, setWidth] = useState(() => readStoredChatWidth(id) ?? chatWidth);
   const [dragging, setDragging] = useState(false);
   const [openTool, setOpenTool] = useState<{ tool: ToolKey; pinned: boolean } | null>(null);
   const [, setSeenVersion] = useState(0);
@@ -383,7 +385,7 @@ export const PlanWorkspace: React.FC<PlanWorkspaceProps> = ({
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);
       setDragging(false);
-      writeStoredChatWidth(latest);
+      writeStoredChatWidth(id, latest);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -392,7 +394,7 @@ export const PlanWorkspace: React.FC<PlanWorkspaceProps> = ({
 
   const resetWidth = () => {
     setWidth(chatWidth);
-    writeStoredChatWidth(null);
+    writeStoredChatWidth(id, null);
   };
 
   const hasVerifications = hasNodes(slots?.Verifications);
@@ -406,163 +408,161 @@ export const PlanWorkspace: React.FC<PlanWorkspaceProps> = ({
   } as React.CSSProperties;
 
   return (
-    <div
-      ref={rootRef}
-      className="pws-root"
-      style={rootStyle}
-      data-narrow={narrow}
-      data-compact={compact}
-      data-dragging={dragging}
-    >
-      <header className="pws-topbar">
-        <div className="pws-title-wrap">
-          <div className="pws-title-main">
-            {planId && <span className="pws-plan-id">{planId}</span>}
-            <span className="pws-title" title={title}>
-              {title}
-            </span>
-          </div>
-          {sourceUrl && (
-            <a
-              className="pws-source"
-              href={sourceUrl}
-              target="_blank"
-              rel="noreferrer"
-              title={sourceUrl}
-            >
-              <ExternalLink size={14} />
-              <span>{sourceLabel || "Source"}</span>
-            </a>
-          )}
-          {meta && <span className="pws-meta">{meta}</span>}
-        </div>
-        <div className="pws-topbar-right">
-          {hasProjectBadges && <div className="pws-project-badges">{slots?.ProjectBadges}</div>}
-          {persona && (
-            <div className="pws-persona" title={persona}>
-              <span className="pws-avatar" aria-hidden="true">
-                {personaInitials || persona.charAt(0).toUpperCase()}
+    <TooltipScope>
+      <div
+        ref={rootRef}
+        className="pws-root"
+        style={rootStyle}
+        data-narrow={narrow}
+        data-compact={compact}
+        data-dragging={dragging}
+      >
+        <header className="pws-topbar">
+          <div className="pws-title-wrap">
+            <div className="pws-title-main">
+              {planId && <span className="pws-plan-id">{planId}</span>}
+              <span className="pws-title" title={title}>
+                {title}
               </span>
-              <span className="pws-persona-name">{persona}</span>
             </div>
-          )}
-          {(iconActions.length > 0 || menu.length > 0) && (
-            <div className="pws-icon-group">
-              {iconActions.map((action) => (
-                <IconAction key={action.tag} action={action} onFire={fire} />
-              ))}
-              {menu.length > 0 && <OverflowMenu items={menu} onFire={fire} />}
-            </div>
-          )}
-          {secondary.map((action) => (
-            <LabeledButton key={action.tag} action={action} onFire={fire} />
-          ))}
-          {primary && <LabeledButton action={primary} primary onFire={fire} />}
-        </div>
-      </header>
-
-      <div className="pws-body">
-        <section className="pws-main">
-          {hasToolbar && <div className="pws-toolbar">{slots?.Toolbar}</div>}
-          {(tabs.length > 0 || hasVerifications || hasQuestions) && (
-            <div className="pws-tabs-row">
-              <div className="pws-tabs" role="tablist">
-                {tabs.map((tab) => (
-                  <button
-                    key={tab.id}
-                    type="button"
-                    role="tab"
-                    className="pws-tab"
-                    aria-selected={tab.id === selectedTab}
-                    onClick={() => emit("OnTabSelect", tab.id)}
-                  >
-                    <span>{tab.label}</span>
-                    {tab.badge && (
-                      <TuiBadge numeric className="pws-tab-badge">
-                        {tab.badge}
-                      </TuiBadge>
-                    )}
-                  </button>
-                ))}
+            {sourceUrl && (
+              <a
+                className="pws-source"
+                href={sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                title={sourceUrl}
+              >
+                <ExternalLink size={14} />
+                <span>{sourceLabel || "Source"}</span>
+              </a>
+            )}
+            {meta && <span className="pws-meta">{meta}</span>}
+          </div>
+          <div className="pws-topbar-right">
+            {hasProjectBadges && <div className="pws-project-badges">{slots?.ProjectBadges}</div>}
+            {persona && (
+              <div className="pws-persona" title={persona}>
+                <span className="pws-avatar" aria-hidden="true">
+                  {personaInitials || persona.charAt(0).toUpperCase()}
+                </span>
+                <span className="pws-persona-name">{persona}</span>
               </div>
-              {(hasVerifications || hasQuestions) && (
-                <div className="pws-tab-tools">
-                  {hasVerifications && (
-                    <TabTool
-                      icon={FileCheck2}
-                      label={verificationsLabel}
-                      panel={slots?.Verifications}
-                      open={openTool?.tool === "verifications"}
-                      pinned={openTool?.tool === "verifications" ? openTool.pinned : false}
-                      onHoverOpen={() => setOpenTool({ tool: "verifications", pinned: false })}
-                      onClick={() => {
-                        if (!openTool) {
-                          setOpenTool({ tool: "verifications", pinned: true });
-                        } else if (openTool.tool === "verifications") {
-                          if (openTool.pinned) {
-                            setOpenTool(null);
+            )}
+            {(iconActions.length > 0 || menu.length > 0) && (
+              <div className="pws-icon-group">
+                {iconActions.map((action) => (
+                  <IconAction key={action.tag} action={action} onFire={fire} />
+                ))}
+                {menu.length > 0 && <OverflowMenu items={menu} onFire={fire} />}
+              </div>
+            )}
+            {secondary.map((action) => (
+              <LabeledButton key={action.tag} action={action} onFire={fire} />
+            ))}
+            {primary && <LabeledButton action={primary} primary onFire={fire} />}
+          </div>
+        </header>
+
+        <div className="pws-body">
+          <section className="pws-main">
+            {hasToolbar && <div className="pws-toolbar">{slots?.Toolbar}</div>}
+            {(tabs.length > 0 || hasVerifications || hasQuestions) && (
+              <div className="pws-tabs-row">
+                <div className="pws-tabs" role="tablist">
+                  {tabs.map((tab) => (
+                    <button
+                      key={tab.id}
+                      type="button"
+                      role="tab"
+                      className="pws-tab"
+                      aria-selected={tab.id === selectedTab}
+                      onClick={() => emit("OnTabSelect", tab.id)}
+                    >
+                      <span>{tab.label}</span>
+                      {tab.badge && <TuiBadge numeric>{tab.badge}</TuiBadge>}
+                    </button>
+                  ))}
+                </div>
+                {(hasVerifications || hasQuestions) && (
+                  <div className="pws-tab-tools">
+                    {hasVerifications && (
+                      <TabTool
+                        icon={FileCheck2}
+                        label={verificationsLabel}
+                        panel={slots?.Verifications}
+                        open={openTool?.tool === "verifications"}
+                        pinned={openTool?.tool === "verifications" ? openTool.pinned : false}
+                        onHoverOpen={() => setOpenTool({ tool: "verifications", pinned: false })}
+                        onClick={() => {
+                          if (!openTool) {
+                            setOpenTool({ tool: "verifications", pinned: true });
+                          } else if (openTool.tool === "verifications") {
+                            if (openTool.pinned) {
+                              setOpenTool(null);
+                            } else {
+                              setOpenTool({ tool: "verifications", pinned: true });
+                            }
                           } else {
                             setOpenTool({ tool: "verifications", pinned: true });
                           }
-                        } else {
-                          setOpenTool({ tool: "verifications", pinned: true });
-                        }
-                      }}
-                      onClose={() => setOpenTool(null)}
-                    />
-                  )}
-                  {hasQuestions && (
-                    <TabTool
-                      icon={FileQuestion}
-                      label={questionsLabel}
-                      panel={slots?.Questions}
-                      open={openTool?.tool === "questions"}
-                      pinned={openTool?.tool === "questions" ? openTool.pinned : false}
-                      indicator={unansweredQuestions > 0 && !questionsSeen}
-                      onHoverOpen={() => setOpenTool({ tool: "questions", pinned: false })}
-                      onClick={() => {
-                        if (!openTool) {
-                          setOpenTool({ tool: "questions", pinned: true });
-                        } else if (openTool.tool === "questions") {
-                          if (openTool.pinned) {
-                            setOpenTool(null);
+                        }}
+                        onClose={() => setOpenTool(null)}
+                      />
+                    )}
+                    {hasQuestions && (
+                      <TabTool
+                        icon={FileQuestion}
+                        label={questionsLabel}
+                        panel={slots?.Questions}
+                        open={openTool?.tool === "questions"}
+                        pinned={openTool?.tool === "questions" ? openTool.pinned : false}
+                        indicator={unansweredQuestions > 0 && !questionsSeen}
+                        onHoverOpen={() => setOpenTool({ tool: "questions", pinned: false })}
+                        onClick={() => {
+                          if (!openTool) {
+                            setOpenTool({ tool: "questions", pinned: true });
+                          } else if (openTool.tool === "questions") {
+                            if (openTool.pinned) {
+                              setOpenTool(null);
+                            } else {
+                              setOpenTool({ tool: "questions", pinned: true });
+                            }
                           } else {
                             setOpenTool({ tool: "questions", pinned: true });
                           }
-                        } else {
-                          setOpenTool({ tool: "questions", pinned: true });
-                        }
-                      }}
-                      onClose={() => setOpenTool(null)}
-                    />
-                  )}
-                </div>
-              )}
-            </div>
-          )}
-          <div className="pws-content">{slots?.Content}</div>
-        </section>
+                        }}
+                        onClose={() => setOpenTool(null)}
+                      />
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+            <div className="pws-content">{slots?.Content}</div>
+          </section>
 
-        {showChat && (
-          <>
-            <Tooltip content="Drag to resize, double-click to reset" side="left">
-              <div
-                className="pws-resizer"
-                role="separator"
-                aria-orientation="vertical"
-                aria-label="Resize chat"
-                aria-valuenow={width}
-                aria-valuemin={MIN_CHAT_WIDTH}
-                onPointerDown={startResize}
-                onDoubleClick={resetWidth}
-              />
-            </Tooltip>
-            <aside className="pws-chat" aria-label="Plan chat">
-              {slots?.Chat}
-            </aside>
-          </>
-        )}
+          {showChat && (
+            <>
+              <Tooltip content="Drag to resize, double-click to reset" side="left">
+                <div
+                  className="pws-resizer"
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="Resize chat"
+                  aria-valuenow={width}
+                  aria-valuemin={MIN_CHAT_WIDTH}
+                  onPointerDown={startResize}
+                  onDoubleClick={resetWidth}
+                />
+              </Tooltip>
+              <aside className="pws-chat" aria-label="Plan chat">
+                {slots?.Chat}
+              </aside>
+            </>
+          )}
+        </div>
       </div>
-    </div>
+    </TooltipScope>
   );
 };

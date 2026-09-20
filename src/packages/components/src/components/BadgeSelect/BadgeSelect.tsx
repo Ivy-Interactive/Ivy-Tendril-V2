@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Flag, Folder, Plus, WandSparkles, X, type LucideIcon } from "lucide-react";
+import { TuiBadge } from "../ui/TuiBadge";
 import "./badge-select.css";
 
 type IvyEventHandler = (eventName: string, widgetId: string, args: unknown[]) => void;
@@ -158,7 +159,7 @@ export function BadgeSelect({
   useLayoutEffect(() => {
     const container = badgesRef.current;
     if (!container || selected.length === 0) return;
-    const badges = Array.from(container.querySelectorAll<HTMLElement>("[data-badge]"));
+    const badges = Array.from(container.querySelectorAll<HTMLElement>(".bselect-badge"));
     badges.forEach((b) => (b.style.display = ""));
     const gap = 4;
     const counterReserve = 40;
@@ -240,9 +241,7 @@ export function BadgeSelect({
     setOpen(false);
   };
 
-  const remove = (optionValue: string, e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
+  const remove = (optionValue: string) => {
     const opt = options.find((o) => o.value === optionValue);
     if (opt?.removable === false) return;
     emit(selected.filter((v) => v !== optionValue));
@@ -314,28 +313,22 @@ export function BadgeSelect({
               const opt = options.find((o) => o.value === v);
               const canRemove = multiple && opt?.removable !== false;
               return (
-                <span
+                <TuiBadge
                   key={v}
-                  data-badge
                   className="bselect-badge"
+                  size="md"
                   style={{ display: i < visibleCount ? undefined : "none" }}
+                  onRemove={canRemove ? () => remove(v) : undefined}
+                  removeLabel={`Remove ${opt?.label ?? v}`}
                 >
                   <span className="bselect-badge-label">{opt?.label ?? v}</span>
-                  {canRemove && (
-                    <button
-                      type="button"
-                      className="bselect-badge-x"
-                      aria-label={`Remove ${opt?.label ?? v}`}
-                      onClick={(e) => remove(v, e)}
-                    >
-                      <X size={12} />
-                    </button>
-                  )}
-                </span>
+                </TuiBadge>
               );
             })}
             {visibleCount < selected.length && (
-              <span className="bselect-count">+{selected.length - visibleCount}</span>
+              <TuiBadge className="bselect-count" size="md">
+                +{selected.length - visibleCount}
+              </TuiBadge>
             )}
           </>
         )}
@@ -366,7 +359,12 @@ export function BadgeSelect({
           aria-expanded={open}
           aria-haspopup="listbox"
           onClick={(e) => {
-            if ((e.target as HTMLElement).closest(".bselect-badge-x")) return;
+            // Removing a badge must not also open the menu. The remove button is inside this trigger,
+            // so its click bubbles here; rather than have `TuiBadge` stop propagation — which would
+            // change the event for every other consumer of a shared primitive — the trigger asks
+            // whether the click came from one. `closest` walks up from the *captured* target, so it
+            // answers correctly even though the badge is gone by the time React re-renders.
+            if ((e.target as HTMLElement).closest(".tui-badge-remove")) return;
             setOpen((v) => !v);
           }}
           onKeyDown={(e) => {

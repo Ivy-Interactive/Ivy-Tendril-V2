@@ -436,7 +436,7 @@ mod tests {
         let frame = r#"{"type":"user","message":{"content":[{"type":"tool_result","content":"Status updated for job 03589\nPlanId: 00682\nDirectory: /x/Plans/00682-AddCIVerificationWorkflowAndMakeTheSourceTreeRustfmtClean\n"}]}}"#.to_string();
 
         assert_eq!(
-            resolve_created_plan_folder(&plans_dir, &j, &[frame.clone()]),
+            resolve_created_plan_folder(&plans_dir, &j, std::slice::from_ref(&frame)),
             Some(folder.clone()),
             "the id must be found even when no word boundary precedes the marker"
         );

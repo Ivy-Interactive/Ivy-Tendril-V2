@@ -1,5 +1,6 @@
 import { agentsApi } from "../api/agentsApi";
 import { chatApi } from "../api/chatApi";
+import { publishChatSessionCount } from "./chatSessionCount";
 import { onChatEvent, type EventUnsubscribe } from "../api/events";
 import { DEFAULT_OPTION_ID, type AgentOption } from "../types/agents";
 import type {
@@ -19,6 +20,7 @@ import {
   type AgentPreference,
   type AgentPreferences,
 } from "./agentPreferences";
+import type { QuestionsDraftState, QuestionsDraftStore } from "@ivy-interactive/components/tendril";
 import {
   extractPlanQuestions,
   mergeConfirmedQuestionsBlock,
@@ -29,6 +31,23 @@ export type { ChatState, InProgressQuestionAnswers } from "../types/chat";
 
 const IN_PROGRESS_ANSWERS_STORAGE_KEY = "tendril:chat:in_progress_answers";
 const DRAFT_OWNERS_STORAGE_KEY = "tendril:chat:draft_session_owners";
+/**
+ * Unsent composer text, keyed by session id.
+ *
+ * V1 has no counterpart to port, and the reason is instructive: `ChatWidget` holds its prompt in a
+ * plain `useState` (`const [promptText, setPromptText] = useState("")`) and never persists it,
+ * because the Ivy shell keeps the widget mounted while you move around the app. V2's Chat page is
+ * a `React.lazy` route that `App.renderActiveView` swaps out, so leaving the page unmounts the
+ * composer and takes the half-typed prompt with it. The nearest thing V1 *does* have is the
+ * per-message question-draft store (`questionDraftsRef` in `ChatWidget.tsx`, contract in
+ * `PlanMarkdown/questionsContext.ts`), which exists for exactly this reason - "a drafted but
+ * unsubmitted answer survives session switches" - so this follows its shape: a map keyed by what
+ * the draft belongs to, never one global slot.
+ *
+ * Keyed per session and not globally on purpose. One shared draft would put a prompt written for
+ * one conversation into the composer of another, which is a worse bug than the one being fixed.
+ */
+const COMPOSER_DRAFTS_STORAGE_KEY = "tendril:chat:composer_drafts";
 export const PINNED_SESSIONS_STORAGE_KEY = "tendril:chat:pinned_sessions";
 
 /** The agent every chat runs with until the catalog says otherwise. */
@@ -163,6 +182,53 @@ function saveStoredInProgressAnswers(data: Record<string, InProgressQuestionAnsw
   }
 }
 
+/**
+ * The unsent composer text of every session that has some, as of the last write by any window.
+ *
+ * Same defensive shape as the other stored maps here: storage can be absent (a non-browser test
+ * environment), restricted (private browsing), or hold something another version wrote, and none of
+ * those is a reason to fail to open a chat.
+ */
+function loadStoredComposerDrafts(): Record<string, string> {
+  try {
+    const storage =
+      typeof localStorage !== "undefined"
+        ? localStorage
+        : typeof window !== "undefined"
+          ? window.localStorage
+          : null;
+    if (storage) {
+      const raw = storage.getItem(COMPOSER_DRAFTS_STORAGE_KEY);
+      if (raw) {
+        return JSON.parse(raw);
+      }
+    }
+  } catch {
+    // Fallback to in-memory if storage is restricted or throws
+  }
+  return {};
+}
+
+function saveStoredComposerDrafts(data: Record<string, string>): void {
+  try {
+    const storage =
+      typeof localStorage !== "undefined"
+        ? localStorage
+        : typeof window !== "undefined"
+          ? window.localStorage
+          : null;
+    if (storage) {
+      if (Object.keys(data).length === 0) {
+        storage.removeItem(COMPOSER_DRAFTS_STORAGE_KEY);
+      } else {
+        storage.setItem(COMPOSER_DRAFTS_STORAGE_KEY, JSON.stringify(data));
+      }
+    }
+  } catch {
+    // Ignore storage quota or access errors
+  }
+}
+
 function loadStoredDraftOwners(): Record<string, string> {
   try {
     const storage =
@@ -270,6 +336,7 @@ export class ChatStore {
     selectedEffort: DEFAULT_OPTION_ID,
     queuedItems: [],
     isGenerating: false,
+    isCancelling: false,
     isLoading: false,
     error: null,
     inProgressAnswers: loadStoredInProgressAnswers(),
@@ -289,8 +356,36 @@ export class ChatStore {
    * again before a single await has settled.
    */
   private generation = 0;
+  /**
+   * Whether `fetchSessions` has come back, so `state.sessions` is a list rather than a placeholder.
+   * Only the Chat badge reads it, and only to tell "no chats" from "not asked yet".
+   */
+  private sessionsLoaded = false;
   private storageListenerAttached = false;
   private draftOwners: Record<string, string> = loadStoredDraftOwners();
+  /**
+   * Every session's unsent composer text. See {@link COMPOSER_DRAFTS_STORAGE_KEY} for why this is
+   * kept out here rather than in the composer's own `useState`.
+   */
+  private composerDrafts: Record<string, string> = loadStoredComposerDrafts();
+  /**
+   * Every message's in-progress question-block drafts, keyed `${messageId}::${blockKey}`, exactly
+   * as V1's `questionDraftsRef` in `ChatWidget.tsx` keys its own: "a drafted but unsubmitted
+   * answer survives session switches for as long as the widget stays mounted".
+   *
+   * Here rather than in a `useRef` for the same reason {@link COMPOSER_DRAFTS_STORAGE_KEY} is here:
+   * V1's chat widget stays mounted while you move around the Ivy shell, V2's Chat page is a lazy
+   * route that unmounts, and `ChatMessageRow` is additionally remounted by virtualization every
+   * time its row scrolls out of the window. A draft held anywhere in the tree would not survive
+   * either. Not persisted: it is unsubmitted UI state, and V1 does not persist it either - what
+   * has to outlive a reload is a *submitted* answer, which is {@link inProgressAnswers}.
+   */
+  private questionDrafts: Map<string, QuestionsDraftState> = new Map();
+  /**
+   * One `QuestionsDraftStore` per message, cached so the context value keeps its identity across
+   * renders and remounts - V1 caches `draftStoreFor` in a `Map` for exactly that reason.
+   */
+  private questionDraftStores: Map<string, QuestionsDraftStore> = new Map();
   private pinnedSessions: Record<string, string> = loadStoredPinnedSessions();
   private agentPreferences: AgentPreferences = loadStoredAgentPreferences();
   /**
@@ -301,6 +396,12 @@ export class ChatStore {
    */
   private generatingSessionIds: Set<string> = new Set();
   private completedSessionIds: Set<string> = new Set();
+  /**
+   * Sessions whose stop has been asked for but whose turn has not ended. Per session, and not a
+   * single flag, for the same reason the generating sets are: stopping one chat and then opening
+   * another must not leave the second one's composer wearing the first one's pending state.
+   */
+  private cancellingSessionIds: Set<string> = new Set();
   /** Resolvers waiting for a session's turn to end, used by the force-send path. */
   private turnEndWaiters: Map<string, Array<() => void>> = new Map();
   /**
@@ -356,6 +457,15 @@ export class ChatStore {
     } else if (key === DRAFT_OWNERS_STORAGE_KEY) {
       try {
         this.draftOwners = newValue ? JSON.parse(newValue) : {};
+      } catch {
+        // Ignore malformed external writes
+      }
+    } else if (key === COMPOSER_DRAFTS_STORAGE_KEY) {
+      try {
+        this.composerDrafts = newValue ? JSON.parse(newValue) : {};
+        // No `notify()`: the draft is not part of `state`, it seeds the composer's own field when
+        // that field mounts. Telling a composer the user is typing in to adopt another window's
+        // text mid-keystroke would overwrite what they are writing.
       } catch {
         // Ignore malformed external writes
       }
@@ -419,6 +529,19 @@ export class ChatStore {
   }
 
   private notify(): void {
+    /* The shell's Chat badge, which V1 recomputes from `chatService.GetSessions().Count` on every
+       `Build()` (`AppShell/TendrilAppShell.cs:1085`). Pushed from here rather than pulled by the
+       shell because `App.tsx` must not import this module - see `chatSessionCount.ts`. Doing it on
+       every notify is the closest thing to V1's every-build: a create, a delete, a prune and a
+       reload all pass through here, and the publish is a no-op when the number has not moved.
+
+       Two stores stay out of it. A plan-scoped one filters the list to a single conversation, so its
+       count is not the number of chats the user has. And an app-wide one that has not loaded yet has
+       an empty `sessions` meaning "not known", not "none" - publishing that would blank a badge the
+       shell's own startup fetch had correctly filled. */
+    if (!this.planScope && this.sessionsLoaded) {
+      publishChatSessionCount(this.state.sessions.length);
+    }
     this.listeners.forEach((l) => l());
   }
 
@@ -583,10 +706,17 @@ export class ChatStore {
     if (!sessionId) return;
     if (isGenerating) {
       this.completedSessionIds.delete(sessionId);
+      // Deliberately leaves `cancellingSessionIds` alone. Deltas keep arriving from a turn that is
+      // still noticing its cancellation token, and each one lands here; a turn that is *continuing*
+      // is not a turn that stopped, so only the branch below - the turn actually ending - retires
+      // the pending stop.
       this.generatingSessionIds.add(sessionId);
     } else {
       this.generatingSessionIds.delete(sessionId);
       this.completedSessionIds.add(sessionId);
+      // The run this stop was asked about is over, whether the cancel ended it, the agent finished
+      // first, or the daemon said so. Either way there is nothing left to be pending about.
+      this.cancellingSessionIds.delete(sessionId);
       const waiters = this.turnEndWaiters.get(sessionId);
       if (waiters) {
         this.turnEndWaiters.delete(sessionId);
@@ -596,11 +726,78 @@ export class ChatStore {
     this.syncGenerating();
   }
 
-  /** `state.isGenerating` only ever describes the active session, as `ChatApp.Build` does. */
+  /**
+   * `state.isGenerating` only ever describes the active session, as `ChatApp.Build` does, and
+   * `state.isCancelling` follows it: both are questions about the conversation on screen.
+   */
   private syncGenerating(): void {
     this.state.isGenerating = this.state.activeSessionId
       ? this.generatingSessionIds.has(this.state.activeSessionId)
       : false;
+    this.state.isCancelling = this.state.activeSessionId
+      ? this.cancellingSessionIds.has(this.state.activeSessionId)
+      : false;
+  }
+
+  // ---------------------------------------------------------------------------------------------
+  // Composer drafts
+  //
+  // The prompt a user has typed but not sent, kept per session so leaving the Chat page and coming
+  // back finds it again. See {@link COMPOSER_DRAFTS_STORAGE_KEY} for why V1 needs none of this.
+  // ---------------------------------------------------------------------------------------------
+
+  /** The unsent prompt belonging to a session, or "" for a session that has none. */
+  public composerDraft(sessionId: string | null | undefined): string {
+    if (!sessionId) return "";
+    return this.composerDrafts[sessionId] ?? "";
+  }
+
+  /**
+   * Records what the composer currently holds for one session, or forgets it when empty.
+   *
+   * Empty is a delete rather than an empty string so the map stays the size of the drafts that
+   * exist, not of every chat ever opened.
+   */
+  public setComposerDraft(sessionId: string | null | undefined, text: string): void {
+    if (!sessionId) return;
+    const existing = this.composerDrafts[sessionId] ?? "";
+    if (existing === text) return;
+    const next = { ...this.composerDrafts };
+    if (text) {
+      next[sessionId] = text;
+    } else {
+      delete next[sessionId];
+    }
+    this.persistComposerDrafts(next);
+  }
+
+  /** Drops one session's draft, used when its prompt was sent, queued, or the session went away. */
+  public clearComposerDraft(sessionId: string | null | undefined): void {
+    this.setComposerDraft(sessionId, "");
+  }
+
+  private persistComposerDrafts(drafts: Record<string, string>): void {
+    this.composerDrafts = drafts;
+    saveStoredComposerDrafts(drafts);
+    this.broadcastStorageChange(COMPOSER_DRAFTS_STORAGE_KEY, drafts);
+  }
+
+  /**
+   * Forgets the drafts of sessions that no longer exist, so a map that is only ever added to cannot
+   * grow without bound. Mirrors {@link sweepDraftsForMissingSessions}, including its exemption for
+   * the session on screen, which may have been created locally and not yet be in a fetched list.
+   */
+  private sweepComposerDraftsForMissingSessions(sessions: ChatSession[]): void {
+    const liveIds = new Set(sessions.map((s) => s.id));
+    const drafts = { ...this.composerDrafts };
+    let changed = false;
+    for (const sessionId of Object.keys(drafts)) {
+      if (liveIds.has(sessionId)) continue;
+      if (sessionId === this.state.activeSessionId) continue;
+      delete drafts[sessionId];
+      changed = true;
+    }
+    if (changed) this.persistComposerDrafts(drafts);
   }
 
   public isSessionGenerating(sessionId: string): boolean {
@@ -734,6 +931,7 @@ export class ChatStore {
       selectedEffort: DEFAULT_OPTION_ID,
       queuedItems: [],
       isGenerating: false,
+      isCancelling: false,
       isLoading: false,
       error: null,
       inProgressAnswers: {},
@@ -742,13 +940,19 @@ export class ChatStore {
     saveStoredInProgressAnswers({});
     this.draftOwners = {};
     saveStoredDraftOwners({});
+    this.composerDrafts = {};
+    saveStoredComposerDrafts({});
+    this.questionDrafts = new Map();
+    this.questionDraftStores = new Map();
     this.pinnedSessions = {};
     saveStoredPinnedSessions({});
     this.agentPreferences = {};
     saveStoredAgentPreferences({});
     saveStoredSelectedAgent(null);
+    this.sessionsLoaded = false;
     this.generatingSessionIds = new Set();
     this.completedSessionIds = new Set();
+    this.cancellingSessionIds = new Set();
     this.turnEndWaiters = new Map();
     this.optimisticMessageIds = new Set();
     // Drop the event subscription and the `init()` memo together: a test that reset the store and
@@ -825,6 +1029,11 @@ export class ChatStore {
       // A generating session is never pruned, whether or not it is the one on screen, which is
       // what `ChatHistoryService.PruneEmptySessions` checks.
       if (this.generatingSessionIds.has(s.id)) return false;
+      // Nor is one holding a prompt the user wrote and has not sent. This has no V1 counterpart
+      // because V1 has no persisted drafts to protect, but pruning runs on the way out of the Chat
+      // page - so without this, typing into a fresh chat and navigating away would delete the very
+      // session the draft was being kept for, which is the bug this is all here to fix.
+      if (this.composerDrafts[s.id]) return false;
       return !s.messages || s.messages.length === 0;
     });
 
@@ -1135,9 +1344,11 @@ export class ChatStore {
       const enriched = this.enrichSessionsWithPins(scoped);
       const sorted = this.sortSessions(enriched);
       this.state.sessions = sorted;
+      this.sessionsLoaded = true;
       this.state.isLoading = false;
       this.backfillDraftOwners(sorted);
       this.sweepDraftsForMissingSessions(sorted);
+      this.sweepComposerDraftsForMissingSessions(sorted);
 
       // Select first session if none active
       if (!this.state.activeSessionId && sorted.length > 0) {
@@ -1202,6 +1413,12 @@ export class ChatStore {
         chatApi.getSession(id),
         chatApi.getQueue(id).catch(() => []),
       ]);
+      // The user can switch chats while this fetch is in flight. Landing a stale session here would
+      // leave `activeSession.id` disagreeing with `activeSessionId`, and every guard in
+      // `handleChatEvent` compares against `activeSession.id` - so the losing session's stream would
+      // then be appended to the pane showing the winning one. Same check as `submitAnswers`.
+      if (this.state.activeSessionId !== id) return;
+
       const isPinned = Boolean(this.pinnedSessions[id]);
       session.isPinned = isPinned;
       session.pinnedAt = isPinned ? this.pinnedSessions[id] : undefined;
@@ -1231,13 +1448,20 @@ export class ChatStore {
    * moment a turn ends as well as while one runs.
    */
   public async refreshActiveSession(options?: { preserveLocalLonger?: boolean }): Promise<void> {
-    if (!this.state.activeSessionId) return;
+    const targetId = this.state.activeSessionId;
+    if (!targetId) return;
     const preserveLocalLonger = options?.preserveLocalLonger ?? this.state.isGenerating;
     try {
       const [session, queue] = await Promise.all([
-        chatApi.getSession(this.state.activeSessionId),
-        chatApi.getQueue(this.state.activeSessionId).catch(() => []),
+        chatApi.getSession(targetId),
+        chatApi.getQueue(targetId).catch(() => []),
       ]);
+      // Fired automatically when a turn ends (`chat.generating_state`), so this routinely races a
+      // chat switch rather than only on a double-click. Without the re-check the merge below splices
+      // the local messages of whichever session is on screen now into the server messages of the one
+      // that was. Reading `activeSessionId` once, above, also keeps the two fetches on one session.
+      if (this.state.activeSessionId !== targetId) return;
+
       const isPinned = Boolean(this.pinnedSessions[session.id]);
       session.isPinned = isPinned;
       session.pinnedAt = isPinned ? this.pinnedSessions[session.id] : undefined;
@@ -1389,7 +1613,10 @@ export class ChatStore {
       // completed any more.
       this.generatingSessionIds.delete(id);
       this.completedSessionIds.delete(id);
+      this.cancellingSessionIds.delete(id);
       this.turnEndWaiters.delete(id);
+      // A draft belongs to its conversation, so it goes with it.
+      this.clearComposerDraft(id);
 
       if (this.state.activeSessionId === id) {
         if (this.state.sessions.length > 0) {
@@ -1498,10 +1725,24 @@ export class ChatStore {
    * Stops the turn in flight. The queue is cleared first, as `ContentView`'s `OnCancelStream`
    * does: the daemon drains its queue as soon as a turn ends, so a stop that left prompts behind
    * would immediately start the next one instead of stopping.
+   *
+   * The session is marked cancelling *before* the first await, which is the whole point: V1's
+   * `handleCancelStream` is synchronous and its stop button vanishes on the same tick, while here
+   * `cancel_session` is a round trip and the agent process then takes its own time to die. Without
+   * something published up front the button looked untouched for that entire window, so people
+   * pressed it again - the reported "I have to press it 2 times". The flag is cleared by the turn
+   * actually ending (see {@link setSessionGenerating}), not by this call returning, because the
+   * cancel resolving only means the token was signalled.
    */
   public async cancelGeneration(): Promise<void> {
     const sessionId = this.state.activeSessionId;
     if (!sessionId) return;
+
+    // Published synchronously, before anything is awaited, so the composer has already re-rendered
+    // by the time the user could reach for the button again.
+    this.cancellingSessionIds.add(sessionId);
+    this.syncGenerating();
+    this.notify();
 
     const previousQueue = this.state.queuedItems;
     if (previousQueue.length > 0) {
@@ -1521,6 +1762,11 @@ export class ChatStore {
       this.setSessionGenerating(sessionId, false);
       this.notify();
     } catch (err) {
+      // The stop never landed and the turn is still running, so the pending state has to come off:
+      // a button stuck in "stopping" over a turn nobody stopped is a dead end, and pressing again
+      // is now the right thing for the user to do.
+      this.cancellingSessionIds.delete(sessionId);
+      this.syncGenerating();
       this.state.error = err instanceof Error ? err.message : String(err);
       this.notify();
     }
@@ -1668,29 +1914,55 @@ export class ChatStore {
     this.state.submittingAnswers = nextSubmitting;
   }
 
-  public async submitAnswer(
+  /**
+   * The draft store for one message's question blocks, for a `QuestionsDraftContext.Provider`.
+   * Stable per message id, so the provider's value does not change identity on every render.
+   */
+  public questionDraftStore(messageId: string): QuestionsDraftStore {
+    let store = this.questionDraftStores.get(messageId);
+    if (!store) {
+      store = {
+        read: (blockKey) => this.questionDrafts.get(`${messageId}::${blockKey}`),
+        write: (blockKey, state) => {
+          this.questionDrafts.set(`${messageId}::${blockKey}`, state);
+        },
+        clear: (blockKey) => {
+          this.questionDrafts.delete(`${messageId}::${blockKey}`);
+        },
+      };
+      this.questionDraftStores.set(messageId, store);
+    }
+    return store;
+  }
+
+  /**
+   * Applies a whole question block's answers in one call and then sends the summary as the next
+   * user turn, which is what `ContentView`'s `OnAnswerQuestion` does:
+   *
+   * ```csharp
+   * chatService.ApplyQuestionAnswers(e.Value.SessionId, e.Value.MessageId, e.Value.Answers);
+   * ...
+   * if (!string.IsNullOrWhiteSpace(e.Value.ResponseText))
+   *     sendMessage(new ChatSendMessageDto(e.Value.ResponseText, SessionId: e.Value.SessionId));
+   * ```
+   *
+   * One round trip for the block, not one per answered question: the answers were drafted locally
+   * and Submit is what commits them. The summary is sent after the block is stored so the turn the
+   * agent reads and the document it reads it from agree, and it goes through {@link sendMessage},
+   * which parks it in the queue when a turn is already running.
+   */
+  public async submitAnswers(
     messageId: string,
-    questionId: string,
-    answer: string | string[] | undefined | null,
+    answers: Record<string, string[]>,
+    responseText?: string,
   ): Promise<void> {
     if (!this.state.activeSessionId) return;
 
-    // Immediately record into inProgressAnswers and track submitting state
-    this.setInProgressAnswer(messageId, questionId, answer);
-    this.setSubmitting(messageId, questionId, true);
-
-    const values =
-      answer === undefined || answer === null
-        ? []
-        : Array.isArray(answer)
-          ? answer.map(String)
-          : answer === ""
-            ? []
-            : [String(answer)];
-
-    const answersPayload: Record<string, string[]> = {
-      [questionId]: values,
-    };
+    const questionIds = Object.keys(answers);
+    for (const questionId of questionIds) {
+      this.setInProgressAnswer(messageId, questionId, answers[questionId]);
+      this.setSubmitting(messageId, questionId, true);
+    }
 
     // Optimistically patch in-memory message content
     if (this.state.activeSession) {
@@ -1698,7 +1970,7 @@ export class ChatStore {
       const targetIndex = messages.findIndex((m) => m.id === messageId);
       if (targetIndex >= 0) {
         const targetMsg = messages[targetIndex];
-        const pendingForMsg = this.getInProgressAnswers(messageId) || { [questionId]: values };
+        const pendingForMsg = this.getInProgressAnswers(messageId) ?? answers;
         messages[targetIndex] = {
           ...targetMsg,
           content: patchQuestionsMarkdown(targetMsg.content, pendingForMsg),
@@ -1707,12 +1979,9 @@ export class ChatStore {
     }
     this.notify();
 
+    const sessionId = this.state.activeSessionId;
     try {
-      const updatedSession = await chatApi.answerQuestions(
-        this.state.activeSessionId,
-        messageId,
-        answersPayload,
-      );
+      const updatedSession = await chatApi.answerQuestions(sessionId, messageId, answers);
 
       if (this.state.activeSessionId === updatedSession.id) {
         if (this.state.isGenerating && this.state.activeSession) {
@@ -1748,21 +2017,31 @@ export class ChatStore {
             : updatedSession;
       }
 
-      // Only clear inProgressAnswers once confirmed message content in activeSession actually contains the parsed answer
+      // Only drop a draft once the confirmed message content actually carries that answer.
       const targetMsg = this.state.activeSession?.messages.find((m) => m.id === messageId);
       if (targetMsg) {
         const questions = extractPlanQuestions(targetMsg.content);
-        const q = questions.find((item) => item.id === questionId);
-        if (q && q.answerPresent) {
-          this.clearInProgressAnswers(messageId, questionId);
+        for (const questionId of questionIds) {
+          const q = questions.find((item) => item.id === questionId);
+          if (q && q.answerPresent) {
+            this.clearInProgressAnswers(messageId, questionId);
+          }
         }
       }
     } catch (err) {
       this.state.error = err instanceof Error ? err.message : String(err);
       throw err;
     } finally {
-      this.setSubmitting(messageId, questionId, false);
+      for (const questionId of questionIds) {
+        this.setSubmitting(messageId, questionId, false);
+      }
       this.notify();
+    }
+
+    // After the block is stored, never before: the follow-up turn is the agent being told what was
+    // decided, and it must not read a document that has not caught up yet.
+    if (responseText && responseText.trim()) {
+      await this.sendMessage(responseText);
     }
   }
 

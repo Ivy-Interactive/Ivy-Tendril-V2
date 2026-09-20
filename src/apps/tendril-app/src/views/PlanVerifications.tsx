@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { Button } from "@ivy-interactive/components/ui";
 import { bridge } from "../api/bridge";
 import { plansStore } from "../state/plansStore";
 import {
@@ -8,6 +9,8 @@ import {
   type VerificationReport,
   type VerificationStatus,
 } from "../types/api";
+import { TERMINAL_VERIFICATION_CLASS } from "../utils/verificationStatus";
+import { ErrorBanner } from "../components/ErrorBanner";
 
 interface PlanVerificationsProps {
   planId: string;
@@ -51,16 +54,6 @@ export function orderByProjectConfig(
     .sort((a, b) => rank(a.v) - rank(b.v) || a.index - b.index)
     .map((entry) => entry.v);
 }
-
-/**
- * Badge classes for the two terminal outcomes, from `Constants.VerificationStatusBadgeVariants`
- * (V1 `src/Ivy.Tendril/Constants.cs`): Pass is Success and Fail is Destructive. Pending and
- * Skipped are Outline there and carry no badge here at all - see below.
- */
-const TERMINAL_STATUS_CLASS: Record<"Pass" | "Fail", string> = {
-  Pass: "border-success/40 bg-success/10 text-success",
-  Fail: "border-destructive/40 bg-destructive/10 text-destructive",
-};
 
 /**
  * Verifications, as V1's `VerificationsPanelView` presents them: one checkbox per
@@ -204,15 +197,7 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
 
   return (
     <div className="space-y-3" data-testid="plan-verifications">
-      {error && (
-        <div
-          role="alert"
-          data-testid="verification-reports-error"
-          className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-        >
-          {error}
-        </div>
-      )}
+      {error && <ErrorBanner data-testid="verification-reports-error">{error}</ErrorBanner>}
 
       {orderedVerifications.map((v) => {
         const report = reports[v.name];
@@ -223,7 +208,7 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
         const terminal = v.status === "Pass" || v.status === "Fail" ? v.status : null;
 
         return (
-          <div key={v.name} className="rounded-lg border border-border bg-background">
+          <div key={v.name} className="rounded-box border border-border bg-background">
             <div className="flex items-center justify-between gap-3 p-3">
               <div className="flex items-center gap-3">
                 <label className="flex items-center gap-2 text-sm font-medium text-foreground">
@@ -243,7 +228,7 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
                 {terminal && (
                   <span
                     data-testid={`verification-status-${v.name}`}
-                    className={`rounded border px-2 py-0.5 text-xs font-medium ${TERMINAL_STATUS_CLASS[terminal]}`}
+                    className={`rounded border px-2 py-0.5 text-xs font-medium ${TERMINAL_VERIFICATION_CLASS[terminal]}`}
                   >
                     {terminal}
                   </span>
@@ -254,14 +239,16 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
               </div>
 
               {report ? (
-                <button
+                <Button
                   type="button"
+                  size="sm"
+                  variant="secondary"
                   onClick={() => setExpanded(isOpen ? null : v.name)}
                   aria-expanded={isOpen}
-                  className="rounded bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-accent"
+                  className="h-auto bg-muted px-2.5 py-1 text-xs text-muted-foreground hover:bg-accent hover:text-accent-foreground"
                 >
                   {isOpen ? "Hide report" : "View report"}
-                </button>
+                </Button>
               ) : (
                 <span className="text-xs text-muted-foreground/70">No report yet</span>
               )}

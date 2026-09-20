@@ -6,7 +6,7 @@ import {
   type PlanTabDto,
   type ShellBadgeDto,
 } from "@ivy-interactive/components/tendril";
-import { Callout } from "@ivy-interactive/components/ui";
+import { Button, Callout } from "@ivy-interactive/components/ui";
 import {
   describeBridgeError,
   type DraftComment,
@@ -18,11 +18,12 @@ import {
   type RecommendationState,
   type ReviewActionConfig,
   type StartJobResponse,
-  type VerificationStatus,
 } from "../types/api";
 import { bridge } from "../api/bridge";
 import { PlanActionsController } from "../controllers/plan_actions";
+import { ErrorBanner } from "../components/ErrorBanner";
 import { NoContentView } from "../components/NoContentView";
+import { VERIFICATION_BADGE_CLASS } from "../utils/verificationStatus";
 import { PlanChatPanel } from "../components/chat/PlanChatPanel";
 import { ProjectBadges } from "../components/ProjectBadges";
 import { TendrilProcessWallpaper } from "../components/TendrilProcessWallpaper";
@@ -105,18 +106,6 @@ export const buildReviewSidebarList = (
   },
 });
 
-/**
- * `Constants.VerificationStatusBadgeVariants` (V1 `src/Ivy.Tendril/Constants.cs`): Pass is Success,
- * Fail is Destructive, Pending and Skipped are Outline. Same mapping as the plan page's
- * verification rows, so one outcome never has two looks.
- */
-const VERIFICATION_BADGE_CLASS: Record<VerificationStatus, string> = {
-  Pass: "border-success/40 bg-success/10 text-success",
-  Fail: "border-destructive/40 bg-destructive/10 text-destructive",
-  Pending: "border-border text-muted-foreground",
-  Skipped: "border-border text-muted-foreground",
-};
-
 /** `ContentView`'s `RecommendationsTab`. */
 const RECOMMENDATIONS_TAB = "recommendations";
 
@@ -163,12 +152,6 @@ interface ReviewViewProps {
    */
   selectedPlanId?: string | null;
   onSelectPlan: (planId: string) => void;
-  /**
-   * V1's `ContentView` wires `onCreatePlan` into its embedded chat unconditionally, so "create plan
-   * from this message" works there as well as on the Chat page. Threaded through to
-   * {@link PlanChatPanel}; without it that message action is inert.
-   */
-  onCreatePlan?: (initialDescription: string) => void;
   /** A job a triage dialog started, so the shell can open its session tab. */
   onJobStarted?: (response: StartJobResponse) => void;
   /** The plan's state changed on the service; the caller should re-fetch. */
@@ -194,7 +177,6 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   jobs,
   selectedPlanId: addressedPlanId = null,
   onSelectPlan,
-  onCreatePlan,
   onJobStarted,
   onPlanChanged,
   onOpenReviewAction,
@@ -947,14 +929,9 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                 </div>
               ) : null,
               actionError ? (
-                <div
-                  key="action-error"
-                  role="alert"
-                  data-testid="review-action-error"
-                  className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-                >
+                <ErrorBanner key="action-error" data-testid="review-action-error">
                   {actionError}
-                </div>
+                </ErrorBanner>
               ) : null,
             ].filter((node): node is React.ReactElement => node !== null),
             /* `ReviewVerificationsPanelView`, in the tab strip's corner where V1 puts it: the outcome
@@ -1009,7 +986,6 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                 key="chat"
                 plan={planDetail?.id === selectedPlan.id ? planDetail : selectedPlan}
                 onOpenPlan={onSelectPlan}
-                onCreatePlan={onCreatePlan}
               />,
             ],
             Content: [
@@ -1019,13 +995,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                  the row it was made on gives the operator nothing to check it by. */
               <div key="recommendations" className="space-y-3 p-4">
                 {recsError && (
-                  <div
-                    role="alert"
-                    data-testid="recommendations-error"
-                    className="rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
-                  >
-                    {recsError}
-                  </div>
+                  <ErrorBanner data-testid="recommendations-error">{recsError}</ErrorBanner>
                 )}
 
                 {/* `Text.Muted("Loading...")` while the plan's content query is in flight. */}
@@ -1041,12 +1011,13 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
 
                 {pendingRecs.length > 0 && (
                   <div className="flex flex-wrap items-center gap-2">
-                    <button
+                    <Button
                       type="button"
+                      variant="outline"
                       data-testid="implement-recommendations"
                       disabled={pendingAction !== null}
                       onClick={() => void implementSelectedRecommendations()}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-border px-3 text-sm font-medium text-foreground transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                      className="h-8"
                     >
                       {pendingAction === "implementRecs" ? "Starting…" : "Implement"}
                       {selectedRecTitles.size > 0 && (
@@ -1054,7 +1025,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                           {selectedRecTitles.size}
                         </span>
                       )}
-                    </button>
+                    </Button>
                     <span className="text-xs text-muted-foreground">
                       Accepts the ticked recommendations and retries the plan with them as the
                       change request.

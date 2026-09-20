@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tendril_core::agents::{
-    build_agent_spec, format_opencode_model, translate_claude_tool, translate_copilot_tool,
-    write_mcp_config, AgentLaunchConfig, McpServerConfig,
+    agent_command, build_agent_spec, format_opencode_model, translate_claude_tool,
+    translate_copilot_tool, write_mcp_config, AgentLaunchConfig, McpServerConfig,
 };
 
 #[test]
@@ -39,7 +39,7 @@ fn test_opencode_model_formatting() {
     );
     assert_eq!(
         format_opencode_model(Some(""), Some("https://generativelanguage.googleapis.com")),
-        "openai/gemini-3.7-flash"
+        "openai/gemini-3.8-flash"
     );
     assert_eq!(
         format_opencode_model(None, Some("https://api.berget.ai/v1")),
@@ -134,9 +134,11 @@ fn test_all_agent_providers_spec_generation() {
         ("gemini", "gemini", true),
         ("opencode", "opencode", true),
         ("copilot", "copilot", true),
-        ("ivy", "ivy-agent", true),
-        ("openaiproxy", "ivy-agent", true),
-        ("proxy", "ivy-agent", true),
+        // The three proxy flavours are the bundled OpenCode with a different base URL, not a
+        // separate `ivy-agent` binary - see `resolve_opencode_binary`.
+        ("ivy", "opencode", true),
+        ("openaiproxy", "opencode", true),
+        ("proxy", "opencode", true),
     ];
 
     for (provider_name, expected_cmd_prefix, expect_stdin) in providers {
@@ -172,4 +174,53 @@ fn test_all_agent_providers_spec_generation() {
             }
         }
     }
+}
+
+/// `agent_command` is a probe: `health.rs`'s `agent_model_checks` calls it once per configured agent
+/// on every run, so it must leave nothing behind.
+///
+/// Antigravity is the case that matters. Every other builder writes a temp file only when the config
+/// asks for one, and a default `AgentLaunchConfig` asks for nothing — but `build_antigravity_spec`
+/// writes its prompt file unconditionally, to get the tool-schema guardrails in. Only the runner
+/// cleans `temp_files` up, and a probe never runs one, so this had been leaking a file per call.
+#[test]
+fn agent_command_leaves_no_temp_files_behind() {
+    let temp_dir = std::env::temp_dir();
+    let count_prompts = || {
+        std::fs::read_dir(&temp_dir)
+            .map(|entries| {
+                entries
+                    .filter_map(|entry| entry.ok())
+                    .filter(|entry| {
+                        entry
+                            .file_name()
+                            .to_string_lossy()
+                            .starts_with("tendril-agy-prompt")
+                    })
+                    .count()
+            })
+            .unwrap_or(0)
+    };
+
+    let before = count_prompts();
+    for provider in [
+        "antigravity",
+        "agy",
+        "claude",
+        "codex",
+        "gemini",
+        "opencode",
+        "copilot",
+    ] {
+        assert!(
+            !agent_command(provider).is_empty(),
+            "{provider} resolved to an empty command"
+        );
+    }
+    assert_eq!(
+        before,
+        count_prompts(),
+        "agent_command left a temp prompt file in {}",
+        temp_dir.display()
+    );
 }

@@ -94,7 +94,7 @@ questions:
     const textarea = screen.getByPlaceholderText(/Ask Tendril anything/i);
     fireEvent.change(textarea, { target: { value: "Let us discuss API design." } });
 
-    const sendBtn = screen.getByTitle("Send message");
+    const sendBtn = screen.getByRole("button", { name: "Send message" });
     expect(sendBtn).not.toBeDisabled();
     fireEvent.click(sendBtn);
 
@@ -108,11 +108,17 @@ questions:
     });
   });
 
-  it("submits question answers when interacting with QuestionsCallout", async () => {
+  /**
+   * The chat block drafts locally and reports once, on Submit - V1's `OnAnswerQuestion`. Asserting
+   * the selection alone reached nothing would pass against the live per-keystroke path this
+   * replaced, so both halves are checked: silent while drafting, one call carrying the whole block
+   * plus its summary afterwards.
+   */
+  it("drafts question answers locally and submits the block in one call", async () => {
     vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
     vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
     vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
-    const submitSpy = vi.spyOn(chatStore, "submitAnswer").mockResolvedValue();
+    const submitSpy = vi.spyOn(chatStore, "submitAnswers").mockResolvedValue();
 
     render(<ChatView />);
 
@@ -120,37 +126,48 @@ questions:
       expect(screen.getByText("Which database should we use?")).toBeInTheDocument();
     });
 
-    const sqliteOption = screen.getByText("SQLite");
-    expect(sqliteOption).toBeInTheDocument();
-    fireEvent.click(sqliteOption);
+    // The card, not the title: the title sits inside the option's `<label>`, and a click there is
+    // handed to the radio rather than to the card's own handler.
+    const sqliteCard = screen.getByText("SQLite").closest(".tq-option");
+    expect(sqliteCard).not.toBeNull();
+    fireEvent.click(sqliteCard!);
 
-    const submitBtn = screen.queryByRole("button", { name: /Submit Response/i });
-    if (submitBtn) {
-      fireEvent.click(submitBtn);
-    }
+    // Drafting is local - nothing has been reported yet.
+    expect(submitSpy).not.toHaveBeenCalled();
+
+    const submitBtn = screen.getByRole("button", { name: /Submit response/i });
+    expect(submitBtn).not.toBeDisabled();
+    fireEvent.click(submitBtn);
 
     await waitFor(() => {
-      expect(submitSpy).toHaveBeenCalledWith("msg-asst-1", "db-flavor", expect.anything());
+      expect(submitSpy).toHaveBeenCalledWith(
+        "msg-asst-1",
+        { "db-flavor": ["sqlite"] },
+        "Answers:\n- **Which database should we use?**: SQLite",
+      );
     });
+    expect(submitSpy).toHaveBeenCalledTimes(1);
   });
 
-  it("opens intake modal prefilled when clicking Create Plan button on message", async () => {
+  /**
+   * V1's assistant turn ends at its meta line - `AssistantTurn.tsx` renders duration, tokens and
+   * cost and stops. The Copy and Create Plan buttons V2 grew are not a V1 affordance, and a row of
+   * them under every reply is the difference the operator sees. Guarded rather than deleted because
+   * they have come back once already.
+   */
+  it("hangs no per-message actions off an assistant turn, as V1 does not", async () => {
     vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
     vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
     vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
-    const onCreatePlanMock = vi.fn();
 
-    render(<ChatView onCreatePlan={onCreatePlanMock} />);
+    render(<ChatView />);
 
     await waitFor(() => {
       expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
     });
 
-    const createPlanButtons = screen.getAllByTitle("Create Plan from message");
-    expect(createPlanButtons.length).toBeGreaterThan(0);
-
-    fireEvent.click(createPlanButtons[0]);
-    expect(onCreatePlanMock).toHaveBeenCalledWith("What database should we use?");
+    expect(screen.queryByTitle("Create Plan from message")).toBeNull();
+    expect(screen.queryByTitle("Copy message")).toBeNull();
   });
 
   it("adds attachment chips to the list on drag-and-drop file drop onto composer", async () => {
@@ -226,7 +243,7 @@ questions:
       expect(screen.getByText("to-remove.md")).toBeInTheDocument();
     });
 
-    const removeBtn = screen.getByTitle("Remove to-remove.md");
+    const removeBtn = screen.getByRole("button", { name: "Remove to-remove.md" });
     fireEvent.click(removeBtn);
 
     await waitFor(() => {
@@ -258,7 +275,7 @@ questions:
     const textarea = screen.getByPlaceholderText(/Ask Tendril anything/i);
     fireEvent.change(textarea, { target: { value: "Review this file" } });
 
-    const sendBtn = screen.getByTitle("Send message");
+    const sendBtn = screen.getByRole("button", { name: "Send message" });
     fireEvent.click(sendBtn);
 
     // The turn carries the attachment paths appended to the prompt, which is the only channel the
@@ -527,7 +544,7 @@ questions:
     fireEvent.change(textarea, { target: { value: "New question" } });
 
     scrollIntoViewMock.mockClear();
-    const sendBtn = screen.getByTitle("Send message");
+    const sendBtn = screen.getByRole("button", { name: "Send message" });
     fireEvent.click(sendBtn);
 
     expect(scrollIntoViewMock).toHaveBeenCalled();
@@ -815,8 +832,8 @@ questions:
     });
 
     // While the agent works the composer offers the queue and the stop, never a send.
-    expect(screen.getByTitle("Stop agent")).toBeInTheDocument();
-    expect(screen.queryByTitle("Send message")).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Stop agent" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Send message" })).not.toBeInTheDocument();
     expect(screen.queryByTestId("composer-queue-button")).not.toBeInTheDocument();
 
     const textarea = screen.getByPlaceholderText(/Ask Tendril anything/i);
@@ -959,6 +976,268 @@ questions:
       });
 
       expect(await screen.findByTestId("chat-jobs-badge")).toBeInTheDocument();
+    });
+  });
+
+  describe("composer draft survives leaving the page", () => {
+    const otherSession: ChatSession = {
+      id: "session-11",
+      title: "Deployment",
+      createdAt: "2026-09-07T11:00:00Z",
+      updatedAt: "2026-09-07T11:00:00Z",
+      spawnedJobIds: [],
+      messages: [
+        {
+          id: "msg-user-2",
+          role: "user",
+          content: "How do we ship it?",
+          timestamp: "2026-09-07T11:00:00Z",
+        },
+      ],
+    };
+
+    const mockBothSessions = () => {
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions, otherSession]);
+      vi.spyOn(chatApi, "getSession").mockImplementation(async (id) =>
+        id === otherSession.id ? otherSession : mockSessionWithQuestions,
+      );
+      vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+    };
+
+    it("restores a half-typed prompt after the view is unmounted and mounted again", async () => {
+      mockBothSessions();
+
+      const first = render(<ChatView />);
+      await waitFor(() => {
+        expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
+      });
+
+      fireEvent.change(screen.getByPlaceholderText(/Ask Tendril anything/i), {
+        target: { value: "Half a question I have not finished" },
+      });
+
+      // Chat is a lazy route, so navigating to another app unmounts this whole subtree.
+      first.unmount();
+
+      render(<ChatView />);
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/Ask Tendril anything/i)).toHaveValue(
+          "Half a question I have not finished",
+        );
+      });
+    });
+
+    it("does not carry one chat's draft into another", async () => {
+      mockBothSessions();
+
+      render(<ChatView />);
+      await waitFor(() => {
+        expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
+      });
+
+      fireEvent.change(screen.getByPlaceholderText(/Ask Tendril anything/i), {
+        target: { value: "Only meant for the planning chat" },
+      });
+
+      await act(async () => {
+        await chatStore.selectSession(otherSession.id);
+      });
+
+      expect(screen.getByPlaceholderText(/Ask Tendril anything/i)).toHaveValue("");
+
+      await act(async () => {
+        await chatStore.selectSession(mockSessionWithQuestions.id);
+      });
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/Ask Tendril anything/i)).toHaveValue(
+          "Only meant for the planning chat",
+        );
+      });
+    });
+
+    it("drops the draft once the prompt has been sent", async () => {
+      mockBothSessions();
+      vi.spyOn(chatApi, "executeTurn").mockResolvedValue();
+
+      const first = render(<ChatView />);
+      await waitFor(() => {
+        expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
+      });
+
+      fireEvent.change(screen.getByPlaceholderText(/Ask Tendril anything/i), {
+        target: { value: "Ship it" },
+      });
+      fireEvent.click(screen.getByRole("button", { name: "Send message" }));
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/Ask Tendril anything/i)).toHaveValue("");
+      });
+
+      first.unmount();
+      render(<ChatView />);
+      await waitFor(() => {
+        expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
+      });
+      expect(screen.getByPlaceholderText(/Ask Tendril anything/i)).toHaveValue("");
+    });
+
+    it("drops the draft once the prompt has been queued behind a running turn", async () => {
+      mockBothSessions();
+      vi.spyOn(chatApi, "postMessage").mockResolvedValue({ queued: true });
+
+      const first = render(<ChatView />);
+      await waitFor(() => {
+        expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
+      });
+
+      act(() => {
+        chatStore.handleChatEvent({
+          type: "chat.generating_state",
+          sessionId: "session-10",
+          isGenerating: true,
+        });
+      });
+
+      fireEvent.change(screen.getByPlaceholderText(/Ask Tendril anything/i), {
+        target: { value: "And then deploy" },
+      });
+      fireEvent.click(screen.getByTestId("composer-queue-button"));
+
+      await waitFor(() => {
+        expect(screen.getByPlaceholderText(/Ask Tendril anything/i)).toHaveValue("");
+      });
+
+      // A queued prompt is the daemon's now; restoring it would offer to send it a second time.
+      first.unmount();
+      render(<ChatView />);
+      await waitFor(() => {
+        expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
+      });
+      expect(screen.getByPlaceholderText(/Ask Tendril anything/i)).toHaveValue("");
+    });
+
+    it("keeps a prompt typed before any session existed once the send creates one", async () => {
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([]);
+      vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+      render(<ChatView />);
+      await screen.findByTestId("sample-prompts");
+
+      // No session yet, so there is nothing to key a draft by. The composer has to hold it until
+      // the first send creates the session it belongs to, rather than dropping it on the swap.
+      fireEvent.change(screen.getByPlaceholderText(/Ask Tendril anything/i), {
+        target: { value: "The very first thing I want to ask" },
+      });
+
+      const created: ChatSession = {
+        id: "session-fresh",
+        title: "New Chat",
+        createdAt: "2026-09-07T14:00:00Z",
+        updatedAt: "2026-09-07T14:00:00Z",
+        spawnedJobIds: [],
+        messages: [],
+      };
+      vi.spyOn(chatApi, "createSession").mockResolvedValue(created);
+      vi.spyOn(chatApi, "getSession").mockResolvedValue(created);
+
+      await act(async () => {
+        await chatStore.createSession();
+      });
+
+      expect(screen.getByPlaceholderText(/Ask Tendril anything/i)).toHaveValue(
+        "The very first thing I want to ask",
+      );
+      expect(chatStore.composerDraft("session-fresh")).toBe("The very first thing I want to ask");
+    });
+  });
+
+  describe("stop button acknowledges the press", () => {
+    it("goes to a disabled stopping state the moment it is clicked", async () => {
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
+      vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
+      vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+      // The daemon takes its time killing the agent process; that wait is what the user was
+      // reading as "the button did nothing".
+      let finishCancel: (() => void) | null = null;
+      const cancelSpy = vi.spyOn(chatApi, "cancelTurn").mockImplementation(
+        () =>
+          new Promise((resolve) => {
+            finishCancel = () => resolve({ cancelled: true });
+          }),
+      );
+
+      render(<ChatView />);
+      await waitFor(() => {
+        expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
+      });
+
+      act(() => {
+        chatStore.handleChatEvent({
+          type: "chat.generating_state",
+          sessionId: "session-10",
+          isGenerating: true,
+        });
+      });
+
+      const stop = screen.getByTestId("composer-stop-button");
+      expect(stop).not.toBeDisabled();
+
+      fireEvent.click(stop);
+
+      const stopping = await screen.findByTestId("composer-stop-button");
+      expect(stopping).toBeDisabled();
+      expect(stopping).toHaveAttribute("aria-label", "Stopping agent");
+      expect(screen.getByTestId("composer-stop-spinner")).toBeInTheDocument();
+
+      // A second press cannot start a second cancel, but it is the button being visibly spent that
+      // stops the user reaching for it.
+      fireEvent.click(stopping);
+      expect(cancelSpy).toHaveBeenCalledTimes(1);
+
+      await act(async () => {
+        finishCancel!();
+      });
+
+      await waitFor(() => {
+        expect(screen.queryByTestId("composer-stop-button")).not.toBeInTheDocument();
+      });
+    });
+
+    it("comes back when the stop itself failed, so it can be pressed again", async () => {
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
+      vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
+      vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+      const cancelSpy = vi
+        .spyOn(chatApi, "cancelTurn")
+        .mockRejectedValue(new Error("daemon unreachable"));
+
+      render(<ChatView />);
+      await waitFor(() => {
+        expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
+      });
+
+      act(() => {
+        chatStore.handleChatEvent({
+          type: "chat.generating_state",
+          sessionId: "session-10",
+          isGenerating: true,
+        });
+      });
+
+      fireEvent.click(screen.getByTestId("composer-stop-button"));
+
+      await waitFor(() => {
+        expect(screen.getByTestId("composer-stop-button")).not.toBeDisabled();
+      });
+      expect(screen.getByTestId("composer-stop-button")).toHaveAttribute(
+        "aria-label",
+        "Stop agent",
+      );
+
+      fireEvent.click(screen.getByTestId("composer-stop-button"));
+      await waitFor(() => expect(cancelSpy).toHaveBeenCalledTimes(2));
     });
   });
 });

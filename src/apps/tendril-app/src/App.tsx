@@ -3,6 +3,7 @@ import { useShortcut } from "@ivy-interactive/components/tendril";
 import { uiStore, type UiState } from "./state/uiStore";
 import { APPEARANCE_DEFAULTS, initAppearance, type ChatMode } from "./state/appearance";
 import { sidebarListStore, usePublishedSidebarList } from "./state/sidebarListStore";
+import { seedChatSessionCount, useChatSessionCount } from "./state/chatSessionCount";
 import { toAddressArgs } from "./state/navigation";
 import { plansStore } from "./state/plansStore";
 import { jobsStore } from "./state/jobsStore";
@@ -30,7 +31,7 @@ import { Loader2 } from "lucide-react";
 import { ShellLayout } from "./views/ShellLayout";
 import { OnboardingWizard } from "./views/onboarding/OnboardingWizard";
 import { NewPlanModal } from "./views/NewPlanModal";
-import { KeyboardShortcutsHelp } from "./components/KeyboardShortcutsHelp";
+import { ErrorBanner } from "./components/ErrorBanner";
 // Type only, so this does not pull the view (and xterm.js with it) into the entry chunk.
 import type { ReviewActionTarget } from "./views/ReviewActionView";
 
@@ -39,6 +40,12 @@ import type { ReviewActionTarget } from "./views/ReviewActionView";
 // dialog family pulls in `@ivy-interactive/components/ui`, a ~190 kB entry point
 // nothing else here needs. Loading it eagerly for a dialog that only appears
 // when no project is configured put the entry chunk over its size budget.
+// Lazy for the same reason as the dialogs below: it is a `DialogShell`, and the shell must not
+// carry the dialog family's `@ivy-interactive/components/ui` weight for a panel that opens on `?`.
+const KeyboardShortcutsHelp = React.lazy(() =>
+  import("./components/KeyboardShortcutsHelp").then((m) => ({ default: m.KeyboardShortcutsHelp })),
+);
+
 const NoProjectsDialog = React.lazy(() =>
   import("./views/dialogs/NoProjectsDialog").then((m) => ({ default: m.NoProjectsDialog })),
 );
@@ -202,7 +209,12 @@ export const App: React.FC = () => {
   const [shellError, setShellError] = useState<string | null>(null);
   const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
   const [recommendationsCount, setRecommendationsCount] = useState<number>(0);
-  const [chatSessionsCount, setChatSessionsCount] = useState<number>(0);
+  /* Live, not a mount-time snapshot: the count used to be `useState` filled by the one
+     `listSessions()` below, so deleting every chat left the badge reading the number the user had
+     when the shell started. V1 recomputes it on every `Build()`
+     (`AppShell/TendrilAppShell.cs:1085`); `chatStore` republishes it on every notify instead, which
+     covers the same creates, deletes, prunes and reloads. */
+  const chatSessionsCount = useChatSessionCount();
   // The list the active sidebar-section app published into the shell (V1's ShellSidebarListSignal).
   const sidebarList = usePublishedSidebarList();
 
@@ -242,9 +254,12 @@ export const App: React.FC = () => {
       .then((recs) => setRecommendationsCount(recs.length))
       .catch(() => {});
 
+    /* Only the startup value: `chatStore` owns the number from its first notify onwards, and
+       `seedChatSessionCount` steps aside for it. Fetched here because a user who never opens Chat
+       never loads that store, and the badge would be missing until they did. */
     chatApi
       .listSessions()
-      .then((sessions) => setChatSessionsCount(sessions.length))
+      .then((sessions) => seedChatSessionCount(sessions.length))
       .catch(() => {});
 
     // The app only ever reads the daemon's cached release-check result, never the release feed
@@ -750,10 +765,6 @@ export const App: React.FC = () => {
           onExecute={(id) =>
             startJobAndAdvance({ type: "ExecutePlan", folderPath: id }, detail.state)
           }
-          onCreatePlan={(initialDesc) => {
-            setNewPlanPrefill({ description: initialDesc });
-            setIsNewPlanOpen(true);
-          }}
           // The dialogs dispatch their own jobs — Update, Create PR, Retry — so the shell's part is
           // moving on from the plan they just acted on, exactly as `onExecute` does.
           onJobStarted={() => {
@@ -812,15 +823,7 @@ export const App: React.FC = () => {
         );
 
       case "chat":
-        return (
-          <ChatView
-            onCreatePlan={(initialDesc) => {
-              setNewPlanPrefill({ description: initialDesc });
-              setIsNewPlanOpen(true);
-            }}
-            onOpenPlan={handleSelectPlan}
-          />
-        );
+        return <ChatView onOpenPlan={handleSelectPlan} />;
 
       case "inbox":
         return (
@@ -867,10 +870,6 @@ export const App: React.FC = () => {
         return (
           <ReviewView
             plans={plansState.plans}
-            onCreatePlan={(initialDesc) => {
-              setNewPlanPrefill({ description: initialDesc });
-              setIsNewPlanOpen(true);
-            }}
             // The review queue excludes plans a job still holds, as V1's `activePlanFolders` does.
             // Without the list the exclusion is dead wiring, and the page offers Complete Plan and
             // Create PR on work an agent has not finished — a retry that is only Queued or Blocked
@@ -942,7 +941,6 @@ export const App: React.FC = () => {
             jobs={jobsState.jobs}
             // For the `detached` flag, which only `GET /api/jobs/:id` reports.
             jobDetails={jobsState.jobDetails}
-            isLoading={jobsState.isLoading}
             onSelectPlan={handleSelectPlan}
             // The two sweeps' confirms stay here: they are the only ones the shell itself owns, and
             // both dialogs are already mounted below.
@@ -1067,38 +1065,23 @@ export const App: React.FC = () => {
         {/* V1's `RouteAction.Error` reaches `client.Error(...)`; here it shares the shell's own
             error banner, which is the only place the shell reports its own failures. */}
         {uiState.navError && (
-          <div
-            role="alert"
+          <ErrorBanner
             data-testid="nav-error"
-            className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+            className="mb-4"
+            onDismiss={() => uiStore.clearNavError()}
+            dismissLabel="Dismiss navigation error"
           >
-            <span>{uiState.navError}</span>
-            <button
-              type="button"
-              onClick={() => uiStore.clearNavError()}
-              aria-label="Dismiss navigation error"
-              className="text-destructive hover:text-destructive/80"
-            >
-              ✕
-            </button>
-          </div>
+            {uiState.navError}
+          </ErrorBanner>
         )}
         {shellError && (
-          <div
-            role="alert"
+          <ErrorBanner
             data-testid="shell-error"
-            className="mb-4 flex items-start justify-between gap-3 rounded-lg border border-destructive/40 bg-destructive/10 p-3 text-xs text-destructive"
+            className="mb-4"
+            onDismiss={() => setShellError(null)}
           >
-            <span>{shellError}</span>
-            <button
-              type="button"
-              onClick={() => setShellError(null)}
-              aria-label="Dismiss error"
-              className="text-destructive hover:text-destructive/80"
-            >
-              ✕
-            </button>
-          </div>
+            {shellError}
+          </ErrorBanner>
         )}
         <React.Suspense
           fallback={
@@ -1240,7 +1223,11 @@ export const App: React.FC = () => {
         </React.Suspense>
       )}
 
-      <KeyboardShortcutsHelp isOpen={isShortcutsOpen} onClose={() => setIsShortcutsOpen(false)} />
+      {isShortcutsOpen && (
+        <React.Suspense fallback={null}>
+          <KeyboardShortcutsHelp isOpen onClose={() => setIsShortcutsOpen(false)} />
+        </React.Suspense>
+      )}
 
       <React.Suspense fallback={null}>
         <Toaster />

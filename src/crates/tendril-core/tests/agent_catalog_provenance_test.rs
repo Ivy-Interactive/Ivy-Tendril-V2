@@ -136,13 +136,9 @@ fn each_agent_offers_exactly_the_providers_it_can_serve() {
     assert!(copilot.iter().any(|id| id.starts_with("gpt-")));
     assert!(!copilot.iter().any(|id| id.contains("gemini")));
 
-    // V1 `IvyModelCatalog`: Claude, Gemini and Codex spliced, so all three belong.
-    let ivy = model_ids("ivy");
-    assert!(ivy.iter().any(|id| id.starts_with("claude-")));
-    assert!(ivy.iter().any(|id| id.starts_with("gemini-")));
-    assert!(ivy.iter().any(|id| id.starts_with("gpt-")));
-
-    // And the ladder still follows the model rather than the agent, which is the same declaration.
+    // The `ivy` row is no longer offered - V2 bundles OpenCode rather than shipping a rebranded
+    // agent - so it has no model list to check here. Its ladder is still resolvable, because an
+    // existing `config.yaml` may still name the id, and that is what the two assertions below check.
     assert!(efforts_for("ivy", Some("gemini-3.7-flash"))
         .iter()
         .all(|effort| effort.id != "max"));

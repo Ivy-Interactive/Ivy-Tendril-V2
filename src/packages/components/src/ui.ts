@@ -19,6 +19,10 @@ export * from "./components/ui/badge";
 export * from "./components/ui/blades";
 export * from "./components/ui/button";
 export * from "./components/ui/calendar";
+/* Not under components/ui/: CodeEditor owns a directory because it ships a stylesheet and a
+   lazy CodeMirror loader alongside the component. Exported here because it is a form control a
+   host reaches for like any other primitive. */
+export * from "./components/CodeEditor/index.ts";
 export * from "./components/ui/callout";
 export * from "./components/ui/callout-variant";
 export * from "./components/ui/card";
@@ -72,3 +76,18 @@ export * from "./components/ui/IconButton";
 export * from "./components/ui/StatusLine";
 export * from "./components/ui/withTooltipScope";
 export * from "./components/ui/TuiBadge";
+export * from "./components/ui/TuiKbd";
+export * from "./components/ui/spinner";
+export {
+  Tooltip as TuiTooltip,
+  TooltipScope,
+  type TooltipScopeProps,
+  type TooltipSide as TuiTooltipSide,
+  type TooltipProps as TuiTooltipProps,
+} from "./components/ui/TuiTooltip";
+export * from "./components/SidebarListRow/index.ts";
+
+// Appended: the bare `inputVariant`, so a consumer styling a native control to match `Input`
+// can import the one `cva` rather than the `InputVariants` namespace, which retains all ten
+// variant modules and cannot be tree-shaken.
+export { inputVariant } from "./components/ui/input/variant";

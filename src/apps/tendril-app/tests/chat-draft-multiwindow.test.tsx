@@ -13,7 +13,7 @@ if (!window.HTMLElement.prototype.scrollIntoView) {
   window.HTMLElement.prototype.scrollIntoView = vi.fn();
 }
 
-describe("Cross-Window Question Draft Synchronization", () => {
+describe("Cross-Window Question Answer Synchronization", () => {
   const mockSession: ChatSession = {
     id: "session-multiwindow-1",
     title: "Multiwindow Sync Session",
@@ -59,12 +59,19 @@ questions:
     vi.restoreAllMocks();
   });
 
-  it("synchronizes unsubmitted question draft selections reactively across windows via StorageEvent", async () => {
+  /**
+   * `inProgressAnswers` is what holds a *submitted* answer on screen until the document catches up
+   * - an unsubmitted draft lives in the store's `questionDrafts`, which is deliberately neither
+   * persisted nor broadcast. So what crosses windows here is a decision, and the second window
+   * presents it as one: the chat block settles into its read-only form as soon as the answer is
+   * patched into the message, and reverts to the pickers if that answer goes away again.
+   */
+  it("synchronizes submitted question answers reactively across windows via StorageEvent", async () => {
     vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSession]);
     vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSession);
     vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
 
-    render(<ChatView />);
+    const { container } = render(<ChatView />);
 
     await waitFor(() => {
       expect(screen.getByText("Which database should we use?")).toBeInTheDocument();
@@ -75,30 +82,30 @@ questions:
     expect(sqliteRadio.checked).toBe(false);
     expect(postgresRadio.checked).toBe(false);
 
-    // Simulate draft selected in a secondary window dispatching StorageEvent
-    const externalDraft = {
+    // Simulate the answer being submitted in a secondary window, dispatching a StorageEvent
+    const externalAnswer = {
       "msg-asst-1": { "db-choice": ["sqlite"] },
     };
     act(() => {
-      localStorage.setItem("tendril:chat:in_progress_answers", JSON.stringify(externalDraft));
+      localStorage.setItem("tendril:chat:in_progress_answers", JSON.stringify(externalAnswer));
       window.dispatchEvent(
         new StorageEvent("storage", {
           key: "tendril:chat:in_progress_answers",
-          newValue: JSON.stringify(externalDraft),
+          newValue: JSON.stringify(externalAnswer),
         }),
       );
     });
 
-    // ChatView and PlanMarkdown re-render reactively with SQLite selected
+    // This window re-renders reactively and presents the decision rather than the pickers.
     await waitFor(() => {
-      const updatedSqliteRadio = screen.getByRole("radio", { name: /SQLite/i }) as HTMLInputElement;
-      expect(updatedSqliteRadio.checked).toBe(true);
+      expect(container.querySelector(".tq-answer-value")?.textContent).toBe("SQLite");
     });
+    expect(container.querySelectorAll("input.tq-option-input")).toHaveLength(0);
     expect(chatStore.getInProgressAnswers("msg-asst-1")).toEqual({
       "db-choice": ["sqlite"],
     });
 
-    // Simulate clearing draft in secondary window (e.g. on submit or cancel)
+    // Simulate the answer being retracted in the secondary window
     act(() => {
       localStorage.removeItem("tendril:chat:in_progress_answers");
       window.dispatchEvent(
@@ -109,11 +116,12 @@ questions:
       );
     });
 
-    // ChatView and PlanMarkdown reactively revert to unselected state
+    // The block reverts to its interactive form, with nothing selected.
     await waitFor(() => {
       const clearedSqliteRadio = screen.getByRole("radio", { name: /SQLite/i }) as HTMLInputElement;
       expect(clearedSqliteRadio.checked).toBe(false);
     });
+    expect(container.querySelector(".tq-answer-value")).toBeNull();
     expect(chatStore.getInProgressAnswers("msg-asst-1")).toBeUndefined();
   });
 });

@@ -643,6 +643,31 @@ impl TurnPrinter {
     }
 }
 
+async fn resolve_session(tendril_home: &Path, id_or_prefix: &str) -> anyhow::Result<ChatSession> {
+    if let Ok(exact) = storage::load_session(tendril_home, id_or_prefix) {
+        return Ok(exact);
+    }
+
+    let all = storage::load_all_sessions(tendril_home)?;
+    let matching: Vec<_> = all
+        .into_iter()
+        .filter(|s| s.id.starts_with(id_or_prefix))
+        .collect();
+
+    if matching.is_empty() {
+        anyhow::bail!("Chat session '{}' not found", id_or_prefix);
+    }
+    if matching.len() > 1 {
+        anyhow::bail!(
+            "Ambiguous session prefix '{}', matches {} sessions",
+            id_or_prefix,
+            matching.len()
+        );
+    }
+
+    Ok(matching.into_iter().next().unwrap())
+}
+
 #[cfg(test)]
 mod tests {
     use super::{finalized_tail, tool_activity_line, TurnPrinter};
@@ -766,29 +791,4 @@ mod tests {
             Some("\nsomething else")
         );
     }
-}
-
-async fn resolve_session(tendril_home: &Path, id_or_prefix: &str) -> anyhow::Result<ChatSession> {
-    if let Ok(exact) = storage::load_session(tendril_home, id_or_prefix) {
-        return Ok(exact);
-    }
-
-    let all = storage::load_all_sessions(tendril_home)?;
-    let matching: Vec<_> = all
-        .into_iter()
-        .filter(|s| s.id.starts_with(id_or_prefix))
-        .collect();
-
-    if matching.is_empty() {
-        anyhow::bail!("Chat session '{}' not found", id_or_prefix);
-    }
-    if matching.len() > 1 {
-        anyhow::bail!(
-            "Ambiguous session prefix '{}', matches {} sessions",
-            id_or_prefix,
-            matching.len()
-        );
-    }
-
-    Ok(matching.into_iter().next().unwrap())
 }

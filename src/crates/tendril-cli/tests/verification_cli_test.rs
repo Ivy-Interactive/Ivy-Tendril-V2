@@ -1,7 +1,8 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tendril_cli::commands::verification::{handle_verification_command, VerificationCommands};
 use tendril_core::config::{get_config_path, load_config, save_config};
+use tendril_core::health::{self, CheckStatus};
 use tendril_core::models::{ProjectConfig, ProjectVerificationRef, RepoRef, VerificationConfig};
 use tendril_server::{create_router, AppState, MasterGuard};
 
@@ -579,6 +580,38 @@ async fn test_verification_cli_remove_referenced_blocked_and_force_cleans_daemon
     assert!(cfg_after.projects[0].verifications.is_empty());
 }
 
+/// The `Project configuration` lines `tendril doctor` would print for this home.
+///
+/// The four `test_doctor_warns_on_*` tests below used to call `handle_doctor` and assert
+/// `res.is_ok()` - that is doctor's *exit code*, which is a property of the whole machine rather
+/// than of the config under test. Doctor reports an installed-but-logged-out `gh` and a missing
+/// active-agent CLI as `[FAIL]`, and the Linux CI runner has the first and lacks the second, so all
+/// four passed on a developer's Mac and failed on CI while testing nothing they were named after.
+/// Unlike `doctor_cli_test.rs`, which spawns the binary and hands it a `PATH` it controls, these run
+/// in-process and inherit the ambient environment, so there is no `PATH` to fence off here.
+///
+/// The exit-code contract is covered in `doctor_cli_test.rs`
+/// (`doctor_exit_code_is_the_presence_of_a_fail_line`). What is asserted here is the thing each test
+/// is actually about: which warning the config produces, and that it is a warning - a bad path or a
+/// dangling verification must never fail the run, or a wrapper gating on `tendril doctor` would
+/// refuse to start over a stale entry in someone else's project.
+fn project_config_warnings(tendril_home: &Path) -> Vec<String> {
+    health::run_checks(tendril_home)
+        .into_iter()
+        .filter(|check| check.name == "Project configuration")
+        .map(|check| {
+            assert_eq!(
+                check.status,
+                CheckStatus::Warn,
+                "expected a warning, got {:?}: {}",
+                check.status,
+                check.message
+            );
+            check.message
+        })
+        .collect()
+}
+
 #[test]
 fn test_doctor_warns_on_non_existent_verification() {
     let tendril_home = std::env::temp_dir().join(format!(
@@ -606,8 +639,12 @@ fn test_doctor_warns_on_non_existent_verification() {
     });
     save_config(&cfg_path, &settings).unwrap();
 
-    let res = tendril_cli::commands::doctor::handle_doctor(&tendril_home, false);
-    assert!(res.is_ok());
+    let warnings = project_config_warnings(&tendril_home);
+    assert_eq!(
+        warnings,
+        vec!["Project 'DoctorProj' references non-existent verification 'GhostVerification'"],
+        "the dangling reference is the only thing wrong with this config"
+    );
 
     let _ = std::fs::remove_dir_all(&tendril_home);
 }
@@ -654,8 +691,26 @@ fn test_doctor_warns_on_non_existent_repository_path() {
     });
     save_config(&cfg_path, &settings).unwrap();
 
-    let res = tendril_cli::commands::doctor::handle_doctor(&tendril_home, false);
-    assert!(res.is_ok());
+    let warnings = project_config_warnings(&tendril_home);
+    assert_eq!(
+        warnings,
+        vec![
+            "Project 'DoctorRepoProj' repository path does not exist: /non/existent/path/to/repo"
+                .to_string(),
+            format!(
+                "Project 'DoctorRepoProj' repository path does not exist: %TENDRIL_HOME%/ghost-repo (resolved: {}/ghost-repo)",
+                tendril_home.display()
+            ),
+            // The third repo exists, so it contributes no line - which is what makes this an
+            // assertion about the two bad paths rather than about repo paths in general. It is not
+            // a git repo either; `test_doctor_warns_on_non_git_repository_path` covers that branch.
+            format!(
+                "Project 'DoctorRepoProj' repository path is not a git repository (no .git found): {}",
+                existing_repo.display()
+            ),
+        ],
+        "one line per bad path, with %TENDRIL_HOME% expanded in the message"
+    );
 
     let _ = std::fs::remove_dir_all(&tendril_home);
 }
@@ -700,8 +755,15 @@ fn test_doctor_warns_on_non_git_repository_path() {
     });
     save_config(&cfg_path, &settings).unwrap();
 
-    let res = tendril_cli::commands::doctor::handle_doctor(&tendril_home, false);
-    assert!(res.is_ok());
+    let warnings = project_config_warnings(&tendril_home);
+    assert_eq!(
+        warnings,
+        vec![format!(
+            "Project 'DoctorNonGitProj' repository path is not a git repository (no .git found): {}",
+            non_git_repo.display()
+        )],
+        "only the directory without a .git warns; the one with it is silent"
+    );
 
     let _ = std::fs::remove_dir_all(&tendril_home);
 }
@@ -729,8 +791,14 @@ fn test_doctor_warns_on_bad_build_dependency_path() {
     });
     save_config(&cfg_path, &settings).unwrap();
 
-    let res = tendril_cli::commands::doctor::handle_doctor(&tendril_home, false);
-    assert!(res.is_ok());
+    let warnings = project_config_warnings(&tendril_home);
+    assert_eq!(
+        warnings,
+        vec![
+            "Project 'DoctorBuildDepProj' build dependency path does not exist: /non/existent/build-dependency"
+        ],
+        "a build dependency is checked like a repo path, and named as one"
+    );
 
     let _ = std::fs::remove_dir_all(&tendril_home);
 }
