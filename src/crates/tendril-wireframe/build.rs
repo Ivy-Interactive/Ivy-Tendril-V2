@@ -33,18 +33,37 @@ fn main() {
     std::fs::write(&out, &blob).unwrap();
 
     // Fail, do not warn. `cargo:warning` scrolls past in a normal build and is invisible in CI
-    // logs, so an empty payload used to produce a binary that compiled cleanly and then panicked
-    // at startup: WireframeHost::new reads vendor.manifest.json out of the embedded blob, and
-    // tendril-server unwraps that in state.rs with `.expect("the wireframe payload is embedded at
-    // build time")`. A build-time error costs a contributor one obvious message; the warning cost
-    // them a running server.
-    if entries.is_empty() {
+    // logs, so an incomplete payload used to produce a binary that compiled cleanly and then
+    // panicked at startup: WireframeHost::new reads vendor.manifest.json out of the embedded blob,
+    // and tendril-server unwraps that in state.rs with `.expect("the wireframe payload is embedded
+    // at build time")`. A build-time error costs a contributor one obvious message; the warning
+    // cost them a running server.
+    //
+    // Check for the specific files the crate reads by name, not merely for a non-empty directory.
+    // artifacts/fonts/ and css/fonts.css are checked in -- they are the one part the pipeline
+    // cannot reproduce offline -- so after a fresh clone the directory is already non-empty while
+    // everything that matters is still missing. An emptiness check passes there and the startup
+    // panic comes back.
+    const REQUIRED: [&str; 4] = [
+        "vendor.manifest.json",
+        "tendril.manifest.json",
+        "ARTIFACTS.lock.json",
+        "css/tendril.css",
+    ];
+    let missing: Vec<&str> = REQUIRED
+        .iter()
+        .copied()
+        .filter(|rel| !artifacts.join(rel).is_file())
+        .collect();
+
+    if !missing.is_empty() {
         panic!(
-            "no files under {}: the wireframe payload is missing, so this crate would build a \
+            "the wireframe payload under {} is incomplete -- missing {}. This crate would build a \
              binary that panics at startup. Generate it with\n    \
              cd src/crates/tendril-wireframe/pipeline/vendor && pnpm install --frozen-lockfile && \
              node build-all.mjs",
-            artifacts.display()
+            artifacts.display(),
+            missing.join(", ")
         );
     }
 }
