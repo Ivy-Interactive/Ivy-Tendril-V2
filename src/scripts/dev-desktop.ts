@@ -296,6 +296,23 @@ async function main() {
     console.error("\x1b[31m[dev-desktop] Could not build @ivy-interactive/components:\x1b[0m", err);
   }
 
+  // The wireframe payload, before anything invokes cargo. `tendril-wireframe`'s build.rs panics
+  // when it is missing, so without this both the sidecar build below and `cargo run -p
+  // tendril-server` fail on a fresh clone. Fatal, unlike the components build above: every cargo
+  // invocation that follows is going to fail anyway, and failing here says why once instead of
+  // twice in a build.rs backtrace.
+  try {
+    execSync(`node "${path.resolve(__dirname, "ensure-wireframe-payload.mjs")}"`, {
+      stdio: "inherit",
+    });
+  } catch {
+    console.error(
+      "\x1b[31m[dev-desktop] The wireframe payload is missing and could not be generated; every\n" +
+        "  cargo build would fail. See the message above.\x1b[0m",
+    );
+    process.exit(1);
+  }
+
   // Both Tauri sidecars, before the Tauri CLI goes looking for them.
   ensureSidecars();
 
