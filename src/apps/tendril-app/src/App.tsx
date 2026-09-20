@@ -24,7 +24,6 @@ import { getUpdateCommand } from "./utils/updateCommand";
 
 import { Loader2 } from "lucide-react";
 import { ShellLayout } from "./views/ShellLayout";
-import { OnboardingWizard } from "./views/onboarding/OnboardingWizard";
 import { NewPlanModal } from "./views/NewPlanModal";
 import { KeyboardShortcutsHelp } from "./components/KeyboardShortcutsHelp";
 // Type only, so this does not pull the view (and xterm.js with it) into the entry chunk.
@@ -50,6 +49,15 @@ const Toaster = React.lazy(() =>
  *  while the operator still has it in mind, long enough to be a rounding error on the daemon. */
 const JOB_POLL_INTERVAL_MS = 5000;
 
+// Lazy like the views below, and for a sharper reason: the wizard renders only on a fresh install,
+// where `onboarding.needed` is true, so every later launch pays nothing for it. It is also what
+// keeps `code-splitting.test.tsx`'s eager-JS budget met - measured against that test's own build
+// env, moving it out takes eager JS from 1,689,994 bytes to 1,669,418 against a 1,677,721 ceiling.
+// The saving is the wizard's own subtree, not the shell's brand marks: those are eager regardless,
+// reached through the static `ShellLayout` import below.
+const OnboardingWizard = React.lazy(() =>
+  import("./views/onboarding/OnboardingWizard").then((m) => ({ default: m.OnboardingWizard })),
+);
 const DashboardView = React.lazy(() =>
   import("./views/DashboardView").then((m) => ({ default: m.DashboardView })),
 );
@@ -569,21 +577,32 @@ export const App: React.FC = () => {
   // behind it to look at, and the stores it would refetch have nothing to show yet.
   if (onboarding?.needed) {
     return (
-      <OnboardingWizard
-        status={onboarding}
-        onFinished={() => {
-          setOnboarding(null);
-          bridge
-            .listProjects()
-            .then((list) => {
-              setProjects(list);
-              setProjectsLoaded(true);
-            })
-            .catch(() => {});
-          plansStore.fetchPlans().catch(() => {});
-          jobsStore.fetchJobs().catch(() => {});
-        }}
-      />
+      <React.Suspense
+        fallback={
+          <div
+            className="flex h-screen items-center justify-center text-muted-foreground"
+            data-testid="onboarding-fallback-spinner"
+          >
+            <Loader2 className="h-6 w-6 animate-spin text-success" />
+          </div>
+        }
+      >
+        <OnboardingWizard
+          status={onboarding}
+          onFinished={() => {
+            setOnboarding(null);
+            bridge
+              .listProjects()
+              .then((list) => {
+                setProjects(list);
+                setProjectsLoaded(true);
+              })
+              .catch(() => {});
+            plansStore.fetchPlans().catch(() => {});
+            jobsStore.fetchJobs().catch(() => {});
+          }}
+        />
+      </React.Suspense>
     );
   }
 

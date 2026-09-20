@@ -511,11 +511,12 @@ describe("BrandIcon", () => {
         <div>
           <BrandIcon name="ClaudeCode" size={20} />
           <BrandIcon name="Antigravity" size={20} />
+          <BrandIcon name="Apple" size={20} />
           <BrandIcon name="UnknownBrand" size={20} />
         </div>,
       );
     });
-    expect(container.querySelectorAll("svg").length).toBe(3);
+    expect(container.querySelectorAll("svg").length).toBe(4);
     expect(Object.keys(brandIcons).length).toBeGreaterThan(5);
   });
 });

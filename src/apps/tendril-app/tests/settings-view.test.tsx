@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { SettingsView } from "../src/views/SettingsView";
 import { bridge } from "../src/api/bridge";
+import { agentsApi } from "../src/api/agentsApi";
 import type { ServiceInfo, TendrilConfig } from "../src/types/api";
 
 const baseConfig: TendrilConfig = {
@@ -53,10 +54,64 @@ describe("SettingsView", () => {
       cachePath: "/home/user/.tendril/models.json",
     });
     vi.spyOn(bridge, "getServiceLogs").mockResolvedValue([]);
+    vi.spyOn(agentsApi, "listAgents").mockResolvedValue(
+      ["claude", "codex", "gemini", "opencode", "copilot", "antigravity", "ivy", "apple"].map(
+        (id) => ({ id, label: id, models: [], supportsEffort: false, efforts: [] }),
+      ),
+    );
   });
 
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  // A <select> whose value matches none of its options silently displays the first one. The list
+  // was four literal <option> tags against a catalog of eight agents, so a codex user opened
+  // Settings and was told they were running Claude Code. Nothing was written -- the value only
+  // persists when the field is touched -- but the page misreported the live config. Driving the
+  // options off the catalog is what fixes it; asserting a non-listed id is what keeps a future
+  // agent from being added to the catalog and forgotten here.
+  it("shows the configured agent even when it is not among the first options", async () => {
+    getConfig.mockResolvedValue({ ...baseConfig, codingAgent: "codex" });
+
+    await renderSettings();
+
+    const select = screen.getByLabelText("Coding Agent CLI") as HTMLSelectElement;
+    expect(select.value).toBe("codex");
+    expect(select.options[select.selectedIndex]?.text).toContain("codex");
+  });
+
+  // Offline, or with the service down, the catalog fetch throws. Falling back to an empty list
+  // would put the select back on its first option, so the one agent that must always be listed is
+  // the one actually configured.
+  it("still names the configured agent when the catalog cannot be fetched", async () => {
+    getConfig.mockResolvedValue({ ...baseConfig, codingAgent: "apple" });
+    vi.spyOn(agentsApi, "listAgents").mockRejectedValue(new Error("service down"));
+
+    await renderSettings();
+
+    const select = screen.getByLabelText("Coding Agent CLI") as HTMLSelectElement;
+    expect(select.value).toBe("apple");
+  });
+
+  // The picker in the composer and the field here read the same catalog, so every agent Tendril
+  // can launch is selectable from Settings. Pinning the count against the mocked catalog is what
+  // makes a hardcoded list reappearing here visible.
+  it("offers every agent the catalog serves", async () => {
+    await renderSettings();
+
+    const select = screen.getByLabelText("Coding Agent CLI") as HTMLSelectElement;
+    const ids = Array.from(select.options).map((o) => o.value);
+    expect(ids).toEqual([
+      "claude",
+      "codex",
+      "gemini",
+      "opencode",
+      "copilot",
+      "antigravity",
+      "ivy",
+      "apple",
+    ]);
   });
 
   it("writes a changed field to config.yaml via putConfig, never saveUiState", async () => {

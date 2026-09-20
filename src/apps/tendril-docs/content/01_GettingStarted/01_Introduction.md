@@ -3,7 +3,8 @@ title: Welcome to Ivy Tendril
 description: >-
   Tendril is an open source, local-first desktop application that serves as the operating system for
   AI-powered software development — orchestrating coding agents like Claude Code, Codex, Copilot,
-  Gemini and OpenCode through a structured lifecycle from idea to merged pull request.
+  Gemini, OpenCode and Apple Foundation Models through a structured lifecycle from idea to merged
+  pull request.
 icon: Rocket
 searchHints:
   - overview

@@ -85,6 +85,11 @@ const ANTIGRAVITY_MODELS: &[ModelPattern] = &[
     ModelPattern::Prefix("claude-"),
 ];
 
+/// `fm serve` serves exactly one model, so this matches the single Apple row rather than a family.
+/// The prefix is `apple/`, not `apple-`: that row is named for the id OpenCode puts on the wire,
+/// which is the same string `providers::APPLE_MODEL_ID` pins and the one cost reporting prices.
+const APPLE_MODELS: &[ModelPattern] = &[ModelPattern::Prefix("apple/")];
+
 /// Declared in the order the picker lists them.
 const AGENTS: &[AgentDef] = &[
     AgentDef {
@@ -127,6 +132,14 @@ const AGENTS: &[AgentDef] = &[
         id: "ivy",
         label: "Ivy",
         models: ModelFilter::None,
+        efforts: &[],
+    },
+    // The on-device model takes no reasoning-effort argument, so no efforts are advertised and
+    // `agent_capabilities` reports none either.
+    AgentDef {
+        id: "apple",
+        label: "Apple",
+        models: ModelFilter::Patterns(APPLE_MODELS),
         efforts: &[],
     },
 ];
@@ -292,6 +305,26 @@ mod tests {
             .iter()
             .skip(1)
             .all(|m| m.id.starts_with("gemini-") || m.id.starts_with("claude-")));
+
+        let apple = find("apple");
+        let apple_ids: Vec<&str> = apple.models.iter().map(|m| m.id.as_str()).collect();
+        assert!(apple_ids.contains(&"apple/system"));
+        assert!(apple
+            .models
+            .iter()
+            .skip(1)
+            .all(|m| m.id.starts_with("apple/")));
+
+        // The one model the picker offers must be the one the launch actually sends, or cost
+        // reporting prices a free on-device run at the unknown-model fallback.
+        assert_eq!(
+            apple_ids
+                .iter()
+                .filter(|id| **id != DEFAULT_OPTION_ID)
+                .count(),
+            1
+        );
+        assert!(apple_ids.contains(&crate::agents::providers::APPLE_MODEL_ID));
     }
 
     /// Each advertised effort must survive `build_agent_spec` verbatim; an id the provider does

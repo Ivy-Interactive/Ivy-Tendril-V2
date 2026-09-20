@@ -74,7 +74,7 @@ pub enum PromptwareCommands {
         config: Option<PathBuf>,
         #[arg(
             long,
-            help = "Override agent provider (claude, antigravity, codex, copilot, opencode, ivy)"
+            help = "Override agent provider (claude, antigravity, codex, copilot, opencode, ivy, apple)"
         )]
         agent: Option<String>,
         #[arg(

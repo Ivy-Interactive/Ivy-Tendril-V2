@@ -137,6 +137,7 @@ fn test_all_agent_providers_spec_generation() {
         ("ivy", "ivy-agent", true),
         ("openaiproxy", "ivy-agent", true),
         ("proxy", "ivy-agent", true),
+        ("apple", "opencode", true),
     ];
 
     for (provider_name, expected_cmd_prefix, expect_stdin) in providers {

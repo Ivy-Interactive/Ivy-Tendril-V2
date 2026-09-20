@@ -40,7 +40,8 @@ installs.)
 - **States/Types**: enum values, state names, job types (e.g. `CreatePlan`, `ExecutePlan`)
 - **Levels**: plan levels (e.g. `Bug`, `Feature`, `Epic`)
 - **Versions**: application version strings, OS name and version strings
-- **Agent providers**: coding agent name (e.g. `claude`, `codex`, `copilot`, `gemini`)
+- **Agent providers**: coding agent name (e.g. `claude`, `codex`, `copilot`, `gemini`, `opencode`,
+  `antigravity`, `apple`, `ivy`)
 - **Booleans**: feature flags, configuration states (e.g. `llm_configured: true`)
 - **Technology descriptors**: the project stack hash (see below)
 - **Install-salted one-way hashes** of otherwise-forbidden identifiers (see below)

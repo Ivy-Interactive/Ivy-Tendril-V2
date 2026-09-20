@@ -50,8 +50,10 @@ npm install -g @anthropic-ai/claude-code
 claude login
 ```
 
-Verify the CLI is on `PATH` (`claude`, `codex`, `copilot`, `gemini` or `opencode`) and that a plain
-invocation does not stop to prompt for a login.
+Verify the CLI is on `PATH` (`claude`, `codex`, `copilot`, `gemini`, `opencode` or `antigravity`)
+and that a plain invocation does not stop to prompt for a login. The `apple` agent is the
+exception: it runs through the bundled OpenCode against Apple's on-device model, so what has to be
+present is `fm` (check with `fm available`) and an `fm serve` already listening.
 
 ### 3. Git is installed and authorised for unattended use
 

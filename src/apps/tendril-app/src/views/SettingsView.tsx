@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { setThemeGlobal, type Theme } from "@ivy-interactive/components/theme";
 import { bridge } from "../api/bridge";
+import { agentsApi } from "../api/agentsApi";
 import { notificationsStore } from "../state/notificationsStore";
 import { describeBridgeError, type ServiceInfo, type TendrilConfig } from "../types/api";
+import type { AgentOption } from "../types/agents";
 import { ModelCatalogCard } from "../components/ModelCatalogCard";
 import { NewsletterSignup } from "../components/NewsletterSignup";
 import { ServiceSettingsView } from "../components/service";
@@ -23,6 +25,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
 
   // Form states for editable config
   const [codingAgent, setCodingAgent] = useState("claude");
+  // The agent catalog, fetched rather than hardcoded. A literal <option> list is a fifth place an
+  // agent has to be registered, and it silently fell behind: with four of the eight catalog agents
+  // listed, a `codex` user opened Settings and read "Claude Code (claude)", because a <select>
+  // whose value matches no option falls back to the first one. Nothing was corrupted -- the value
+  // is only written when the field is touched -- but the page misreported the running config.
+  const [agents, setAgents] = useState<AgentOption[]>([]);
   const [jobTimeout, setJobTimeout] = useState(1800);
   const [maxConcurrentJobs, setMaxConcurrentJobs] = useState(4);
   const [theme, setTheme] = useState("dark");
@@ -51,6 +59,33 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
     }
     void loadConfig();
   }, []);
+
+  useEffect(() => {
+    async function loadAgents() {
+      try {
+        setAgents(await agentsApi.listAgents());
+      } catch {
+        // Offline or the service is down: `options` falls back to the configured agent alone, so
+        // the field still names what is actually running rather than the head of a stale list.
+      }
+    }
+    void loadAgents();
+  }, []);
+
+  // Always includes the configured agent, even when the catalog is empty or does not know it, so
+  // the <select> never falls back to its first option and misreport what is running.
+  const options: AgentOption[] = agents.some((a) => a.id === codingAgent)
+    ? agents
+    : [
+        ...agents,
+        {
+          id: codingAgent,
+          label: codingAgent,
+          models: [],
+          supportsEffort: false,
+          efforts: [],
+        },
+      ];
 
   const handleThemeChange = (value: string) => {
     setTheme(value);
@@ -231,9 +266,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({ serviceInfo, onRefre
                 onChange={(e) => setCodingAgent(e.target.value)}
                 className="w-full rounded-lg border border-border bg-background p-2.5 text-xs text-foreground focus:border-ring focus:outline-none"
               >
-                <option value="claude">Claude Code (claude)</option>
-                <option value="gemini">Gemini CLI (gemini)</option>
-                <option value="antigravity">Antigravity (agy)</option>
+                {options.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.label} ({a.id})
+                  </option>
+                ))}
               </select>
             </div>
 

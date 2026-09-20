@@ -7,8 +7,8 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tendril_core::agents::{
-    build_agent_spec, format_opencode_model, AgentLaunchConfig, AgentProcessSpec, McpServerConfig,
-    ANTIGRAVITY_TOOL_SCHEMA_GUARDRAILS,
+    build_agent_spec, format_opencode_model, model_specs, pricing, AgentLaunchConfig,
+    AgentProcessSpec, McpServerConfig, ANTIGRAVITY_TOOL_SCHEMA_GUARDRAILS,
 };
 
 /// One launch config exercising every field a provider might render.
@@ -401,6 +401,103 @@ fn ivy_delegates_to_opencode_with_the_proxy_model() {
     assert_eq!(
         spec.environment.get("ANTHROPIC_BASE_URL"),
         Some(&"https://llmproxy.ivy.app".to_string())
+    );
+}
+
+#[test]
+fn apple_pins_the_only_model_fm_serve_offers_and_drops_effort() {
+    let spec = build_agent_spec("apple", &full_config());
+
+    // `full_config` asks for opus at max effort. Neither survives: `fm serve` serves exactly one
+    // model and rejects any other id, and the on-device model has no reasoning-effort control, so
+    // no `--variant` is rendered at all.
+    assert_eq!(
+        args_with_mcp_placeholder(&spec),
+        s(&[
+            "run",
+            "--auto",
+            "--format",
+            "json",
+            "--model",
+            "apple/system",
+            "--agent",
+            "apple-fm",
+            "--mcp-config",
+            "<mcp.json>",
+            "--flag",
+        ])
+    );
+
+    // OpenCode ships no Apple provider, so the launch carries one inline rather than writing a
+    // config file the spec would have to clean up.
+    let config = spec
+        .environment
+        .get("OPENCODE_CONFIG_CONTENT")
+        .expect("apple must declare its provider inline");
+    let parsed: serde_json::Value =
+        serde_json::from_str(config).expect("the inline config must be valid JSON");
+    assert_eq!(
+        parsed["provider"]["apple"]["options"]["baseURL"],
+        serde_json::json!("http://127.0.0.1:1976/v1"),
+        "the provider must point at the local fm serve endpoint"
+    );
+    assert_eq!(
+        parsed["provider"]["apple"]["models"]["system"]["limit"]["context"],
+        serde_json::json!(8192)
+    );
+    assert_eq!(
+        parsed["agent"]["apple-fm"]["tools"]["webfetch"],
+        serde_json::json!(false),
+        "the trimmed tool surface is what keeps the system prompt inside the context window"
+    );
+
+    // Declaring the agent does nothing on its own: OpenCode runs its default `build` agent unless
+    // `--agent` names another one. Measured against `fm serve`, the difference is about 6.9k input
+    // tokens versus about 4.5k for the same prompt, out of a window of 8k. Asserting the flag and
+    // the stanza together is what keeps one from being changed without the other.
+    let agent_flag = spec
+        .args
+        .iter()
+        .position(|a| a == "--agent")
+        .map(|i| spec.args[i + 1].as_str());
+    assert_eq!(
+        agent_flag,
+        Some("apple-fm"),
+        "the trimmed agent must be selected, not merely declared"
+    );
+
+    assert_eq!(
+        spec.environment.get("OPENAI_BASE_URL"),
+        Some(&"http://127.0.0.1:1976/v1".to_string())
+    );
+}
+
+/// The id a run is billed under is the one the launch puts on the wire, not the one the catalog
+/// happens to display. Those were two different strings once: the launch sent `apple/system` while
+/// the price row was named `apple-foundation-system`, so `find` missed and `get_model_price` fell
+/// back to its hardcoded 3.00/15.00 — a free on-device run recorded at Sonnet rates. Asserting the
+/// launched id against the price list, rather than either one against a literal, is what keeps a
+/// rename of one from silently un-pricing the other.
+#[test]
+fn the_apple_model_the_launch_sends_is_the_one_the_price_list_knows() {
+    let spec = build_agent_spec("apple", &full_config());
+
+    let model_index = spec
+        .args
+        .iter()
+        .position(|a| a == "--model")
+        .expect("apple must pin a model");
+    let launched = &spec.args[model_index + 1];
+
+    let priced = model_specs::find(launched)
+        .unwrap_or_else(|| panic!("the launched model '{}' is not in the price list", launched));
+    assert_eq!(priced.model_id.as_ref(), launched);
+
+    let price = pricing::get_model_price(launched);
+    assert_eq!(
+        (price.input_per_million, price.output_per_million),
+        (0.0, 0.0),
+        "the on-device model runs locally and bills nothing"
     );
 }
 

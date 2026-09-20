@@ -1,6 +1,6 @@
 // Brand icons for coding agents, ported from the Ivy framework's Icon component
 // (ClaudeCode, Antigravity, OpenCode, IvyCorner) and Simple Icons (OpenAI, Gemini,
-// Copilot, Anthropic) so the shell bundle does not depend on react-icons.
+// Copilot, Anthropic, Apple) so the shell bundle does not depend on react-icons.
 import React from "react";
 import { ChevronUp, Terminal } from "lucide-react";
 
@@ -71,6 +71,20 @@ const AnthropicIcon = svgIcon(
   "M17.3041 3.541h-3.6718l6.696 16.918H24Zm-10.6082 0L0 20.459h3.7442l1.3693-3.5527h7.0052l1.3693 3.5528h3.7442L10.5363 3.5409Zm-.3712 10.2232 2.2914-5.9456 2.2914 5.9456Z",
 );
 
+// The Apple logomark. `Icon.tsx` renders this mark through react-icons' `FaApple`, which this file
+// cannot import (see the constraint at the top), so the same geometry is inlined verbatim, keeping
+// the two renderings identical. The 384x512 viewBox is the mark's own, letterboxed into the square
+// the other icons use rather than re-fitted, so the glyph keeps its proportions.
+//
+// That letterboxing is deliberate, and it is not an outlier: rendered at size 16 the mark measures
+// 11.8x14.0, filling 87.5% of the box, which sits between IvyCorner (83.3%) and Antigravity (64.7%)
+// -- both long shipped. Re-fitting the viewBox to fill the square would make Apple the largest mark
+// in the row instead of a consistent one, so the proportions stay as Apple draws them.
+const AppleIcon = svgIcon(
+  "0 0 384 512",
+  "M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z",
+);
+
 const ChevronUpIcon = ({ size = 16, className }: BrandIconProps) => (
   <ChevronUp size={size} className={className} />
 );
@@ -89,6 +103,7 @@ export const brandIcons: Record<string, React.FC<BrandIconProps>> = {
   Gemini: GeminiIcon,
   Copilot: CopilotIcon,
   Anthropic: AnthropicIcon,
+  Apple: AppleIcon,
   ChevronUp: ChevronUpIcon,
   Terminal: TerminalIcon,
 };

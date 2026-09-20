@@ -170,34 +170,48 @@ pub fn run_prerequisite_checks() -> Vec<CheckResult> {
 pub fn agent_checks() -> Vec<CheckResult> {
     AGENT_PREREQUISITES
         .iter()
-        .map(|agent| match probe_version(agent.command) {
-            Some(version) => CheckResult::prerequisite(
-                agent.label,
-                CheckStatus::Ok,
-                format!("{} installed: {}", agent.label, version),
-                false,
-                agent.install_url,
-            ),
-            None => CheckResult::prerequisite(
-                agent.label,
-                CheckStatus::Warn,
-                format!(
-                    "{} CLI ('{}') not found on PATH",
-                    agent.label, agent.command
+        .map(
+            |agent| match probe_version_with_arg(agent.command, agent.version_arg) {
+                Some(version) => CheckResult::prerequisite(
+                    agent.label,
+                    CheckStatus::Ok,
+                    format!("{} installed: {}", agent.label, version),
+                    false,
+                    agent.install_url,
                 ),
-                false,
-                agent.install_url,
-            ),
-        })
+                None => CheckResult::prerequisite(
+                    agent.label,
+                    CheckStatus::Warn,
+                    format!(
+                        "{} CLI ('{}') not found on PATH",
+                        agent.label, agent.command
+                    ),
+                    false,
+                    agent.install_url,
+                ),
+            },
+        )
         .collect()
+}
+
+/// The prerequisite row for a catalog agent id, matched the way the wizard matches one: by
+/// lowercasing the label. `None` for an agent that has no row, such as the bundled `ivy`.
+fn prerequisite_for(agent: &str) -> Option<&'static AgentPrerequisite> {
+    AGENT_PREREQUISITES
+        .iter()
+        .find(|p| p.label.to_lowercase() == agent)
 }
 
 /// A coding-agent CLI the wizard can offer to install.
 struct AgentPrerequisite {
     /// The catalog id from `crate::agents::catalog`, lowercased form of `label`.
     label: &'static str,
-    /// The binary `crate::agents::providers::build_agent_spec` launches for this agent.
+    /// The binary `crate::agents::providers::build_agent_spec` launches for this agent, or, for an
+    /// agent launched through another CLI, the one that is distinctively its own prerequisite.
     command: &'static str,
+    /// The argument that makes `command` report its presence. Almost every CLI answers
+    /// `--version`; one that does not names the subcommand that stands in for it.
+    version_arg: &'static str,
     install_url: &'static str,
 }
 
@@ -208,32 +222,47 @@ const AGENT_PREREQUISITES: &[AgentPrerequisite] = &[
     AgentPrerequisite {
         label: "Claude",
         command: "claude",
+        version_arg: "--version",
         install_url: "https://claude.com/claude-code",
     },
     AgentPrerequisite {
         label: "Codex",
         command: "codex",
+        version_arg: "--version",
         install_url: "https://github.com/openai/codex",
     },
     AgentPrerequisite {
         label: "Gemini",
         command: "gemini",
+        version_arg: "--version",
         install_url: "https://github.com/google-gemini/gemini-cli",
     },
     AgentPrerequisite {
         label: "OpenCode",
         command: "opencode",
+        version_arg: "--version",
         install_url: "https://opencode.ai",
     },
     AgentPrerequisite {
         label: "Copilot",
         command: "copilot",
+        version_arg: "--version",
         install_url: "https://github.com/github/copilot-cli",
     },
     AgentPrerequisite {
         label: "Antigravity",
         command: "agy",
+        version_arg: "--version",
         install_url: "https://antigravity.google",
+    },
+    // Apple runs through the OpenCode CLI, which is probed on its own row above. What is distinctly
+    // Apple's is `fm`, and it rejects `--version` outright, so presence is probed with `available` —
+    // the subcommand that reports whether the on-device model can be used on this machine.
+    AgentPrerequisite {
+        label: "Apple",
+        command: "fm",
+        version_arg: "available",
+        install_url: "https://developer.apple.com/documentation/foundationmodels",
     },
 ];
 
@@ -309,10 +338,16 @@ fn github_cli_checks() -> Vec<CheckResult> {
 
 /// First line of `<command> --version`, or `None` when the binary is not on PATH.
 fn probe_version(command: &str) -> Option<String> {
-    let out = std::process::Command::new(command)
-        .arg("--version")
-        .output()
-        .ok()?;
+    probe_version_with_arg(command, "--version")
+}
+
+/// First line of `<command> <arg>`, or `None` when the binary is not on PATH.
+///
+/// A non-zero exit is still a present binary, so only a failure to spawn reports absent. A CLI that
+/// rejects the argument prints nothing to stdout, which reads as present with an unknown version --
+/// hence `version_arg`, so each agent is asked in a way it answers.
+fn probe_version_with_arg(command: &str, arg: &str) -> Option<String> {
+    let out = std::process::Command::new(command).arg(arg).output().ok()?;
     Some(
         String::from_utf8_lossy(&out.stdout)
             .lines()
@@ -888,6 +923,24 @@ fn configured_or_default_models(settings: &TendrilSettings, agent: &str) -> Vec<
         .collect()
 }
 
+/// The binary doctor probes for an agent, and the argument that binary answers.
+///
+/// Not `agent_command` alone: that reports the binary the launch execs, which for an agent that
+/// wraps another CLI is the wrapper. Apple runs through OpenCode, so `agent_command` returns the
+/// OpenCode binary -- which answers `--version` happily on a machine with no `fm` installed at
+/// all, and doctor would call the install healthy at exactly the moment it is not. The
+/// prerequisite row names the binary that is distinctly this agent's, and the argument that
+/// binary actually answers, so the wizard and doctor probe the same thing.
+///
+/// Agents with no row, such as the bundled `ivy`, keep the launch binary and the conventional
+/// `--version`.
+fn doctor_probe_target(agent: &str) -> (String, &'static str) {
+    match prerequisite_for(agent) {
+        Some(prereq) => (prereq.command.to_string(), prereq.version_arg),
+        None => (agent_command(agent), "--version"),
+    }
+}
+
 /// One probe per configured coding agent: whether its CLI is installed, and whether every model it
 /// is configured (or defaulted) to use resolves in the model catalog. Model resolution is a pure
 /// catalog lookup, never a shell-out to the agent, so this stays synchronous and offline.
@@ -909,9 +962,9 @@ fn agent_model_checks(settings: &TendrilSettings, catalog_is_static: bool) -> Ve
         } else {
             agent.clone()
         };
-        let command = agent_command(agent);
+        let (command, version_arg) = doctor_probe_target(agent);
 
-        if probe_version(&command).is_none() {
+        if probe_version_with_arg(&command, version_arg).is_none() {
             checks.push(CheckResult::environment(
                 "Agent models",
                 if *is_active {
@@ -1277,8 +1330,109 @@ mod tests {
             "opencode",
             "copilot",
             "antigravity",
+            "apple",
         ] {
             assert!(names.contains(&id.to_string()), "{} is not probed", id);
+        }
+    }
+
+    /// A CLI that rejects its probe argument prints nothing to stdout, so the probe reads as
+    /// "present, version unknown" and the check still passes -- which means reverting an agent's
+    /// `version_arg` to `--version` would not fail any assertion about statuses or row counts. It
+    /// would just quietly stop reporting a version. Asserting the text each agent actually answers
+    /// with is what makes that regression visible, so the probe argument is only exercised on a
+    /// machine where the binary is installed; elsewhere there is nothing to assert and it skips.
+    #[test]
+    fn each_agent_is_probed_with_an_argument_it_answers() {
+        for agent in AGENT_PREREQUISITES {
+            let Some(version) = probe_version_with_arg(agent.command, agent.version_arg) else {
+                continue; // Not installed on this machine: the absent case is covered above.
+            };
+
+            assert!(
+                !version.trim().is_empty(),
+                "'{} {}' printed nothing to stdout, so {} reports as installed with no version -- \
+                 the probe argument is one this CLI does not answer",
+                agent.command,
+                agent.version_arg,
+                agent.label
+            );
+        }
+    }
+
+    /// `build_agent_spec` matches on a `&str` with a catch-all arm, so an agent added to the catalog
+    /// but forgotten here would not fail to compile: it would quietly report no install status at
+    /// all, and its onboarding card would sit blank. Deriving the expectation from the catalog is
+    /// what turns that into a test failure the moment the next agent is added.
+    /// An agent that wraps another CLI launches the wrapper, so `agent_command` reports the
+    /// wrapper and a probe built on it passes on a machine that is missing the agent's own
+    /// prerequisite entirely. Apple is the case in hand: it execs OpenCode, so probing the launch
+    /// binary answers `1.17.x` whether or not `fm` exists, and doctor would call a broken install
+    /// healthy. Asserting that doctor probes the prerequisite binary, rather than the launch one,
+    /// is what keeps that hole closed; the second half pins the argument too, since probing the
+    /// right binary with an argument it rejects reads as "present, version unknown" and passes
+    /// just as wrongly.
+    #[test]
+    fn doctor_probes_each_agents_own_prerequisite_not_the_binary_it_launches() {
+        for prereq in AGENT_PREREQUISITES {
+            let agent = prereq.label.to_lowercase();
+            let (command, version_arg) = doctor_probe_target(&agent);
+
+            assert_eq!(
+                command, prereq.command,
+                "doctor probes '{}' for {}, but its prerequisite is '{}' -- on a machine without \
+                 that binary the check would pass anyway",
+                command, prereq.label, prereq.command
+            );
+            assert_eq!(
+                version_arg, prereq.version_arg,
+                "doctor probes '{}' with '{}' while the wizard uses '{}' -- an argument the CLI \
+                 rejects prints nothing and reads as installed",
+                command, version_arg, prereq.version_arg
+            );
+        }
+    }
+
+    /// The wrapper case is only a hole when the two binaries actually differ, so this pins that
+    /// apple is still that case. If OpenCode ever stops being apple's launch binary this test
+    /// fails and the guard above becomes a tautology worth revisiting rather than silently
+    /// asserting nothing.
+    #[test]
+    fn apples_launch_binary_is_not_its_prerequisite_binary() {
+        let launched = agent_command("apple");
+        let (probed, _) = doctor_probe_target("apple");
+
+        assert_ne!(
+            std::path::Path::new(&launched).file_name(),
+            std::path::Path::new(&probed).file_name(),
+            "apple's launch binary and prerequisite binary are now the same, so doctor can no \
+             longer confuse them"
+        );
+        assert_eq!(probed, "fm");
+    }
+
+    #[test]
+    fn every_catalog_agent_has_a_prerequisite_row() {
+        // `ivy` is the one deliberate omission: it launches the `ivy-agent` binary Tendril ships
+        // and resolves next to its own executable, so there is no third-party CLI for the user to
+        // install and the wizard offers no card for it. Anything else reaching this list is an
+        // agent whose install status silently went missing.
+        const NO_PREREQUISITE: &[&str] = &["ivy"];
+
+        let probed: Vec<String> = AGENT_PREREQUISITES
+            .iter()
+            .map(|a| a.label.to_lowercase())
+            .collect();
+
+        for agent in crate::agents::catalog::all_agents() {
+            if NO_PREREQUISITE.contains(&agent.id.as_str()) {
+                continue;
+            }
+            assert!(
+                probed.contains(&agent.id.to_lowercase()),
+                "catalog agent '{}' has no AGENT_PREREQUISITES row, so it reports no install status",
+                agent.id
+            );
         }
     }
 

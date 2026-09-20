@@ -13,8 +13,25 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@ivy-interactive/components/ui";
+import { BrandIcon } from "@ivy-interactive/components/tendril";
 import { Bot, ChevronDown } from "lucide-react";
 import { DEFAULT_OPTION_ID, type AgentOption } from "../../types/agents";
+
+/**
+ * Brand marks for the agent rows, keyed by the catalog's agent id. The catalog is a list of ids and
+ * labels with no icon field, so the mark is looked up here rather than widened onto the wire: an
+ * agent the server adds later still lists, just with `BrandIcon`'s terminal fallback.
+ */
+const AGENT_BRAND_ICONS: Record<string, string> = {
+  claude: "ClaudeCode",
+  codex: "OpenAI",
+  gemini: "Gemini",
+  copilot: "Copilot",
+  opencode: "OpenCode",
+  antigravity: "Antigravity",
+  apple: "Apple",
+  ivy: "IvyCorner",
+};
 
 export interface AgentPickerProps {
   agents: AgentOption[];
@@ -211,6 +228,11 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
                     agent.id === selectedAgentId ? "bg-accent text-accent-foreground" : undefined
                   }
                 >
+                  <BrandIcon
+                    name={AGENT_BRAND_ICONS[agent.id]}
+                    size={14}
+                    className="mr-2 shrink-0"
+                  />
                   <span className="truncate">{agent.label}</span>
                 </CommandItem>
               ))}
