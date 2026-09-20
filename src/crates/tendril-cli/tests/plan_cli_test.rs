@@ -2482,3 +2482,169 @@ fn plan_cleanup_fails_when_a_worktree_survives() {
         "the worktree is still there, as reported"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Husk plans: detect, report, and prune only on request
+// ---------------------------------------------------------------------------
+//
+// The operator's install held four plans. 00001 and 00002 are real (00002 is `Completed`, the
+// negative control). 00003 and 00004 are husks left by a stop-all that killed their `CreatePlan`
+// runs between `tendril plan create` and `tendril plan write-revision` -- both revision-less, but
+// 00003 holds a wireframe the agent had already built and 00004 holds nothing at all. `plan doctor`
+// must tell all four apart, and must not delete anything without being asked.
+
+/// Ages a plan past the quiet period, so the sweep will judge it instead of assuming a live run.
+///
+/// A husk and a plan created five seconds ago are the same bytes on disk; the only difference is that
+/// nobody is coming back for the husk. `classify_abandoned_husk` uses time as the proxy for that, so
+/// a fixture has to be old to be judged at all -- which is itself the behaviour
+/// `a_freshly_created_plan_is_not_reported_as_a_husk` pins down.
+fn age_plan(folder: &Path, days: i64) {
+    let when = chrono::Utc::now() - chrono::Duration::days(days);
+    let (mut plan, _) = tendril_core::plans::read_plan_yaml(folder).unwrap();
+    plan.updated = when;
+    plan.created = when;
+    tendril_core::plans::write_plan_yaml(folder, &plan).unwrap();
+
+    // The folder's own mtime counts too, and writing the yaml just bumped it. `touch` rather than a
+    // new dev-dependency for two lines in one test.
+    let stamp = when.format("%Y%m%d%H%M").to_string();
+    let ok = std::process::Command::new("touch")
+        .arg("-t")
+        .arg(&stamp)
+        .arg(folder)
+        .status()
+        .expect("touch");
+    assert!(ok.success(), "could not age {}", folder.display());
+}
+
+/// Builds the four plans from the operator's install.
+fn write_the_operators_plans(home: &CliHome) -> (PathBuf, PathBuf, PathBuf, PathBuf) {
+    let real = write_plan_with(home, "00001-Real", "Draft", vec![]);
+    std::fs::write(real.join("Revisions/001.md"), b"# Body").unwrap();
+
+    let completed = write_plan_with(home, "00002-Completed", "Completed", vec![]);
+    std::fs::write(completed.join("Revisions/001.md"), b"# Body").unwrap();
+
+    // Revision-less, but the agent had already built a wireframe into it before it was killed.
+    let with_work = write_plan_with(home, "00003-HasWork", "Draft", vec![]);
+    std::fs::create_dir_all(with_work.join("Wireframes/editor")).unwrap();
+    std::fs::write(with_work.join("Wireframes/editor/App.tsx"), b"export {}").unwrap();
+
+    // Revision-less and empty: the scaffold and nothing else.
+    let bare = write_plan_with(home, "00004-Bare", "Draft", vec![]);
+
+    for folder in [&real, &completed, &with_work, &bare] {
+        age_plan(folder, 7);
+    }
+    (real, completed, with_work, bare)
+}
+
+#[test]
+fn plan_doctor_reports_the_two_husks_and_leaves_the_real_plans_alone() {
+    let home = CliHome::new("doctor-husks");
+    let (_real, _completed, with_work, bare) = write_the_operators_plans(&home);
+
+    let out = home.run(&["plan", "doctor"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+
+    assert_eq!(
+        out.status.code(),
+        Some(0),
+        "a husk is a Warning, not an Error: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("00004-Bare: [Warning] Plan has no revision and holds no work"),
+        "the bare husk is reported as removable: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("00003-HasWork: [Warning] Plan has no revision but it contains Wireframes"),
+        "the husk holding work is reported as *not* removable: {}",
+        stdout
+    );
+    assert!(
+        !stdout.contains("00001-Real: [Warning] Plan has no revision"),
+        "a drafted plan is not a husk: {}",
+        stdout
+    );
+    assert!(
+        !stdout.contains("00002-Completed: [Warning] Plan has no revision"),
+        "the negative control must never be reported: {}",
+        stdout
+    );
+
+    // Reporting changes nothing on disk.
+    assert!(bare.is_dir() && with_work.is_dir());
+}
+
+/// **The condition that separates a husk from a new plan.** A plan a live `CreatePlan` has just
+/// created is revision-less and empty -- identical to 00004 -- and warning about it would mean every
+/// plan is unhealthy for the minute after it is made.
+#[test]
+fn a_freshly_created_plan_is_not_reported_as_a_husk() {
+    let home = CliHome::new("doctor-fresh-plan");
+    // Written now, not aged: exactly what a job's `tendril plan create` leaves behind before it gets
+    // as far as `write-revision`.
+    let fresh = write_plan_with(&home, "00001-JustCreated", "Draft", vec![]);
+
+    let stdout = home.run_ok(&["plan", "doctor"]);
+    assert!(
+        !stdout.contains("no revision"),
+        "a plan a live job may still be drafting into must not be called a husk: {}",
+        stdout
+    );
+
+    // And `--prune-husks` will not touch it either, which is the part that would destroy data.
+    let pruned = home.run_ok(&["plan", "doctor", "--prune-husks"]);
+    assert!(
+        fresh.is_dir(),
+        "pruning must not delete a plan created moments ago: {}",
+        pruned
+    );
+    assert!(pruned.contains("No husk plans found."), "{}", pruned);
+}
+
+#[test]
+fn prune_husks_removes_only_the_bare_husk_and_only_when_asked() {
+    let home = CliHome::new("doctor-prune");
+    let (real, completed, with_work, bare) = write_the_operators_plans(&home);
+
+    // A dry run reports the same decision and removes nothing.
+    let dry = home.run_ok(&["plan", "doctor", "--prune-husks", "--dry-run"]);
+    assert!(
+        dry.contains("Would remove husk plan 00004-Bare"),
+        "dry run names what it would remove: {}",
+        dry
+    );
+    assert!(
+        dry.contains("Kept 00003-HasWork: it contains Wireframes"),
+        "dry run says why it is keeping the other: {}",
+        dry
+    );
+    assert!(bare.is_dir(), "a dry run removes nothing");
+
+    let out = home.run_ok(&["plan", "doctor", "--prune-husks"]);
+    assert!(out.contains("Removed husk plan 00004-Bare"), "{}", out);
+    assert!(!bare.exists(), "the bare husk is gone: {}", out);
+    assert!(
+        with_work.join("Wireframes/editor/App.tsx").is_file(),
+        "the wireframe the agent built survives a prune: {}",
+        out
+    );
+    assert!(real.is_dir() && completed.is_dir(), "real plans survive");
+}
+
+/// `--dry-run` is meaningless on its own and must say so rather than silently running a full doctor.
+#[test]
+fn dry_run_without_prune_husks_is_rejected() {
+    let home = CliHome::new("doctor-dry-run-alone");
+    let out = home.run(&["plan", "doctor", "--dry-run"]);
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&out.stderr).contains("--dry-run only applies to --prune-husks"),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}

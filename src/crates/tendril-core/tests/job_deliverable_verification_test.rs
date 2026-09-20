@@ -702,3 +702,198 @@ fn fixture_plans_round_trip_their_state() {
     write_plan_yaml(&folder, &plan).unwrap();
     assert_eq!(plan_state(&folder), PlanStatus::Failed.to_string());
 }
+
+// ---------------------------------------------------------------------------
+// Husk plans: a CreatePlan killed between `plan create` and `write-revision`
+// ---------------------------------------------------------------------------
+//
+// The operator's plans 00003 and 00004. Eighteen `CreatePlan` jobs were started within 200ms of each
+// other and then stopped all at once; two of them had already run `tendril plan create` but had not
+// yet run `tendril job status --plan-id`, so their rows carried an empty `PlanFile`, an empty
+// `ReportedPlanId`, and their logs held no `PlanId:` marker. Every strategy
+// `resolve_created_plan_folder` had was a way of asking the job which plan was its own, and the job
+// did not know — so the cleanup found nothing to clean and the folders stayed on disk, rendering in
+// the plan list as plans with nothing in them.
+//
+// The fix is to stop asking the job. `tendril plan create` stamps `createdByJob` into `plan.yaml`
+// from `TENDRIL_JOB_ID`, so the association is written by the command that makes the folder, before
+// anything can be killed.
+
+use tendril_core::plans::orphans::CREATED_BY_JOB_KEY;
+use tendril_core::plans::writer::{create_plan, create_plan_for_job, CreatePlanOptions};
+
+/// Creates a plan the way a job's `tendril plan create` would, breadcrumb and all.
+fn create_plan_as_job(home: &HomeFixture, title: &str, job_id: &str) -> PathBuf {
+    let opts = CreatePlanOptions::new(title, "FixtureProject");
+    let plan_file =
+        create_plan_for_job(&home.plans_dir(), opts, Some(job_id)).expect("create plan");
+    PathBuf::from(plan_file.folder_path)
+}
+
+/// **The reported bug.** A stopped `CreatePlan` that never reported its plan id must still leave no
+/// revision-less husk behind.
+///
+/// Every input here is set to the value the real jobs carried: no `plan_file`, no `reported_plan_id`,
+/// and an output stream with no `PlanId:` line in it. Before the breadcrumb, this folder survived.
+#[tokio::test]
+async fn a_create_plan_stopped_before_it_reported_its_id_leaves_no_husk() {
+    let home = HomeFixture::new("husk-stopped-unreported");
+    let folder = create_plan_as_job(&home, "Ship The VSCode Extension", "00013");
+    seed_plan_row(&home, &folder);
+    let plan_id = 1;
+    assert!(folder.is_dir() && plan_row_exists(&home, plan_id));
+
+    // The job as the database held it: it never learned which plan it had made.
+    let mut job = job_of("CreatePlan", "00013", "");
+    job.reported_plan_id = None;
+    assert!(job.plan_file.is_empty());
+
+    // Not a single `PlanId:` marker — the agent died before printing one.
+    append_agent_log(&home.path, &job.id, "Researching codebase", None).unwrap();
+
+    let finished = run_finish(&home, job, JobStatus::Stopped).await;
+
+    assert!(
+        !folder.exists(),
+        "a stopped CreatePlan must not leave a revision-less husk at {}",
+        folder.display()
+    );
+    assert!(
+        !plan_row_exists(&home, plan_id),
+        "the husk's database row must go with the folder"
+    );
+    assert!(
+        finished.plan_file.is_empty(),
+        "nothing left to link to: {}",
+        finished.plan_file
+    );
+}
+
+/// The same kill, but the run had got as far as writing the revision. That is a real plan and an
+/// interrupted job, not a husk — the folder is the operator's recovery material.
+#[tokio::test]
+async fn a_stopped_create_plan_that_wrote_its_revision_keeps_the_plan() {
+    let home = HomeFixture::new("husk-stopped-with-revision");
+    let folder = create_plan_as_job(&home, "Real Plan", "00014");
+    write_revision(&folder);
+    seed_plan_row(&home, &folder);
+
+    let mut job = job_of("CreatePlan", "00014", "");
+    job.reported_plan_id = None;
+    let finished = run_finish(&home, job, JobStatus::Stopped).await;
+
+    assert!(folder.is_dir(), "a plan with a revision is real work");
+    assert!(plan_row_exists(&home, 1), "its row stays too");
+    assert_eq!(
+        PathBuf::from(&finished.plan_file),
+        folder,
+        "and the job is linked to it, so the operator can find it"
+    );
+}
+
+/// **The safety valve, and the reason 00003 could not simply be deleted.** A revision-less plan that
+/// holds work the agent produced is reported, never removed: the breadcrumb makes this folder
+/// resolvable for the first time, and the cost of getting the judgement wrong is an agent's output.
+#[tokio::test]
+async fn a_stopped_create_plan_holding_work_is_kept_even_though_it_has_no_revision() {
+    let home = HomeFixture::new("husk-has-wireframes");
+    let folder = create_plan_as_job(&home, "Ship The VSCode Extension", "00010");
+    std::fs::create_dir_all(folder.join("Wireframes").join("editor")).unwrap();
+    std::fs::write(folder.join("Wireframes/editor/App.tsx"), b"export {}").unwrap();
+    seed_plan_row(&home, &folder);
+
+    let mut job = job_of("CreatePlan", "00010", "");
+    job.reported_plan_id = None;
+    run_finish(&home, job, JobStatus::Stopped).await;
+
+    assert!(
+        folder.join("Wireframes/editor/App.tsx").is_file(),
+        "a wireframe the agent built is not ours to delete"
+    );
+    assert!(plan_row_exists(&home, 1), "and its row stays with it");
+}
+
+/// The breadcrumb resolves by exact job id, so a plan the operator created by hand — which carries no
+/// breadcrumb at all — can never be selected as some job's orphan.
+#[tokio::test]
+async fn a_handmade_plan_is_never_attributed_to_a_stopped_job() {
+    let home = HomeFixture::new("husk-handmade");
+    // No `created_by_job`: this is `tendril plan create` run by a person, or the New Plan dialog.
+    let handmade = create_plan(
+        &home.plans_dir(),
+        CreatePlanOptions::new("My Own Plan", "FixtureProject"),
+    )
+    .expect("create plan");
+    let folder = PathBuf::from(handmade.folder_path);
+    seed_plan_row(&home, &folder);
+
+    let mut job = job_of("CreatePlan", "00013", "");
+    job.reported_plan_id = None;
+    run_finish(&home, job, JobStatus::Stopped).await;
+
+    assert!(
+        folder.is_dir(),
+        "a plan nobody's job created must survive that job being stopped"
+    );
+    assert!(plan_row_exists(&home, 1));
+}
+
+/// The breadcrumb is a fallback, not a replacement: the cheap strategies still win, and a job that
+/// did report its id resolves through that as before.
+#[tokio::test]
+async fn the_reported_id_still_resolves_without_a_breadcrumb() {
+    let home = HomeFixture::new("husk-reported-id");
+    let folder = home.write_plan("00021-Reported", &plan_with(PlanStatus::Draft, &[]));
+    seed_plan_row(&home, &folder);
+
+    let mut job = job_of("CreatePlan", "00055", "");
+    job.reported_plan_id = Some("00021".to_string());
+    let finished = run_finish(&home, job, JobStatus::Stopped).await;
+
+    assert!(
+        !folder.exists(),
+        "an empty reported folder is still cleaned"
+    );
+    assert!(finished.plan_file.is_empty());
+}
+
+/// `create_plan` records the breadcrumb only when a job asked for the plan, and it survives a
+/// read-modify-write of `plan.yaml` (it rides in the flattened `extra` map).
+#[test]
+fn the_breadcrumb_round_trips_and_is_absent_for_a_handmade_plan() {
+    let home = HomeFixture::new("husk-breadcrumb-roundtrip");
+    let folder = create_plan_as_job(&home, "Stamped", "00013");
+
+    let (mut plan, _) = tendril_core::plans::reader::read_plan_yaml(&folder).unwrap();
+    assert_eq!(
+        plan.extra.get(CREATED_BY_JOB_KEY).and_then(|v| v.as_str()),
+        Some("00013")
+    );
+
+    // A later write of the plan must not drop it: the cleanup runs after the agent has edited it.
+    plan.state = PlanStatus::Executing.to_string();
+    write_plan_yaml(&folder, &plan).unwrap();
+    let (reread, _) = tendril_core::plans::reader::read_plan_yaml(&folder).unwrap();
+    assert_eq!(
+        reread
+            .extra
+            .get(CREATED_BY_JOB_KEY)
+            .and_then(|v| v.as_str()),
+        Some("00013"),
+        "the breadcrumb must survive a read-modify-write"
+    );
+
+    let handmade = create_plan(
+        &home.plans_dir(),
+        CreatePlanOptions::new("Unstamped", "FixtureProject"),
+    )
+    .unwrap();
+    let (plain, raw) =
+        tendril_core::plans::reader::read_plan_yaml(Path::new(&handmade.folder_path)).unwrap();
+    assert!(!plain.extra.contains_key(CREATED_BY_JOB_KEY));
+    assert!(
+        !raw.contains(CREATED_BY_JOB_KEY),
+        "a handmade plan's yaml gains no new key: {}",
+        raw
+    );
+}

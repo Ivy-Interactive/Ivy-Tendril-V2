@@ -24,11 +24,11 @@ use crate::models::{
     UpdatePlanArgs, VerificationStatus,
 };
 use crate::plans::{
-    add_recommendation, check_plan_health, create_plan, get_revision, list_plan_verifications,
-    list_recommendations, read_plan_file, read_plan_yaml, remove_plan_verification,
-    remove_recommendation, resolve_plan_folder, set_plan_verification_status,
-    set_recommendation_state, write_plan_yaml, write_revision, CreatePlanOptions,
-    PlanCompletionGuard,
+    add_recommendation, check_plan_health, create_plan_for_job, get_revision,
+    list_plan_verifications, list_recommendations, read_plan_file, read_plan_yaml,
+    remove_plan_verification, remove_recommendation, resolve_plan_folder,
+    set_plan_verification_status, set_recommendation_state, write_plan_yaml, write_revision,
+    CreatePlanOptions, PlanCompletionGuard,
 };
 use chrono::{DateTime, Utc};
 use serde_json::{json, Map, Value};
@@ -423,7 +423,16 @@ impl McpDispatcher {
             chat_session_id: None,
         };
 
-        let plan_file = create_plan(&self.plans_dir, opts).map_err(|e| e.to_string())?;
+        // Set when this MCP server is being driven by an agent the job runner launched, which is the
+        // case that matters: it is the same association `tendril plan create` records, so a plan made
+        // through either route can be traced back to the run that made it.
+        let created_by_job = std::env::var("TENDRIL_JOB_ID")
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty());
+
+        let plan_file = create_plan_for_job(&self.plans_dir, opts, created_by_job.as_deref())
+            .map_err(|e| e.to_string())?;
         self.sync(Path::new(&plan_file.folder_path));
 
         Ok(ToolOutcome::structured(json!({

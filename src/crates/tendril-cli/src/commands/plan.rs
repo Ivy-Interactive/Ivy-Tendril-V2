@@ -20,7 +20,7 @@ use tendril_core::models::{
 };
 use tendril_core::plans::{
     accept_recommendation, add_plan_verification, add_recommendation, check_all_plans_health,
-    check_plan_health, check_pr_health_with_progress, create_plan, decline_recommendation,
+    check_plan_health, check_pr_health_with_progress, create_plan_for_job, decline_recommendation,
     get_plan_field, get_revision, list_recommendations, materialize_plan_env,
     order_by_project_config, read_plan_file, read_plan_yaml, remove_plan_verification,
     remove_recommendation, render_env_file, resolve_plan_folder, resolve_plan_folder_name,
@@ -68,6 +68,17 @@ pub enum PlanCommands {
         /// per distinct PR, so the default doctor pass stays offline and free.
         #[arg(long)]
         prs: bool,
+
+        /// Delete plan folders that have no revision and hold no work — the husks an interrupted
+        /// `CreatePlan` leaves behind. Separate from `--fix`, which only migrates schemas: this
+        /// removes plan folders, so it is never implied by anything. A revision-less plan that holds
+        /// a wireframe, an artifact or a recorded PR is reported and kept whatever this flag says.
+        #[arg(long = "prune-husks")]
+        prune_husks: bool,
+
+        /// With `--prune-husks`, report what would be removed and remove nothing.
+        #[arg(long = "dry-run")]
+        dry_run: bool,
     },
 
     #[command(about = "Remove plan worktrees")]
@@ -967,7 +978,16 @@ pub async fn handle_plan_command(
                 chat_session_id: args.chat_session,
             };
 
-            let plan_file = create_plan(&p_dir, opts)?;
+            // Stamped into `plan.yaml` at creation, so a `CreatePlan` job killed before it could
+            // report its plan id can still be matched to the folder it made. `TENDRIL_JOB_ID` is set
+            // by the job runner for every agent process; it is absent when an operator runs this
+            // command themselves, which is exactly when there is no job to attribute it to.
+            let created_by_job = std::env::var("TENDRIL_JOB_ID")
+                .ok()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty());
+
+            let plan_file = create_plan_for_job(&p_dir, opts, created_by_job.as_deref())?;
             println!("PlanId: {:05}", plan_file.metadata.id);
             println!("Directory: {}", plan_file.folder_path);
             println!("Verifications:");
@@ -982,8 +1002,23 @@ pub async fn handle_plan_command(
                 }
             }
 
-            if let Ok(conn) = open_database(&db_path) {
-                let _ = sync_plan(&conn, &plan_file);
+            // A plan the database never hears about is invisible to the app, which reads its plan
+            // list from SQLite -- so a failure here is reported rather than swallowed. Not fatal: the
+            // plan is on disk and correct, `plan doctor` and the next sync will pick it up, and
+            // failing the command would tell the agent to create it again.
+            match open_database(&db_path) {
+                Ok(conn) => {
+                    if let Err(e) = sync_plan(&conn, &plan_file) {
+                        eprintln!(
+                            "Warning: plan {:05} was created on disk but could not be written to the database: {}",
+                            plan_file.metadata.id, e
+                        );
+                    }
+                }
+                Err(e) => eprintln!(
+                    "Warning: plan {:05} was created on disk but the database could not be opened: {}",
+                    plan_file.metadata.id, e
+                ),
             }
         }
         PlanCommands::Update(args) => {
@@ -1143,7 +1178,15 @@ pub async fn handle_plan_command(
                 }
             }
         }
-        PlanCommands::Doctor { fix, prs } => {
+        PlanCommands::Doctor {
+            fix,
+            prs,
+            prune_husks,
+            dry_run,
+        } => {
+            if dry_run && !prune_husks {
+                anyhow::bail!("--dry-run only applies to --prune-husks.");
+            }
             if fix {
                 let migrator = tendril_core::plans::migrations::PlanMigrator::new();
                 let count = migrator.migrate_plans(&plans_dir, None)?;
@@ -1155,6 +1198,24 @@ pub async fn handle_plan_command(
                     );
                 }
             }
+            // Before the report, so the report describes the tree as it is once the prune has run.
+            if prune_husks {
+                let outcome = tendril_core::plans::prune_husk_plans(&plans_dir, dry_run)?;
+                for (folder, why) in &outcome.kept {
+                    println!("Kept {}: {}", folder, why);
+                }
+                for folder in &outcome.pruned {
+                    if dry_run {
+                        println!("Would remove husk plan {}", folder);
+                    } else {
+                        println!("Removed husk plan {}", folder);
+                    }
+                }
+                if outcome.pruned.is_empty() && outcome.kept.is_empty() {
+                    println!("No husk plans found.");
+                }
+            }
+
             let mut issues = check_all_plans_health(&plans_dir)?;
             if prs {
                 issues.extend(check_pr_health_with_progress(

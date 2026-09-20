@@ -2395,6 +2395,16 @@ fn spawn_runner(
             extra_arguments: resolution.extra_arguments.clone(),
             ..Default::default()
         };
+        // The agent runs `tendril plan create`, and that command stamps this id into the plan's
+        // `plan.yaml` so the plan can be traced back to the job that made it without the agent having
+        // to report anything. `TENDRIL_JOB_ID` is the name the hook environment already uses for the
+        // same value (see `crate::jobs::hooks`), so there is one spelling of it to learn.
+        //
+        // Inserted after the resolution's own variables so a misconfigured agent entry cannot shadow
+        // it: the whole point is that this is present on every run.
+        launch_config
+            .environment_variables
+            .insert("TENDRIL_JOB_ID".to_string(), job.id.clone());
         apply_security_settings(&mut launch_config, &security);
 
         let spec = (spec_builder)(&job.provider, &launch_config);
@@ -3830,6 +3840,11 @@ fn enrich_failure_message(
 }
 
 /// Removes the folder a CreatePlan run left behind with no revision in it.
+///
+/// The counterpart to [`JobManager::attribute_created_plan`], for the half of the stop paths that
+/// arrives here instead of there, and it resolves the same folder through the same resolver -- so it
+/// records the link on the same terms. Without that, whether a stopped `CreatePlan` ended up linked
+/// to the plan it made came down to which of the two paths happened to reach it first.
 fn cleanup_empty_create_plan(
     tendril_home: &Path,
     plans_dir: &Path,
@@ -3840,11 +3855,18 @@ fn cleanup_empty_create_plan(
         return;
     };
     if revision_count(&folder) > 0 {
+        // A real plan, interrupted. Keep it, and link the job to it: this is the only place that
+        // knows the two belong together once the run is over.
+        job.plan_file = folder.to_string_lossy().to_string();
         return;
     }
     if cleanup_plan_folder_and_database(tendril_home, plans_dir, &folder) {
         // Nothing to link to any more.
         job.plan_file = String::new();
+    } else {
+        // Kept -- it holds work `classify_husk` refused to destroy. Link it, so the operator can
+        // reach it from the job instead of finding it by hand in the plans list.
+        job.plan_file = folder.to_string_lossy().to_string();
     }
 }
 

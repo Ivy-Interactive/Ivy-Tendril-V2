@@ -225,12 +225,47 @@ pub async fn create_plan_handler(
         chat_session_id: body.chat_session_id,
     };
 
+    // No `create_plan_for_job` here: this route is the New Plan dialog, driven by a person. A plan
+    // created by a `CreatePlan` run goes through the CLI, which stamps its own job id.
+
     match create_plan(&state.plans_dir, opts) {
         Ok(plan_file) => {
-            if let Ok(conn) = open_database(&state.db_path) {
-                let _ = sync_plan(&conn, &plan_file);
+            // `create_plan` is all-or-nothing, so reaching here means the folder is complete on disk.
+            // The database write is what the app actually reads its plan list from, though, and this
+            // used to be `let _ =`: a sync that failed produced a 201 with the plan's JSON, a folder
+            // on disk, and no row -- a plan the UI could not see and the operator could not explain.
+            //
+            // 500 rather than rolling the folder back. The plan is valid and the operator's intent is
+            // recorded; deleting it because a database write failed would destroy the one durable
+            // copy over the recoverable half of the pair. The status says the request did not fully
+            // succeed and the body names the plan, so a client can retry the sync rather than the
+            // create -- and `plan doctor` reports the gap in the meantime.
+            let sync_error = match open_database(&state.db_path) {
+                Ok(conn) => sync_plan(&conn, &plan_file).err().map(|e| e.to_string()),
+                Err(e) => Some(e.to_string()),
+            };
+
+            match sync_error {
+                None => (StatusCode::CREATED, Json(json!(plan_file))).into_response(),
+                Some(message) => {
+                    tracing::error!(
+                        "Plan {} was created on disk but could not be written to the database: {}",
+                        plan_file.folder_name,
+                        message
+                    );
+                    (
+                        StatusCode::INTERNAL_SERVER_ERROR,
+                        Json(json!({
+                            "error": format!(
+                                "Plan was created on disk but could not be written to the database: {}",
+                                message
+                            ),
+                            "plan": plan_file,
+                        })),
+                    )
+                        .into_response()
+                }
             }
-            (StatusCode::CREATED, Json(json!(plan_file))).into_response()
         }
         Err(e) => (
             StatusCode::BAD_REQUEST,

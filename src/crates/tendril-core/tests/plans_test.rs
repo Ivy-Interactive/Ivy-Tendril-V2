@@ -1496,3 +1496,89 @@ fn write_revision_leaves_a_revision_with_no_wireframe_block_alone() {
         1
     );
 }
+
+// ---------------------------------------------------------------------------
+// (b) `create_plan` is all-or-nothing -- a latent bug, NOT the cause of the husks
+// ---------------------------------------------------------------------------
+//
+// Separate from the orphan-resolution fix and covering a different failure. A plan folder is built in
+// several steps -- mkdir, three scaffold directories, `plan.yaml`, then a read-back to validate it --
+// and each is a `?`. A failure at any of them returned the error to the caller and left the folder
+// standing, so the CLI printed a failure and a plan with no body appeared in the list anyway.
+//
+// This is not what produced the operator's husks: those have complete, valid `plan.yaml` files, so
+// `create_plan` ran to completion for both. It is a real hole in its own right, and the rollback
+// guard closes it.
+
+/// The rollback path itself, driven directly. There is no injection seam in `create_plan` to force a
+/// mid-write failure through, and manufacturing a filesystem-level one is not worth the fragility --
+/// so this tests the mechanism that runs on every one of those `?` instead.
+#[test]
+fn the_rollback_guard_removes_a_folder_that_was_created_and_not_finished() {
+    use tendril_core::plans::orphans::PlanFolderGuard;
+    let dir = temp_plans_dir("atomic-rollback");
+    let folder = dir.join("00001-Doomed");
+    std::fs::create_dir_all(folder.join("Revisions")).unwrap();
+    std::fs::write(folder.join("plan.yaml"), b"state: Draft\n").unwrap();
+
+    {
+        // Armed, then dropped without `disarm` -- what happens on every `?` in `create_plan`.
+        let _guard = PlanFolderGuard::arm(&dir, &folder);
+    }
+
+    assert!(
+        !folder.exists(),
+        "an unfinished create must leave no folder behind"
+    );
+    // And the id it took is free again: ids come from scanning for the highest prefix, so rolling the
+    // folder back hands the number straight back and the plan list has no gap in it.
+    let next = create_plan(&dir, bare_create_plan_options("Survivor")).expect("second create");
+    assert!(
+        next.folder_path.ends_with("00001-Survivor"),
+        "the rolled-back id must be reusable, got {}",
+        next.folder_path
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A successful create disarms, so the guard cannot delete a plan that was finished properly.
+#[test]
+fn a_successful_create_keeps_its_folder() {
+    let dir = temp_plans_dir("atomic-success");
+    let plan = create_plan(&dir, bare_create_plan_options("Kept")).expect("create");
+    let folder = Path::new(&plan.folder_path);
+    assert!(folder.is_dir() && folder.join("plan.yaml").is_file());
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// The guard refuses anything that is not a `NNNNN-` child of the plans directory, so a bug that
+/// armed it on the wrong path deletes nothing. Same predicate the job-side cleanup uses.
+#[test]
+fn the_rollback_guard_only_ever_deletes_a_plan_folder() {
+    use tendril_core::plans::orphans::is_plan_folder_under;
+    let dir = temp_plans_dir("atomic-guard-predicate");
+
+    assert!(is_plan_folder_under(&dir, &dir.join("00001-Real")));
+    assert!(!is_plan_folder_under(&dir, &dir.join("NotAPlan")));
+    assert!(!is_plan_folder_under(&dir, &dir.join("0001-TooShort")));
+    assert!(
+        !is_plan_folder_under(&dir, &dir.join("00001-Real").join("Revisions")),
+        "a nested path is not a direct child"
+    );
+    assert!(
+        !is_plan_folder_under(&dir, Path::new("/tmp/00001-Elsewhere")),
+        "a plan-shaped name outside the plans dir is still out of bounds"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+fn temp_plans_dir(label: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "tendril-{}-{}",
+        label,
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
+}
