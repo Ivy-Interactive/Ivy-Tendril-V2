@@ -59,6 +59,8 @@ tar = "0.4"
 # the zopfli dependency the umbrella pulls in. Verify with `cargo tree -p flate2 -e features`.
 zip = { version = "8.6", default-features = false, features = ["deflate-flate2"] }
 sha2 = "0.10"
+# npm publishes some registry integrity hashes as sha1; the wireframe payload verifier accepts them.
+sha1 = "0.10"
 # A review action is hosted in a real pseudo-terminal rather than on two pipes: dev servers disable
 # colour and buffer differently when stdout is not a TTY, and one that prompts on first run cannot be
 # answered through a pipe at all.

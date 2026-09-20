@@ -1,0 +1,20 @@
+// @tendril-wireframe plan-only: a throwaway mockup. Never copy it into product code.
+import { createRoot } from "react-dom/client";
+import { SketchProvider } from "tendril-wireframes";
+import { signalWireframeReady } from "./wireframe-ready";
+import App from "./App";
+
+// SketchProvider mounts the shared SVG filters and sets the pencil (roughness,
+// bowing, stroke width) for everything beneath it. The `tendril` class applies the
+// handwriting font and ink colour. Both are required -- without them the components
+// render, but not as a hand-drawn wireframe.
+createRoot(document.getElementById("root")!).render(
+  <SketchProvider>
+    <div className="tendril">
+      <App />
+    </div>
+  </SketchProvider>
+);
+
+// Tells `wireframe screenshot` when the sketch has finished drawing. Leave this in.
+signalWireframeReady();

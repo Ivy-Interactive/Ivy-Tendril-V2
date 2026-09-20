@@ -2,6 +2,13 @@
   "$schema": "https://schema.tauri.app/config/2/capability",
   "identifier": "default",
   "description": "Default permissions for Tendril Desktop main window",
-  "windows": ["main"],
-  "permissions": ["core:default", "dialog:default", "notification:default"]
+  "windows": [
+    "main"
+  ],
+  "permissions": [
+    "core:default",
+    "dialog:default",
+    "notification:default",
+    "opener:default"
+  ]
 }

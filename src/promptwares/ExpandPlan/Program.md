@@ -77,6 +77,7 @@ Report status: `tendril job status TendrilJobId --message="Writing expanded revi
 
 ### Rules
 
+- **Wireframes**: if expansion turns this into a plan that adds or reshapes a screen, page, dialog, panel or tool, make one; see **Wireframes** in the Reference Documents. Edit an existing wireframe in place rather than adding a second. Record the decision with `tendril job add-log <TendrilJobId> "Wireframe" --summary="..."`.
 - Expansion is research, so it retires the questions it answers. For every question in a `questions` fence that your research settles, fold the finding into the plan and delete that question from its block; drop the fence when its last question goes. Questions that need a human decision — a product or naming call — stay exactly as they are, in place. You may add blocks, but only for genuine decisions, never for anything you could have looked up, and placed next to the section they concern. The schema is in the **Question Blocks** section of **Reference Documents**; `write-revision` rejects a malformed block and writes nothing.
 - The expanded plan must be **immediately actionable** without further investigation
 - If research reveals the problem is already solved or doesn't exist, note that clearly

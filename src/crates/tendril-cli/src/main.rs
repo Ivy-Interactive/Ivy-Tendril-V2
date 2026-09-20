@@ -50,6 +50,9 @@ enum Commands {
     #[command(subcommand, about = "Manage verification definitions")]
     Verification(commands::verification::VerificationCommands),
 
+    #[command(subcommand, about = "Author and preview plan wireframes")]
+    Wireframe(commands::wireframe::WireframeCommands),
+
     #[command(subcommand, about = "Manage promptwares")]
     Promptware(commands::promptware::PromptwareCommands),
 
@@ -226,33 +229,48 @@ async fn main() -> anyhow::Result<()> {
         init_logging();
     }
 
-    match cli.command {
-        Commands::Plan(cmd) => commands::plan::handle_plan_command(cmd, &tendril_home).await?,
-        Commands::Job(cmd) => commands::job::handle_job_command(cmd, &tendril_home).await?,
-        Commands::Chat(cmd) => commands::chat::handle_chat_command(cmd, &tendril_home).await?,
+    // Boxed, because this match is one future whose size is the sum of every arm's locals. With
+    // this many subcommands that exceeds the 1 MB main-thread stack Windows gives a process, and a
+    // debug build of `tendril` overflowed before reaching any command - `tendril version` included.
+    // Boxing moves the state to the heap and leaves main's own frame small. Release builds lay the
+    // future out more tightly, which is why this only ever showed up locally.
+    Box::pin(dispatch(cli.command, tendril_home, home_was_explicit)).await
+}
+
+async fn dispatch(
+    command: Commands,
+    tendril_home: PathBuf,
+    home_was_explicit: bool,
+) -> anyhow::Result<()> {
+    let tendril_home = &tendril_home;
+    match command {
+        Commands::Plan(cmd) => commands::plan::handle_plan_command(cmd, tendril_home).await?,
+        Commands::Job(cmd) => commands::job::handle_job_command(cmd, tendril_home).await?,
+        Commands::Chat(cmd) => commands::chat::handle_chat_command(cmd, tendril_home).await?,
         Commands::Project(cmd) => {
-            commands::project::handle_project_command(cmd, &tendril_home).await?
+            commands::project::handle_project_command(cmd, tendril_home).await?
         }
-        Commands::Vault(cmd) => commands::vault::handle_vault_command(cmd, &tendril_home).await?,
+        Commands::Vault(cmd) => commands::vault::handle_vault_command(cmd, tendril_home).await?,
         Commands::ProjectAnalyzer { folder } => {
             commands::project_analyzer::handle_project_analyzer(&folder)?
         }
         Commands::Verification(cmd) => {
-            commands::verification::handle_verification_command(cmd, &tendril_home).await?
+            commands::verification::handle_verification_command(cmd, tendril_home).await?
         }
+        Commands::Wireframe(cmd) => commands::wireframe::handle_wireframe(cmd).await?,
         Commands::Promptware(cmd) => {
-            commands::promptware::handle_promptware_command(cmd, &tendril_home).await?
+            commands::promptware::handle_promptware_command(cmd, tendril_home).await?
         }
-        Commands::Config(cmd) => commands::config::handle_config_command(cmd, &tendril_home)?,
+        Commands::Config(cmd) => commands::config::handle_config_command(cmd, tendril_home)?,
         Commands::Service(cmd) => {
-            commands::service::handle_service_command(cmd, &tendril_home, home_was_explicit)?
+            commands::service::handle_service_command(cmd, tendril_home, home_was_explicit)?
         }
         Commands::Doctor {
             rebuild_search_index,
-        } => commands::doctor::handle_doctor(&tendril_home, rebuild_search_index)?,
+        } => commands::doctor::handle_doctor(tendril_home, rebuild_search_index)?,
         Commands::Version => println!("tendril v{}", env!("CARGO_PKG_VERSION")),
         Commands::Models { refresh } => {
-            commands::models::handle_models(refresh, &tendril_home).await?
+            commands::models::handle_models(refresh, tendril_home).await?
         }
         Commands::Serve {
             port,
@@ -260,30 +278,29 @@ async fn main() -> anyhow::Result<()> {
             tls_cert,
             tls_key,
         } => {
-            commands::serve::handle_serve(&tendril_home, port, Some(host), tls_cert, tls_key)
-                .await?
+            commands::serve::handle_serve(tendril_home, port, Some(host), tls_cert, tls_key).await?
         }
         Commands::Run { port, host } => {
-            commands::run::handle_run(&tendril_home, port.unwrap_or(5010), host).await?
+            commands::run::handle_run(tendril_home, port.unwrap_or(5010), host).await?
         }
-        Commands::Mcp => commands::mcp::handle_mcp(&tendril_home).await?,
-        Commands::Db(cmd) => commands::db::handle_db_command(cmd, &tendril_home)?,
-        Commands::Reset(args) => commands::reset::handle_reset(args, &tendril_home)?,
+        Commands::Mcp => commands::mcp::handle_mcp(tendril_home).await?,
+        Commands::Db(cmd) => commands::db::handle_db_command(cmd, tendril_home)?,
+        Commands::Reset(args) => commands::reset::handle_reset(args, tendril_home)?,
         Commands::Update(args) => commands::update::handle_update(args).await?,
         Commands::UpdatePromptwares(args) => {
-            commands::update_promptwares::handle_update_promptwares(args, &tendril_home)?
+            commands::update_promptwares::handle_update_promptwares(args, tendril_home)?
         }
         Commands::HashPassword { password, secret } => {
             commands::hash_password::handle_hash_password(&password, secret.as_deref())?
         }
         Commands::AgentInstructions => {
-            commands::agent_instructions::handle_agent_instructions(&tendril_home)?
+            commands::agent_instructions::handle_agent_instructions(tendril_home)?
         }
         Commands::GenerateCerts { output_dir } => {
             commands::generate_certs::handle_generate_certs(&output_dir)?
         }
         Commands::ReportBug(args) => {
-            commands::report_bug::handle_report_bug(args, &tendril_home).await?
+            commands::report_bug::handle_report_bug(args, tendril_home).await?
         }
     }
 

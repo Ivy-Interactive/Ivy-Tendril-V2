@@ -22,6 +22,7 @@ pub mod tables;
 pub mod tunnel;
 pub mod vault;
 pub mod verifications;
+pub mod wireframes;
 pub mod ws;
 
 use crate::state::AppState;
@@ -562,6 +563,21 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // bound to the daemon host's localhost. See `crate::share_exposure`.
         .merge(
             crate::webviewer::routes().layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                crate::share_exposure::refuse_on_any_tunnel_host,
+            )),
+        )
+        // Plan wireframe previews, for the same reason and with the same caveat as the WebViewer
+        // above: an <iframe src> navigation carries no Authorization header, so these cannot sit
+        // behind auth_middleware, and the daemon is loopback-only by default.
+        //
+        // Refused over a tunnel, deliberately and unlike V1. V1 serves previews on its own origin
+        // partly so share links show them; here that would publish every plan's wireframes to anyone
+        // holding a tunnel URL, with none of the per-plan scoping share tokens give the API. Making
+        // them shareable is a decision about the share-token policy, not a side effect of mounting a
+        // route, so it is left off until someone asks for it.
+        .merge(
+            wireframes::routes().layer(axum::middleware::from_fn_with_state(
                 state.clone(),
                 crate::share_exposure::refuse_on_any_tunnel_host,
             )),

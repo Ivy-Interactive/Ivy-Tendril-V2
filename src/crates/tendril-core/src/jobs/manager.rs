@@ -1943,6 +1943,18 @@ async fn drain_queue(ctx: &DispatchContext) {
     }
 }
 
+/// Fails a job that a pre-launch check refused, without ever starting its agent.
+///
+/// Writes through the same fields `report_job_failure` sets, so a refused job looks exactly like
+/// one that failed on its own rather than like a job that vanished.
+async fn fail_job_before_launch(ctx: &DispatchContext, job: &JobItem, message: &str) {
+    let mut failed = job.clone();
+    failed.status = JobStatus::Failed;
+    failed.reported_failure_reason = Some(message.to_string());
+    failed.completed_at = Some(Utc::now());
+    persist(&ctx.tendril_home, &ctx.jobs, &failed, Some(&ctx.events)).await;
+}
+
 /// Arms the runner for one job, handing it the slot the dispatcher just took.
 async fn launch(ctx: DispatchContext, job: JobItem, permit: OwnedSemaphorePermit) {
     ensure_handle(&ctx.handles, &job.id).await;
@@ -1960,6 +1972,24 @@ async fn launch(ctx: DispatchContext, job: JobItem, permit: OwnedSemaphorePermit
         drop(permit);
         return;
     };
+
+    // A CreatePr job for a plan whose changes carry wireframe code never starts. The Review view
+    // checks on click, but a PR can also be started from the CLI, a chat or a retry, and this holds
+    // for all of them.
+    if job.job_type == "CreatePr" && !job.plan_file.is_empty() {
+        let plan_folder = std::path::Path::new(&job.plan_file);
+        let leaks = crate::wireframes::plan_guard::check_and_report(plan_folder, None);
+        if !leaks.is_empty() {
+            tracing::error!(
+                "Job {}: refusing launch, the plan's changes carry wireframe code",
+                job.id
+            );
+            fail_job_before_launch(&ctx, &job, &crate::wireframes::leak_guard::describe(&leaks))
+                .await;
+            drop(permit);
+            return;
+        }
+    }
 
     let settings = ctx.settings.read().await.clone();
     spawn_runner(
@@ -2718,7 +2748,7 @@ pub fn plan_state_on_success(
     plan_folder: &Path,
 ) -> Option<PlanStatus> {
     match job_type {
-        "ExecutePlan" | "RetryPlan" => Some(resolve_post_execution_state(plan, plan_folder)),
+        "ExecutePlan" | "RetryPlan" => Some(resolve_post_execution_state(plan, plan_folder, None)),
         "CreatePlan" | "UpdatePlan" | "ExpandPlan" => Some(PlanStatus::Draft),
         "SplitPlan" => Some(PlanStatus::Skipped),
         "CreateIssue" => Some(PlanStatus::Completed),
@@ -2806,6 +2836,13 @@ pub fn apply_plan_state(plan_folder: &Path, state: PlanStatus) {
         PlanCompletionGuard::terminal_refusal(PlanStatus::from_str_loose(&plan.state), Some(state))
     {
         tracing::info!("Not setting plan {} to {:?}: {}", plan_id, state, reason);
+        return;
+    }
+
+    // Wireframes are plan material only: a plan whose changes still carry wireframe code may not
+    // be marked Completed, however it got here.
+    if let Some(reason) = PlanCompletionGuard::wireframe_refusal(state, plan_folder, None) {
+        tracing::warn!("Not completing plan {}: {}", plan_id, reason);
         return;
     }
 

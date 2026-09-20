@@ -5347,6 +5347,7 @@ dependencies = [
  "tar",
  "tendril-core",
  "tendril-server",
+ "tendril-wireframe",
  "tokio",
  "tokio-tungstenite 0.24.0",
  "tracing",
@@ -5375,6 +5376,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "sha2",
+ "tempfile",
  "thiserror 2.0.20",
  "tokio",
  "toml 1.1.6+spec-1.1.0",
@@ -5406,6 +5408,7 @@ dependencies = [
  "serde_json",
  "serde_yaml",
  "tendril-core",
+ "tendril-wireframe",
  "tokio",
  "tokio-tungstenite 0.24.0",
  "tower",
@@ -5413,6 +5416,31 @@ dependencies = [
  "tracing",
  "tracing-subscriber",
  "uuid",
+]
+
+[[package]]
+name = "tendril-wireframe"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "axum 0.7.9",
+ "base64 0.22.1",
+ "chrono",
+ "flate2",
+ "futures-util",
+ "regex",
+ "reqwest 0.12.28",
+ "serde",
+ "serde_json",
+ "sha1",
+ "sha2",
+ "tar",
+ "tempfile",
+ "thiserror 2.0.20",
+ "tokio",
+ "tokio-tungstenite 0.24.0",
+ "tracing",
+ "walkdir",
 ]
 
 [[package]]

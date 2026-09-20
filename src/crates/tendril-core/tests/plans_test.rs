@@ -1425,3 +1425,74 @@ fn doctor_resolves_nothing_when_no_plan_records_a_pr() {
 
     assert!(issues.is_empty());
 }
+
+/// `plan_reference.md` promises the agent that "`write-revision` rejects a block naming a wireframe
+/// that does not exist yet", and `wireframes::fence` documents itself as the thing that rejects it.
+/// Nothing called the validator, so every rule it states was advisory: this is the wiring, checked
+/// through the same door an agent comes in by.
+#[test]
+fn write_revision_refuses_a_wireframe_block_naming_a_wireframe_the_plan_does_not_have() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let plan_folder = dir.path();
+    std::fs::create_dir_all(plan_folder.join("Revisions")).expect("revisions dir");
+
+    let content =
+        "# Add Checkout\n\n## Wireframe\n\n```wireframe\nname: checkout\n```\n\n## Problem\n\nText.\n";
+
+    let refused = write_revision(plan_folder, content, true);
+    let message = refused.expect_err("a block naming a missing wireframe must not be written");
+    let message = message.to_string();
+    assert!(
+        message.contains("no wireframe named 'checkout'"),
+        "the refusal must name the wireframe and how to create it: {message}"
+    );
+
+    // Refused means nothing was written, not written-and-complained-about.
+    assert!(!plan_folder.join("Revisions").join("001.md").exists());
+
+    // The same revision passes once the wireframe it names exists.
+    let src = plan_folder.join("Wireframes").join("checkout").join("src");
+    std::fs::create_dir_all(&src).expect("wireframe src");
+    std::fs::write(src.join("main.tsx"), "// entry").expect("entry");
+
+    assert_eq!(
+        write_revision(plan_folder, content, true).expect("write once the wireframe exists"),
+        1
+    );
+}
+
+/// The escape hatch is the one that already exists. `--no-question-check` turns off the checks that
+/// read a revision's blocks, and a wireframe fence is one of those blocks.
+#[test]
+fn write_revision_skips_the_wireframe_check_with_no_question_check() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let plan_folder = dir.path();
+    std::fs::create_dir_all(plan_folder.join("Revisions")).expect("revisions dir");
+
+    let content =
+        "# Add Checkout\n\n## Wireframe\n\n```wireframe\nname: checkout\n```\n\n## Problem\n\nText.\n";
+
+    assert_eq!(
+        write_revision(plan_folder, content, false).expect("bypassed"),
+        1
+    );
+}
+
+/// A plan without wireframes must not pay for the check, in correctness or in surprise: the
+/// validator returns early on a revision with no `wireframe` fence, and this is what holds it to
+/// that. Every other test in this file writes revisions with no fences, so a regression here would
+/// break all of them -- this one says so on purpose.
+#[test]
+fn write_revision_leaves_a_revision_with_no_wireframe_block_alone() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let plan_folder = dir.path();
+    std::fs::create_dir_all(plan_folder.join("Revisions")).expect("revisions dir");
+
+    // No `## Wireframe` section, and a fenced block that is not a wireframe: neither is examined.
+    let content = "# Plain Plan\n\n## Problem\n\n```rust\nfn main() {}\n```\n";
+
+    assert_eq!(
+        write_revision(plan_folder, content, true).expect("written"),
+        1
+    );
+}

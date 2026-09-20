@@ -26,6 +26,12 @@ export interface ChatMessageRowProps {
   isSubmittingAnswer?: boolean;
   /** Opens the plan a system event refers to. */
   onOpenPlan?: (planId: string) => void;
+  /**
+   * Where this conversation's plan serves its wireframes. Set for the chat beside a plan; undefined
+   * on the general chat page, where a `wireframe` fence has no plan to resolve a name against and
+   * renders a placeholder instead.
+   */
+  wireframeBaseUrl?: string;
   /** Opens an image attachment in the lightbox. */
   onOpenImage?: (image: LightboxImage) => void;
   /**
@@ -150,6 +156,7 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
   isSubmittingAnswer: propIsSubmittingAnswer,
   onOpenPlan,
   onOpenImage,
+  wireframeBaseUrl,
   jobs = [],
   threadMessages = [],
 }) {
@@ -311,7 +318,12 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
                   path — see `PlanDetailView`. */}
               <QuestionsDraftContext.Provider value={chatStore.questionDraftStore(message.id)}>
                 <QuestionsSubmitContext.Provider value={handleQuestionSubmit}>
-                  <PlanMarkdown id={`chat-msg-${message.id}`} content={content} flow />
+                  <PlanMarkdown
+                    id={`chat-msg-${message.id}`}
+                    content={content}
+                    wireframeBaseUrl={wireframeBaseUrl}
+                    flow
+                  />
                 </QuestionsSubmitContext.Provider>
               </QuestionsDraftContext.Provider>
               {isSubmitting && (

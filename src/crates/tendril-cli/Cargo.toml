@@ -17,6 +17,7 @@ path = "src/main.rs"
 [dependencies]
 tendril-core = { path = "../tendril-core" }
 tendril-server = { path = "../tendril-server" }
+tendril-wireframe = { path = "../tendril-wireframe" }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

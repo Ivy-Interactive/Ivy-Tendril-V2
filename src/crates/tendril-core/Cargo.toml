@@ -34,3 +34,4 @@ libc = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
 toml = { workspace = true }
+tempfile = "3"

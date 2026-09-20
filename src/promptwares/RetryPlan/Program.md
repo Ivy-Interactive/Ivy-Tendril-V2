@@ -240,6 +240,7 @@ A question that already carries an `answer` is a decision the user made: honor i
 ## Rules
 
 - All work happens in worktree directories, never in the original repos
+- **Wireframes are a layout reference, never code.** Read the wireframe under `<TendrilPlanFolder>/Wireframes/<name>/` for the intended layout, then build with the project's own components. Never copy its files into a worktree. `tendril plan check-wireframes <plan-id>` shows what the guard finds.
 - Make logically grouped commits — not one giant commit
 - Worktrees must be clean (no uncommitted files) when finished
 - Document all commit hashes via `tendril plan add-commit` — never edit plan.yaml directly

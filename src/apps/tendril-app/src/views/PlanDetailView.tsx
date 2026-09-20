@@ -58,6 +58,7 @@ import { ResetToDraftDialog } from "./dialogs/ResetToDraftDialog";
 import { SuggestChangesDialog } from "./dialogs/SuggestChangesDialog";
 import { UnansweredQuestionsDialog } from "./dialogs/UnansweredQuestionsDialog";
 import { UpdatePlanDialog } from "./dialogs/UpdatePlanDialog";
+import { useWireframeBaseUrl } from "../api/proxyOrigin";
 
 type PlanDetailTab = "plan" | "details" | "diff" | "recommendations" | "git";
 
@@ -540,6 +541,10 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
    * "Annotation offsets anchor to the plan text; drop them if the content changed underneath (plan
    * updated, edited, or revised)" (`ContentView.Build`).
    */
+  // Names the daemon origin, not the app origin: under Tauri a relative path resolves to the
+  // webview, which serves the bundle and nothing else.
+  const wireframeBaseUrl = useWireframeBaseUrl(plan.id);
+
   const [annotations, setAnnotations] = useState<Annotation[]>([]);
 
   const loadAnnotations = useCallback(() => {
@@ -1410,6 +1415,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       <PlanMarkdown
         id="plan-markdown"
         content={revisionContent || "# No revision content available"}
+        wireframeBaseUrl={wireframeBaseUrl}
         article
         dangerouslyAllowLocalFiles
         annotations={annotations}

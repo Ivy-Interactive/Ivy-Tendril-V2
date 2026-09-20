@@ -24,7 +24,7 @@ fn all_passing_verifications_reach_review() {
 
     assert!(incomplete_verifications(&plan).is_empty());
     assert_eq!(
-        resolve_post_execution_state(&plan, &folder),
+        resolve_post_execution_state(&plan, &folder, None),
         PlanStatus::Review
     );
 }
@@ -43,7 +43,7 @@ fn a_pending_verification_fails_the_plan() {
 
     assert_eq!(incomplete_verifications(&plan), vec!["Test".to_string()]);
     assert_eq!(
-        resolve_post_execution_state(&plan, &folder),
+        resolve_post_execution_state(&plan, &folder, None),
         PlanStatus::Failed
     );
 }
@@ -61,7 +61,7 @@ fn a_failed_verification_fails_the_plan() {
     let folder = home.write_plan("00001-Fail", &plan);
 
     assert_eq!(
-        resolve_post_execution_state(&plan, &folder),
+        resolve_post_execution_state(&plan, &folder, None),
         PlanStatus::Failed
     );
 }
@@ -79,7 +79,7 @@ fn all_skipped_verifications_reach_review() {
     let folder = home.write_plan("00001-Skipped", &plan);
 
     assert_eq!(
-        resolve_post_execution_state(&plan, &folder),
+        resolve_post_execution_state(&plan, &folder, None),
         PlanStatus::Review
     );
 }
@@ -91,7 +91,7 @@ fn no_verifications_at_all_reaches_review() {
     let folder = home.write_plan("00001-Empty", &plan);
 
     assert_eq!(
-        resolve_post_execution_state(&plan, &folder),
+        resolve_post_execution_state(&plan, &folder, None),
         PlanStatus::Review
     );
 }
@@ -111,7 +111,7 @@ fn a_pending_row_is_not_excused_for_being_optional() {
     let folder = home.write_plan("00001-Optional", &plan);
 
     assert_eq!(
-        resolve_post_execution_state(&plan, &folder),
+        resolve_post_execution_state(&plan, &folder, None),
         PlanStatus::Failed
     );
 }
@@ -136,7 +136,7 @@ fn a_failing_pre_execution_report_fails_an_otherwise_passing_plan() {
         Some(VerificationStatus::Fail)
     );
     assert_eq!(
-        resolve_post_execution_state(&plan, &folder),
+        resolve_post_execution_state(&plan, &folder, None),
         PlanStatus::Failed
     );
 }
@@ -157,7 +157,7 @@ fn a_passing_pre_execution_report_does_not_block_review() {
     );
 
     assert_eq!(
-        resolve_post_execution_state(&plan, &folder),
+        resolve_post_execution_state(&plan, &folder, None),
         PlanStatus::Review
     );
 }
@@ -174,7 +174,7 @@ fn an_absent_or_unparseable_pre_execution_report_decides_on_rows_alone() {
     // Absent.
     assert_eq!(read_pre_execution_result(&folder), None);
     assert_eq!(
-        resolve_post_execution_state(&plan, &folder),
+        resolve_post_execution_state(&plan, &folder, None),
         PlanStatus::Review
     );
 
@@ -186,7 +186,7 @@ fn an_absent_or_unparseable_pre_execution_report_decides_on_rows_alone() {
     );
     assert_eq!(read_pre_execution_result(&folder), None);
     assert_eq!(
-        resolve_post_execution_state(&plan, &folder),
+        resolve_post_execution_state(&plan, &folder, None),
         PlanStatus::Review
     );
 }

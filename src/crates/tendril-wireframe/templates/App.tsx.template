@@ -1,0 +1,6 @@
+// @tendril-wireframe plan-only: a throwaway mockup. Never copy it into product code.
+// Build the wireframe here. Components come from "tendril-wireframes"; layout is
+// plain flexbox and CSS grid. Run `tendril wireframe agent-readme` for the full reference.
+export default function App() {
+  return <div />;
+}

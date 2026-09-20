@@ -103,6 +103,15 @@ jobs:
           pnpm --filter @ivy-interactive/components build
           pnpm --filter @ivy-interactive/tendril-app build
 
+      # tendril-wireframe embeds the generated payload with include_bytes! and build.rs fails
+      # without it. Node and pnpm are already set up for the frontend build above; this only has to
+      # run before the first cargo invocation, which is the companion CLI below.
+      - name: Generate wireframe payload
+        working-directory: src/crates/tendril-wireframe/pipeline/vendor
+        run: |
+          pnpm install --frozen-lockfile
+          node build-all.mjs
+
       - name: Build companion CLI binary
         run: |
           cargo build --release --bin tendril

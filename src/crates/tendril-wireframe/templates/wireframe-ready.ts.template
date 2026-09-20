@@ -1,0 +1,101 @@
+// @tendril-wireframe plan-only: a throwaway mockup. Never copy it into product code.
+// Signals when the wireframe has finished drawing, so `wireframe screenshot` knows
+// when to capture. Import and call this once from main.tsx.
+//
+// Why this is more involved than "wait for load": every border and fill in Tendril
+// is an SVG path that rough.js generates AFTER a ResizeObserver measures the
+// element's box. A frame with no measurement yet renders nothing at all, so the
+// first painted frame of any wireframe is empty.
+
+type ReadyState = {
+  version: 1;
+  ready: boolean;
+  reason: string | null;
+  deterministic: boolean;
+  whenReady: () => Promise<void>;
+};
+
+declare global {
+  interface Window {
+    __wireframe?: ReadyState;
+  }
+}
+
+const QUIET_MS = 120;      // no ResizeObserver callback for this long => settled
+const HARD_CAP_MS = 10_000; // never hang, even if something animates forever
+
+export function signalWireframeReady(root: HTMLElement = document.body): void {
+  let resolve!: () => void;
+  const promise = new Promise<void>((r) => (resolve = r));
+
+  const state: ReadyState = {
+    version: 1,
+    ready: false,
+    reason: "starting",
+    deterministic: true,
+    whenReady: () => promise,
+  };
+  window.__wireframe = state;
+
+  let quiet: ReturnType<typeof setTimeout> | undefined;
+  const observer = new ResizeObserver(() => bump("layout still settling"));
+
+  function observeAll() {
+    observer.disconnect();
+    root.querySelectorAll<HTMLElement>("*").forEach((el) => observer.observe(el));
+  }
+
+  function bump(reason: string) {
+    state.reason = reason;
+    clearTimeout(quiet);
+    quiet = setTimeout(finish, QUIET_MS);
+  }
+
+  function finish() {
+    observer.disconnect();
+    // A focused input blinks its caret, which is a one-pixel diff between two
+    // otherwise identical screenshots.
+    if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+    state.ready = true;
+    state.reason = null;
+    document.documentElement.setAttribute("data-wireframe-ready", "true");
+    resolve();
+  }
+
+  void (async () => {
+    // 1. Fonts FIRST, and awaited alone. Swapping in Balsamiq Sans changes text
+    //    metrics, which resizes every frame, which regenerates every rough.js path.
+    //    Capturing between those two states gives strokes sized for the fallback
+    //    font wrapped around correctly-sized text.
+    state.reason = "waiting for fonts";
+    await document.fonts.ready;
+
+    // 2. Images change measured boxes too.
+    state.reason = "waiting for images";
+    await Promise.all(
+      [...document.images]
+        .filter((img) => !img.complete)
+        .map((img) => new Promise((r) => {
+          img.onload = r;
+          img.onerror = r;
+        }))
+    );
+
+    // 3. Let React commit the post-measurement render, then let it paint.
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+
+    // 4. Only now start the quiet clock. The rAFs above guarantee one paint has
+    //    happened, but nested frames settle in a cascade -- a Table inside a Card
+    //    inside a SidebarLayout can take three rounds -- so the ResizeObserver
+    //    quiet period is the signal that actually matters.
+    observeAll();
+    bump("waiting for quiet period");
+  })();
+
+  setTimeout(() => {
+    if (!state.ready) {
+      state.reason = "timed out";
+      finish();
+    }
+  }, HARD_CAP_MS);
+}

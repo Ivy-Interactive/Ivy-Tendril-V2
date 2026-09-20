@@ -3,6 +3,7 @@ import Markdown, { defaultUrlTransform } from "react-markdown";
 import "./plan-markdown.css";
 import { getHeight, getWidth } from "@/lib/styles";
 import { BlockHandler } from "./BlockHandler";
+import { WireframeBaseContext } from "./wireframeContext";
 import type { MarkdownAnnotation } from "./annotationUtils";
 import {
   applyAnnotationHighlights,
@@ -27,6 +28,12 @@ export type IvyEventHandler = (eventName: string, widgetId: string, args: unknow
 
 export interface PlanMarkdownProps {
   id: string;
+  /**
+   * Where the plan being rendered serves its wireframes, ending in a slash (`/__wireframes/123/`).
+   * Undefined means this markdown is not a plan - a chat message, an agent's summary - and a
+   * `wireframe` fence renders a placeholder rather than a live preview.
+   */
+  wireframeBaseUrl?: string;
   width?: string;
   height?: string;
   content?: string;
@@ -65,6 +72,7 @@ const EMPTY_ANNOTATIONS: MarkdownAnnotation[] = [];
 
 export const PlanMarkdown: React.FC<PlanMarkdownProps> = ({
   id,
+  wireframeBaseUrl,
   width,
   height,
   content = "",
@@ -534,7 +542,9 @@ export const PlanMarkdown: React.FC<PlanMarkdownProps> = ({
         <div className="pmv-body">
           <div ref={contentRef} className={article ? "pmv-markdown pmv-article" : "pmv-markdown"}>
             <QuestionsAnswerContext.Provider value={answerCallback}>
-              {markdownTree}
+              <WireframeBaseContext.Provider value={wireframeBaseUrl || undefined}>
+                {markdownTree}
+              </WireframeBaseContext.Provider>
             </QuestionsAnswerContext.Provider>
           </div>
         </div>

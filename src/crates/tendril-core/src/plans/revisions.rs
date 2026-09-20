@@ -1,6 +1,7 @@
 use crate::error::{Result, TendrilError};
 use crate::plans::markdown_links::polish_links;
 use crate::questions::{parse_question_blocks, validate_question_blocks, IssueSeverity};
+use crate::wireframes::fence;
 use std::path::Path;
 
 pub fn get_revision(plan_folder: &Path, number: Option<i32>) -> Result<String> {
@@ -62,6 +63,28 @@ pub fn write_revision(plan_folder: &Path, content: &str, validate_questions: boo
             return Err(TendrilError::Validation(format!(
                 "Question block validation failed:\n{}",
                 error_messages.join("\n")
+            )));
+        }
+
+        // The wireframe fences, under the same flag. `plan_reference.md` tells the agent that
+        // "`write-revision` rejects a block naming a wireframe that does not exist yet", and
+        // `wireframes::fence`'s own documentation says it is what does the rejecting -- but nothing
+        // called it, so every rule it states was advisory and a revision could embed a fence naming
+        // nothing, or five of them, and be written without complaint. The renderer then shows the
+        // reviewer a placeholder where the design was meant to be.
+        //
+        // A revision with no wireframe fence never reaches the validator's body, so this costs
+        // nothing for the plans that have none.
+        let issues = fence::validate(content, Some(plan_folder));
+        let errors: Vec<String> = issues
+            .into_iter()
+            .filter(|i| i.severity == IssueSeverity::Error)
+            .map(|i| format!("{}: {}", i.line_number, i.message))
+            .collect();
+        if !errors.is_empty() {
+            return Err(TendrilError::Validation(format!(
+                "Wireframe block validation failed:\n{}",
+                errors.join("\n")
             )));
         }
     }
