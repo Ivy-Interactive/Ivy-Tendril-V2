@@ -295,9 +295,16 @@ fn test_set_coauthor_round_trips_and_empty_clears_it() {
 
     // Unset is readable and empty rather than an "unknown key" error.
     fixture.get("coAuthor").unwrap();
-    assert_eq!(load_config(&get_config_path(&fixture.dir)).unwrap().co_author, None);
+    assert_eq!(
+        load_config(&get_config_path(&fixture.dir))
+            .unwrap()
+            .co_author,
+        None
+    );
 
-    fixture.set("coAuthor", "ivy-tendril <tendril@ivy.app>").unwrap();
+    fixture
+        .set("coAuthor", "ivy-tendril <tendril@ivy.app>")
+        .unwrap();
     let settings = load_config(&get_config_path(&fixture.dir)).unwrap();
     assert_eq!(
         settings.co_author.as_deref(),
@@ -313,21 +320,34 @@ fn test_set_coauthor_round_trips_and_empty_clears_it() {
     // Modeled, so it is written once and never mirrored into `extra`.
     assert_eq!(fixture.count_key_occurrences("coAuthor"), 1);
     assert!(
-        !settings.extra.keys().any(|k| k.eq_ignore_ascii_case("coauthor")),
+        !settings
+            .extra
+            .keys()
+            .any(|k| k.eq_ignore_ascii_case("coauthor")),
         "a modeled key must not also sit in extra"
     );
 
     // Whitespace is trimmed rather than stored, so a stray space cannot produce a malformed trailer.
-    fixture.set("coAuthor", "  ivy-tendril <tendril@ivy.app>  ").unwrap();
+    fixture
+        .set("coAuthor", "  ivy-tendril <tendril@ivy.app>  ")
+        .unwrap();
     assert_eq!(
-        load_config(&get_config_path(&fixture.dir)).unwrap().co_author.as_deref(),
+        load_config(&get_config_path(&fixture.dir))
+            .unwrap()
+            .co_author
+            .as_deref(),
         Some("ivy-tendril <tendril@ivy.app>")
     );
 
     // Empty clears the key outright: `skip_serializing_if` then keeps it out of the file entirely,
     // which is what "no trailer and no hook install" means on disk.
     fixture.set("coAuthor", "").unwrap();
-    assert_eq!(load_config(&get_config_path(&fixture.dir)).unwrap().co_author, None);
+    assert_eq!(
+        load_config(&get_config_path(&fixture.dir))
+            .unwrap()
+            .co_author,
+        None
+    );
     assert_eq!(
         fixture.count_key_occurrences("coAuthor"),
         0,

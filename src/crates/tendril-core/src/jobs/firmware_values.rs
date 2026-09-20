@@ -1,7 +1,7 @@
 use crate::agents::McpServerConfig;
 use crate::config::{
-    expand_variables, get_plans_dir_with_env, get_plans_dir_with_settings, EnvSource, SystemEnv,
-    TendrilSettings,
+    expand_config_path, expand_variables, get_plans_dir_with_env, get_plans_dir_with_settings,
+    EnvSource, SystemEnv, TendrilSettings,
 };
 use crate::models::{JobArgs, JobItem, PlanYaml, ProjectConfig, ProjectSkillInfo};
 use crate::plans::reader::read_plan_yaml;
@@ -265,12 +265,14 @@ pub fn resolve_working_directory(
         return PathBuf::from(a.repo_path);
     }
 
-    let home_str = tendril_home.to_string_lossy().to_string();
     let project = resolve_project(job, settings);
     if project != "Auto" {
         if let Some(config) = find_project(settings, &project) {
             for repo in &config.repos {
-                let expanded = PathBuf::from(expand_variables(&repo.path, &home_str));
+                // Anchored rather than merely expanded: this is the directory the agent process is
+                // spawned in, so a relative `path:` from a hand-edited config would otherwise put
+                // the agent somewhere that depends on how the daemon was launched.
+                let expanded = expand_config_path(&repo.path, tendril_home);
                 if expanded.is_dir() {
                     return expanded;
                 }

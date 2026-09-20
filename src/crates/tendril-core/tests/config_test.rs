@@ -1039,3 +1039,53 @@ fn test_generate_bearer_secret_is_32_bytes_of_hex_entropy() {
     assert_ne!(a, "0".repeat(64), "secret is all zeroes");
     assert_ne!(a, b, "two secrets in a row were identical");
 }
+
+#[test]
+fn test_expand_config_path_anchors_relative_paths_to_tendril_home() {
+    use std::path::{Path, PathBuf};
+    use tendril_core::config::expand_config_path;
+
+    let home = Path::new("/tendril");
+
+    // The case that matters: a bare relative path must not depend on the process cwd. Every
+    // surface reads the same config.yaml from a different directory -- the CLI from the user's
+    // shell, the server from wherever it was launched, the app from `/` -- so anchoring is the
+    // only way `repos/foo` names one directory instead of three.
+    assert_eq!(
+        expand_config_path("repos/foo", home),
+        PathBuf::from("/tendril/repos/foo")
+    );
+    assert_eq!(
+        expand_config_path("./repos/foo", home),
+        PathBuf::from("/tendril/./repos/foo")
+    );
+
+    // Anything that already resolves to an absolute path is passed through untouched.
+    assert_eq!(
+        expand_config_path("/srv/checkouts/foo", home),
+        PathBuf::from("/srv/checkouts/foo")
+    );
+    assert_eq!(
+        expand_config_path("%TENDRIL_HOME%/Projects/foo", home),
+        PathBuf::from("/tendril/Projects/foo")
+    );
+    assert_eq!(
+        expand_config_path("${TENDRIL_HOME}/Projects/foo", home),
+        PathBuf::from("/tendril/Projects/foo")
+    );
+
+    let tilde = expand_config_path("~/work/foo", home);
+    assert!(
+        tilde.is_absolute(),
+        "a tilde path must expand to an absolute path, got {tilde:?}"
+    );
+    assert!(
+        !tilde.starts_with("/tendril"),
+        "a tilde path names the user's home, not tendril home: {tilde:?}"
+    );
+
+    // Empty stays empty rather than becoming tendril home itself -- callers treat "" as unset,
+    // and silently turning it into a real, existing directory would make an unset path look
+    // configured.
+    assert_eq!(expand_config_path("", home), PathBuf::new());
+}

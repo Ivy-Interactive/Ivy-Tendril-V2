@@ -20,10 +20,8 @@ struct Scratch {
 
 impl Scratch {
     fn new(tag: &str) -> Self {
-        let home = std::env::temp_dir().join(format!(
-            "tendril-coauthor-e2e-{tag}-{}",
-            std::process::id()
-        ));
+        let home =
+            std::env::temp_dir().join(format!("tendril-coauthor-e2e-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&home);
         let repo = home.join("repo");
         std::fs::create_dir_all(&repo).expect("create scratch repo");
@@ -60,7 +58,8 @@ impl Scratch {
     }
 
     fn last_message(&self) -> String {
-        self.git(&["log", "-1", "--pretty=%B"], &[]).expect("git log")
+        self.git(&["log", "-1", "--pretty=%B"], &[])
+            .expect("git log")
     }
 }
 
@@ -107,7 +106,9 @@ fn a_commit_made_without_the_env_stays_untouched() {
     let scratch = Scratch::new("untouched");
     let env = configured_env(&scratch.home);
 
-    scratch.commit("a.txt", "from tendril", &env).expect("commit");
+    scratch
+        .commit("a.txt", "from tendril", &env)
+        .expect("commit");
     scratch.commit("b.txt", "by hand", &[]).expect("commit");
 
     let message = scratch.last_message();

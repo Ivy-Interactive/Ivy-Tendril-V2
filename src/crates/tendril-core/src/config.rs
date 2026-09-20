@@ -910,6 +910,32 @@ pub fn expand_variables(input: &str, tendril_home: &str) -> String {
     expand_variables_with_env(input, tendril_home, &SystemEnv)
 }
 
+/// Expands a config path and anchors it, so a relative one lands under `tendril_home` rather than
+/// wherever the current process happens to have been started.
+///
+/// `expand_variables` deliberately returns a plain string and does no filesystem reasoning: the same
+/// expander is used for hook commands and MCP argv, where a relative path is the caller's business.
+/// Paths out of `config.yaml` are different. Every surface reads the same file but runs from a
+/// different directory -- the CLI from the user's shell, the server from wherever the daemon was
+/// launched, the Tauri app from `/` -- so a bare `repos/foo` silently means three different
+/// directories, and on the app it means one that cannot exist. The write paths already reject a
+/// relative `path:` (see the guard in the projects route), but nothing stops a hand-edited or
+/// hand-merged `config.yaml`, and the failure mode there is a repo that is silently skipped by an
+/// `is_dir()` check rather than an error anyone can act on.
+///
+/// Anchoring to `tendril_home` is the same rule `get_plans_dir_with_settings` already applies to
+/// `planFolder`, so the two cannot disagree. A path that expanded to something absolute -- via
+/// `%TENDRIL_HOME%`, `~`, `$HOME`, or because it was written absolute -- is returned untouched.
+pub fn expand_config_path(input: &str, tendril_home: &Path) -> PathBuf {
+    let expanded = expand_variables(input, &tendril_home.to_string_lossy());
+    let path = PathBuf::from(&expanded);
+    if path.is_absolute() || expanded.trim().is_empty() {
+        path
+    } else {
+        tendril_home.join(path)
+    }
+}
+
 /// Replaces every `%NAME%` that names a set environment variable with its value.
 ///
 /// `config.yaml` is documented to accept arbitrary `%ENV_VAR%` (the example config's repo paths use

@@ -10,8 +10,8 @@ use crate::agents::model_specs;
 use crate::agents::providers::agent_command;
 use crate::agents::resolution::{default_profiles, normalize_agent_name};
 use crate::config::{
-    expand_variables, get_config_path, get_database_path, get_plans_dir, load_config,
-    MasterFileKind, TendrilSettings,
+    expand_config_path, expand_variables, get_config_path, get_database_path, get_plans_dir,
+    load_config, MasterFileKind, TendrilSettings,
 };
 use crate::db::{check_plan_search, get_last_sync_time, open_database, PlanSearchHealth};
 use crate::git::{
@@ -633,7 +633,11 @@ fn config_checks(tendril_home: &Path) -> Vec<CheckResult> {
 
         let mut expanded_repo_paths: HashSet<String> = HashSet::new();
         for r in &project.repos {
-            expanded_repo_paths.insert(expand_variables(&r.path, &tendril_home.to_string_lossy()));
+            expanded_repo_paths.insert(
+                expand_config_path(&r.path, tendril_home)
+                    .to_string_lossy()
+                    .to_string(),
+            );
             if let Some(message) =
                 repo_path_message(&project.name, "repository path", &r.path, tendril_home)
             {
@@ -646,7 +650,9 @@ fn config_checks(tendril_home: &Path) -> Vec<CheckResult> {
         }
 
         for dep_path in &project.build_dependencies {
-            let expanded_dep = expand_variables(dep_path, &tendril_home.to_string_lossy());
+            let expanded_dep = expand_config_path(dep_path, tendril_home)
+                .to_string_lossy()
+                .to_string();
             if expanded_repo_paths.contains(&expanded_dep) {
                 continue;
             }
@@ -1154,8 +1160,8 @@ fn configured_repo_rel_paths(settings: &TendrilSettings, tendril_home: &Path) ->
     let mut names = Vec::new();
 
     let push_unique = |raw_path: &str, seen: &mut HashSet<String>, names: &mut Vec<String>| {
-        let expanded = expand_variables(raw_path, &tendril_home.to_string_lossy());
-        let name = derive_worktree_relative_path(Path::new(&expanded));
+        let expanded = expand_config_path(raw_path, tendril_home);
+        let name = derive_worktree_relative_path(&expanded);
         if seen.insert(name.clone()) {
             names.push(name);
         }
@@ -1331,13 +1337,29 @@ fn repo_path_message(
     raw_path: &str,
     tendril_home: &Path,
 ) -> Option<String> {
-    let expanded = expand_variables(raw_path, &tendril_home.to_string_lossy());
+    // Anchored the same way every consumer anchors it, so the diagnostic describes the directory
+    // that will actually be used. Reporting against the process cwd would make this check pass in
+    // the shell the user ran it from and fail in the daemon, which is the opposite of useful.
+    let resolved = expand_config_path(raw_path, tendril_home);
+    let expanded = resolved.to_string_lossy().to_string();
     let resolved_suffix = if expanded != raw_path {
         format!(" (resolved: {})", expanded)
     } else {
         String::new()
     };
-    match classify_repo_path(Path::new(&expanded)) {
+
+    // A relative path is worth its own message even when it happens to resolve: it resolves to a
+    // different directory on every surface, so "it works in the CLI" says nothing about the app.
+    if !raw_path.trim().is_empty()
+        && !Path::new(&expand_variables(raw_path, &tendril_home.to_string_lossy())).is_absolute()
+    {
+        return Some(format!(
+            "Project '{}' {} is relative: {}. It has been anchored to {}, but a relative path means something different in every process that reads this config -- write it absolute, or with %TENDRIL_HOME%.",
+            project_name, kind, raw_path, expanded
+        ));
+    }
+
+    match classify_repo_path(&resolved) {
         RepoPathStatus::Missing => Some(format!(
             "Project '{}' {} does not exist: {}{}",
             project_name, kind, raw_path, resolved_suffix

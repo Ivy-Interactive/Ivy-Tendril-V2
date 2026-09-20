@@ -1,5 +1,19 @@
 import "@testing-library/jest-dom";
+import { configure } from "@testing-library/react";
 import { vi } from "vitest";
+
+// Testing Library's `waitFor` gives up after 1000ms by default, but a vitest test is allowed
+// 5000ms. That asymmetry is a flake generator rather than a safety net: on an unloaded machine
+// every `waitFor` in this suite resolves in low tens of milliseconds, but when the CPU is
+// saturated -- a full `cargo test` alongside, several agents, CI running suites in parallel --
+// a render that normally takes 20ms can take past a second, and the helper fails the assertion
+// while the test itself still had four seconds left to spend.
+//
+// It surfaces as a handful of render-heavy tests in one file failing together and then passing
+// on a re-run, which reads like a logic bug and is not one. Raising the helper to match the test
+// budget means a genuinely stuck expectation still fails, just on the test timeout, while a slow
+// one is merely slow. Nothing here waits on a real timer, so this cannot mask a hang.
+configure({ asyncUtilTimeout: 4500 });
 
 // jsdom has no ResizeObserver, but components-storybook's AgentViewer installs
 // one to drive auto-scroll. Without this stub any test that renders a job
