@@ -110,6 +110,7 @@ describe("SettingsView", () => {
       "Gemini",
       "Antigravity",
       "OpenCode",
+      "Apple",
       "OpenAI",
       "Anthropic",
       "Berget AI",
@@ -240,9 +241,17 @@ describe("SettingsView", () => {
     await renderSettings();
 
     expect(screen.getByTestId("unknown-coding-agent")).toHaveTextContent(
-      "Unknown coding agent 'cursor'. Valid agents: antigravity, claude, codex, copilot, gemini, opencode",
+      "Unknown coding agent 'cursor'. Valid agents: antigravity, apple, claude, codex, copilot, gemini, opencode",
     );
-    for (const agent of ["claude", "copilot", "codex", "gemini", "antigravity", "opencode"]) {
+    for (const agent of [
+      "claude",
+      "copilot",
+      "codex",
+      "gemini",
+      "antigravity",
+      "opencode",
+      "apple",
+    ]) {
       expect(screen.getByTestId(`coding-agent-${agent}`)).toHaveAttribute("aria-pressed", "false");
     }
   });
