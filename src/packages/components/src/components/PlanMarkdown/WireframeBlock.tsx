@@ -52,7 +52,9 @@ interface WireframeMessage {
 }
 
 const isWireframeMessage = (data: unknown): data is WireframeMessage =>
-  !!data && typeof data === "object" && (data as { source?: unknown }).source === "tendril-wireframe";
+  !!data &&
+  typeof data === "object" &&
+  (data as { source?: unknown }).source === "tendril-wireframe";
 
 const LiveWireframe: React.FC<{ base: string; spec: WireframeSpec }> = ({ base, spec }) => {
   const src = `${base.endsWith("/") ? base : `${base}/`}${spec.name}/`;
@@ -77,7 +79,9 @@ const LiveWireframe: React.FC<{ base: string; spec: WireframeSpec }> = ({ base, 
     setMessage(null);
 
     fetch(`${src}__wireframe/status`, { cache: "no-store" })
-      .then((response) => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
+      .then((response) =>
+        response.ok ? response.json() : Promise.reject(new Error(String(response.status))),
+      )
       .then((status: { phase?: string; message?: string | null }) => {
         if (cancelled) return;
         const next: Phase =
@@ -98,9 +102,17 @@ const LiveWireframe: React.FC<{ base: string; spec: WireframeSpec }> = ({ base, 
 
   // The framed page reports its content size and build state. Several frames can share this
   // window, so a message counts only when it comes from this block's own inline frame.
+  //
+  // The origin to expect is the frame's, not this window's. Under Tauri the shell runs on
+  // `tauri://localhost` while the daemon serving the wireframe is on `http://host:port`, so
+  // comparing against `window.location.origin` rejected every message the frame sent and no
+  // preview in the desktop app ever sized itself. `src` is the address we asked the frame to
+  // load, so its origin is the one that can legitimately answer; a relative `base` resolves
+  // against this document, which is the browser build's same-origin case.
   useEffect(() => {
+    const expectedOrigin = new URL(src, window.location.href).origin;
     const onMessage = (event: MessageEvent) => {
-      if (event.origin !== window.location.origin) return;
+      if (event.origin !== expectedOrigin) return;
       if (!frameRef.current || event.source !== frameRef.current.contentWindow) return;
       if (!isWireframeMessage(event.data)) return;
 
@@ -196,7 +208,7 @@ const LiveWireframe: React.FC<{ base: string; spec: WireframeSpec }> = ({ base, 
         <div className="pmv-wireframe-state">
           <span>
             {phase === "failed"
-              ? message ?? "This wireframe does not build."
+              ? (message ?? "This wireframe does not build.")
               : "The wireframe preview is not available right now."}
           </span>
           <button type="button" className="pmv-wireframe-button" onClick={retry}>
@@ -289,7 +301,9 @@ const ScaledFrame = React.forwardRef<HTMLIFrameElement, ScaledFrameProps>(functi
   // frame's own width back, which is not a reason to zoom.
   const needed =
     viewportWidth ??
-    (available > 0 && contentWidth !== undefined && contentWidth > available + 1 ? contentWidth : undefined);
+    (available > 0 && contentWidth !== undefined && contentWidth > available + 1
+      ? contentWidth
+      : undefined);
 
   const scale = needed !== undefined && available > 0 ? Math.min(1, available / needed) : 1;
 
@@ -301,7 +315,12 @@ const ScaledFrame = React.forwardRef<HTMLIFrameElement, ScaledFrameProps>(functi
       : Math.min(pageHeight * scale, MAX_VISIBLE_HEIGHT);
 
   return (
-    <div ref={boxRef} className={fill ? "pmv-wireframe-frame-box pmv-wireframe-frame-fill" : "pmv-wireframe-frame-box"}>
+    <div
+      ref={boxRef}
+      className={
+        fill ? "pmv-wireframe-frame-box pmv-wireframe-frame-fill" : "pmv-wireframe-frame-box"
+      }
+    >
       <div
         className="pmv-wireframe-frame-scaled"
         style={{
@@ -314,6 +333,17 @@ const ScaledFrame = React.forwardRef<HTMLIFrameElement, ScaledFrameProps>(functi
           src={src}
           title={title}
           referrerPolicy="same-origin"
+          // A wireframe is code an agent wrote, so it is confined to being a page. Scripts and the
+          // real origin it has to keep: the page is a React bundle, and its live-reload client
+          // needs the origin for its HMR socket, its sendBeacon error reports, its scroll-restoring
+          // sessionStorage and the `location.origin` it posts size messages to. What it loses is
+          // what a wireframe never does anyway -- navigating this window away, opening a window,
+          // submitting a form, starting a download, grabbing the pointer or going full screen.
+          //
+          // allow-same-origin does mean a same-origin frame could reach out and strip this
+          // attribute, so this is a guard against a wireframe misbehaving, not against one
+          // attacking. That is the threat here: the agent's own generated page.
+          sandbox="allow-scripts allow-same-origin"
           style={{
             width: needed !== undefined ? `${needed}px` : "100%",
             height: `${Math.round(visibleHeight / scale)}px`,

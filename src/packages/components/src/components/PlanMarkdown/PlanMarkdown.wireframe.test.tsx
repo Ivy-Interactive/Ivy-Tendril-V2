@@ -20,7 +20,10 @@ describe("parseWireframeFence", () => {
   });
 
   it("reads a bare slug as the name", () => {
-    expect(parseWireframeFence("checkout-payment\n")).toEqual({ ok: true, spec: { name: "checkout-payment" } });
+    expect(parseWireframeFence("checkout-payment\n")).toEqual({
+      ok: true,
+      spec: { name: "checkout-payment" },
+    });
   });
 
   it.each([
@@ -46,7 +49,9 @@ describe("wireframe fences in PlanMarkdown", () => {
   it("shows a placeholder, never code, when the markdown is not a plan", () => {
     const { container } = render(<PlanMarkdown id="w1" content={fence("name: checkout")} />);
 
-    expect(container.querySelector(".pmv-wireframe-placeholder")?.textContent).toContain("checkout");
+    expect(container.querySelector(".pmv-wireframe-placeholder")?.textContent).toContain(
+      "checkout",
+    );
     expect(container.querySelector("pre")).toBeNull();
     expect(container.querySelector("iframe")).toBeNull();
   });
@@ -64,8 +69,13 @@ describe("wireframe fences in PlanMarkdown", () => {
 
     await waitFor(() => expect(container.querySelector("iframe")).not.toBeNull());
 
-    expect(fetchMock).toHaveBeenCalledWith("/__wireframes/42/checkout/__wireframe/status", expect.anything());
-    expect(container.querySelector("iframe")?.getAttribute("src")).toBe("/__wireframes/42/checkout/");
+    expect(fetchMock).toHaveBeenCalledWith(
+      "/__wireframes/42/checkout/__wireframe/status",
+      expect.anything(),
+    );
+    expect(container.querySelector("iframe")?.getAttribute("src")).toBe(
+      "/__wireframes/42/checkout/",
+    );
     expect(container.querySelector("pre")).toBeNull();
     expect(container.querySelector("img")).toBeNull();
 
@@ -91,13 +101,17 @@ describe("wireframe fences in PlanMarkdown", () => {
       />,
     );
 
-    await waitFor(() => expect(container.querySelector('button[aria-label="Open Full Size"]')).not.toBeNull());
+    await waitFor(() =>
+      expect(container.querySelector('button[aria-label="Open Full Size"]')).not.toBeNull(),
+    );
     fireEvent.click(container.querySelector('button[aria-label="Open Full Size"]')!);
 
     const overlay = document.body.querySelector('[role="dialog"].pmv-wireframe-overlay');
     expect(overlay).not.toBeNull();
     expect(overlay?.getAttribute("aria-label")).toBe("checkout");
-    expect(overlay?.querySelector("iframe")?.getAttribute("src")).toBe("/__wireframes/42/checkout/");
+    expect(overlay?.querySelector("iframe")?.getAttribute("src")).toBe(
+      "/__wireframes/42/checkout/",
+    );
     expect(windowOpen).not.toHaveBeenCalled();
     expect(eventHandler).not.toHaveBeenCalled();
 
@@ -109,12 +123,20 @@ describe("wireframe fences in PlanMarkdown", () => {
     stubStatus({ phase: "running" });
 
     const { container } = render(
-      <PlanMarkdown id="w1" content={fence("name: checkout")} wireframeBaseUrl="/__wireframes/42/" />,
+      <PlanMarkdown
+        id="w1"
+        content={fence("name: checkout")}
+        wireframeBaseUrl="/__wireframes/42/"
+      />,
     );
 
-    await waitFor(() => expect(container.querySelector('button[aria-label="Open Full Size"]')).not.toBeNull());
+    await waitFor(() =>
+      expect(container.querySelector('button[aria-label="Open Full Size"]')).not.toBeNull(),
+    );
     fireEvent.click(container.querySelector('button[aria-label="Open Full Size"]')!);
-    fireEvent.click(document.body.querySelector('.pmv-wireframe-overlay button[aria-label="Close"]')!);
+    fireEvent.click(
+      document.body.querySelector('.pmv-wireframe-overlay button[aria-label="Close"]')!,
+    );
 
     await waitFor(() => expect(document.body.querySelector(".pmv-wireframe-overlay")).toBeNull());
   });
@@ -123,7 +145,11 @@ describe("wireframe fences in PlanMarkdown", () => {
     stubStatus({ phase: "running" });
 
     const { container } = render(
-      <PlanMarkdown id="w1" content={fence("name: checkout\ncaption: Converter Page")} wireframeBaseUrl="/__wireframes/42/" />,
+      <PlanMarkdown
+        id="w1"
+        content={fence("name: checkout\ncaption: Converter Page")}
+        wireframeBaseUrl="/__wireframes/42/"
+      />,
     );
 
     await waitFor(() => expect(container.querySelector("iframe")).not.toBeNull());
@@ -143,10 +169,17 @@ describe("wireframe fences in PlanMarkdown", () => {
   });
 
   it("reports a build failure in words, without the build output", async () => {
-    stubStatus({ phase: "failed", message: "The latest version of this wireframe does not build." });
+    stubStatus({
+      phase: "failed",
+      message: "The latest version of this wireframe does not build.",
+    });
 
     const { container } = render(
-      <PlanMarkdown id="w1" content={fence("name: checkout")} wireframeBaseUrl="/__wireframes/42/" />,
+      <PlanMarkdown
+        id="w1"
+        content={fence("name: checkout")}
+        wireframeBaseUrl="/__wireframes/42/"
+      />,
     );
 
     await waitFor(() => expect(container.textContent).toContain("does not build"));
@@ -156,7 +189,11 @@ describe("wireframe fences in PlanMarkdown", () => {
 
   it("explains an invalid block instead of rendering it as code", () => {
     const { container } = render(
-      <PlanMarkdown id="w1" content={fence("name: Not A Slug")} wireframeBaseUrl="/__wireframes/42/" />,
+      <PlanMarkdown
+        id="w1"
+        content={fence("name: Not A Slug")}
+        wireframeBaseUrl="/__wireframes/42/"
+      />,
     );
 
     expect(container.querySelector(".pmv-wireframe-invalid")?.textContent).toContain("not valid");
@@ -167,7 +204,11 @@ describe("wireframe fences in PlanMarkdown", () => {
     stubStatus({ phase: "running" });
 
     const { container } = render(
-      <PlanMarkdown id="w1" content={fence("name: checkout")} wireframeBaseUrl="/__wireframes/42/" />,
+      <PlanMarkdown
+        id="w1"
+        content={fence("name: checkout")}
+        wireframeBaseUrl="/__wireframes/42/"
+      />,
     );
 
     await waitFor(() => expect(container.querySelector("iframe")).not.toBeNull());
@@ -192,12 +233,72 @@ describe("wireframe fences in PlanMarkdown", () => {
     expect(frame.style.height).toBe("700px");
   });
 
+  it("sizes the frame when the wireframe is served from another origin, as the desktop app serves it", async () => {
+    // In the desktop window the shell runs on tauri://localhost while the daemon serving the
+    // wireframe is on http://host:port, so the frame's messages are cross-origin. Checking them
+    // against this window's origin dropped every one of them and no preview ever sized itself.
+    stubStatus({ phase: "running" });
+    const daemon = "http://127.0.0.1:7777";
+
+    const { container } = render(
+      <PlanMarkdown
+        id="w1"
+        content={fence("name: checkout")}
+        wireframeBaseUrl={`${daemon}/__wireframes/42/`}
+      />,
+    );
+
+    await waitFor(() => expect(container.querySelector("iframe")).not.toBeNull());
+    const frame = container.querySelector("iframe")!;
+
+    const post = (origin: string) =>
+      act(() => {
+        window.dispatchEvent(
+          new MessageEvent("message", {
+            data: { source: "tendril-wireframe", type: "size", height: 700 },
+            origin,
+            source: frame.contentWindow,
+          }),
+        );
+      });
+
+    // Not the frame's origin, even though it is this window's.
+    post(window.location.origin);
+    expect(frame.style.height).not.toBe("700px");
+
+    post(daemon);
+    expect(frame.style.height).toBe("700px");
+  });
+
+  it("confines the framed wireframe to being a page", async () => {
+    // A wireframe is code an agent wrote. It keeps scripts and its own origin, which its bundle and
+    // its live-reload client need; it loses navigating this window, popups, forms and downloads.
+    stubStatus({ phase: "running" });
+
+    const { container } = render(
+      <PlanMarkdown
+        id="w1"
+        content={fence("name: checkout")}
+        wireframeBaseUrl="/__wireframes/42/"
+      />,
+    );
+
+    await waitFor(() => expect(container.querySelector("iframe")).not.toBeNull());
+    const sandbox = container.querySelector("iframe")!.getAttribute("sandbox");
+
+    expect(sandbox?.split(" ").sort()).toEqual(["allow-same-origin", "allow-scripts"]);
+  });
+
   describe("sizing in a 720 wide column", () => {
     const stubColumn = (width: number) =>
       vi.stubGlobal(
         "ResizeObserver",
         class {
-          constructor(private readonly callback: (entries: { contentRect: { width: number; height: number } }[]) => void) {}
+          constructor(
+            private readonly callback: (
+              entries: { contentRect: { width: number; height: number } }[],
+            ) => void,
+          ) {}
           observe() {
             this.callback([{ contentRect: { width, height: 0 } }]);
           }
@@ -210,7 +311,11 @@ describe("wireframe fences in PlanMarkdown", () => {
       stubColumn(720);
 
       const { container } = render(
-        <PlanMarkdown id="w1" content={fence("name: checkout")} wireframeBaseUrl="/__wireframes/42/" />,
+        <PlanMarkdown
+          id="w1"
+          content={fence("name: checkout")}
+          wireframeBaseUrl="/__wireframes/42/"
+        />,
       );
 
       await waitFor(() => expect(container.querySelector("iframe")).not.toBeNull());
@@ -226,7 +331,10 @@ describe("wireframe fences in PlanMarkdown", () => {
         );
       });
 
-      return { frame, scaled: container.querySelector<HTMLElement>(".pmv-wireframe-frame-scaled")! };
+      return {
+        frame,
+        scaled: container.querySelector<HTMLElement>(".pmv-wireframe-frame-scaled")!,
+      };
     };
 
     it("does not zoom a page that fits the column", async () => {
