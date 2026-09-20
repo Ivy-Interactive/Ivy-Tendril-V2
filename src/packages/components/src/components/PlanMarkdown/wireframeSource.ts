@@ -44,7 +44,11 @@ export const MAX_HEIGHT = 4000;
 
 export function parseWireframeFence(source: string): WireframeParse {
   const text = source.trim();
-  if (text.length === 0) return { ok: false, error: "The block names no wireframe. Add a line such as `name: checkout-payment`." };
+  if (text.length === 0)
+    return {
+      ok: false,
+      error: "The block names no wireframe. Add a line such as `name: checkout-payment`.",
+    };
   if (NAME.test(text)) return { ok: true, spec: { name: text } };
 
   let doc: unknown;
@@ -55,12 +59,16 @@ export function parseWireframeFence(source: string): WireframeParse {
   }
 
   if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
-    return { ok: false, error: "Write the block as `name: <wireframe>`, optionally with height and viewport." };
+    return {
+      ok: false,
+      error: "Write the block as `name: <wireframe>`, optionally with height and viewport.",
+    };
   }
 
   const record = doc as Record<string, unknown>;
   for (const key of Object.keys(record)) {
-    if (!KEYS.has(key)) return { ok: false, error: `Unknown key '${key}'. Use name, height or viewport.` };
+    if (!KEYS.has(key))
+      return { ok: false, error: `Unknown key '${key}'. Use name, height or viewport.` };
   }
 
   const { name, height, viewport } = record;
@@ -72,8 +80,16 @@ export function parseWireframeFence(source: string): WireframeParse {
   const spec: WireframeSpec = { name };
 
   if (height !== undefined && height !== null) {
-    if (typeof height !== "number" || !Number.isInteger(height) || height < 1 || height > MAX_HEIGHT) {
-      return { ok: false, error: `height must be a whole number of pixels between 1 and ${MAX_HEIGHT}.` };
+    if (
+      typeof height !== "number" ||
+      !Number.isInteger(height) ||
+      height < 1 ||
+      height > MAX_HEIGHT
+    ) {
+      return {
+        ok: false,
+        error: `height must be a whole number of pixels between 1 and ${MAX_HEIGHT}.`,
+      };
     }
     spec.height = height;
   }
