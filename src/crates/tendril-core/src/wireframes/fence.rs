@@ -383,6 +383,27 @@ mod tests {
             .contains("write the block as"));
     }
 
+    /// The renderer and this parser disagree about `caption` on purpose, and the asymmetry is the
+    /// design rather than drift between them.
+    ///
+    /// Wireframes once had captions. `wireframeSource.ts` still accepts the key and ignores it, so a
+    /// plan written before they were removed renders today instead of showing the reviewer an error
+    /// about a plan nobody is going to edit. Writing is the opposite: `CreatePlan` tells the agent
+    /// "the block takes no caption", and a new revision carrying one is a mistake worth reporting
+    /// while the agent is still there to fix it. Tolerant on read, strict on write -- so the set of
+    /// plans carrying a caption can only shrink.
+    ///
+    /// The renderer's side of this is pinned by "ignores a caption left in a plan written before
+    /// captions were removed" in `PlanMarkdown.wireframe.test.tsx`.
+    #[test]
+    fn a_caption_is_refused_on_write_though_the_renderer_still_tolerates_one() {
+        let message = parse("name: checkout\ncaption: Converter Page").unwrap_err();
+        assert!(
+            message.contains("unknown key 'caption'"),
+            "the refusal must name the key the agent has to remove: {message}"
+        );
+    }
+
     #[test]
     fn a_well_formed_revision_passes() {
         let (_g, plan) = plan_with("checkout");

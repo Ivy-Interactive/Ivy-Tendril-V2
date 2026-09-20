@@ -293,6 +293,30 @@ mod tests {
         assert_eq!(split_route("/api/plans"), None);
     }
 
+    /// `PAYLOAD_PREFIX` is `ROUTE_PREFIX` minus its final `s`, so every plan preview address is
+    /// also a string-prefix match for the payload address. Nothing is broken by that today --
+    /// axum's router matches whole segments, and `split_route` strips the longer prefix -- but the
+    /// two are one careless `starts_with` apart from serving a plan's page as a vendor asset, and
+    /// the names give no hint that they are distinct. This is the check that says so.
+    #[test]
+    fn the_payload_prefix_and_the_route_prefix_do_not_capture_each_other() {
+        assert!(
+            ROUTE_PREFIX.starts_with(PAYLOAD_PREFIX),
+            "the hazard is real"
+        );
+
+        // A payload address is not a plan preview, even though it shares the leading characters.
+        assert_eq!(split_route("/__wireframe/vendor/react.js"), None);
+        assert_eq!(split_route("/__wireframe/css/tendril.css"), None);
+
+        // A plan's own payload address keeps the payload part as the relative path, so it reaches
+        // the scoped handler rather than the shared one.
+        assert_eq!(
+            split_route("/__wireframes/99/checkout/__wireframe/status"),
+            Some(("99".into(), "checkout".into(), "__wireframe/status".into()))
+        );
+    }
+
     #[test]
     fn a_crafted_scope_or_name_is_refused_before_it_reaches_the_filesystem() {
         assert!(valid("99", "checkout"));

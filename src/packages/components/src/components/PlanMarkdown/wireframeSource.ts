@@ -14,8 +14,10 @@ import { parse } from "yaml";
  * ```
  *
  * A body that is just a slug is shorthand for `name:`. The rules here are mirrored by
- * `WireframeFenceValidator` on the server, which rejects a revision that breaks them; keep the
- * two in step.
+ * `wireframes::fence` on the server, which `write-revision` runs to reject a revision that breaks
+ * them; keep the two in step.
+ *
+ * One rule differs on purpose: see `caption` below.
  */
 
 export type WireframeViewport = "Desktop" | "Tablet" | "Mobile";
@@ -29,8 +31,10 @@ export interface WireframeSpec {
 export type WireframeParse = { ok: true; spec: WireframeSpec } | { ok: false; error: string };
 
 const NAME = /^[a-z0-9][a-z0-9-]{0,63}$/;
-// `caption` is accepted and ignored: plans written while wireframes had captions still render.
-// `write-revision` rejects it, so no new plan carries one.
+// `caption` is accepted and ignored: plans written while wireframes had captions still render,
+// rather than showing the reviewer an error about a plan nobody is going to edit. The server is
+// deliberately stricter -- `write-revision` refuses a *new* revision carrying one -- so the set of
+// plans with a caption can only shrink. Tolerant on read, strict on write.
 const KEYS = new Set(["name", "caption", "height", "viewport"]);
 
 /** The CSS width each viewport renders at before it is scaled down to fit the column. */
