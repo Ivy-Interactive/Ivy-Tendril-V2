@@ -595,6 +595,59 @@ pub static SPECS: &[ModelSpec] = &[
         cache_read_per_million: 0.0,
         cache_write_per_million: 0.0,
     },
+    // Cursor's own four priced house models, rated from cursor.com/docs/models. They are here so a
+    // run on one reports a real cost; they are deliberately NOT in the `cursor` catalog row, because
+    // the picker should keep steering at the vendor models whose ladders Tendril can reason about.
+    //
+    // `context_window: 0` on three of them is the honest value, not a placeholder: Cursor publishes
+    // rates for these but no context size, and zero is already what `model_cache` writes when a
+    // source omits the limits section. Muse Spark is the exception -- the CLI names it "Muse Spark
+    // 1.3 1M", so the window is stated.
+    //
+    // The `-fast` tiers (Grok 4.6 Fast at $4/$12, Composer 2.5 Fast at $3/$15) are separately billed
+    // and deliberately absent, the same reason `format_cursor_model` never composes a `-fast` id.
+    ModelSpec {
+        model_id: Cow::Borrowed("cursor-grok-4.6"),
+        display_name: Cow::Borrowed("Cursor Grok 4.6"),
+        context_window: 0,
+        max_output_tokens: 0,
+        input_per_million: 2.0,
+        output_per_million: 6.0,
+        cache_read_per_million: 0.5,
+        cache_write_per_million: 0.0,
+    },
+    ModelSpec {
+        model_id: Cow::Borrowed("cursor-grok-4.5"),
+        display_name: Cow::Borrowed("Cursor Grok 4.5"),
+        context_window: 0,
+        max_output_tokens: 0,
+        input_per_million: 2.0,
+        output_per_million: 6.0,
+        cache_read_per_million: 0.5,
+        cache_write_per_million: 0.0,
+    },
+    ModelSpec {
+        model_id: Cow::Borrowed("composer-2.5"),
+        display_name: Cow::Borrowed("Composer 2.5"),
+        context_window: 0,
+        max_output_tokens: 0,
+        input_per_million: 0.5,
+        output_per_million: 2.5,
+        cache_read_per_million: 0.2,
+        cache_write_per_million: 0.0,
+    },
+    ModelSpec {
+        model_id: Cow::Borrowed("muse-spark-1.3"),
+        display_name: Cow::Borrowed("Muse Spark 1.3"),
+        context_window: 1_000_000,
+        max_output_tokens: 0,
+        // Cached input bills at the read rate with no separate write charge, so the zero below is
+        // Cursor's own rate rather than a missing one.
+        input_per_million: 1.25,
+        output_per_million: 4.25,
+        cache_read_per_million: 0.15,
+        cache_write_per_million: 0.0,
+    },
     ModelSpec {
         model_id: Cow::Borrowed("qwen2.5-coder-32b-instruct"),
         display_name: Cow::Borrowed("Qwen 2.5 Coder 32B Instruct"),

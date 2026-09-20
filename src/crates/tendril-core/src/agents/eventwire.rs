@@ -1737,7 +1737,7 @@ mod tests {
         assert_eq!(priceable_model_name("claude-opus-5"), "claude-opus-5");
         // ...and a model with no rate card keeps its name and prices nothing, which is what makes
         // the missing cost read as "unknown" instead of "free".
-        for unpriced in ["Composer 2.5", "Muse Spark 1.3 300K High", "Auto"] {
+        for unpriced in ["Auto", "Some Model Cursor Has Not Shipped Yet"] {
             let name = priceable_model_name(unpriced);
             assert!(
                 model_specs::find(&name)
@@ -1746,6 +1746,32 @@ mod tests {
                 "{unpriced} has no rate card, so it must not resolve to a priced row"
             );
         }
+
+        // Cursor's own house models are not in the `cursor` catalog -- the picker does not offer
+        // them -- but a run can still arrive on one, from a `config.yaml` naming it or from Auto
+        // routing there. They carry rates, so they price rather than reporting a silent zero, and
+        // the display name has to survive the rewrite to reach them.
+        for (display, resolved, input_rate) in [
+            ("Composer 2.5", "composer-2.5", 0.5),
+            ("Muse Spark 1.3 1M High", "muse-spark-1.3", 1.25),
+            ("Cursor Grok 4.6 Medium", "cursor-grok-4.6", 2.0),
+            ("Cursor Grok 4.5", "cursor-grok-4.5", 2.0),
+        ] {
+            let spec = model_specs::find(&priceable_model_name(display))
+                .unwrap_or_else(|| panic!("{display} should resolve"));
+            assert_eq!(spec.model_id, resolved, "{display}");
+            assert!(model_specs::is_priced(&spec), "{display} should be priced");
+            assert_eq!(spec.input_per_million, input_rate, "{display}");
+        }
+
+        // Grok 4.6 and 4.5 are rated identically, so the only thing keeping them apart is the
+        // longest-key rule. A run on 4.5 must not be priced as 4.6 even though the rates agree
+        // today -- if Cursor ever repriced one, that would become a silent mischarge.
+        assert_eq!(
+            model_specs::find(&priceable_model_name("Cursor Grok 4.5 Low"))
+                .map(|s| s.model_id.to_string()),
+            Some("cursor-grok-4.5".to_string())
+        );
 
         // `kimi-k3` is the interesting middle case: the row exists, the rates are all zero, and
         // `is_priced` is what stops a real run being reported as free.
