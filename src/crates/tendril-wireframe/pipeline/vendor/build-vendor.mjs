@@ -55,6 +55,14 @@ export async function buildVendor({ minify = true } = {}) {
   const result = await esbuild.build({
     entryPoints,
     outdir: outDir,
+    // Pin esbuild's notion of "the current directory" to this script's own directory.
+    // Chunk file names are `chunk-[hash]`, and that hash is computed over each input's path
+    // *relative to the working directory* -- which defaults to `process.cwd()`. Without this
+    // the same sources, at the same pinned versions, emit different chunk names depending on
+    // where the pipeline was invoked from, and every entry file's import of those chunks
+    // changes with them. That made vendor/ unreproducible and silently invalidated the
+    // SHA-256s in ARTIFACTS.lock.json. The metafile has the same CWD sensitivity, noted below.
+    absWorkingDir: here,
     bundle: true,
     splitting: true, // shared code -> chunk-*.js, so there is exactly one React instance
     format: "esm",

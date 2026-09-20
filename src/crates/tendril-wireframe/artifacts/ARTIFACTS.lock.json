@@ -9,7 +9,7 @@
     "tailwindcss": "4.3.3"
   },
   "fileCount": 128,
-  "totalBytes": 3928885,
+  "totalBytes": 3929002,
   "files": {
     "css/fonts.css": "b3fe6f4c0f64fdae3e367e571b9b00c73ee636ad7de29afb5bb3e35c92f4faf9",
     "css/tendril.css": "fcc4f8945b91761eafbbed092fe8e7b260b0b63ce349a403a4bdb0ad57eea898",
@@ -127,17 +127,17 @@
     "types/tendril-wireframes/widgets/wireframe/Marks.d.ts": "b67c1a02dba5dec4706c70936dd3043fa6cb1fbbd7852cf306fce60adf8494bc",
     "types/tendril-wireframes/widgets/wireframe/Mockup.d.ts": "7ab54996f3c20a0964d2ea751e41c05c66b9d35ee6fb4a57cb13bea50c3124fc",
     "types/tendril-wireframes/widgets/wireframe/Transform.d.ts": "26946a811fdf44786dc0713909307513e347caf37a4d18a874de9a82acc81766",
+    "vendor/chunk-7CGWDEXC.js": "f40d6a926415905ac6a0a8ebb29f5955c045dd5b0f2e1dda8fd03f2b3eb610f9",
+    "vendor/chunk-CGI42TDO.js": "fd48e5f574fe19d4beb03d2027f015c5e380f71d55283b62515f8793c7e97135",
+    "vendor/chunk-I3YZBJPR.js": "a5cbc0248308d79051f5685db4ab506f5cffd1c2a5e7a94e6be199feb956a7f4",
+    "vendor/chunk-JRGZ3JNB.js": "47f426a0992e2abc609ac655b29ef3f37cd77ac838b37510b269a8c1b5ce82e8",
     "vendor/chunk-QKTFYYMQ.js": "e4fd63be7f75c99f86a2231ea46cf32aa9ef43ae3328e260f98c2819f656e06b",
-    "vendor/chunk-TIHVORCE.js": "fd48e5f574fe19d4beb03d2027f015c5e380f71d55283b62515f8793c7e97135",
-    "vendor/chunk-U6KSIA7Q.js": "ac2ae01acd1ceb18a201c6772d2a4359b6da9c65ed8af71a4909e607e5217fe9",
-    "vendor/chunk-URV6JFKC.js": "71b2e902567e22233647f6bad198da8524218855f439b920b18d5a4e1d2a7383",
-    "vendor/chunk-ZRPGLHFT.js": "a5cbc0248308d79051f5685db4ab506f5cffd1c2a5e7a94e6be199feb956a7f4",
-    "vendor/lucide-react.js": "7ecb4a4bb965c2a10efdd263c3c85f5009a7ad77012e3f6763ca6a8c821dc271",
-    "vendor/react__jsx-runtime.js": "0addc55e762525b7a1572dacb259c43597cc20b36d5288f800944d60f22e7b88",
-    "vendor/react-dom__client.js": "c91ab7efe9342f45081336c602f07c76deacf35191465be574b611d3c893c5c2",
-    "vendor/react-dom.js": "6d97f6b781205e4cefe7baa80cff9fdfd202787ff1d4ba59dbe181a3a1215511",
-    "vendor/react.js": "b9c89c4371837868381447ae4f4aafb8ed7c9834117898aa0ce29c5a20741f7a",
-    "vendor/tendril-wireframes.js": "1424103bc1fe1c3e2d710d5802370ba6a7fd2800b3e42dcfae0b2f87d036e39f",
-    "vendor.manifest.json": "1934c03ddd88d280a43fe10447f93059aa6671d6524c59b4f103c91ddb6e4759"
+    "vendor/lucide-react.js": "5594588823c09b50a1247dcd6cab16cf041f396f3616786fdb319a7d3382b203",
+    "vendor/react__jsx-runtime.js": "72b551775f986de8ee66cb6f1bbea8ffad4ca5aeaaceab7db25099f548f76f6a",
+    "vendor/react-dom__client.js": "4c305d13e84f51b016ffc81baad877bae73c87b2fab6d94665b01501611578f6",
+    "vendor/react-dom.js": "a48e220001d3cea4d3855bd3a6f04f3a80faa3890d20941b9d979c3a2da13a9f",
+    "vendor/react.js": "6301a862d1e1b0714ec946430bc2972b67cb891fd968e0e1b615e7e7ad2ad966",
+    "vendor/tendril-wireframes.js": "a3b600a4ce7f5fe2e3552dda36542e13a8dc08a40d06ad04b2b9bb9f123410b7",
+    "vendor.manifest.json": "03038b30d4eca4aea1d4e2f10872e49f387a3bf475b2d5662fa1c4e6cd65e78a"
   }
 }
