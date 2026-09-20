@@ -85,7 +85,7 @@ export async function buildVendor({ minify = true } = {}) {
   void result;
 
   const manifest = {
-    generated: "Do not edit. Produced by build/vendor/build-vendor.mjs.",
+    generated: "Do not edit. Produced by pipeline/vendor/build-vendor.mjs.",
     versions: Object.fromEntries(
       ["react", "react-dom", "tendril-wireframes", "lucide-react", "esbuild"].map((n) => [
         n,

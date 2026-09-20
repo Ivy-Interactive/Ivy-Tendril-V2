@@ -48,7 +48,7 @@ function writeLock(extra) {
   walk(artifacts);
 
   const lock = {
-    generated: "Do not edit. Produced by build/vendor/build-all.mjs.",
+    generated: "Do not edit. Produced by pipeline/vendor/build-all.mjs.",
     inputs: extra,
     fileCount: Object.keys(files).length,
     totalBytes: Object.keys(files).reduce((n, f) => n + fs.statSync(path.join(artifacts, f)).size, 0),

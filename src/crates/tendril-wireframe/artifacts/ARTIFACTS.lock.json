@@ -1,5 +1,5 @@
 {
-  "generated": "Do not edit. Produced by build/vendor/build-all.mjs.",
+  "generated": "Do not edit. Produced by pipeline/vendor/build-all.mjs.",
   "inputs": {
     "react": "19.3.0",
     "react-dom": "19.3.0",
@@ -9,7 +9,7 @@
     "tailwindcss": "4.3.3"
   },
   "fileCount": 128,
-  "totalBytes": 3928999,
+  "totalBytes": 3928885,
   "files": {
     "css/fonts.css": "b3fe6f4c0f64fdae3e367e571b9b00c73ee636ad7de29afb5bb3e35c92f4faf9",
     "css/tendril.css": "fcc4f8945b91761eafbbed092fe8e7b260b0b63ce349a403a4bdb0ad57eea898",
@@ -138,6 +138,6 @@
     "vendor/react-dom.js": "6d97f6b781205e4cefe7baa80cff9fdfd202787ff1d4ba59dbe181a3a1215511",
     "vendor/react.js": "b9c89c4371837868381447ae4f4aafb8ed7c9834117898aa0ce29c5a20741f7a",
     "vendor/tendril-wireframes.js": "1424103bc1fe1c3e2d710d5802370ba6a7fd2800b3e42dcfae0b2f87d036e39f",
-    "vendor.manifest.json": "88f3eac2a206698af6dde8a719273e21d276bfc894678e12cb24bd21b6c8100e"
+    "vendor.manifest.json": "1934c03ddd88d280a43fe10447f93059aa6671d6524c59b4f103c91ddb6e4759"
   }
 }

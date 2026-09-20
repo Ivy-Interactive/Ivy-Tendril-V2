@@ -1,7 +1,7 @@
 //! The single source of truth for both the esbuild `--external:` list and the browser import map.
 //!
 //! Ported from V1's `Assets/VendorManifest.cs`. The file itself is produced by
-//! `build/vendor/build-vendor.mjs` and ships in the embedded artifacts payload.
+//! `pipeline/vendor/build-vendor.mjs` and ships in the embedded artifacts payload.
 //!
 //! These two lists MUST agree. If a specifier is external to esbuild but missing from the import
 //! map, the bundle links fine and then fails in the browser with an opaque "Failed to resolve module
