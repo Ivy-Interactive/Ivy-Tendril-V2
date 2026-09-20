@@ -12,10 +12,26 @@ use crate::models::project::ProjectConfig;
 use crate::wireframes::leak_guard::{self, WireframeLeak};
 
 /// The leaks in a plan's changes, with the project's opt-out and base branches applied.
+///
+/// `project` is optional because most callers do not have one to hand: the execution gate and the
+/// recovery sweep know a plan folder and nothing else. `None` therefore means "look it up", not
+/// "assume defaults" -- V1's `PlanWireframeGuard.Check` does exactly this, reading the plan's
+/// project through its own ConfigService. Treating `None` as "no configuration" would silently
+/// ignore `wireframeGuard: false`, which is the one setting whose entire purpose is to turn this
+/// check off.
 pub fn check(plan_folder: &Path, project: Option<&ProjectConfig>) -> Vec<WireframeLeak> {
     if !plan_folder.is_dir() {
         return Vec::new();
     }
+
+    let looked_up;
+    let project = match project {
+        Some(project) => Some(project),
+        None => {
+            looked_up = project_for_plan(plan_folder);
+            looked_up.as_ref()
+        }
+    };
 
     // The opt-out exists for the repos that are the wireframe tooling itself, where wireframe code
     // in a diff is the product rather than a leak.
@@ -29,6 +45,25 @@ pub fn check(plan_folder: &Path, project: Option<&ProjectConfig>) -> Vec<Wirefra
     let base_branch = project.and_then(|p| p.repos.iter().find_map(|r| r.base_branch.as_deref()));
 
     leak_guard::scan(plan_folder, base_branch)
+}
+
+/// The project a plan belongs to, read the way V1's guard reads it.
+///
+/// Best effort throughout: a plan with no readable `plan.yaml`, a config that will not load, or a
+/// project name that matches nothing all yield `None`, and the guard then runs with its defaults.
+/// That is the safe direction -- the check stays on when configuration cannot be consulted.
+fn project_for_plan(plan_folder: &Path) -> Option<ProjectConfig> {
+    let (plan, _) = crate::plans::reader::read_plan_yaml(plan_folder).ok()?;
+    if plan.project.trim().is_empty() {
+        return None;
+    }
+
+    let home = crate::config::get_default_tendril_home();
+    let settings = crate::config::load_config(&crate::config::get_config_path(&home)).ok()?;
+    settings
+        .projects
+        .into_iter()
+        .find(|candidate| candidate.name.eq_ignore_ascii_case(plan.project.trim()))
 }
 
 /// Why the plan may not move on, or `None` when its changes carry no wireframe code.

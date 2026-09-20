@@ -140,7 +140,7 @@ async fn serve_out(
     let Some((_, out_dir)) = state.wireframe_host.find(&scope, &name).await else {
         return not_found();
     };
-    match resolve_within(&out_dir, &path).and_then(|full| std::fs::read(full).ok()) {
+    match read_blocking(out_dir, path.clone()).await {
         Some(bytes) => typed(bytes, content_type_for(&path)),
         None => not_found(),
     }
@@ -193,9 +193,7 @@ async fn serve_page(State(state): State<Arc<AppState>>, uri: Uri) -> Response {
     if !relative.is_empty() {
         // The wireframe's own public/ directory, without starting a build.
         if let Some((site, _)) = state.wireframe_host.find(&scope, &name).await {
-            if let Some(bytes) = resolve_within(&site.project.public_dir(), &relative)
-                .and_then(|full| std::fs::read(full).ok())
-            {
+            if let Some(bytes) = read_blocking(site.project.public_dir(), relative.clone()).await {
                 return typed(bytes, content_type_for(&relative));
             }
         }
@@ -236,6 +234,20 @@ async fn serve_page(State(state): State<Arc<AppState>>, uri: Uri) -> Response {
                 .into_response(),
         ),
     }
+}
+
+/// Resolves `relative` under `root` and reads it, off the async executor.
+///
+/// Both the containment check and the read touch the filesystem, and the rest of this crate moves
+/// that work to a blocking thread rather than stalling the runtime on a slow disk.
+async fn read_blocking(root: std::path::PathBuf, relative: String) -> Option<Vec<u8>> {
+    tokio::task::spawn_blocking(move || {
+        let full = resolve_within(&root, &relative)?;
+        std::fs::read(full).ok()
+    })
+    .await
+    .ok()
+    .flatten()
 }
 
 fn valid(scope: &str, name: &str) -> bool {

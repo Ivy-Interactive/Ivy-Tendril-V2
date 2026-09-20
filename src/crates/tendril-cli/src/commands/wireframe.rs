@@ -136,12 +136,25 @@ async fn setup(path: PathBuf, tailwind: &str, force: bool, quiet: bool) -> Resul
 
     // `--force` deletes the scaffold files so the scaffolder writes them again: it never overwrites
     // in place, which is what keeps a re-run from clobbering the agent's work by default.
+    //
+    // A file that was not there is the expected case and says nothing. Anything else - a lock, a
+    // permission - is reported, because the scaffolder will then skip that file as "exists, kept"
+    // and the user would be left wondering why --force did nothing to it.
     if force && project.source_dir().is_dir() {
-        for name in ["main.tsx", "App.tsx", "wireframe-ready.ts"] {
-            let _ = std::fs::remove_file(project.source_dir().join(name));
+        let targets = [
+            project.source_dir().join("main.tsx"),
+            project.source_dir().join("App.tsx"),
+            project.source_dir().join("wireframe-ready.ts"),
+            project.index_html(),
+            project.ts_config(),
+        ];
+        for path in targets {
+            if let Err(e) = std::fs::remove_file(&path) {
+                if e.kind() != std::io::ErrorKind::NotFound {
+                    eprintln!("  warning: could not remove {}: {e}", path.display());
+                }
+            }
         }
-        let _ = std::fs::remove_file(project.index_html());
-        let _ = std::fs::remove_file(project.ts_config());
     }
 
     let result = scaffolder::scaffold(&project)?;

@@ -1332,7 +1332,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       isSubmittingAnswer={store.isSubmittingAnswer(msg.id)}
                       onOpenPlan={onOpenPlan}
                       onOpenImage={setActiveLightboxImage}
-                          wireframeBaseUrl={wireframeBaseUrl}
+                      wireframeBaseUrl={wireframeBaseUrl}
                       jobs={jobs}
                       threadMessages={messages}
                     />

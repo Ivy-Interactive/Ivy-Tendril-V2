@@ -348,9 +348,13 @@ pub fn changed_files(worktree: &Path, base_branch: Option<&str>) -> Vec<String> 
     let mut files: BTreeSet<String> = BTreeSet::new();
 
     let mut merge_base = None;
-    if let Some(base) = base_branch.filter(|b| !b.trim().is_empty()) {
+    if let Some(base) = base_branch.filter(|b| is_safe_ref_name(b)) {
         for candidate in [format!("origin/{base}"), base.to_string()] {
-            if let Some(output) = git(worktree, &["merge-base", "HEAD", &candidate]) {
+            // `--` before the revisions, so a name that begins with a dash is read as a ref rather
+            // than as an option. `is_safe_ref_name` already refuses those, and this is the second
+            // lock on the same door: the value reaches here from a project's own config.yaml, which
+            // is trusted-ish rather than trusted.
+            if let Some(output) = git(worktree, &["merge-base", "--", "HEAD", &candidate]) {
                 if !output.trim().is_empty() {
                     merge_base = Some(output.trim().to_string());
                     break;
@@ -368,6 +372,7 @@ pub fn changed_files(worktree: &Path, base_branch: Option<&str>) -> Vec<String> 
             "diff",
             "--name-only",
             "--diff-filter=ACMR",
+            "--",
             &diff_target,
         ],
     ) {
@@ -398,15 +403,56 @@ fn add_lines(files: &mut BTreeSet<String>, output: &str) {
     }
 }
 
+/// A branch name safe to hand to git as a revision.
+///
+/// Refuses anything that could be read as an option (a leading `-`), and anything outside the
+/// characters a ref name can contain. Git's own rules are broader than this; the point is not to
+/// reimplement `check-ref-format` but to keep a config value from becoming an argument.
+fn is_safe_ref_name(name: &str) -> bool {
+    let name = name.trim();
+    !name.is_empty()
+        && name.len() <= 255
+        && !name.starts_with('-')
+        && !name.contains("..")
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | '.' | '/'))
+}
+
+/// Runs git and returns its stdout, or `None` with the reason logged.
+///
+/// Every failure here is non-fatal by design -- a worktree that is not a repo, a base branch that
+/// does not exist, git missing from PATH -- but silence made them indistinguishable from "no
+/// changed files", which reads as a clean plan. The guard still proceeds; the log is what makes a
+/// misconfiguration findable.
 fn git(worktree: &Path, args: &[&str]) -> Option<String> {
-    let output = std::process::Command::new("git")
+    let output = match std::process::Command::new("git")
         .args(args)
         .current_dir(worktree)
         .output()
-        .ok()?;
+    {
+        Ok(output) => output,
+        Err(e) => {
+            tracing::debug!(
+                "git {:?} in {} could not run: {e}",
+                args,
+                worktree.display()
+            );
+            return None;
+        }
+    };
+
     if !output.status.success() {
+        tracing::debug!(
+            "git {:?} in {} exited {}: {}",
+            args,
+            worktree.display(),
+            output.status.code().unwrap_or(-1),
+            String::from_utf8_lossy(&output.stderr).trim()
+        );
         return None;
     }
+
     Some(String::from_utf8_lossy(&output.stdout).into_owned())
 }
 
@@ -680,6 +726,21 @@ mod tests {
         // A later clean run must clear it, or the plan keeps showing a failure it already fixed.
         write_report(&plan, &[]).unwrap();
         assert!(!report_path(&plan).exists());
+    }
+
+    #[test]
+    fn a_base_branch_that_could_be_an_option_is_refused() {
+        // It arrives from a project's config.yaml and becomes a git argument.
+        assert!(is_safe_ref_name("main"));
+        assert!(is_safe_ref_name("release/2026-09"));
+        assert!(is_safe_ref_name("feature_x.1"));
+
+        assert!(!is_safe_ref_name("--upload-pack=/tmp/evil"));
+        assert!(!is_safe_ref_name("-main"));
+        assert!(!is_safe_ref_name("main;rm -rf /"));
+        assert!(!is_safe_ref_name("a..b"));
+        assert!(!is_safe_ref_name(""));
+        assert!(!is_safe_ref_name("   "));
     }
 
     #[test]

@@ -23,6 +23,10 @@ pub const SECTION_HEADING: &str = "Wireframe";
 pub const MAX_PER_REVISION: usize = 2;
 pub const MAX_HEIGHT: i64 = 4000;
 
+/// The largest fence body worth parsing. Three keys and their values; anything beyond this is a
+/// mistake or an attempt to make the YAML parser do work.
+const MAX_BODY_BYTES: usize = 4096;
+
 const KEYS: [&str; 3] = ["name", "height", "viewport"];
 const VIEWPORTS: [&str; 3] = ["Desktop", "Tablet", "Mobile"];
 
@@ -240,6 +244,16 @@ pub fn parse(body: &str) -> Result<WireframeFenceSpec, String> {
             height: None,
             viewport: None,
         });
+    }
+
+    // A fence body is a handful of lines. Bounding it before the parser sees it keeps a
+    // pathological document - deep nesting, an alias bomb - from costing anything, and a block this
+    // large is a mistake worth reporting on its own terms.
+    if text.len() > MAX_BODY_BYTES {
+        return Err(format!(
+            "the block is {} bytes; a wireframe block is a name and at most two options",
+            text.len()
+        ));
     }
 
     let value: serde_yaml::Value =
