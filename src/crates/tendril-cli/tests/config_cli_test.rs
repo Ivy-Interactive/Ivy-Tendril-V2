@@ -279,3 +279,58 @@ fn test_structured_fields_are_rejected_not_pushed_into_extra() {
     let settings = load_config(&get_config_path(&fx.dir)).expect("reload must not error");
     assert!(settings.extra.is_empty());
 }
+
+/// `coAuthor` is the identity Tendril stamps onto the commits it creates, and it reaches the agent
+/// only through `git::coauthor_hooks::coauthor_env`, which returns early — installing no hook at all
+/// — when the key is unset. So "unset" and "set to empty" have to be the same state here as they are
+/// there: a blank identity stored as `coAuthor: ""` would be a trailer reading `Co-Authored-By: `.
+///
+/// It is also a modeled key, which is the half that was missing: before it was listed in
+/// `MODELED_PRIMITIVE_KEYS` a `config set coauthor` landed in `extra` and `save_config` emitted the
+/// key twice, which is the corruption `test_set_heals_a_stale_extra_entry_for_a_modeled_key` covers
+/// for the other fields.
+#[test]
+fn test_set_coauthor_round_trips_and_empty_clears_it() {
+    let fixture = ConfigFixture::new("coauthor");
+
+    // Unset is readable and empty rather than an "unknown key" error.
+    fixture.get("coAuthor").unwrap();
+    assert_eq!(load_config(&get_config_path(&fixture.dir)).unwrap().co_author, None);
+
+    fixture.set("coAuthor", "ivy-tendril <tendril@ivy.app>").unwrap();
+    let settings = load_config(&get_config_path(&fixture.dir)).unwrap();
+    assert_eq!(
+        settings.co_author.as_deref(),
+        Some("ivy-tendril <tendril@ivy.app>"),
+        "the identity must land on the modeled field"
+    );
+    assert_eq!(
+        settings.co_author_identity(),
+        Some("ivy-tendril <tendril@ivy.app>"),
+        "and be visible to the one reader that installs the hook"
+    );
+
+    // Modeled, so it is written once and never mirrored into `extra`.
+    assert_eq!(fixture.count_key_occurrences("coAuthor"), 1);
+    assert!(
+        !settings.extra.keys().any(|k| k.eq_ignore_ascii_case("coauthor")),
+        "a modeled key must not also sit in extra"
+    );
+
+    // Whitespace is trimmed rather than stored, so a stray space cannot produce a malformed trailer.
+    fixture.set("coAuthor", "  ivy-tendril <tendril@ivy.app>  ").unwrap();
+    assert_eq!(
+        load_config(&get_config_path(&fixture.dir)).unwrap().co_author.as_deref(),
+        Some("ivy-tendril <tendril@ivy.app>")
+    );
+
+    // Empty clears the key outright: `skip_serializing_if` then keeps it out of the file entirely,
+    // which is what "no trailer and no hook install" means on disk.
+    fixture.set("coAuthor", "").unwrap();
+    assert_eq!(load_config(&get_config_path(&fixture.dir)).unwrap().co_author, None);
+    assert_eq!(
+        fixture.count_key_occurrences("coAuthor"),
+        0,
+        "clearing must remove the key, not leave an empty identity behind"
+    );
+}
