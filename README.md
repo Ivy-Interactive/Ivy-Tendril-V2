@@ -129,6 +129,7 @@ Works with **any CLI agent**: if it runs in a terminal, it runs in Tendril.
   <a href="https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli"><kbd><img src="https://www.google.com/s2/favicons?domain=github.com&sz=64" alt="GitHub Copilot logo" width="16" valign="middle" /> GitHub Copilot</kbd></a> &nbsp;
   <a href="https://github.com/google-gemini/gemini-cli"><kbd><img src="https://www.google.com/s2/favicons?domain=google.com&sz=64" alt="Gemini logo" width="16" valign="middle" /> Gemini</kbd></a> &nbsp;
   <a href="https://opencode.ai/docs/cli/"><kbd><img src="https://www.google.com/s2/favicons?domain=opencode.ai&sz=64" alt="OpenCode logo" width="16" valign="middle" /> OpenCode</kbd></a> &nbsp;
+  <a href="https://developer.apple.com/documentation/foundationmodels"><kbd><img src="https://www.google.com/s2/favicons?domain=apple.com&sz=64" alt="Apple Foundation Models logo" width="16" valign="middle" /> Apple Foundation Models</kbd></a> &nbsp;
   <kbd>+ any CLI agent</kbd>
 </p>
 

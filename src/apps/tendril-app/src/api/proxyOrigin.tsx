@@ -36,7 +36,9 @@ export function useServiceOrigin(): string {
 }
 
 /** The address a plan's `wireframe` fences resolve their names against. */
-export function useWireframeBaseUrl(planId: string | number | null | undefined): string | undefined {
+export function useWireframeBaseUrl(
+  planId: string | number | null | undefined,
+): string | undefined {
   const origin = useServiceOrigin();
   if (planId === null || planId === undefined || planId === "") return undefined;
   return `${origin}/__wireframes/${planId}/`;

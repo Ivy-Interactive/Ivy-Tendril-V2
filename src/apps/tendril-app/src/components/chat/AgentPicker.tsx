@@ -22,6 +22,7 @@ const AGENT_BRAND_ICONS: Record<string, string> = {
   gemini: "Gemini",
   copilot: "Copilot",
   antigravity: "Antigravity",
+  apple: "Apple",
   opencode: "OpenCode",
   ivy: "IvyCorner",
   openaiproxy: "OpenAI",

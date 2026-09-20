@@ -62,11 +62,13 @@ pub fn normalize_agent_name(name: &str) -> String {
     }
 }
 
-/// Gemini's CLI has no effort argument; every other agent takes one.
+/// Gemini's CLI has no effort argument and Apple's on-device model has no reasoning-effort control;
+/// every other agent takes one. Apple also serves exactly one model, so it selects none.
 pub fn agent_capabilities(agent: &str) -> AgentCapabilities {
+    let agent = normalize_agent_name(agent);
     AgentCapabilities {
-        model_selection: true,
-        effort_control: normalize_agent_name(agent) != "gemini",
+        model_selection: agent != "apple",
+        effort_control: agent != "gemini" && agent != "apple",
     }
 }
 
@@ -104,6 +106,8 @@ pub fn default_profiles(agent: &str) -> [TierDefault; 3] {
             (Some("gemini-3.8-flash"), Some("medium")),
         ),
         "ivy" => ivy_tiers(),
+        // `fm serve` serves one model and takes no effort argument, so every tier is the same run.
+        "apple" => tiers((None, None), (None, None), (None, None)),
         "openaiproxy" | "proxy" => openai_proxy_tiers(proxy_base_url().as_deref()),
         // claude, and any id we do not know: Claude is the default provider.
         _ => tiers(

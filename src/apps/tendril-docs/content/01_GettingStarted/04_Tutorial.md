@@ -78,7 +78,8 @@ projects:
         required: true
 ```
 
-Set `codingAgent` to the agent you want (`claude`, `codex`, `copilot`, `gemini`, `opencode`) and pick
+Set `codingAgent` to the agent you want (`claude`, `codex`, `copilot`, `gemini`, `opencode`,
+`apple`) and pick
 verifications that match your stack. `verifications` names entries from the top-level `verifications:`
 list, each of which carries the prompt the agent follows to run that check.
 

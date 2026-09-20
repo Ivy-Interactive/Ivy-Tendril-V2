@@ -171,6 +171,12 @@ const COPILOT_DEFAULT: &str = "gpt-5.4";
 /// V1's `IsDefault` flags.
 const GEMINI_DEFAULT: &str = "gemini-3.8-flash";
 const OPENCODE_DEFAULT: &str = "moonshotai/Kimi-K3";
+/// `fm serve` serves exactly one model, so the agent's default is its only row. The id is
+/// `apple/system` -- the `provider/model` string OpenCode puts on the wire -- and not a bare
+/// `system`, because that same string is what `providers::APPLE_MODEL_ID` pins and what cost
+/// reporting prices. Naming it anything else puts a second id in circulation and prices a free
+/// on-device run at the unknown-model fallback of $3.00/$15.00 per million.
+const APPLE_DEFAULT: &str = "apple/system";
 
 /// V1 `ClaudeModelCatalog`. Also the list the proxy serves when pointed at `api.anthropic.com`, and
 /// the first third of `IvyModelCatalog`.
@@ -273,6 +279,13 @@ static OPENCODE_MODELS: &[CatalogModel] = &[
     model("gpt-5.5", "GPT-5.5", OPENCODE_EFFORTS),
 ];
 
+/// Apple's on-device Foundation Models. One row, because `fm serve` answers `GET /v1/models` with
+/// the single id `system` and rejects every other id with HTTP 400 -- so a second row here would be
+/// a picker entry that cannot launch. No effort ladder: the on-device model has no
+/// reasoning-effort control, and `build_apple_spec` drops the argument rather than advertise a knob
+/// that does not exist.
+static APPLE_MODELS: &[CatalogModel] = &[model("apple/system", "Apple On-Device", &[])];
+
 /// The one row V1's `GetModelsForBaseUrl` adds to OpenCode's list for Berget's endpoint.
 static BERGET_MODELS: &[CatalogModel] = &[model(
     "Qwen/Qwen2.5-Coder-32B-Instruct",
@@ -335,6 +348,14 @@ static AGENTS: &[AgentDef] = &[
         catalogues: &[ANTIGRAVITY_MODELS],
         default_model: GEMINI_DEFAULT,
         efforts: ANTIGRAVITY_EFFORTS,
+    },
+    AgentDef {
+        id: "apple",
+        label: "Apple",
+        icon: "Apple",
+        catalogues: &[APPLE_MODELS],
+        default_model: APPLE_DEFAULT,
+        efforts: &[],
     },
     AgentDef {
         id: "claude",
@@ -737,6 +758,7 @@ mod tests {
                 .collect::<Vec<_>>(),
             vec![
                 "antigravity",
+                "apple",
                 "claude",
                 "codex",
                 "copilot",
@@ -758,6 +780,7 @@ mod tests {
             icons,
             vec![
                 ("antigravity".to_string(), "Antigravity".to_string()),
+                ("apple".to_string(), "Apple".to_string()),
                 ("claude".to_string(), "ClaudeCode".to_string()),
                 ("codex".to_string(), "OpenAI".to_string()),
                 ("copilot".to_string(), "Copilot".to_string()),
@@ -779,6 +802,7 @@ mod tests {
             labels,
             vec![
                 ("antigravity".to_string(), "Antigravity".to_string()),
+                ("apple".to_string(), "Apple".to_string()),
                 ("claude".to_string(), "Claude Code".to_string()),
                 ("codex".to_string(), "Codex".to_string()),
                 ("copilot".to_string(), "Copilot".to_string()),
@@ -794,6 +818,9 @@ mod tests {
     fn every_effort_ladder_matches_v1() {
         let expected: &[(&str, &[&str])] = &[
             ("antigravity", &["default", "low", "medium", "high"]),
+            // The on-device model has no reasoning-effort control, so the row advertises none --
+            // the same shape as `gemini` below, whose CLI omits `EffortControl`.
+            ("apple", &[]),
             (
                 "claude",
                 &["default", "low", "medium", "high", "xhigh", "max"],
@@ -990,12 +1017,33 @@ mod tests {
     #[test]
     fn every_agent_offers_models_beyond_the_default() {
         for agent in agents() {
+            // `apple` is the one row that legitimately offers a single model: `fm serve` answers
+            // `GET /v1/models` with the one id `system` and rejects the rest with HTTP 400, so a
+            // second row would be a picker entry that cannot launch. Asserted explicitly below
+            // rather than skipped, so the exception stays a claim about `fm serve` and not a hole.
+            if agent.id == "apple" {
+                assert_eq!(
+                    agent.models.len(),
+                    1,
+                    "apple should offer exactly its one model"
+                );
+                continue;
+            }
             assert!(
                 agent.models.len() > 1,
                 "{} should offer models beyond the default",
                 agent.id
             );
         }
+    }
+
+    /// The one model the picker offers has to be the one the launch actually sends. If they drift,
+    /// cost reporting prices a free on-device run at the unknown-model fallback.
+    #[test]
+    fn apples_only_model_is_the_id_its_launch_sends() {
+        let ids = model_ids(&agent("apple"));
+        assert_eq!(ids.len(), 1, "apple should offer exactly one model");
+        assert_eq!(ids[0], crate::agents::providers::APPLE_MODEL_ID);
     }
 
     #[test]
@@ -1029,6 +1077,10 @@ mod tests {
                     ProviderGroup::OpenAi,
                 ],
             ),
+            // `fm serve` serves one on-device model under no vendor family the sorter knows, so
+            // it groups as `Other`. That is correct rather than a gap: the row is Apple's own
+            // model, not a rebadged Anthropic/OpenAI/Google one.
+            ("apple", &[ProviderGroup::Other]),
             // The Claude CLI serves Anthropic's models and nothing else.
             ("claude", &[ProviderGroup::Anthropic]),
             ("codex", &[ProviderGroup::OpenAi]),

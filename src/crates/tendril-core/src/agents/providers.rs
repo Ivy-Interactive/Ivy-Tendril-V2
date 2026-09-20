@@ -66,6 +66,7 @@ pub fn build_agent_spec(provider: &str, config: &AgentLaunchConfig) -> AgentProc
         "copilot" => build_copilot_spec(config),
         "ivy" => build_ivy_spec(config),
         "openaiproxy" | "proxy" => build_openai_proxy_spec(config),
+        "apple" => build_apple_spec(config),
         _ => build_claude_spec(config),
     }
 }
@@ -996,6 +997,179 @@ fn build_openai_proxy_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
                 .insert("ANTHROPIC_API_KEY".to_string(), key);
         }
     }
+
+    spec
+}
+
+// ---------------------------------------------------------------------------
+// Apple Foundation Models (apple)
+// ---------------------------------------------------------------------------
+
+/// The OpenCode provider key the `fm serve` stanza is registered under.
+const APPLE_PROVIDER_KEY: &str = "apple";
+
+/// The OpenCode agent the trimmed tool surface is declared on, and the value passed to `--agent`.
+/// Declaring it is not enough: without the flag OpenCode runs its default `build` agent and the
+/// trimming never applies.
+const APPLE_AGENT_NAME: &str = "apple-fm";
+
+/// The only model `fm serve` serves. It answers `GET /v1/models` with the single id `system` and
+/// rejects every other id with HTTP 400, so each model the catalog offers for this agent resolves
+/// here rather than being passed through.
+pub const APPLE_MODEL_ID: &str = "apple/system";
+
+/// The same model as [`APPLE_MODEL_ID`], spelled the way `fm serve` itself spells it.
+///
+/// Two ids for one model, because two different things are addressing it. OpenCode names a model
+/// `provider/model` and resolves the `apple/` half against the provider stanza below, so everything
+/// that talks to OpenCode -- the catalog, the launch, the price row -- says `apple/system`. The
+/// server behind it has no notion of providers and serves the bare id: `GET /v1/models` returns
+/// `system`, and a request for `apple/system` comes back `HTTP 400 Unknown model 'apple/system'`.
+/// Anything speaking to `fm serve` directly rather than through OpenCode -- the model probe in
+/// [`crate::agents::probe`] -- has to use this one.
+pub const APPLE_WIRE_MODEL_ID: &str = "system";
+
+/// Where `fm serve` listens when started with no arguments.
+const APPLE_DEFAULT_BASE_URL: &str = "http://127.0.0.1:1976/v1";
+
+/// The on-device model's transcript ceiling. Measured against `fm serve` by bisection: 7.3k tokens
+/// of input is accepted and roughly 8.5k is refused with "the session's transcript exceeded the
+/// model's context size", so the declared window is the power of two just under the real limit.
+const APPLE_CONTEXT_WINDOW: u64 = 8192;
+
+/// The on-device model's output ceiling, declared conservatively against the same context budget.
+const APPLE_MAX_OUTPUT_TOKENS: u64 = 1024;
+
+/// `fm serve`'s OpenAI-compatible endpoint, with the `/v1` suffix normalized on.
+///
+/// `APPLE_FM_BASE_URL` overrides the default for an `fm serve --port` on another port, or one
+/// reached over a tunnel.
+pub(crate) fn apple_base_url() -> String {
+    let raw = std::env::var("APPLE_FM_BASE_URL")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| APPLE_DEFAULT_BASE_URL.to_string());
+
+    let trimmed = raw.trim_end_matches('/');
+    if trimmed.to_ascii_lowercase().ends_with("/v1") {
+        trimmed.to_string()
+    } else {
+        format!("{}/v1", trimmed)
+    }
+}
+
+/// The OpenCode configuration registering `fm serve` as an OpenAI-compatible provider.
+///
+/// OpenCode has no built-in Apple provider, so one is declared inline rather than written to the
+/// operator's `opencode.json`: `OPENCODE_CONFIG_CONTENT` is read as a whole config document, which
+/// keeps this provider self-contained and leaves no temp file behind. That matters because
+/// [`agent_command`] builds a throwaway spec purely to read the binary name, so spec building for a
+/// default config must stay free of side effects.
+///
+/// The `apple-fm` agent trims the tool surface OpenCode would otherwise describe in its system
+/// prompt. Measured against `fm serve`, the untrimmed prompt costs about 7k tokens of an 8k window,
+/// leaving almost nothing for the task; dropping these six tools brings it to about 4.5k.
+fn apple_opencode_config(base_url: &str) -> serde_json::Value {
+    serde_json::json!({
+        "$schema": "https://opencode.ai/config.json",
+        "provider": {
+            APPLE_PROVIDER_KEY: {
+                "npm": "@ai-sdk/openai-compatible",
+                "name": "Apple Foundation Models",
+                "options": { "baseURL": base_url, "apiKey": "local" },
+                "models": {
+                    APPLE_WIRE_MODEL_ID: {
+                        "name": "Apple On-Device",
+                        "limit": {
+                            "context": APPLE_CONTEXT_WINDOW,
+                            "output": APPLE_MAX_OUTPUT_TOKENS,
+                        },
+                    }
+                },
+            }
+        },
+        "agent": {
+            APPLE_AGENT_NAME: {
+                "description": "Apple Foundation Models on-device, with a trimmed tool surface",
+                "mode": "primary",
+                "model": APPLE_MODEL_ID,
+                "tools": {
+                    "webfetch": false,
+                    "task": false,
+                    "todowrite": false,
+                    "todoread": false,
+                    "patch": false,
+                    "multiedit": false,
+                },
+            }
+        },
+    })
+}
+
+/// Apple's on-device Foundation Models, reached through the bundled OpenCode CLI.
+///
+/// `fm serve` speaks OpenAI Chat Completions, so this is the same wrapper shape as
+/// [`build_ivy_spec`] and [`build_openai_proxy_spec`]: pre-resolve the model, delegate to
+/// [`build_opencode_spec`], then override the parts that are Apple-specific. It differs from those
+/// two in three ways, each forced by what `fm serve` actually accepts:
+///
+/// - The model is pinned rather than mapped. `fm serve` serves exactly one id and rejects the rest
+///   with HTTP 400, so honouring a caller's model would produce a request the server refuses.
+/// - Effort is dropped. The on-device model has no reasoning-effort control, so a `--variant` would
+///   advertise a knob that does not exist. The catalog lists no efforts for this agent to match.
+/// - The provider is declared inline through `OPENCODE_CONFIG_CONTENT`, because OpenCode ships no
+///   Apple provider to point a base URL at.
+///
+/// The server itself is not started here, for the same reason no other provider starts one: spec
+/// building is synchronous, runs on paths that only want the binary name, and must not have side
+/// effects. `fm serve` is an ambient prerequisite, reported by the `Apple` health check.
+fn build_apple_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
+    let base_url = apple_base_url();
+
+    let mut modified = config.clone();
+    modified.model = Some(APPLE_MODEL_ID.to_string());
+    modified.effort = None;
+
+    let mut spec = build_opencode_spec(&modified);
+
+    // Selects the trimmed agent declared in the config above. Measured against `fm serve`, the
+    // default `build` agent spends about 6.9k of the 8k window describing its tools before the task
+    // is even read; `apple-fm` brings that to about 4.5k. Appended rather than inserted so it lands
+    // after `--model`, ahead of `extra_arguments`, where a caller could still override it.
+    let model_end = spec
+        .args
+        .iter()
+        .position(|a| a == "--model")
+        .map(|i| i + 2)
+        .unwrap_or(spec.args.len());
+    spec.args.splice(
+        model_end..model_end,
+        ["--agent".to_string(), APPLE_AGENT_NAME.to_string()],
+    );
+
+    // Merged into the delegate's document rather than written over it. `build_opencode_spec` puts
+    // the configured MCP servers in this same variable -- `opencode run` has no `--mcp-config`
+    // flag, so that is the only channel they have -- and a blanket insert here would silently drop
+    // every one of them, leaving the agent unable to call back into Tendril.
+    let mut document = match spec.environment.get("OPENCODE_CONFIG_CONTENT") {
+        Some(existing) => serde_json::from_str(existing).unwrap_or_else(|_| serde_json::json!({})),
+        None => serde_json::json!({}),
+    };
+    if let (Some(target), Some(apple)) = (
+        document.as_object_mut(),
+        apple_opencode_config(&base_url).as_object(),
+    ) {
+        for (key, value) in apple {
+            target.insert(key.clone(), value.clone());
+        }
+    }
+    spec.environment
+        .insert("OPENCODE_CONFIG_CONTENT".to_string(), document.to_string());
+    spec.environment
+        .insert("OPENAI_BASE_URL".to_string(), base_url);
+    spec.environment
+        .insert("OPENAI_API_KEY".to_string(), "local".to_string());
 
     spec
 }

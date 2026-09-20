@@ -28,7 +28,10 @@ use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
 use crate::agents::provider_models::{test_model_prompt, ModelValidation, ModelValidationStatus};
-use crate::agents::providers::{resolve_copilot_binary, resolve_opencode_binary};
+use crate::agents::providers::{
+    apple_base_url, resolve_copilot_binary, resolve_opencode_binary, APPLE_MODEL_ID,
+    APPLE_WIRE_MODEL_ID,
+};
 use crate::agents::resolution::normalize_agent_name;
 use crate::config::dirs_home;
 use crate::jobs::process_tree::{kill_tree, DEFAULT_KILL_GRACE};
@@ -349,6 +352,11 @@ fn probe_binary(agent: &str) -> (String, Vec<String>) {
     match agent {
         "copilot" => resolve_copilot_binary(),
         "opencode" => (resolve_opencode_binary(), vec![]),
+        // Apple is launched through OpenCode, but OpenCode is not what the operator is missing when
+        // this agent does not work. `fm` is the part that is distinctly Apple's, and resolving the
+        // delegate here would report "installed" on a machine with no `fm` at all -- the same
+        // mistake `health::doctor_probe_target` exists to avoid.
+        "apple" => ("fm".to_string(), vec![]),
         // Both proxy entries are driven through OpenCode in this build, where V1 had its own
         // `ivy-agent` CLI. There is no separate binary to find.
         agent if is_proxy_agent(agent) => (resolve_opencode_binary(), vec![]),
@@ -399,6 +407,7 @@ pub async fn check_install(agent: &str) -> AgentInstallStatus {
             binary_path: None,
             error: Some(match agent.as_str() {
                 "copilot" => "copilot (or gh) not found on PATH".to_string(),
+                "apple" => "fm not found on PATH (Apple Foundation Models CLI)".to_string(),
                 agent if is_proxy_agent(agent) => "opencode not found".to_string(),
                 other => format!("{other} not found on PATH"),
             }),
@@ -417,15 +426,30 @@ pub async fn check_install(agent: &str) -> AgentInstallStatus {
 static SEMVER: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\d+\.\d+\.\d+").expect("semver pattern is valid"));
 
-/// `<binary> --version`, at V1's ten-second budget.
+/// The argument that makes an agent's binary report its presence.
+///
+/// Almost every CLI answers `--version`. `fm` does not: it exits 64 with "Unknown option
+/// '--version'" and prints nothing on stdout, so probing it the conventional way reads a working
+/// install as absent. `available` is its own presence check -- it answers "System model available"
+/// and exits 0 -- and is the same argument `health::AGENT_PREREQUISITES` probes `fm` with, so
+/// doctor and this probe agree about what installed means.
+fn version_arg_for(agent: &str) -> &'static str {
+    match agent {
+        "apple" => "available",
+        _ => "--version",
+    }
+}
+
+/// `<binary> <version arg>`, at V1's ten-second budget.
 ///
 /// Claude, Codex and Copilot pull a `\d+\.\d+\.\d+` out of the line and fall back to the whole
 /// trimmed stdout; Gemini, OpenCode, Antigravity and the proxies report the whole line as-is,
-/// because their CLIs print a version string a semver pattern would truncate.
+/// because their CLIs print a version string a semver pattern would truncate. Apple reports the
+/// availability line, which is not a version at all but is the only thing `fm` will tell us.
 async fn probe_agent_version(agent: &str, binary: &str, prefix: &[String]) -> Option<String> {
     let out = run_probe(
         binary,
-        &argv(prefix, &["--version"]),
+        &argv(prefix, &[version_arg_for(agent)]),
         Duration::from_secs(10),
     )
     .await;
@@ -458,6 +482,7 @@ pub async fn check_auth(agent: &str, creds: &ProbeCredentials) -> AgentAuthResul
         "copilot" => copilot_auth().await,
         "antigravity" | "agy" => antigravity_auth().await,
         "opencode" => opencode_auth().await,
+        "apple" => apple_auth().await,
         other if is_proxy_agent(other) => proxy_auth(creds).await,
         other => AgentAuthResult::failed(
             AuthStatus::Unknown,
@@ -802,6 +827,81 @@ fn parse_opencode_auth_list(stdout: &str) -> Option<&'static str> {
     None
 }
 
+/// Apple's on-device model holds no credential at all, so the only question worth asking is whether
+/// `fm serve` is actually listening.
+///
+/// There is nothing here to be signed in to: `fm serve` binds loopback, takes the literal string
+/// `local` as its key and authenticates nobody. The failure this agent really has is the one no
+/// other agent has -- the CLI is installed and the server is not running -- and reporting that as an
+/// auth result is what puts it in front of the operator, because `test_agent_handler` runs this
+/// immediately after the install probe passes and before any model probe.
+///
+/// `GET /v1/models` rather than a prompt: it is the one endpoint that answers instantly, and a real
+/// prompt against a cold on-device model can take seconds to say nothing more than this does.
+async fn apple_auth() -> AgentAuthResult {
+    let base_url = apple_base_url();
+    let url = format!("{}/models", base_url.trim_end_matches('/'));
+
+    let http = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap_or_default();
+
+    match http.get(&url).send().await {
+        Ok(response) if response.status().is_success() => AgentAuthResult::authenticated()
+            .with_method("on-device")
+            .with_provider(Some("apple".to_string())),
+        Ok(response) => AgentAuthResult::failed(
+            AuthStatus::CheckFailed,
+            format!("{} answered HTTP {}", url, response.status().as_u16()),
+            Some(APPLE_SERVE_HINT),
+        ),
+        Err(_) => AgentAuthResult::failed(
+            AuthStatus::NotAuthenticated,
+            format!("No Apple Foundation Models server is listening at {base_url}"),
+            Some(APPLE_SERVE_HINT),
+        ),
+    }
+}
+
+/// What to do about an `fm serve` that is not answering. One string, because the auth probe and the
+/// model probe reach the same wall and an operator should be told the same thing by both.
+const APPLE_SERVE_HINT: &str = "Start the on-device server with 'fm serve'.";
+
+/// Whether `fm serve` will serve this model.
+///
+/// The id sent is pinned, and deliberately not the one the catalog offers: the catalog and the
+/// launch both spell it `apple/system`, because OpenCode addresses models as `provider/model`, but
+/// that is OpenCode's addressing and not the server's. `fm serve` answers `GET /v1/models` with the
+/// bare id `system` and rejects `apple/system` with `HTTP 400 Unknown model 'apple/system'` -- so
+/// forwarding the catalog's own id here would report the one model this agent can run as invalid.
+/// [`crate::agents::providers::APPLE_MODEL_ID`] is the OpenCode-facing string; `APPLE_WIRE_MODEL_ID`
+/// is what goes on the wire.
+async fn apple_model(model: &str) -> ModelValidation {
+    // Any other id is a model this agent cannot launch: `build_apple_spec` overwrites the caller's
+    // model with the pinned one, so validating what was asked for would answer a question about a
+    // request that is never sent.
+    let requested = explicit_model(model).unwrap_or(APPLE_MODEL_ID);
+    if requested != APPLE_MODEL_ID {
+        return validation(
+            ModelValidationStatus::InvalidModel,
+            model,
+            Some(format!(
+                "Apple Foundation Models serves only {APPLE_MODEL_ID}; '{requested}' is not available."
+            )),
+        );
+    }
+
+    let result = test_model_prompt(&apple_base_url(), "local", APPLE_WIRE_MODEL_ID).await;
+    // Reported under the id the operator picked rather than the wire id, so the row in the Test
+    // Agent dialog matches the row in the picker.
+    ModelValidation {
+        status: result.status,
+        model: model.to_string(),
+        error_message: result.error_message,
+    }
+}
+
 /// V1 `OpenAiProxyHealthCheck.CheckAuthAsync`, over onboarding's tester rather than a CLI.
 ///
 /// This is the reuse the Coding Agent pane's "Fetch models" button already relies on: a proxy has no
@@ -877,6 +977,7 @@ pub async fn validate_model(agent: &str, model: &str, creds: &ProbeCredentials) 
         "copilot" => copilot_model(model).await,
         "antigravity" | "agy" => antigravity_model(model).await,
         "opencode" => opencode_model(model).await,
+        "apple" => apple_model(model).await,
         other if is_proxy_agent(other) => proxy_model(model, creds).await,
         other => validation(
             ModelValidationStatus::Unknown,
@@ -1200,6 +1301,57 @@ mod tests {
             stdout: stdout.to_string(),
             stderr: stderr.to_string(),
         }
+    }
+
+    /// The probe must ask `fm` a question it answers. `--version` exits 64 with nothing on stdout,
+    /// which reads as an uninstalled CLI, so a machine with a working Apple install would be told
+    /// its install is broken.
+    #[test]
+    fn apple_is_probed_with_the_argument_fm_actually_answers() {
+        assert_eq!(version_arg_for("apple"), "available");
+        assert_eq!(version_arg_for("claude"), "--version");
+    }
+
+    /// Apple's prerequisite is `fm`, not the OpenCode it is launched through. Resolving the
+    /// delegate would report a healthy install on a machine with no `fm` at all -- the same
+    /// confusion `health::doctor_probe_target` exists to prevent, and this is the other half of it.
+    #[test]
+    fn apples_probe_binary_is_fm_not_the_cli_it_delegates_to() {
+        let (binary, prefix) = probe_binary("apple");
+        assert_eq!(binary, "fm");
+        assert!(prefix.is_empty());
+        assert_ne!(binary, resolve_opencode_binary());
+    }
+
+    /// Two ids for one model: OpenCode is addressed as `apple/system`, `fm serve` as `system`.
+    /// Collapsing them in either direction breaks one of the two callers.
+    #[test]
+    fn the_wire_id_and_the_catalog_id_are_not_the_same_string() {
+        assert_eq!(APPLE_MODEL_ID, "apple/system");
+        assert_eq!(APPLE_WIRE_MODEL_ID, "system");
+        assert!(APPLE_MODEL_ID.ends_with(APPLE_WIRE_MODEL_ID));
+    }
+
+    /// A model the launch cannot send is refused without a request. `build_apple_spec` overwrites
+    /// the caller's model with the pinned one, so probing what was asked for would answer a
+    /// question about a request that never goes out -- and it is refused locally, so this needs no
+    /// server and runs in CI.
+    #[tokio::test]
+    async fn a_model_apple_cannot_launch_is_refused_without_asking_the_server() {
+        let result = apple_model("gpt-5.6-sol").await;
+        assert_eq!(result.status, ModelValidationStatus::InvalidModel);
+        assert_eq!(
+            result.model, "gpt-5.6-sol",
+            "reported under the id asked for"
+        );
+        assert!(
+            result
+                .error_message
+                .as_deref()
+                .unwrap_or_default()
+                .contains(APPLE_MODEL_ID),
+            "the message should name the one model that does work: {result:?}"
+        );
     }
 
     #[test]

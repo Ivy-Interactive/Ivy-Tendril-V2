@@ -605,6 +605,26 @@ pub static SPECS: &[ModelSpec] = &[
         cache_read_per_million: 0.0,
         cache_write_per_million: 0.0,
     },
+    // Apple
+    //
+    // Served by `fm serve` from the on-device Foundation Model. It runs locally and bills nothing,
+    // so every rate is zero: this row exists so cost reporting says free rather than falling back
+    // to Sonnet's rates, which is what an unknown id gets. The window is measured, not published.
+    //
+    // The id carries its provider prefix, unlike every other row. It has to: this is the one row
+    // whose model reaches the wire through OpenCode, which addresses models as `provider/model`,
+    // and `providers::APPLE_MODEL_ID` pins exactly this string. Naming the row anything else would
+    // put a second id in circulation and price the launched one at the unknown-model fallback.
+    ModelSpec {
+        model_id: Cow::Borrowed("apple/system"),
+        display_name: Cow::Borrowed("Apple On-Device Foundation"),
+        context_window: 8_192,
+        max_output_tokens: 1_024,
+        input_per_million: 0.0,
+        output_per_million: 0.0,
+        cache_read_per_million: 0.0,
+        cache_write_per_million: 0.0,
+    },
 ];
 
 static DYNAMIC_SPECS: OnceLock<RwLock<Vec<ModelSpec>>> = OnceLock::new();

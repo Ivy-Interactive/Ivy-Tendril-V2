@@ -2130,6 +2130,34 @@ fn env_json_document(
     serde_json::to_string_pretty(&doc).unwrap_or_else(|_| "{}".to_string())
 }
 
+/// `tendril plan check-wireframes <id>` -- the leak guard, on demand.
+///
+/// The same check the execution gate, the PR launch and the completion guard run, so a developer
+/// can see exactly what is blocking a plan without having to trigger one of them.
+///
+/// **Exits the process with status 1 when it finds anything**, rather than returning an error. A
+/// hook or a script gates on the exit code, and an `Err` here would be printed as a Tendril failure
+/// - which this is not. It is a report with a verdict. Returning `Ok` means the plan is clean.
+fn handle_check_wireframes(id: &str, tendril_home: &std::path::Path) -> anyhow::Result<()> {
+    let plans_dir = tendril_core::config::get_plans_dir(tendril_home);
+    let plan_folder = resolve_plan_folder(id, &plans_dir)?;
+
+    let leaks = tendril_core::wireframes::plan_guard::check_and_report(&plan_folder, None);
+    if leaks.is_empty() {
+        println!("No wireframe code in {}'s changes.", plan_folder.display());
+        return Ok(());
+    }
+
+    print!("{}", tendril_core::wireframes::leak_guard::describe(&leaks));
+    println!();
+    println!(
+        "Report written to {}",
+        tendril_core::wireframes::leak_guard::report_path(&plan_folder).display()
+    );
+    // A non-zero exit so a script or a hook can gate on it.
+    std::process::exit(1);
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2228,32 +2256,4 @@ mod tests {
 
         let _ = std::fs::remove_dir_all(&root);
     }
-}
-
-/// `tendril plan check-wireframes <id>` -- the leak guard, on demand.
-///
-/// The same check the execution gate, the PR launch and the completion guard run, so a developer
-/// can see exactly what is blocking a plan without having to trigger one of them.
-///
-/// **Exits the process with status 1 when it finds anything**, rather than returning an error. A
-/// hook or a script gates on the exit code, and an `Err` here would be printed as a Tendril failure
-/// - which this is not. It is a report with a verdict. Returning `Ok` means the plan is clean.
-fn handle_check_wireframes(id: &str, tendril_home: &std::path::Path) -> anyhow::Result<()> {
-    let plans_dir = tendril_core::config::get_plans_dir(tendril_home);
-    let plan_folder = resolve_plan_folder(id, &plans_dir)?;
-
-    let leaks = tendril_core::wireframes::plan_guard::check_and_report(&plan_folder, None);
-    if leaks.is_empty() {
-        println!("No wireframe code in {}'s changes.", plan_folder.display());
-        return Ok(());
-    }
-
-    print!("{}", tendril_core::wireframes::leak_guard::describe(&leaks));
-    println!();
-    println!(
-        "Report written to {}",
-        tendril_core::wireframes::leak_guard::report_path(&plan_folder).display()
-    );
-    // A non-zero exit so a script or a hook can gate on it.
-    std::process::exit(1);
 }

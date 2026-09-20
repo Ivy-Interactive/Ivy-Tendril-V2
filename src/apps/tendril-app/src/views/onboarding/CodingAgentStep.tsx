@@ -15,6 +15,11 @@ export const ONBOARDING_AGENTS: { id: string; label: string; checkName: string }
   { id: "gemini", label: "Gemini", checkName: "Gemini" },
   { id: "antigravity", label: "Antigravity", checkName: "Antigravity" },
   { id: "opencode", label: "OpenCode", checkName: "OpenCode" },
+  // No V1 counterpart: Apple's on-device models postdate it. `checkName` is the label
+  // `health::AGENT_PREREQUISITES` reports, which probes `fm` rather than the OpenCode this agent is
+  // launched through -- so the card reads "not installed" on a machine without `fm`, which is the
+  // thing the operator would actually have to install.
+  { id: "apple", label: "Apple", checkName: "Apple" },
 ];
 
 /** Registry rows that belong to an agent card rather than to the prerequisite list below it. */

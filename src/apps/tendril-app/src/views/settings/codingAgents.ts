@@ -34,6 +34,9 @@ export const CODING_AGENTS: { id: string; label: string; icon: string }[] = [
   { id: "gemini", label: "Gemini", icon: "Gemini" },
   { id: "antigravity", label: "Antigravity", icon: "Antigravity" },
   { id: "opencode", label: "OpenCode", icon: "OpenCode" },
+  // Not one of `CodingAgentSetupView.Agents`: Apple's on-device models postdate V1, and this row is
+  // the catalog's `apple` agent rather than a port of anything.
+  { id: "apple", label: "Apple", icon: "Apple" },
 ];
 
 /**
@@ -385,8 +388,12 @@ export function withByoCredentials(
 
 /* ------------------------------------------------------------------ tier defaults */
 
-/** `agent_capabilities`: Gemini's CLI has no effort argument, so an effort field there is inert. */
-export const supportsEffort = (agent: string): boolean => normalizeAgentName(agent) !== "gemini";
+/**
+ * `agent_capabilities`: Gemini's CLI has no effort argument and Apple's on-device model has no
+ * reasoning-effort control, so an effort field on either is inert.
+ */
+export const supportsEffort = (agent: string): boolean =>
+  !["gemini", "apple"].includes(normalizeAgentName(agent));
 
 const tiers = (deep: TierValues, balanced: TierValues, quick: TierValues): Profiles => ({
   deep,
@@ -476,6 +483,10 @@ export function tierDefaults(agent: string, baseUrl = ""): Profiles {
       );
     case "ivy":
       return IVY_TIERS;
+    // `fm serve` serves one model and takes no effort argument, so every tier is the same run, and
+    // the fields show `default` rather than a model this agent would ignore.
+    case "apple":
+      return tiers({ model: "", effort: "" }, { model: "", effort: "" }, { model: "", effort: "" });
     case "openaiproxy":
     case "proxy":
       return openAiProxyTiers(baseUrl);

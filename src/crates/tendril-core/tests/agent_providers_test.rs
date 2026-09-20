@@ -139,6 +139,8 @@ fn test_all_agent_providers_spec_generation() {
         ("ivy", "opencode", true),
         ("openaiproxy", "opencode", true),
         ("proxy", "opencode", true),
+        // Apple is the same bundled OpenCode, pointed at `fm serve`.
+        ("apple", "opencode", true),
     ];
 
     for (provider_name, expected_cmd_prefix, expect_stdin) in providers {
@@ -185,9 +187,30 @@ fn test_all_agent_providers_spec_generation() {
 /// cleans `temp_files` up, and a probe never runs one, so this had been leaking a file per call.
 #[test]
 fn agent_command_leaves_no_temp_files_behind() {
-    let temp_dir = std::env::temp_dir();
+    // Scoped to this test's own directory rather than the process-wide one. `std::env::temp_dir`
+    // is shared by every test binary in the workspace, and several of them build antigravity specs
+    // without cleaning `temp_files` up, so counting files there measured the whole suite's
+    // behaviour instead of this call's: the assertion flipped depending on which siblings happened
+    // to be running, failing about half the time under the default test-threads. `TMPDIR` is what
+    // `temp_dir` reads on unix, and `TMP` on windows, so pointing them at a fresh directory makes
+    // the count observe only the calls below.
+    let scratch = std::env::temp_dir().join(format!(
+        "tendril-agent-command-probe-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).expect("the probe needs a scratch directory");
+
+    // SAFETY: `set_var` is unsound only when another thread reads the environment concurrently.
+    // Rust runs each test binary in its own process and this is the only test here that touches
+    // these variables, so no sibling observes the change.
+    unsafe {
+        std::env::set_var("TMPDIR", &scratch);
+        std::env::set_var("TMP", &scratch);
+    }
+
     let count_prompts = || {
-        std::fs::read_dir(&temp_dir)
+        std::fs::read_dir(&scratch)
             .map(|entries| {
                 entries
                     .filter_map(|entry| entry.ok())
@@ -211,16 +234,23 @@ fn agent_command_leaves_no_temp_files_behind() {
         "gemini",
         "opencode",
         "copilot",
+        // The same bundled OpenCode as the row above, but reached through its own spec builder, so
+        // a temp file leaked there would be missed by every other id in this list.
+        "apple",
     ] {
         assert!(
             !agent_command(provider).is_empty(),
             "{provider} resolved to an empty command"
         );
     }
+    let after = count_prompts();
+
+    let _ = std::fs::remove_dir_all(&scratch);
+
     assert_eq!(
         before,
-        count_prompts(),
+        after,
         "agent_command left a temp prompt file in {}",
-        temp_dir.display()
+        scratch.display()
     );
 }
