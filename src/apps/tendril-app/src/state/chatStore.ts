@@ -27,28 +27,25 @@ import {
   patchQuestionsMarkdown,
 } from "../utils/questionMarkdown";
 
-export type { ChatState, InProgressQuestionAnswers } from "../types/chat";
+import {
+  COMPOSER_DRAFTS_STORAGE_KEY,
+  DRAFT_OWNERS_STORAGE_KEY,
+  IN_PROGRESS_ANSWERS_STORAGE_KEY,
+  PINNED_SESSIONS_STORAGE_KEY,
+  loadStoredComposerDrafts,
+  loadStoredDraftOwners,
+  loadStoredInProgressAnswers,
+  loadStoredPinnedSessions,
+  saveStoredComposerDrafts,
+  saveStoredDraftOwners,
+  saveStoredInProgressAnswers,
+  saveStoredPinnedSessions,
+} from "./chatStore/storage";
+import { sessionBelongsToPlan, type ChatStorePlanScope } from "./chatStore/planScope";
 
-const IN_PROGRESS_ANSWERS_STORAGE_KEY = "tendril:chat:in_progress_answers";
-const DRAFT_OWNERS_STORAGE_KEY = "tendril:chat:draft_session_owners";
-/**
- * Unsent composer text, keyed by session id.
- *
- * V1 has no counterpart to port, and the reason is instructive: `ChatWidget` holds its prompt in a
- * plain `useState` (`const [promptText, setPromptText] = useState("")`) and never persists it,
- * because the Ivy shell keeps the widget mounted while you move around the app. V2's Chat page is
- * a `React.lazy` route that `App.renderActiveView` swaps out, so leaving the page unmounts the
- * composer and takes the half-typed prompt with it. The nearest thing V1 *does* have is the
- * per-message question-draft store (`questionDraftsRef` in `ChatWidget.tsx`, contract in
- * `PlanMarkdown/questionsContext.ts`), which exists for exactly this reason - "a drafted but
- * unsubmitted answer survives session switches" - so this follows its shape: a map keyed by what
- * the draft belongs to, never one global slot.
- *
- * Keyed per session and not globally on purpose. One shared draft would put a prompt written for
- * one conversation into the composer of another, which is a worse bug than the one being fixed.
- */
-const COMPOSER_DRAFTS_STORAGE_KEY = "tendril:chat:composer_drafts";
-export const PINNED_SESSIONS_STORAGE_KEY = "tendril:chat:pinned_sessions";
+export type { ChatState, InProgressQuestionAnswers } from "../types/chat";
+export { PINNED_SESSIONS_STORAGE_KEY } from "./chatStore/storage";
+export { sessionBelongsToPlan, type ChatStorePlanScope } from "./chatStore/planScope";
 
 /** The agent every chat runs with until the catalog says otherwise. */
 export const FALLBACK_AGENT_ID = "claude";
@@ -81,231 +78,6 @@ export function buildPromptWithAttachments(
     lines.push(`- ${attachment.path}`);
   }
   return lines.join("\n").trimEnd();
-}
-
-function loadStoredPinnedSessions(): Record<string, string> {
-  try {
-    const storage =
-      typeof localStorage !== "undefined"
-        ? localStorage
-        : typeof window !== "undefined"
-          ? window.localStorage
-          : null;
-    if (storage) {
-      const raw = storage.getItem(PINNED_SESSIONS_STORAGE_KEY);
-      if (raw) {
-        return JSON.parse(raw);
-      }
-    }
-  } catch {
-    // Fallback to empty map if storage is restricted or throws
-  }
-  return {};
-}
-
-function saveStoredPinnedSessions(data: Record<string, string>): void {
-  try {
-    const storage =
-      typeof localStorage !== "undefined"
-        ? localStorage
-        : typeof window !== "undefined"
-          ? window.localStorage
-          : null;
-    if (storage) {
-      if (Object.keys(data).length === 0) {
-        storage.removeItem(PINNED_SESSIONS_STORAGE_KEY);
-      } else {
-        storage.setItem(PINNED_SESSIONS_STORAGE_KEY, JSON.stringify(data));
-      }
-    }
-  } catch {
-    // Ignore storage quota or access errors
-  }
-}
-
-function loadStoredInProgressAnswers(): Record<string, InProgressQuestionAnswers> {
-  try {
-    const storage =
-      typeof localStorage !== "undefined"
-        ? localStorage
-        : typeof window !== "undefined"
-          ? window.localStorage
-          : null;
-    if (storage) {
-      const raw = storage.getItem(IN_PROGRESS_ANSWERS_STORAGE_KEY);
-      if (raw) {
-        return JSON.parse(raw);
-      }
-    }
-
-    // Backward compatibility: check sessionStorage for legacy draft answers
-    const legacyStorage =
-      typeof sessionStorage !== "undefined"
-        ? sessionStorage
-        : typeof window !== "undefined"
-          ? window.sessionStorage
-          : null;
-    if (legacyStorage) {
-      const legacyRaw = legacyStorage.getItem(IN_PROGRESS_ANSWERS_STORAGE_KEY);
-      if (legacyRaw) {
-        const parsed = JSON.parse(legacyRaw);
-        if (storage) {
-          storage.setItem(IN_PROGRESS_ANSWERS_STORAGE_KEY, legacyRaw);
-        }
-        legacyStorage.removeItem(IN_PROGRESS_ANSWERS_STORAGE_KEY);
-        return parsed;
-      }
-    }
-  } catch {
-    // Fallback to in-memory if storage is restricted or throws
-  }
-  return {};
-}
-
-function saveStoredInProgressAnswers(data: Record<string, InProgressQuestionAnswers>): void {
-  try {
-    const storage =
-      typeof localStorage !== "undefined"
-        ? localStorage
-        : typeof window !== "undefined"
-          ? window.localStorage
-          : null;
-    if (storage) {
-      if (Object.keys(data).length === 0) {
-        storage.removeItem(IN_PROGRESS_ANSWERS_STORAGE_KEY);
-      } else {
-        storage.setItem(IN_PROGRESS_ANSWERS_STORAGE_KEY, JSON.stringify(data));
-      }
-    }
-  } catch {
-    // Ignore storage quota or access errors
-  }
-}
-
-/**
- * The unsent composer text of every session that has some, as of the last write by any window.
- *
- * Same defensive shape as the other stored maps here: storage can be absent (a non-browser test
- * environment), restricted (private browsing), or hold something another version wrote, and none of
- * those is a reason to fail to open a chat.
- */
-function loadStoredComposerDrafts(): Record<string, string> {
-  try {
-    const storage =
-      typeof localStorage !== "undefined"
-        ? localStorage
-        : typeof window !== "undefined"
-          ? window.localStorage
-          : null;
-    if (storage) {
-      const raw = storage.getItem(COMPOSER_DRAFTS_STORAGE_KEY);
-      if (raw) {
-        return JSON.parse(raw);
-      }
-    }
-  } catch {
-    // Fallback to in-memory if storage is restricted or throws
-  }
-  return {};
-}
-
-function saveStoredComposerDrafts(data: Record<string, string>): void {
-  try {
-    const storage =
-      typeof localStorage !== "undefined"
-        ? localStorage
-        : typeof window !== "undefined"
-          ? window.localStorage
-          : null;
-    if (storage) {
-      if (Object.keys(data).length === 0) {
-        storage.removeItem(COMPOSER_DRAFTS_STORAGE_KEY);
-      } else {
-        storage.setItem(COMPOSER_DRAFTS_STORAGE_KEY, JSON.stringify(data));
-      }
-    }
-  } catch {
-    // Ignore storage quota or access errors
-  }
-}
-
-function loadStoredDraftOwners(): Record<string, string> {
-  try {
-    const storage =
-      typeof localStorage !== "undefined"
-        ? localStorage
-        : typeof window !== "undefined"
-          ? window.localStorage
-          : null;
-    if (storage) {
-      const raw = storage.getItem(DRAFT_OWNERS_STORAGE_KEY);
-      if (raw) {
-        return JSON.parse(raw);
-      }
-    }
-  } catch {
-    // Fallback to in-memory if storage is restricted or throws
-  }
-  return {};
-}
-
-function saveStoredDraftOwners(data: Record<string, string>): void {
-  try {
-    const storage =
-      typeof localStorage !== "undefined"
-        ? localStorage
-        : typeof window !== "undefined"
-          ? window.localStorage
-          : null;
-    if (storage) {
-      if (Object.keys(data).length === 0) {
-        storage.removeItem(DRAFT_OWNERS_STORAGE_KEY);
-      } else {
-        storage.setItem(DRAFT_OWNERS_STORAGE_KEY, JSON.stringify(data));
-      }
-    }
-  } catch {
-    // Ignore storage quota or access errors
-  }
-}
-
-/**
- * The plan a store instance is scoped to, so the chat beside a plan follows that plan's own
- * conversation and nothing else.
- *
- * This is V1's arrangement, not an invention: `PlanChatView` keeps its **own** `activeSessionId`
- * state over the one shared `IChatHistoryService`, and hands `Chat.ContentView` a `sessionDtos` list
- * of zero or one session — whatever `PlanChatSessions.FindForPlan` resolves. A second `ChatStore`
- * carrying a scope is that second `activeSessionId`.
- */
-export interface ChatStorePlanScope {
-  // The store keeps the object it is handed and reads it live rather than copying the fields out, so
-  // a caller may refine it in place. The review page needs that: it renders the panel from a queue
-  // row and only learns the plan's folder when the detail record lands, and the folder is what a new
-  // session records as its owner.
-
-  /** The plan's id as its folder records it — `00021`. */
-  planId: string;
-  /** `00021-BuildDesktopOperator`, which is the whole of `PlanChatSessions.BelongsTo`. */
-  folderName?: string;
-  /** `#21 Build Desktop Operator`: the title `PlanChatSessions.CreateForPlan` gives a new session. */
-  sessionTitle: string;
-}
-
-/**
- * `PlanChatSessions.BelongsTo`: "A session belongs to exactly one plan, recorded on the session
- * itself." Matched case-insensitively, as V1's `StringComparison.OrdinalIgnoreCase` does.
- *
- * The id-prefix arm is V2's own. V1 can compare `plan.FolderName` directly because a `PlanFile`
- * always has one; a `PlanDetail` fetched without `folderPath` does not, and it still knows its
- * number, so `<id>-<slug>` is accepted as the second key rather than losing the conversation.
- */
-export function sessionBelongsToPlan(session: ChatSession, scope: ChatStorePlanScope): boolean {
-  const recorded = session.planFolderName?.toLowerCase();
-  if (!recorded) return false;
-  const folder = scope.folderName?.toLowerCase();
-  if (folder && recorded === folder) return true;
-  return recorded.startsWith(`${scope.planId.toLowerCase()}-`);
 }
 
 /**

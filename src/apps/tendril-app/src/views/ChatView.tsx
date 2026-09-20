@@ -1,28 +1,17 @@
 import React, { useState, useEffect, useLayoutEffect, useMemo, useRef, useCallback } from "react";
-import { open } from "@tauri-apps/plugin-dialog";
 import { ChatInput, ChatMessageList } from "@ivy-interactive/components/renderers";
 import {
   VoiceRecorder,
   clipboardFiles,
   type VoiceStatus,
 } from "@ivy-interactive/components/tendril";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  IconButton,
-  Input,
-  TooltipScope,
-} from "@ivy-interactive/components/ui";
-import { bridge } from "../api/bridge";
-import { usePublishSidebarList, type ShellSidebarList } from "../state/sidebarListStore";
+import { IconButton, TooltipScope } from "@ivy-interactive/components/ui";
+import { usePublishSidebarList } from "../state/sidebarListStore";
 import { chatStore, type ChatState, type ChatStore } from "../state/chatStore";
 import { chatLauncher } from "../state/chatLauncher";
 import type { ChatMode } from "../state/appearance";
 import { jobsStore } from "../state/jobsStore";
 import { plansStore } from "../state/plansStore";
-import type { ChatSession, ChatAttachment, ChatQueuedItem } from "../types/chat";
 import type { Job, PlanSummary } from "../types/api";
 import { PIN_TOP_PADDING, useChatAutoScroll } from "../hooks/useChatAutoScroll";
 import {
@@ -36,27 +25,42 @@ import { ChatHeader, JobsMenu } from "./ChatHeader";
 import { AgentPicker } from "../components/chat/AgentPicker";
 import { ImageLightbox, type LightboxImage } from "../components/chat/ImageLightbox";
 import { ComposerAttachment } from "../components/chat/ComposerAttachment";
-import { useWebviewFileDrop } from "../hooks/useWebviewFileDrop";
 import { resolveJobState } from "../utils/jobStatus";
 import {
   ArrowDown,
-  ArrowRight,
-  Check,
-  ChevronDown,
   HelpCircle,
   ListPlus,
   Loader2,
   Mic,
   Paperclip,
-  Pencil,
   SendHorizontal,
   Square,
-  Trash2,
   Upload,
   X,
 } from "lucide-react";
 import { usePendingChatQuestions } from "../hooks/usePendingChatQuestions";
 import { useWireframeBaseUrl } from "../api/proxyOrigin";
+import { ChatEmptyState } from "./chat/ChatEmptyState";
+import { ChatSearchDialog } from "./chat/ChatSearchDialog";
+import { ChatQueuedMessages } from "./chat/QueuedMessages";
+import { needsMultipleLines } from "./chat/composerMetrics";
+import { buildChatSamplePrompts, buildGreeting, type SamplePrompt } from "./chat/samplePrompts";
+import { buildChatSidebarList, displayTitle } from "./chat/sidebarList";
+import { useChatAttachments } from "./chat/useChatAttachments";
+
+/**
+ * The conversation's own pieces, split out of this file and re-exported so every caller keeps the
+ * one import it already had: `PlanChatPanel` takes the plan prompts, `ConfigEditorView` the chip
+ * type, and `chat-composer-multiline.test.ts` the measurement.
+ */
+export {
+  buildChatSamplePrompts,
+  buildPlanSamplePrompts,
+  type SamplePrompt,
+  type SamplePromptPlan,
+} from "./chat/samplePrompts";
+export { buildChatSidebarList, type ChatSidebarListActions } from "./chat/sidebarList";
+export { needsMultipleLines } from "./chat/composerMetrics";
 
 interface ChatViewProps {
   /** Opens the plan a system event or a spawned job refers to. */
@@ -90,12 +94,6 @@ interface ChatViewProps {
   draftPrompt?: { text: string; token: number };
 }
 
-/** One chip of the empty state: the label is the button, the prompt is what it drafts. */
-export interface SamplePrompt {
-  label: string;
-  prompt: string;
-}
-
 /** `ChatSearchDialog.MaxResults`: the search dialog never lists more than fifteen chats. */
 const MAX_CHAT_SEARCH_RESULTS = 15;
 
@@ -105,320 +103,6 @@ const TRANSCRIPTION_URL = "wss://tendril-api.ivy.app/transcribe/ws";
 /** The composer's headline prompt, and the placeholder it writes under. */
 const COMPOSER_PLACEHOLDER = "Ask Tendril anything...";
 const EMPTY_STATE_HEADLINE = "What Are We Producing Today?";
-
-/** A single line of prompt text at the composer's line height, in CSS pixels. */
-const SINGLE_LINE_HEIGHT = 32;
-
-/**
- * The static tail of the sample prompts, in the order and with the wording of
- * `SamplePrompts.ForChat`'s fallbacks: the label is the button, the prompt is what it drafts.
- */
-const SAMPLE_PROMPTS = [
-  { label: "Add a new project", prompt: "Add a new project to my tendril" },
-  { label: "Edit verifications", prompt: "Edit verifications for my projects" },
-  { label: "Create a team vault", prompt: "Create a shared team vault" },
-  {
-    label: "What should I work on next?",
-    prompt:
-      "Look at my draft plans across all projects and recommend which two to execute next, with reasons.",
-  },
-  {
-    label: "What shipped this week?",
-    prompt:
-      "Summarize the plans that reached Completed in the last seven days, grouped by project.",
-  },
-];
-
-/** `SamplePrompts.Max`: the empty state never offers more than five. */
-const MAX_SAMPLE_PROMPTS = 5;
-
-/** `#21`, not `#00021`, as `PlansView.formatPlanId` explains; inlined to keep the chunks apart. */
-const shortPlanId = (id: string): string => id.replace(/^0+(?=\d)/, "") || id;
-
-/**
- * Whether an attachment's path is a real path on the machine, POSIX or Windows.
- *
- * A `File` from an `<input>` or a paste reports only its base name, and staging a base name would ask
- * the app to read a file relative to a working directory nothing here can reason about.
- */
-const isAbsolutePath = (path: string): boolean => /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(path);
-
-const newestByUpdated = (plans: PlanSummary[]): PlanSummary | undefined =>
-  [...plans].sort(
-    (a, b) => new Date(b.updated ?? 0).getTime() - new Date(a.updated ?? 0).getTime(),
-  )[0];
-
-/**
- * Port of `SamplePrompts.ForChat`. The chips are what this tendril happens to need right now, with
- * the five generic prompts as the tail that fills whatever the rules did not: plans waiting for
- * review, the newest failure, the newest block, and jobs in flight, capped at five.
- *
- * V1's fifth rule - the newest plan with `PartialDelivery` - has no counterpart here: `PlanSummary`
- * carries no partial-delivery flag, so that chip is absent rather than guessed at.
- */
-export function buildChatSamplePrompts(plans: PlanSummary[], jobs: Job[]): SamplePrompt[] {
-  const prompts: SamplePrompt[] = [];
-  const labels = new Set<string>();
-  const add = (label: string, prompt: string) => {
-    if (labels.has(label)) return;
-    labels.add(label);
-    prompts.push({ label, prompt });
-  };
-
-  const reviewPlans = plans.filter((p) => p.state === "Review");
-  if (reviewPlans.length > 0) {
-    const planList = reviewPlans.map((p) => `#${shortPlanId(p.id)} ${p.title}`).join(", ");
-    add(
-      `Review the ${reviewPlans.length} plans waiting`,
-      `${reviewPlans.length} plans are waiting for review: ${planList}. Summarize what each delivers and tell me which to merge first.`,
-    );
-  }
-
-  const failedPlan = newestByUpdated(plans.filter((p) => p.state === "Failed"));
-  if (failedPlan) {
-    add(
-      `Why did #${shortPlanId(failedPlan.id)} fail?`,
-      `Plan #${shortPlanId(failedPlan.id)} ${failedPlan.title} failed. Read its logs and verification reports and explain what went wrong.`,
-    );
-  }
-
-  const blockedPlan = newestByUpdated(plans.filter((p) => p.state === "Blocked"));
-  if (blockedPlan) {
-    add(
-      `What is blocking #${shortPlanId(blockedPlan.id)}?`,
-      `Plan #${shortPlanId(blockedPlan.id)} ${blockedPlan.title} is blocked. List the plans it depends on and what each one still needs.`,
-    );
-  }
-
-  const runningJobs = jobs.filter(
-    (job) => job.status === "Running" || job.status === "Pending" || job.status === "Queued",
-  );
-  if (runningJobs.length > 0) {
-    add(
-      "What are my jobs doing?",
-      `${runningJobs.length} jobs are running. Summarize what each one is working on.`,
-    );
-  }
-
-  for (const fallback of SAMPLE_PROMPTS) {
-    add(fallback.label, fallback.prompt);
-  }
-
-  return prompts.slice(0, MAX_SAMPLE_PROMPTS);
-}
-
-/**
- * The plan a chip can be written about: whatever `SamplePrompts.ForPlan` reads off a `PlanFile`.
- * Both `PlanDetail` and `PlanSummary` satisfy it, which is what lets the plan page and the review
- * page share one panel.
- */
-export interface SamplePromptPlan {
-  state: string;
-  verifications?: { name: string; status: string }[];
-  prs?: string[];
-  dependsOn?: string[];
-}
-
-/**
- * Port of `SamplePrompts.ForPlan`, in V1's order — the list is append-only, so source order *is*
- * priority, and `labels.Add(label)` is what suppresses a duplicate. Capped at `SamplePrompts.Max`.
- *
- * The rules, in order: the first failed verification in list order, then the first PR, then the
- * dependencies of a Blocked plan, then a Draft plan's scope, then the two unconditional fallbacks.
- * At most one of Blocked and Draft can fire, so the cap can only ever drop the last fallback.
- *
- * V1's second rule — `plan.PartialDelivery` → "What is missing?" — has no counterpart here, for the
- * same reason `buildChatSamplePrompts` is missing its fifth: neither `PlanDetail` nor `PlanSummary`
- * carries a partial-delivery flag, so that chip is absent rather than guessed at.
- */
-export function buildPlanSamplePrompts(plan: SamplePromptPlan): SamplePrompt[] {
-  const prompts: SamplePrompt[] = [];
-  const labels = new Set<string>();
-  const add = (label: string, prompt: string) => {
-    if (labels.has(label)) return;
-    labels.add(label);
-    prompts.push({ label, prompt });
-  };
-
-  const failed = (plan.verifications ?? []).find((v) => v.status === "Fail");
-  if (failed) {
-    add(
-      `Why did ${failed.name} fail?`,
-      `The ${failed.name} verification failed for this plan. Read its report in Verification/${failed.name}.md and explain the failure and how to fix it.`,
-    );
-  }
-
-  const firstPr = (plan.prs ?? [])[0];
-  if (firstPr) {
-    add(
-      "Summarize the PR feedback",
-      `Read the review comments on ${firstPr} and list the changes they ask for.`,
-    );
-  }
-
-  if (plan.state === "Blocked") {
-    add(
-      "What is blocking this?",
-      `This plan is blocked on ${(plan.dependsOn ?? []).join(", ")}. Tell me what each dependency still needs.`,
-    );
-  }
-
-  if (plan.state === "Draft") {
-    add(
-      "Tighten the scope",
-      "Read the latest revision of this plan and point out anything out of scope or under specified.",
-    );
-  }
-
-  add(
-    "Explain the solution",
-    "Explain the Solution section of this plan in plain terms, and list every file it will touch.",
-  );
-  add(
-    "What could go wrong?",
-    "What are the riskiest parts of this plan, and what should I check in review?",
-  );
-
-  return prompts.slice(0, MAX_SAMPLE_PROMPTS);
-}
-
-/** The time-of-day greeting above the empty state's headline. */
-function buildGreeting(now: Date): string {
-  const hour = now.getHours();
-  const word =
-    hour >= 5 && hour < 12 ? "Morning" : hour >= 12 && hour < 17 ? "Afternoon" : "Evening";
-  return `Good ${word}!`;
-}
-
-/** The chat's own name, falling back to the label a chat carries before it is titled. */
-const displayTitle = (session: ChatSession | null | undefined): string =>
-  session && session.title.trim() ? session.title : "New Chat";
-
-/** The plan a session belongs to, shown as its row tag; null for a free-standing chat. */
-const planTag = (session: ChatSession): string | null =>
-  session.planFolderName ? `#${shortPlanId(session.planFolderName.split("-")[0])}` : null;
-
-/** The row actions the Chats list carries, so the shell can wire its row menu to them. */
-export interface ChatSidebarListActions {
-  onNew: () => void;
-  onSearch: () => void;
-  onSelect: (sessionId: string) => void;
-  onRename: (sessionId: string, title: string) => void;
-  onDelete: (sessionId: string) => void;
-  onTogglePin: (sessionId: string) => void;
-}
-
-/**
- * `ChatApp.BuildSidebarList`: the Chats list the shell sidebar shows while this app is open.
- *
- * Everything non-default here is V1's, and each flag has a reason:
- * - `collapsedMenu: true` folds the collapsed rail's list into one flyout button instead of the
- *   narrow id chips a plan list shows there - a chat has no id to chip.
- * - `searchLabel: "Search chats"` with its own `onSearch`, because an absent `onSearch` means the
- *   plan search dialog, "which is right for every plan list and wrong for anything else".
- * - `onNew` is the new-chat action, labelled "New chat".
- * - `onRename` / `onDelete` / `onTogglePin` are the row's own actions.
- *
- * A row's `state` is `ChatApp.BuildRowState`: "working" while its own turn is running, "completed"
- * when it finished while the user was reading a different chat. V1 also sets `Icon: "Terminal"` on a
- * terminal session; V2's `ChatSession` has no terminal kind, so no row ever carries that glyph.
- */
-export const buildChatSidebarList = (
-  sessions: ChatSession[],
-  selectedId: string | null,
-  rowState: (sessionId: string) => "working" | "completed" | null,
-  actions: ChatSidebarListActions,
-): ShellSidebarList => ({
-  appId: "chat",
-  title: "Chats",
-  items: sessions.map((session) => ({
-    id: session.id,
-    title: displayTitle(session),
-    tag: planTag(session) ?? undefined,
-    state: rowState(session.id) ?? undefined,
-    pinned: session.isPinned,
-  })),
-  selectedId,
-  searchable: true,
-  onSearch: actions.onSearch,
-  searchLabel: "Search chats",
-  onNew: actions.onNew,
-  newLabel: "New chat",
-  collapsedMenu: true,
-  onRename: actions.onRename,
-  onDelete: actions.onDelete,
-  onTogglePin: actions.onTogglePin,
-  buildSelectArgs: (sessionId) => {
-    /* The shell routes a click as `OpenApp(new NavigateArgs("chat", BuildSelectArgs(id)))` and V1's
-       `ChatApp` reads `ChatAppArgs.SessionId` back out. V2 has no arg-carrying navigation yet, so the
-       session is selected here too; the returned object is still V1's args, so this drops out once
-       the shell can hand args to a view. */
-    actions.onSelect(sessionId);
-    return { sessionId };
-  },
-});
-
-/**
- * How many lines the textarea is currently rendering, from its own metrics.
- *
- * `scrollHeight` includes the padding, so the padding comes back off before dividing by the line
- * height. Rounding matters: a line box can report a fractional height, and comparing a *total* against
- * a constant puts the single-line case exactly on the boundary — one line of 14px text with `leading-5`
- * and `py-1.5` is precisely 32px, so a half-pixel anywhere flips the composer to multiline on the first
- * character typed. Counting lines cannot land on a boundary, and does not care what the font size is.
- */
-const renderedLineCount = (textarea: HTMLTextAreaElement): number => {
-  const style = getComputedStyle(textarea);
-  const lineHeight = Number.parseFloat(style.lineHeight);
-  const padding =
-    (Number.parseFloat(style.paddingTop) || 0) + (Number.parseFloat(style.paddingBottom) || 0);
-  // `line-height: normal` resolves to no number; V1's single-line total is the only thing left to
-  // measure against, and its own padding is what this subtracts.
-  const perLine =
-    Number.isFinite(lineHeight) && lineHeight > 0 ? lineHeight : SINGLE_LINE_HEIGHT - padding;
-  if (perLine <= 0) return 1;
-  return Math.max(1, Math.round((textarea.scrollHeight - padding) / perLine));
-};
-
-/**
- * Whether the prompt needs more than one line beside the composer's buttons. It is measured at the
- * width the textarea has inline, whichever layout is showing, so the composer does not flip back
- * and forth once the toolbar has moved above the text and widened it.
- *
- * That hysteresis is the whole reason for the temporary style swap below, and it is the part a port
- * loses first: the multiline layout is *wider*, so text that wrapped inline stops wrapping once the
- * toolbar moves above it, and a naive measurement of the live element would immediately decide one line
- * is enough and flip back. So the question is always asked at the inline width.
- */
-export const needsMultipleLines = (
-  textarea: HTMLTextAreaElement,
-  row: HTMLElement | null,
-): boolean => {
-  if (!textarea.value) return false;
-  if (textarea.value.includes("\n")) return true;
-  // Before the composer has a width nothing can be measured; the placeholder would wrap.
-  if (!row || row.clientWidth === 0) return false;
-  const siblings = Array.from(row.children).filter((child) => child !== textarea) as HTMLElement[];
-  const gap = parseFloat(getComputedStyle(row).columnGap) || 0;
-  const inlineWidth =
-    row.clientWidth -
-    siblings.reduce((sum, child) => sum + child.offsetWidth, 0) -
-    gap * siblings.length;
-  if (inlineWidth <= 0) return false;
-  const previous = {
-    flex: textarea.style.flex,
-    width: textarea.style.width,
-    height: textarea.style.height,
-  };
-  textarea.style.flex = "0 0 auto";
-  textarea.style.width = `${Math.max(inlineWidth, 0)}px`;
-  textarea.style.height = "auto";
-  const wraps = renderedLineCount(textarea) > 1;
-  textarea.style.flex = previous.flex;
-  textarea.style.width = previous.width;
-  textarea.style.height = previous.height;
-  return wraps;
-};
 
 /**
  * The conversation, which is `Apps/Chat/ContentView` — the *same* view whether it is the Chat page or
@@ -457,12 +141,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
   /** `ChatApp`'s own search trigger, opened from the Chats section's search icon. */
   const [isSearchOpen, setIsSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  // V1 opens the queue panel: a prompt that will be sent for you is worth reading without a click.
-  const [isQueueExpanded, setIsQueueExpanded] = useState(true);
-  const [editingQueuedId, setEditingQueuedId] = useState<string | null>(null);
-  const [editingQueuedText, setEditingQueuedText] = useState("");
-  const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
-  const [isDraggingOver, setIsDraggingOver] = useState(false);
   // The chat beside a plan resolves `wireframe` fences against that plan; the general chat page
   // has no plan, so a fence there renders a placeholder. The base names the daemon's origin, not
   // the app's -- see `useWireframeBaseUrl`.
@@ -480,20 +158,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputRowRef = useRef<HTMLDivElement>(null);
   const recorderRef = useRef<VoiceRecorder | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const queuedEditFocusedIdRef = useRef<string | null>(null);
   const pinnedMessageRef = useRef<{ id: string; content: string } | null>(null);
-  /** The copy being made of each attached file, keyed by the path the user attached it by. */
-  const stagingRef = useRef(new Map<string, Promise<string>>());
-  /**
-   * The attached paths whose copy has not landed yet, as state rather than as the ref above, because
-   * the composer's thumbnails have to re-render when one settles.
-   *
-   * Asking for a preview of a path that is still being staged can only answer `NOT_FOUND` — that is
-   * the whole reason staging exists — and the refusal would be cached against the picked path, so
-   * the thumbnail would never appear even after the copy landed.
-   */
-  const [stagingPaths, setStagingPaths] = useState<string[]>([]);
   /**
    * What the composer holds right now, so callers that *append* to the prompt (the transcriber) do
    * not need the functional form of `setInputPrompt` - a functional updater cannot also write the
@@ -718,146 +383,22 @@ export const ChatView: React.FC<ChatViewProps> = ({
     isGenerating,
   });
 
-  const addAttachments = (incoming: ChatAttachment[]) => {
-    setAttachments((prev) => {
-      const existingPaths = new Set(prev.map((a) => a.path));
-      return [...prev, ...incoming.filter((a) => !existingPaths.has(a.path))];
-    });
-  };
-
-  /**
-   * Swaps the path of the chip added for `source` for the path the file was staged at.
-   *
-   * If a chip already carries the staged path — the same file attached twice — the second row is
-   * dropped rather than duplicated: `addAttachments` de-duplicates on the path it was given, which is
-   * the source path, and by the time this runs the first row no longer carries it.
-   */
-  const applyStagedPath = (source: string, staged: string) => {
-    setAttachments((prev) => {
-      if (prev.some((a) => a.path === staged)) {
-        return prev.filter((a) => a.path !== source);
-      }
-      return prev.map((a) => (a.path === source ? { ...a, path: staged } : a));
-    });
-  };
-
-  /**
-   * Copies each picked file into Tendril's attachment directory and re-points its chip at the copy.
-   *
-   * This is what makes an attachment previewable. The daemon only serves a file inside a configured
-   * local-file root — the Tendril home, the plans folder, the project repos — and a screenshot picked
-   * from `~/Desktop` is in none of them, so a message that referenced the original path could never
-   * render more than a paperclip chip. V1 has the same constraint and answers it the same way: its
-   * composer uploads every attachment into `<TendrilHome>/Attachments/<sessionId>/` and references the
-   * copy. The staged path is also what the turn's `[Attached Files]:` block carries, so the agent reads
-   * the same bytes the thumbnail shows.
-   *
-   * A staging failure is not fatal and not reported: the chip keeps the path the user picked, so the
-   * agent is still told about a file that exists and only the thumbnail falls back to a chip.
-   *
-   * In-flight uploads are keyed by source path so that two drops of one file — or a drop of a file
-   * already attached — settle on a single copy instead of racing into `shot.png` and `shot_1.png`.
-   */
-  const stageAttachments = async (paths: string[]) => {
-    const sessionId = activeSession?.id;
-    await Promise.all(
-      paths.map(async (source) => {
-        let pending = stagingRef.current.get(source);
-        if (!pending) {
-          pending = bridge.uploadChatAttachment(source, sessionId).then((staged) => staged.path);
-          stagingRef.current.set(source, pending);
-        }
-        setStagingPaths((prev) => (prev.includes(source) ? prev : [...prev, source]));
-        try {
-          applyStagedPath(source, await pending);
-        } catch {
-          // Retried if the file is attached again.
-          stagingRef.current.delete(source);
-        } finally {
-          setStagingPaths((prev) => prev.filter((path) => path !== source));
-        }
-      }),
-    );
-  };
-
-  const addAttachmentPaths = (paths: string[]) => {
-    addAttachments(paths.map((path) => ({ name: path.split(/[/\\]/).pop() || path, path })));
-    void stageAttachments(paths);
-  };
-
-  const processFiles = (fileList: FileList | File[]) => {
-    const incoming = Array.from(fileList).map((file) => ({
-      name: file.name,
-      path: (file as unknown as { path?: string }).path || file.name,
-      mimeType: file.type || undefined,
-    }));
-    addAttachments(incoming);
-    // A `File` from an `<input>` or a paste is bytes without a path in a Tauri webview, and there is
-    // nothing on disk to stage; only the ones that did arrive with a real path are copied.
-    void stageAttachments(incoming.map((a) => a.path).filter(isAbsolutePath));
-  };
-
-  // Webview-wide, not subtree-wide: see the table above. An embedded panel registers nothing.
-  const nativeDropActive = useWebviewFileDrop({
-    onPaths: addAttachmentPaths,
-    onDragStateChange: setIsDraggingOver,
-    enabled: !embedded,
-  });
-
-  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      processFiles(e.target.files);
-      e.target.value = "";
-    }
-  };
-
-  const handleAttachClick = async () => {
-    try {
-      const selected = await open({
-        multiple: true,
-        title: "Select Files to Attach",
-      });
-      if (selected === null) {
-        return;
-      }
-      const paths = Array.isArray(selected) ? selected : [selected];
-      addAttachmentPaths(paths);
-    } catch {
-      fileInputRef.current?.click();
-    }
-  };
-
-  const handleRemoveAttachment = (index: number) => {
-    setAttachments((prev) => prev.filter((_, i) => i !== index));
-  };
-
-  const handleDragOver = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-  };
-
-  const handleDragEnter = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDraggingOver(true);
-  };
-
-  const handleDragLeave = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
-    setIsDraggingOver(false);
-  };
-
-  const handleDrop = (e: React.DragEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsDraggingOver(false);
-    if (nativeDropActive) return;
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      processFiles(e.dataTransfer.files);
-    }
-  };
+  const {
+    attachments,
+    setAttachments,
+    isDraggingOver,
+    stagingPaths,
+    stagingRef,
+    fileInputRef,
+    processFiles,
+    handleFileInputChange,
+    handleAttachClick,
+    handleRemoveAttachment,
+    handleDragOver,
+    handleDragEnter,
+    handleDragLeave,
+    handleDrop,
+  } = useChatAttachments({ activeSessionId: activeSession?.id, embedded });
 
   /**
    * The bug this page was the centre of: this used to call `store.createSession` directly, so the
@@ -1019,39 +560,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
       `Review the outcomes of the jobs this conversation started and tell me what changed:\n${summary}`,
     );
     requestComposerFocus();
-  };
-
-  /**
-   * Jumps a queued prompt to the front: it leaves the queue and starts a turn right away, even
-   * while one is running, which is what V1's force-send does. The store owns the interrupt and the
-   * put-it-back-on-failure, so the prompt cannot be lost between the two calls.
-   */
-  const handleSendQueuedNow = async (item: ChatQueuedItem) => {
-    await store.sendQueuedNow(item.id);
-  };
-
-  const handleStartEditQueued = (itemId: string, prompt: string) => {
-    setEditingQueuedId(itemId);
-    setEditingQueuedText(prompt);
-  };
-
-  const handleCancelEditQueued = () => {
-    setEditingQueuedId(null);
-    setEditingQueuedText("");
-    queuedEditFocusedIdRef.current = null;
-  };
-
-  const handleSaveEditQueued = async (itemId: string) => {
-    const next = editingQueuedText;
-    setEditingQueuedId(null);
-    setEditingQueuedText("");
-    queuedEditFocusedIdRef.current = null;
-    try {
-      // An empty commit drops the item, which is how a queued prompt is cleared.
-      await store.updateQueuedMessage(itemId, next);
-    } catch {
-      // Handled in store
-    }
   };
 
   const messages = activeSession?.messages ?? [];
@@ -1309,82 +817,14 @@ export const ChatView: React.FC<ChatViewProps> = ({
           {/* Message Thread List */}
           <div className="flex-1 overflow-hidden relative">
             {!activeSession || activeSession.messages.length === 0 ? (
-              /* V1's empty thread: the greeting, the headline, and the prompts it suggests. No
-               explanation of what a chat is - the composer below says that.
-
-               `chat-widget.css`'s embedded block gives the same markup the panel's measurements:
-               20px/26px instead of 24px, `gap: 0` instead of 4px, `padding: 32px 16px` instead of
-               48px, the greeting truncated to one line (it is the plan's title, which is long), and
-               the chips flush left in a horizontal scroller rather than centred and wrapped -
-               "centering an overflowing nowrap scroller would push leading chips past the scroll
-               origin". */
-              <div
-                /* `max-w-3xl mx-auto` is `.chat-thread`'s `max-width: var(--tch-thread-width)`
-                 (775px) with `margin: 0 auto`, which is the element V1's empty state sits inside -
-                 and it is the same cap `ChatMessageList` and the composer below already apply, so
-                 the chips line up with the thread they are about to start. Without it the row had
-                 the whole window to spread across, which is why five chips never wrapped.
-                 Embedded there is no cap: `.chat-widget-root[data-embedded="true"]
-                 .chat-empty-state` is `width: 100%`, because the plan panel is already the
-                 constraint. */
-                className={`flex h-full flex-col items-center justify-center px-4 text-center ${
-                  embedded ? "w-full gap-0 py-8" : "mx-auto w-full max-w-3xl gap-1 py-12"
-                }`}
-              >
-                <div
-                  className={
-                    embedded
-                      ? "w-full truncate text-xl font-light leading-relaxed text-muted-foreground"
-                      : "text-2xl font-normal leading-tight text-muted-foreground"
-                  }
-                  title={embedded ? greeting : undefined}
-                >
-                  {greeting}
-                </div>
-                <div
-                  className={
-                    embedded
-                      ? "text-xl font-medium leading-relaxed text-foreground"
-                      : "text-2xl font-semibold leading-tight text-foreground"
-                  }
-                >
-                  {headline}
-                </div>
-                {/* `.chat-sample-prompts`: `flex-wrap: wrap` + `justify-content: center`. V1 counts
-                  nothing - the "3 above, 2 beneath" the report describes is just what greedy flex
-                  wrapping does once the row has a width to wrap at, which the cap above now
-                  supplies: the chips that fit take the first line and the remainder centre
-                  underneath, so the top row is the longer one. Every other count falls out of the
-                  same rule, which is why V1 needs no special case for five.
-
-                  `w-full` is load-bearing: as a shrink-to-fit flex item the row would size to its
-                  content and wrap against the window rather than the cap.
-
-                  Embedded, V1 switches to `flex-wrap: nowrap` + `overflow-x: auto`, but we keep
-                  wrapping - the panel is only as wide as the plan page leaves it, so a nowrap row
-                  put the later chips off the edge with no room for a scrollbar to reach them. */}
-                <div
-                  className={`mt-4 flex w-full flex-wrap gap-2 ${
-                    embedded ? "justify-start" : "justify-center"
-                  }`}
-                  data-testid="sample-prompts"
-                >
-                  {samplePrompts.map((item) => (
-                    <button
-                      key={item.label}
-                      type="button"
-                      title={item.prompt}
-                      onClick={() => {
-                        applyComposerText(item.prompt);
-                        requestComposerFocus();
-                      }}
-                      className="max-w-full rounded-bubble border border-border bg-background px-4 py-2 text-left font-medium text-foreground transition-colors hover:border-muted-foreground hover:bg-accent"
-                    >
-                      {item.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
+              <ChatEmptyState
+                embedded={embedded}
+                greeting={greeting}
+                headline={headline}
+                samplePrompts={samplePrompts}
+                applyComposerText={applyComposerText}
+                requestComposerFocus={requestComposerFocus}
+              />
             ) : (
               <ChatMessageList
                 ref={scrollContainerRef}
@@ -1525,143 +965,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
             className={embedded ? "shrink-0 px-4 pt-3" : "shrink-0 px-3 py-4"}
           >
             <div className="mx-auto flex w-full max-w-3xl flex-col gap-2.5">
-              {queuedItems.length > 0 && (
-                <div className="rounded-box border border-border bg-muted/60 p-2.5">
-                  <div className="flex items-center justify-between gap-2">
-                    <div className="flex min-w-0 items-center gap-2">
-                      <span className="font-medium text-foreground">Queued Messages</span>
-                      <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-background px-1.5 text-xs text-foreground">
-                        {queuedItems.length}
-                      </span>
-                      <span className="truncate text-xs text-muted-foreground">
-                        Sends after agent finishes working
-                      </span>
-                    </div>
-                    <IconButton
-                      data-testid="chat-queue-collapse"
-                      label={
-                        isQueueExpanded ? "Collapse queued messages" : "Expand queued messages"
-                      }
-                      size="sm"
-                      tone="muted"
-                      aria-expanded={isQueueExpanded}
-                      onClick={() => setIsQueueExpanded(!isQueueExpanded)}
-                    >
-                      <ChevronDown
-                        className={`size-4 transition-transform ${isQueueExpanded ? "" : "-rotate-90"}`}
-                      />
-                    </IconButton>
-                  </div>
-
-                  {isQueueExpanded && (
-                    <div className="mt-2 max-h-40 space-y-1 overflow-y-auto">
-                      {queuedItems.map((item) => (
-                        <div
-                          key={item.id}
-                          data-testid="queued-item"
-                          className="flex items-center justify-between gap-2 rounded-selector bg-background px-2 py-1"
-                        >
-                          {editingQueuedId === item.id ? (
-                            <>
-                              <Input
-                                data-testid="queued-item-input"
-                                aria-label="Edit queued prompt"
-                                value={editingQueuedText}
-                                ref={(node) => {
-                                  // Focus once per edit: re-focusing on every keystroke would fight
-                                  // the caret the user is moving.
-                                  if (node && queuedEditFocusedIdRef.current !== item.id) {
-                                    queuedEditFocusedIdRef.current = item.id;
-                                    node.focus();
-                                    node.select();
-                                  }
-                                }}
-                                onChange={(e) => setEditingQueuedText(e.target.value)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    e.preventDefault();
-                                    void handleSaveEditQueued(item.id);
-                                  }
-                                  if (e.key === "Escape") {
-                                    e.preventDefault();
-                                    handleCancelEditQueued();
-                                  }
-                                }}
-                                className="h-7 flex-1 border-border bg-background px-1.5 py-0.5 text-foreground"
-                              />
-                              <IconButton
-                                data-testid="queued-item-save"
-                                label="Save queued prompt"
-                                size="sm"
-                                tone="muted"
-                                onClick={() => void handleSaveEditQueued(item.id)}
-                              >
-                                <Check className="size-3.5" />
-                              </IconButton>
-                              <IconButton
-                                data-testid="queued-item-cancel"
-                                label="Cancel edit"
-                                size="sm"
-                                variant="danger"
-                                tone="muted"
-                                onClick={handleCancelEditQueued}
-                              >
-                                <X className="size-3.5" />
-                              </IconButton>
-                            </>
-                          ) : (
-                            <>
-                              <span className="flex min-w-0 flex-1 items-center gap-1.5">
-                                <span className="truncate text-foreground">
-                                  {item.prompt ||
-                                    (item.attachments && item.attachments.length > 0
-                                      ? `${item.attachments.length} attachment${item.attachments.length > 1 ? "s" : ""}`
-                                      : "")}
-                                </span>
-                                {item.attachments && item.attachments.length > 0 && (
-                                  <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 text-xs-tight text-muted-foreground">
-                                    <Paperclip className="size-2.5" />
-                                    {item.attachments.length}
-                                  </span>
-                                )}
-                              </span>
-                              <div className="flex shrink-0 items-center gap-1.5">
-                                <IconButton
-                                  data-testid="queued-item-send-now"
-                                  label="Send now"
-                                  size="sm"
-                                  tone="muted"
-                                  onClick={() => void handleSendQueuedNow(item)}
-                                >
-                                  <ArrowRight className="size-3.5" />
-                                </IconButton>
-                                <IconButton
-                                  data-testid="queued-item-edit"
-                                  label="Edit queued prompt"
-                                  size="sm"
-                                  tone="muted"
-                                  onClick={() => handleStartEditQueued(item.id, item.prompt)}
-                                >
-                                  <Pencil className="size-3.5" />
-                                </IconButton>
-                                <IconButton
-                                  label="Remove from queue"
-                                  size="sm"
-                                  variant="danger"
-                                  tone="muted"
-                                  onClick={() => store.deleteQueuedMessage(item.id)}
-                                >
-                                  <Trash2 className="size-3.5" />
-                                </IconButton>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              )}
+              <ChatQueuedMessages queuedItems={queuedItems} store={store} />
 
               <div
                 className={`flex flex-col gap-2 ${composerStyle.box} border bg-muted py-2 pl-3.5 pr-2 transition-colors ${
@@ -1876,49 +1180,14 @@ export const ChatView: React.FC<ChatViewProps> = ({
             Embedded there is no published list, so nothing can open this; it is also the wrong
             offer, since the panel follows the plan's session and cannot be pointed at another. */}
           {!embedded && (
-            <Dialog open={isSearchOpen} onOpenChange={setIsSearchOpen}>
-              <DialogContent data-testid="chat-search-dialog" className="max-w-[560px]">
-                <DialogHeader>
-                  <DialogTitle>Search Chats</DialogTitle>
-                </DialogHeader>
-                <div className="flex flex-col gap-2">
-                  <Input
-                    autoFocus
-                    type="search"
-                    aria-label="Search chats"
-                    placeholder="Search chats"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                  {searchResults.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">No chats found.</p>
-                  ) : (
-                    <div className="flex max-h-80 flex-col overflow-y-auto">
-                      {searchResults.map((session) => (
-                        <button
-                          key={session.id}
-                          type="button"
-                          data-testid="chat-search-result"
-                          onClick={() => {
-                            setIsSearchOpen(false);
-                            void store.selectSession(session.id);
-                          }}
-                          className="flex items-center justify-between gap-2 rounded-selector px-2.5 py-2 text-left text-sm text-foreground hover:bg-accent hover:text-accent-foreground"
-                        >
-                          <span className="truncate">{displayTitle(session)}</span>
-                          <span className="shrink-0 text-xs text-muted-foreground">
-                            {new Date(session.updatedAt).toLocaleDateString(undefined, {
-                              month: "short",
-                              day: "numeric",
-                            })}
-                          </span>
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              </DialogContent>
-            </Dialog>
+            <ChatSearchDialog
+              isSearchOpen={isSearchOpen}
+              setIsSearchOpen={setIsSearchOpen}
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              searchResults={searchResults}
+              store={store}
+            />
           )}
         </main>
       </div>
