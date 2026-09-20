@@ -51,6 +51,25 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # tendril-wireframe embeds the generated payload with include_bytes!, and build.rs fails the
+      # build without it. It is not checked in, so it must be generated before cargo runs. This job
+      # otherwise needs no Node at all.
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Generate wireframe payload
+        working-directory: src/crates/tendril-wireframe/pipeline/vendor
+        run: |
+          pnpm install --frozen-lockfile
+          node build-all.mjs
+
       - name: Setup Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:

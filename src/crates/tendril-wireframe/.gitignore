@@ -1,2 +1,17 @@
 # Intermediate entry points written by pipeline/vendor/build-vendor.mjs; regenerated on every build.
 pipeline/vendor/.entries/
+
+# The generated wireframe payload. Produced by pipeline/vendor/build-all.mjs from the versions
+# pinned in pipeline/vendor/pnpm-lock.yaml, and verified to come back byte-identical from a clean
+# run, so there is nothing to gain by also keeping it in history.
+#
+# artifacts/fonts/ and artifacts/css/fonts.css are the exception and stay tracked: fetch-fonts.mjs
+# is the one step that needs the network, and it cannot promise the same bytes twice -- it asks
+# fonts.googleapis.com behind a spoofed Chrome UA and takes OFL.txt from the moving `main` branch
+# of google/fonts, with no pinned commit and no checksum. build-all.mjs therefore skips that step
+# when the checked-in fonts are present.
+artifacts/*
+!artifacts/fonts/
+!artifacts/css/
+artifacts/css/*
+!artifacts/css/fonts.css

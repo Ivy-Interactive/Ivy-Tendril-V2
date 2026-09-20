@@ -58,7 +58,7 @@ function writeLock(extra) {
   return lock;
 }
 
-export async function buildAll() {
+export async function buildAll({ refreshFonts = false } = {}) {
   fs.mkdirSync(artifacts, { recursive: true });
 
   step("vendor bundle (react, react-dom, tendril-wireframes, lucide-react)");
@@ -70,9 +70,25 @@ export async function buildAll() {
     console.log(`  ${c.name.padEnd(24)} ${(c.bytes / 1024).toFixed(1)} KB  (-${c.strippedBytes} B @import)`);
   }
 
-  step("self-hosted Balsamiq Sans");
-  const fonts = await fetchFonts();
-  console.log(`  ${fonts.files.length} woff2 files, ${fonts.faces.length} @font-face rules`);
+  // The only step that needs the network, and the only output that is still checked in.
+  // fetch-fonts.mjs pulls from fonts.googleapis.com behind a spoofed Chrome UA and takes OFL.txt
+  // from the moving `main` of google/fonts, with no pinned commit or checksum -- so unlike the
+  // rest of the pipeline it cannot be reproduced offline or guaranteed to return the same bytes.
+  // The woff2 files and the fonts.css generated from them are therefore committed, and this step
+  // is skipped when they are present. Pass --refresh-fonts to re-fetch them deliberately.
+  const fontsPresent =
+    fs.existsSync(path.join(artifacts, "css/fonts.css")) &&
+    fs.existsSync(path.join(artifacts, "fonts")) &&
+    fs.readdirSync(path.join(artifacts, "fonts")).some((f) => f.endsWith(".woff2"));
+
+  if (refreshFonts || !fontsPresent) {
+    step("self-hosted Balsamiq Sans (network)");
+    const fonts = await fetchFonts();
+    console.log(`  ${fonts.files.length} woff2 files, ${fonts.faces.length} @font-face rules`);
+  } else {
+    step("self-hosted Balsamiq Sans");
+    console.log("  using the checked-in fonts (--refresh-fonts to re-fetch)");
+  }
 
   step("Tailwind utility superset");
   const css = buildCss();
@@ -108,5 +124,5 @@ export async function buildAll() {
 }
 
 if (import.meta.url === pathToFileURL(process.argv[1]).href) {
-  await buildAll();
+  await buildAll({ refreshFonts: process.argv.includes("--refresh-fonts") });
 }

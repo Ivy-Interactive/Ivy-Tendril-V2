@@ -90,6 +90,24 @@ jobs:
       - name: Extension package validation
         run: pnpm package:extension
 
+      # The tendril-wireframe crate embeds this payload with include_bytes!, and build.rs now fails
+      # the build without it. It is generated rather than checked in, so it has to be produced
+      # before anything touches cargo. Node and pnpm are already set up above.
+      - name: Generate wireframe payload
+        working-directory: src/crates/tendril-wireframe/pipeline/vendor
+        run: |
+          pnpm install --frozen-lockfile
+          node build-all.mjs
+
+      # The payload is reproducible from the pinned versions, so a clean run must leave the tracked
+      # fonts untouched and reproduce the same SHA-256s the run just wrote. This is the check the
+      # lockfile was always meant to enable and never had: previously nothing regenerated the
+      # artifacts, so drift between the pinned versions and the committed bytes was undetectable.
+      - name: Verify the payload is reproducible
+        run: |
+          node src/crates/tendril-wireframe/pipeline/vendor/verify-artifacts.mjs
+          git diff --exit-code -- src/crates/tendril-wireframe/artifacts
+
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
         with:
