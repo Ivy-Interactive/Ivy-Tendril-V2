@@ -1,0 +1,18 @@
+# This package is deliberately outside the root pnpm workspace. It is build-time tooling that
+# produces ../../artifacts/ for the tendril-wireframe crate, and it pins its own dependency
+# versions independently of the app's: the payload has to match byte for byte across machines,
+# which a shared, floating workspace resolution cannot promise.
+
+# Neither package's postinstall is wanted. fetch-esbuild.mjs downloads the pinned esbuild binary
+# itself and verifies npm's sha512 integrity, and @parcel/watcher is only reachable through
+# tailwindcss's watch mode, which this pipeline never runs. The root workspace disables both for
+# the same reason.
+allowBuilds:
+  "@parcel/watcher": false
+  esbuild: false
+
+# tailwind-merge is a transitive dependency of tendril-wireframes with a floating range, and it is
+# bundled into vendor/tendril-wireframes.js. Left unpinned it resolves to whatever is newest and
+# the emitted bundle changes underneath ARTIFACTS.lock.json. Pinned here it does not.
+overrides:
+  tailwind-merge: 3.6.0

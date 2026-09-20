@@ -15,11 +15,11 @@ artifacts/** -text
 # the output would stop matching V1 byte for byte.
 pipeline/vendor/tailwind/input.css -text
 pipeline/vendor/tailwind/safelist.txt -text
-pipeline/vendor/package-lock.json -text
+pipeline/vendor/pnpm-lock.yaml -text
 
 # Hide the generated payload from diffs and language statistics, as V1 does.
 artifacts/** linguist-generated=true
-pipeline/vendor/package-lock.json linguist-generated=true
+pipeline/vendor/pnpm-lock.yaml linguist-generated=true
 
 # The scaffold templates are written verbatim into a user's project, and V1 writes them with LF on
 # every platform. Pinning them keeps a scaffolded wireframe identical across operating systems, which

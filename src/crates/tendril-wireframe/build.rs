@@ -34,7 +34,7 @@ fn main() {
 
     if entries.is_empty() {
         println!(
-            "cargo:warning=No files under {}. Run: cd pipeline/vendor && npm install && node build-all.mjs",
+            "cargo:warning=No files under {}. Run: cd pipeline/vendor && pnpm install && node build-all.mjs",
             artifacts.display()
         );
     }

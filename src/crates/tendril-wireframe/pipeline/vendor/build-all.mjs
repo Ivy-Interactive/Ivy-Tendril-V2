@@ -1,4 +1,4 @@
-// Produces everything under ../../artifacts/ that the .NET tool embeds.
+// Produces everything under ../../artifacts/ that the tendril-wireframe crate embeds.
 //
 // Run this on a machine with node whenever the pinned package versions change. The
 // artifacts/ directory is checked into git so CI, contributors and end users never need
@@ -87,8 +87,8 @@ export async function buildAll() {
   const man = copyManifest();
   console.log(`  ${man.publicCount} public components (${man.total} total), ${(man.bytes / 1024).toFixed(1)} KB`);
 
-  // No esbuild binaries and no Studio UI here. Tendril is a portable dotnet tool, so
-  // EsbuildProvisioner downloads the one binary the running platform needs on first use
+  // No esbuild binaries and no Studio UI here. Tendril ships as a self-contained binary, so
+  // src/build/esbuild.rs downloads the one binary the running platform needs on first use
   // (ESBUILD_VERSION below is still the pinned version), and Studio is not part of Tendril.
   // fetch-esbuild.mjs stays so the standalone Wireframe-Tools pipeline and this one agree
   // on that version.

@@ -3,7 +3,7 @@
 // This works because VS Code ships its own tsserver -- the editor needs the type files on
 // disk and a tsconfig `paths` mapping to find them, but it does not need node installed.
 // `wireframe setup` writes .wireframe/types/** from these artifacts and points tsconfig at
-// them; see TypeDefinitionWriter on the C# side.
+// them; see src/project/scaffolder.rs.
 //
 // Note this buys IntelliSense, not enforcement: nothing runs tsc. Prop-level correctness
 // is covered separately by the manifest-driven checks.

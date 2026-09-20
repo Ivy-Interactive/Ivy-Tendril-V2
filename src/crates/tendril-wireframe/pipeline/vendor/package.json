@@ -3,11 +3,12 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Build-time only. Produces ../../artifacts/ from npm packages so the .NET tool needs no node at runtime.",
+  "description": "Build-time only. Produces ../../artifacts/ from npm packages so the tendril-wireframe crate needs no node at runtime.",
   "scripts": {
     "build": "node build-all.mjs"
   },
   "dependencies": {
+    "lucide-react": "0.475.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "tendril-wireframes": "^0.1.11"

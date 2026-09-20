@@ -165,7 +165,7 @@ mod tests {
         // miss later when the dev server asks for a stylesheet.
         assert!(
             exists("vendor.manifest.json"),
-            "artifacts/ is missing or empty: run `cd pipeline/vendor && npm install && node build-all.mjs`"
+            "artifacts/ is missing or empty: run `cd pipeline/vendor && pnpm install && node build-all.mjs`"
         );
         assert!(exists("ARTIFACTS.lock.json"));
         assert!(exists("css/wireframe-utilities.css"));
