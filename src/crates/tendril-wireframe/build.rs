@@ -32,18 +32,28 @@ fn main() {
     }
     std::fs::write(&out, &blob).unwrap();
 
+    // Fail, do not warn. `cargo:warning` scrolls past in a normal build and is invisible in CI
+    // logs, so an empty payload used to produce a binary that compiled cleanly and then panicked
+    // at startup: WireframeHost::new reads vendor.manifest.json out of the embedded blob, and
+    // tendril-server unwraps that in state.rs with `.expect("the wireframe payload is embedded at
+    // build time")`. A build-time error costs a contributor one obvious message; the warning cost
+    // them a running server.
     if entries.is_empty() {
-        println!(
-            "cargo:warning=No files under {}. Run: cd pipeline/vendor && pnpm install && node build-all.mjs",
+        panic!(
+            "no files under {}: the wireframe payload is missing, so this crate would build a \
+             binary that panics at startup. Generate it with\n    \
+             cd src/crates/tendril-wireframe/pipeline/vendor && pnpm install --frozen-lockfile && \
+             node build-all.mjs",
             artifacts.display()
         );
     }
 }
 
 fn collect(root: &Path, dir: &Path, out: &mut Vec<(String, Vec<u8>)>) {
-    let Ok(read) = std::fs::read_dir(dir) else {
-        return;
-    };
+    // Propagate rather than swallow. A missing or unreadable payload directory is the same
+    // failure as an empty one, and it has to stop the build here -- see main().
+    let read =
+        std::fs::read_dir(dir).unwrap_or_else(|e| panic!("cannot read {}: {e}", dir.display()));
     for entry in read.flatten() {
         let path = entry.path();
         if path.is_dir() {
