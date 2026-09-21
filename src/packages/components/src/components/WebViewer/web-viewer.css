@@ -60,14 +60,14 @@
 .wvr-address {
   box-sizing: border-box;
   width: min(100%, 36rem);
-  height: 28px;
+  height: var(--control-height-sm);
   padding: 0 12px;
   border: 0;
   border-radius: var(--radius-lg);
   color: var(--foreground);
   font-family: var(--font-sans);
   font-size: var(--text-sm-tight);
-  line-height: 28px;
+  line-height: var(--control-height-sm);
 }
 
 .wvr-address-display {

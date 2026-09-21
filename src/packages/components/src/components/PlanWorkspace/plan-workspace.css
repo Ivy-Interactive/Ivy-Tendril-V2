@@ -129,7 +129,7 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 32px;
+  height: var(--control-height);
   padding: 4px 12px;
   border: var(--border-width) solid transparent;
   border-radius: var(--radius-lg);
@@ -340,7 +340,7 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 38px;
+  height: var(--row-height);
   padding: 4px 12px;
   border: none;
   border-bottom: var(--border-width-thick) solid transparent;

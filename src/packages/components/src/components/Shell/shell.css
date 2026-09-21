@@ -271,7 +271,7 @@
 
 .tsh-header-row {
   align-items: center;
-  height: 32px;
+  height: var(--control-height);
   width: calc(var(--tsh-sidebar-content) - 8px);
 }
 
@@ -283,8 +283,8 @@
 }
 
 .tsh-header-logo {
-  width: 32px;
-  height: 32px;
+  width: var(--control-height);
+  height: var(--control-height);
   flex-shrink: 0;
   /* `display` matters because this class lands on an `<img>` for a `logoUrl` logo and on a `<span>`
      for a node one, and an inline span ignores width and height. */
@@ -338,8 +338,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: var(--control-height);
+  height: var(--control-height);
   border: none;
   padding: 0;
   background: transparent;
@@ -459,7 +459,7 @@
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  height: 38px;
+  height: var(--row-height);
   padding: 10px var(--tsh-row-pad-x);
   border: none;
   border-radius: var(--radius-lg);
@@ -574,7 +574,7 @@
   justify-content: space-between;
   flex-shrink: 0;
   width: 100%;
-  min-height: 38px;
+  min-height: var(--row-height);
   padding: 10px var(--tsh-row-pad-x);
   border: none;
   border-radius: var(--radius-lg);
@@ -727,7 +727,7 @@
   justify-content: flex-start;
   flex-shrink: 0;
   width: 100%;
-  min-height: 38px;
+  min-height: var(--row-height);
   padding: 6px var(--tsh-row-pad-x);
   border: none;
   background: transparent;
@@ -763,7 +763,7 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 28px;
+  min-height: var(--control-height-sm);
   flex-shrink: 0;
   width: 100%;
   padding: 6px 2px;
@@ -927,7 +927,7 @@
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  min-height: 38px;
+  min-height: var(--row-height);
   padding: 10px var(--tsh-row-pad-x);
   border: none;
   border-radius: var(--radius-lg);
@@ -1164,7 +1164,7 @@
 .tsh-settings {
   display: flex;
   align-items: center;
-  min-height: 38px;
+  min-height: var(--row-height);
   padding: 6px var(--tsh-row-pad-x);
   border: none;
   border-radius: var(--radius-lg);
@@ -1195,7 +1195,7 @@
    there it becomes a full-width row like every other one. */
 .tsh-settings[data-icon-only="true"] {
   justify-content: center;
-  width: 38px;
+  width: var(--row-height);
   padding: 6px 0;
   flex-shrink: 0;
 }

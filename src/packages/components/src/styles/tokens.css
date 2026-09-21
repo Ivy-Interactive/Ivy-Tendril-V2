@@ -160,6 +160,11 @@
   --opacity-soft: 0.8;
   --opacity-hover: 0.9;
 
+  /* Component sizes */
+  --control-height: 32px;
+  --control-height-sm: 28px;
+  --row-height: 38px;
+
   /* Type scale */
   --text-3xs: 0.5625rem;
   --text-2xs: 0.625rem;
