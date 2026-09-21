@@ -55,5 +55,3 @@ export function ShortcutKeys({ shortcut, className, inherit, ghost }: ShortcutKe
     </span>
   );
 }
-
-export default Kbd;

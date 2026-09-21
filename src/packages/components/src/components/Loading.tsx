@@ -99,5 +99,3 @@ export function SkeletonList({ className }: SkeletonListProps) {
     </div>
   );
 }
-
-export default Loading;

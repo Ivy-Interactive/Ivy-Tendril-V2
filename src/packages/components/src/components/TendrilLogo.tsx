@@ -33,5 +33,3 @@ export function TendrilLogo({ className, ...props }: TendrilLogoProps) {
     </svg>
   );
 }
-
-export default TendrilLogo;

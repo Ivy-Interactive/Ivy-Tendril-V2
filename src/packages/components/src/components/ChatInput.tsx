@@ -26,4 +26,3 @@ const ChatInput = React.forwardRef<HTMLTextAreaElement, ChatInputProps>(
 ChatInput.displayName = "ChatInput";
 
 export { ChatInput };
-export default ChatInput;

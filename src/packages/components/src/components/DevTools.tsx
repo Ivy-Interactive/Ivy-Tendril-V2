@@ -400,5 +400,3 @@ export function DevTools() {
     </div>
   ) : null;
 }
-
-export default DevTools;

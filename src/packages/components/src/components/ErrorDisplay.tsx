@@ -89,5 +89,3 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ title, message, stac
     </div>
   );
 };
-
-export default ErrorDisplay;
