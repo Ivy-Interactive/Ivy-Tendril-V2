@@ -987,9 +987,7 @@ describe("project configuration", () => {
       it("names what it destroys, and what it keeps", async () => {
         await renderProject(configWith({}));
 
-        expect(screen.getByTestId("project-danger-zone")).toHaveTextContent(
-          "Permanently deletes",
-        );
+        expect(screen.getByTestId("project-danger-zone")).toHaveTextContent("Permanently deletes");
         const dialog = await openDeleteDialog();
         expect(dialog).toHaveTextContent(/cannot be undone/);
         expect(dialog).toHaveTextContent(/Job logs are kept/);

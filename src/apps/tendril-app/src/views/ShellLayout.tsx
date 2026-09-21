@@ -43,12 +43,7 @@ import {
   withNavSelection,
   type ShellSidebarList,
 } from "../state/sidebarListStore";
-import {
-  AGENT_APP_ID,
-  appDescriptor,
-  isFullBleedApp,
-  type SessionPane,
-} from "../state/navigation";
+import { AGENT_APP_ID, appDescriptor, isFullBleedApp, type SessionPane } from "../state/navigation";
 
 /**
  * V1 `TendrilAppShell.PageTabId`. Identifies the strip's leading tab, which reveals the page behind

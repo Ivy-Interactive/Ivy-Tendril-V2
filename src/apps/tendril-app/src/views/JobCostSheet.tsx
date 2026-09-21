@@ -36,7 +36,12 @@ export interface JobCostBucket {
  * zero: "no cache writes" and "cache writes not recorded" are different facts, and only one of them
  * is worth a row.
  */
-export function buildJobCostBuckets(job: Pick<Job, "inputTokens" | "outputTokens" | "cacheReadTokens" | "cacheWriteTokens" | "reasoningTokens">): JobCostBucket[] {
+export function buildJobCostBuckets(
+  job: Pick<
+    Job,
+    "inputTokens" | "outputTokens" | "cacheReadTokens" | "cacheWriteTokens" | "reasoningTokens"
+  >,
+): JobCostBucket[] {
   const candidates: Array<[string, number | undefined]> = [
     ["Input", job.inputTokens],
     ["Output", job.outputTokens],
@@ -45,7 +50,10 @@ export function buildJobCostBuckets(job: Pick<Job, "inputTokens" | "outputTokens
     ["Reasoning", job.reasoningTokens],
   ];
   return candidates
-    .filter((entry): entry is [string, number] => typeof entry[1] === "number" && Number.isFinite(entry[1]))
+    .filter(
+      (entry): entry is [string, number] =>
+        typeof entry[1] === "number" && Number.isFinite(entry[1]),
+    )
     .map(([kind, tokens]) => ({ kind, tokens }));
 }
 
@@ -116,7 +124,9 @@ export const JobCostSheet: React.FC<JobCostSheetProps> = ({ job }) => {
            absent instead of showing an empty table. */
         <Callout.Info data-testid="job-cost-no-usage">
           No per-token breakdown was recorded for this job
-          {typeof job.tokens === "number" ? `, only a total of ${formatTokens(job.tokens)} tokens` : ""}
+          {typeof job.tokens === "number"
+            ? `, only a total of ${formatTokens(job.tokens)} tokens`
+            : ""}
           .
         </Callout.Info>
       ) : (

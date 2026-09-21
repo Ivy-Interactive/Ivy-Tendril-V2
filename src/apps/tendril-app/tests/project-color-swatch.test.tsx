@@ -116,7 +116,9 @@ describe("ColorSwatchField", () => {
 
   /** The trigger carries the current colour, so the screen says which one is set without opening it. */
   it("names the current colour on the trigger", () => {
-    render(<ColorSwatchField id="project-color" label="Color" value="emerald" onChange={() => {}} />);
+    render(
+      <ColorSwatchField id="project-color" label="Color" value="emerald" onChange={() => {}} />,
+    );
 
     expect(screen.getByTestId("project-color-trigger")).toHaveAttribute("data-color", "Emerald");
     expect(screen.getByText("Emerald")).toBeInTheDocument();
@@ -124,7 +126,9 @@ describe("ColorSwatchField", () => {
 
   /** An unparseable stored value is named as unset rather than drawn as if it were a colour. */
   it("shows an unrecognised stored value as no colour", () => {
-    render(<ColorSwatchField id="project-color" label="Color" value="#ff0000" onChange={() => {}} />);
+    render(
+      <ColorSwatchField id="project-color" label="Color" value="#ff0000" onChange={() => {}} />,
+    );
 
     expect(screen.getByTestId("project-color-trigger")).toHaveAttribute("data-color", "");
     expect(screen.getByText("None")).toBeInTheDocument();

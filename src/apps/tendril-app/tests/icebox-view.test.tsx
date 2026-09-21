@@ -158,10 +158,7 @@ describe("IceboxView level badge", () => {
     renderView([iced({ level })]);
 
     await waitFor(() =>
-      expect(screen.getByTestId(`level-badge-${level}`)).toHaveAttribute(
-        "data-level-color",
-        color,
-      ),
+      expect(screen.getByTestId(`level-badge-${level}`)).toHaveAttribute("data-level-color", color),
     );
   });
 

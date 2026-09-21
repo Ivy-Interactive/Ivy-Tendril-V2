@@ -117,9 +117,8 @@ export function DeleteProjectDialog({
       body={
         <>
           <p>
-            This permanently deletes project{" "}
-            <span className="text-foreground">{projectName}</span> and everything it owns on disk.
-            It cannot be undone.
+            This permanently deletes project <span className="text-foreground">{projectName}</span>{" "}
+            and everything it owns on disk. It cannot be undone.
           </p>
           <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
             <li>Every plan of this project, with its revisions and verification reports.</li>

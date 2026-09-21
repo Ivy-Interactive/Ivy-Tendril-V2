@@ -284,13 +284,7 @@ export const LinesField: React.FC<{
  * enough that a white tick reads fine, so a luminance test would tick it white and V1 ticks it
  * black. The point of this port is to look like V1, so the list is V1's.
  */
-const DARK_TICK_COLORS: ReadonlySet<string> = new Set([
-  "white",
-  "yellow",
-  "lime",
-  "amber",
-  "cyan",
-]);
+const DARK_TICK_COLORS: ReadonlySet<string> = new Set(["white", "yellow", "lime", "amber", "cyan"]);
 
 /**
  * V1's `ColorSwatchGrid` (`Ivy-Framework/src/frontend/src/widgets/inputs/ColorInputWidget.tsx:63`),
