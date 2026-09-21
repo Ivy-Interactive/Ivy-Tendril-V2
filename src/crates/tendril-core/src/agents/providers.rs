@@ -1964,10 +1964,22 @@ pub fn write_mcp_config(servers: &[McpServerConfig]) -> Option<PathBuf> {
     let temp_dir = std::env::temp_dir();
     let filename = format!("tendril-mcp-{}.json", uuid::Uuid::new_v4().simple());
     let path = temp_dir.join(filename);
-    let _ = std::fs::write(
+    // `None` rather than a path to a file that is not there. Every caller pushes the return value
+    // straight onto `--mcp-config`, so swallowing the error handed the agent a flag pointing at
+    // nothing — the agent then starts with no MCP servers, or refuses the argument outright, and
+    // the only clue is the agent's own error. A temp dir that is missing or unwritable is the real
+    // case: `std::env::temp_dir` reads `TMPDIR`, which the caller does not control.
+    if let Err(e) = std::fs::write(
         &path,
         serde_json::to_string_pretty(&root).unwrap_or_default(),
-    );
+    ) {
+        tracing::warn!(
+            "Could not write the MCP config to '{}': {e}. The agent will launch without its MCP \
+             servers.",
+            path.display()
+        );
+        return None;
+    }
     Some(path)
 }
 

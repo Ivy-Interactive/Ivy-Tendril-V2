@@ -1,10 +1,60 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::{Mutex, MutexGuard};
 use tendril_core::agents::{
     agent_command, build_agent_spec, format_opencode_model, translate_claude_tool,
     translate_copilot_tool, translate_cursor_tool, write_mcp_config, AgentLaunchConfig,
     McpServerConfig,
 };
+
+/// Serialises every test here that depends on the process temp directory.
+///
+/// `std::env::temp_dir` is process-global, and `agent_command_leaves_no_temp_files_behind` below
+/// has to repoint it to count what one call leaves behind. Without this lock a sibling writing a
+/// temp file during that window either lands inside the probe's count or, once the probe removes
+/// its scratch directory, fails to be written at all.
+///
+/// That second case is what turned CI red. The outcome depends on how libtest happens to interleave
+/// the tests: with enough threads the siblings start before the probe deletes anything and the file
+/// is written fine, but as parallelism drops they run after it, `temp_dir()` names a directory that
+/// is gone, and the write fails. Measured on this binary before the fix, it failed 20/20 runs at one
+/// and at two test threads and 0/20 at three or more — so it was invisible on a developer machine
+/// and deterministic on the runner.
+fn temp_dir_lock() -> MutexGuard<'static, ()> {
+    static LOCK: Mutex<()> = Mutex::new(());
+    // A sibling that panicked while holding this poisoned it, and the poison says nothing about
+    // whether the temp directory is usable — take it anyway rather than cascading one failure into
+    // every other test in the file.
+    LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// Restores a process-global environment variable to what it was, on drop and on panic.
+struct EnvGuard {
+    key: &'static str,
+    previous: Option<String>,
+}
+
+impl EnvGuard {
+    fn set(key: &'static str, value: &std::path::Path) -> Self {
+        let previous = std::env::var(key).ok();
+        // SAFETY: the caller holds `temp_dir_lock`, and every test in this binary that reads the
+        // environment takes that lock first, so no other thread is reading it concurrently.
+        unsafe { std::env::set_var(key, value) };
+        Self { key, previous }
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        // SAFETY: as in `set` — the lock is still held for as long as this guard is alive.
+        unsafe {
+            match &self.previous {
+                Some(value) => std::env::set_var(self.key, value),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+}
 
 #[test]
 fn test_tool_translation() {
@@ -80,6 +130,8 @@ fn test_opencode_model_formatting() {
 
 #[test]
 fn test_mcp_config_generation() {
+    let _temp_dir = temp_dir_lock();
+
     assert!(write_mcp_config(&[]).is_none());
 
     let mut env = HashMap::new();
@@ -108,8 +160,47 @@ fn test_mcp_config_generation() {
     let _ = std::fs::remove_file(path);
 }
 
+/// A path is only returned for a file that really is on disk.
+///
+/// Every caller pushes this straight onto `--mcp-config`, so a path to a file the write never
+/// created launches the agent pointing at nothing: it comes up with no MCP servers, or rejects the
+/// argument outright, and the only clue is the agent's own error. The write used to be
+/// `let _ = fs::write(..)`, which discarded exactly the error that says so.
+///
+/// `TMPDIR` is the lever because `std::env::temp_dir` reads it and a caller does not control it — a
+/// temp directory that is missing or unwritable is the real shape of this failure, and it is also
+/// how the sibling probe above used to break this very test.
+#[test]
+fn write_mcp_config_reports_a_failed_write_rather_than_naming_a_missing_file() {
+    let _temp_dir = temp_dir_lock();
+
+    let absent = std::env::temp_dir().join(format!(
+        "tendril-mcp-no-such-directory-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&absent);
+
+    let _tmpdir = EnvGuard::set("TMPDIR", &absent);
+    let _tmp = EnvGuard::set("TMP", &absent);
+
+    let servers = vec![McpServerConfig {
+        name: "docs".to_string(),
+        command: "node".to_string(),
+        arguments: vec![],
+        environment: HashMap::new(),
+    }];
+
+    assert!(
+        write_mcp_config(&servers).is_none(),
+        "a write into a directory that does not exist must not yield a path"
+    );
+}
+
 #[test]
 fn test_all_agent_providers_spec_generation() {
+    // Several of these builders write a prompt or MCP file into the process temp directory.
+    let _temp_dir = temp_dir_lock();
+
     let base_config = AgentLaunchConfig {
         prompt: "Fix the bug in the parser".to_string(),
         working_directory: PathBuf::from("D:/test-workspace"),
@@ -204,6 +295,13 @@ fn agent_command_leaves_no_temp_files_behind() {
     // to be running, failing about half the time under the default test-threads. `TMPDIR` is what
     // `temp_dir` reads on unix, and `TMP` on windows, so pointing them at a fresh directory makes
     // the count observe only the calls below.
+    //
+    // The lock and the guards are what keep that redirection from leaking out of this test. The
+    // redirection is process-wide, and the scratch directory is deleted at the end, so a sibling
+    // running in the window saw `temp_dir()` name a directory that no longer existed and its
+    // `fs::write` failed silently.
+    let _temp_dir = temp_dir_lock();
+
     let scratch = std::env::temp_dir().join(format!(
         "tendril-agent-command-probe-{}",
         std::process::id()
@@ -211,13 +309,8 @@ fn agent_command_leaves_no_temp_files_behind() {
     let _ = std::fs::remove_dir_all(&scratch);
     std::fs::create_dir_all(&scratch).expect("the probe needs a scratch directory");
 
-    // SAFETY: `set_var` is unsound only when another thread reads the environment concurrently.
-    // Rust runs each test binary in its own process and this is the only test here that touches
-    // these variables, so no sibling observes the change.
-    unsafe {
-        std::env::set_var("TMPDIR", &scratch);
-        std::env::set_var("TMP", &scratch);
-    }
+    let _tmpdir = EnvGuard::set("TMPDIR", &scratch);
+    let _tmp = EnvGuard::set("TMP", &scratch);
 
     let count_prompts = || {
         std::fs::read_dir(&scratch)
