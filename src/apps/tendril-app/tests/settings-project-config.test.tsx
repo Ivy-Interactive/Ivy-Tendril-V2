@@ -33,6 +33,10 @@ import type { ServiceInfo, TendrilConfig } from "../src/types/api";
  * gated on typing the project's name.
  */
 
+// The colour field is a Radix popover, which is slow to open under jsdom - the same two knobs
+// `chat-header.test.tsx` raises, for the same reason.
+vi.setConfig({ testTimeout: 120_000 });
+
 vi.mock("@tauri-apps/plugin-opener", () => ({
   openPath: vi.fn(() => Promise.resolve()),
   openUrl: vi.fn(),
@@ -583,10 +587,21 @@ describe("project configuration", () => {
   });
 
   describe("basic details and the danger zone", () => {
+    /**
+     * The colour is picked from V1's swatch grid rather than typed - see
+     * `tests/project-color-swatch.test.tsx` for the palette itself. What this asserts is that the
+     * pick reaches the same `projects` patch the context does, in one save.
+     */
     it("saves the colour and context together", async () => {
       await renderProject(configWith({ color: "Slate", context: "old" }));
 
-      fireEvent.change(screen.getByLabelText("Color"), { target: { value: "Emerald" } });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Color" }));
+      });
+      const palette = await screen.findByRole("group", { name: "Colors" }, { timeout: 60_000 });
+      await act(async () => {
+        fireEvent.click(within(palette).getByRole("button", { name: "Emerald" }));
+      });
       fireEvent.change(screen.getByLabelText("Context"), { target: { value: "new" } });
       await clickButton("Save");
 

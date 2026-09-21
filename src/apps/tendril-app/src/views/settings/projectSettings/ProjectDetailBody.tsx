@@ -16,12 +16,12 @@ import { bridge } from "../../../api/bridge";
 import { notificationsStore } from "../../../state/notificationsStore";
 import { describeBridgeError } from "../../../types/api";
 import {
+  ColorSwatchField,
   LinesField,
   SETTINGS_CONTAINER,
   SaveError,
   SelectField,
   SubSection,
-  TextField,
   asOptions,
 } from "../fields";
 import { useRemovalConfirm } from "../useRemovalConfirm";
@@ -464,15 +464,17 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
             void patch({ color: basic.color, context: basic.context }, "Project saved");
           }}
         >
-          {/* V1 uses `ToColorInput(SwatchPicker)` over the Ivy `Colors` enum. V2's palette is
-              generated and carries no per-name colour token, and the parity contract forbids adding
-              one, so the colour is edited as the enum name it is stored as. */}
-          <TextField
+          {/* V1's `projectColor.ToColorInput().Variant(ColorInputVariant.SwatchPicker)`
+              (`ProjectDetailView.cs:222`): the 32 Ivy `Colors` names as a swatch grid behind a
+              filled trigger. This was a free `TextField` on the reasoning that V2 carried no
+              per-name colour token - which has not been true since `tokens.css` grew the named
+              palette, and the free field let an operator type a value V1's own `ConfigService`
+              would rewrite to `Slate` on the next save. */}
+          <ColorSwatchField
             id="project-color"
             label="Color"
             value={basic.color}
-            placeholder="e.g. Emerald"
-            hint="An Ivy colour name, as config.yaml stores it (Red, Blue, Purple, Slate, Green...)."
+            hint="An Ivy colour name, as config.yaml stores it."
             onChange={(value) => setBasic((prev) => ({ ...prev, color: value }))}
           />
           <LinesField

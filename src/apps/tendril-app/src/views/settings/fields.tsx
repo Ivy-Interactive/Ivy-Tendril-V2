@@ -1,14 +1,20 @@
 import React from "react";
+import { Check } from "lucide-react";
 import {
   Input,
   Label,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
   Textarea,
+  ivyColorVar,
 } from "@ivy-interactive/components/ui";
+import { IVY_COLOR_NAMES, levelBadgeColor, type IvyColorName } from "../../utils/levelColor";
 
 /**
  * The labelled controls every V1 setup view is built out of. They were local to `SettingsView` and
@@ -269,6 +275,143 @@ export const LinesField: React.FC<{
     {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
   </div>
 );
+
+/**
+ * Names whose swatch is light enough that a white tick vanishes on it.
+ *
+ * V1's own list, copied rather than computed (`ColorInputWidget.tsx:96`). Computing it from the
+ * token hexes would be the better rule and a different one: V2's `--yellow` is `#a16207`, dark
+ * enough that a white tick reads fine, so a luminance test would tick it white and V1 ticks it
+ * black. The point of this port is to look like V1, so the list is V1's.
+ */
+const DARK_TICK_COLORS: ReadonlySet<string> = new Set([
+  "white",
+  "yellow",
+  "lime",
+  "amber",
+  "cyan",
+]);
+
+/**
+ * V1's `ColorSwatchGrid` (`Ivy-Framework/src/frontend/src/widgets/inputs/ColorInputWidget.tsx:63`),
+ * class for class: a six-column grid of round `size-6` swatches, the selected one ringed and
+ * ticked, each button named by its colour so the grid is usable without sight of it.
+ *
+ * The colours are {@link IVY_COLOR_NAMES} - the Ivy `Colors` enum in declaration order, which is the
+ * order `Object.keys(enumColorsToCssVar)` yields in V1 - resolved through `ivyColorVar` rather than
+ * a second table of hexes. That is the whole reason this is a fixed palette and not a hex picker:
+ * `config.yaml` stores a *name*, the daemon never validates it, and V1's `ConfigService` rewrites
+ * anything that is not an enum member to `Slate`. A free text field let an operator type a value
+ * that would be silently replaced; a grid of the 32 legal names cannot produce one.
+ */
+export const ColorSwatchGrid: React.FC<{
+  value: string;
+  disabled?: boolean;
+  onSelect: (name: IvyColorName) => void;
+}> = ({ value, disabled, onSelect }) => {
+  const selected = levelBadgeColor(value);
+
+  return (
+    <div className="grid grid-cols-6 gap-1 p-1" role="group" aria-label="Colors">
+      {IVY_COLOR_NAMES.map((name) => {
+        const isSelected = selected === name;
+        return (
+          <button
+            key={name}
+            type="button"
+            disabled={disabled}
+            aria-label={name}
+            aria-pressed={isSelected}
+            title={name}
+            data-color={name}
+            onClick={() => onSelect(name)}
+            className={`flex size-6 items-center justify-center rounded-full border-2 transition-all hover:z-10 hover:scale-110 ${
+              isSelected ? "border-foreground ring-2 ring-foreground/30" : "border-transparent"
+            } ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
+            style={{ backgroundColor: ivyColorVar(name) }}
+          >
+            {isSelected && (
+              <Check
+                className={`size-4 ${
+                  DARK_TICK_COLORS.has(name.toLowerCase()) ? "text-black" : "text-white"
+                }`}
+              />
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+};
+
+/**
+ * A labelled colour, edited as V1 edits one:
+ * `projectColor.ToColorInput().Variant(ColorInputVariant.SwatchPicker)`
+ * (`Ivy.Tendril/Apps/Settings/ProjectDetailView.cs:222`, and the same call in
+ * `Blades/EditProjectBladeView.cs:145` under a `.Label("Color")`).
+ *
+ * So: a square trigger filled with the current colour, and a popover holding
+ * {@link ColorSwatchGrid}, which closes on pick - V1's `handleSwatchSelect` sets the value and then
+ * `setSwatchPickerOpen(false)`.
+ *
+ * The trigger is a `size-9 rounded-field` square rather than V1's `rounded-md`, because `size-9` is
+ * the height of every other control on these screens (`NativeSelectField`, `Input`) and
+ * `rounded-field` is the token those use; V1's `colorInputPickerVariant` resolves to the same 36px
+ * at its default density. A colour the palette does not contain - a hex somebody hand-wrote into
+ * `config.yaml`, which V1 would rewrite to `Slate` on its next save - renders as an empty trigger
+ * and is named as unset rather than drawn as a colour, the same distinction {@link levelBadgeColor}
+ * draws for a badge.
+ */
+export const ColorSwatchField: React.FC<{
+  id: string;
+  label: string;
+  value: string;
+  hint?: string;
+  disabled?: boolean;
+  onChange: (value: IvyColorName) => void;
+}> = ({ id, label, value, hint, disabled, onChange }) => {
+  const [open, setOpen] = React.useState(false);
+  const selected = levelBadgeColor(value);
+
+  return (
+    <div className="space-y-1">
+      <Label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+        {label}
+      </Label>
+      <div className="flex items-center gap-2">
+        <Popover open={open} onOpenChange={setOpen}>
+          <PopoverTrigger asChild>
+            <button
+              id={id}
+              type="button"
+              disabled={disabled}
+              aria-label={label}
+              title={selected ?? "Choose color"}
+              data-testid={`${id}-trigger`}
+              data-color={selected ?? ""}
+              className={`size-9 shrink-0 rounded-field border border-input shadow-sm ${
+                disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"
+              }`}
+              style={selected ? { backgroundColor: ivyColorVar(selected) } : undefined}
+            />
+          </PopoverTrigger>
+          <PopoverContent className="w-auto p-0" align="start">
+            <ColorSwatchGrid
+              value={value}
+              disabled={disabled}
+              onSelect={(name) => {
+                onChange(name);
+                setOpen(false);
+              }}
+            />
+          </PopoverContent>
+        </Popover>
+        <span className="text-sm text-foreground">{selected ?? "None"}</span>
+      </div>
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  );
+};
 
 export const asOptions = (values: string[]): { value: string; label: string }[] =>
   values.map((value) => ({ value, label: value }));

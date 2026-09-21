@@ -18,9 +18,15 @@
 
 /**
  * `Colors` (`Ivy-Framework/src/Ivy/Shared/Colors.cs:4-36`) in declaration order, which is also the
- * order V1's colour picker offers (`Enum.GetNames<Colors>()`, `LevelsSetupView.cs:110`).
+ * order V1's colour picker offers (`Enum.GetNames<Colors>()`, `LevelsSetupView.cs:110`) and the
+ * order its swatch grid lays out (`ColorInputWidget.tsx:68`, `Object.keys(enumColorsToCssVar)` over
+ * a map written in that same declaration order).
+ *
+ * Exported because that grid is the vocabulary as well as the lookup: `ColorSwatchField` offers
+ * exactly these names in exactly this order, so the list an operator can pick from and the list
+ * {@link levelBadgeColor} will accept are one array rather than two that can drift.
  */
-const IVY_COLOR_NAMES = [
+export const IVY_COLOR_NAMES = [
   "Black",
   "White",
   "Slate",
