@@ -194,6 +194,20 @@ fn add_plan_scoped_values(
             if let Some(labels) = a.labels.as_ref().filter(|v| !v.is_empty()) {
                 values.insert("Labels".to_string(), labels.clone());
             }
+            // Present only when the issue is about something other than the plan, which is what
+            // tells the promptware to skip the revision read. An absent value and an empty one have
+            // to mean the same thing here: the header is a flat string map, so a blank
+            // `IssueTitle` would otherwise read to the agent as "the override exists and is empty"
+            // and produce a titleless issue.
+            if let Some(title) = a.title_override.as_ref().filter(|v| !v.trim().is_empty()) {
+                values.insert("IssueTitle".to_string(), title.clone());
+            }
+            if let Some(body) = a.body_override.as_ref().filter(|v| !v.trim().is_empty()) {
+                values.insert("IssueBody".to_string(), body.clone());
+            }
+            if let Some(source) = a.issue_source.as_ref().filter(|v| !v.trim().is_empty()) {
+                values.insert("IssueSource".to_string(), source.clone());
+            }
         }
         _ => {}
     }

@@ -439,6 +439,18 @@ export interface CreateIssueFields {
   assignee?: string;
   comment?: string;
   labels?: string[];
+  /**
+   * Title and body to use instead of the plan's. Set when the issue is about something other than
+   * the plan itself — today, a recommendation being filed for later. The job stays plan-scoped
+   * either way: the plan is what resolves the working directory and the Jobs view's plan column.
+   */
+  titleOverride?: string;
+  bodyOverride?: string;
+  /**
+   * What the subject came from, for the issue footer and the job's dedupe key. `planId::title` for
+   * a recommendation, matching `recommendationId()`.
+   */
+  issueSource?: string;
 }
 
 export interface RevisionResult {

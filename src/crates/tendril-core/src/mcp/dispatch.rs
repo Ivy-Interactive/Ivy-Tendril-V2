@@ -1039,6 +1039,12 @@ pub fn build_job_args(
             assignee: request.assignee.clone(),
             comment: request.comment.clone(),
             labels: request.labels.clone(),
+            // No override over MCP: an agent asking for an issue is asking about the plan it named,
+            // and the request shape has nowhere to carry a separate subject. Adding one means
+            // extending the tool schema in `mcp/tools.rs` as well, which is its own decision.
+            title_override: None,
+            body_override: None,
+            issue_source: None,
         }),
         "setupproject" => JobArgs::SetupProject(SetupProjectArgs {
             folder_path: request

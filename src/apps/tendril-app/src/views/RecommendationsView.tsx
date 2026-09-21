@@ -1,13 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Check, CircleCheck, ExternalLink, RefreshCw, X } from "lucide-react";
+import { Check, CircleCheck, ExternalLink, Github, RefreshCw, X } from "lucide-react";
 import type { ShellBadgeDto } from "@ivy-interactive/components/tendril";
 import { Button } from "@ivy-interactive/components/ui";
 import { bridge } from "../api/bridge";
 import {
   describeBridgeError,
   type CrossPlanRecommendation,
+  type PlanSummary,
+  type ProjectSummary,
   type RecommendationState,
 } from "../types/api";
+import { CreateIssueDialog } from "./dialogs/CreateIssueDialog";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { NoContentView } from "../components/NoContentView";
 import { REC_IMPACT_CLASS } from "../components/RecommendationCard";
@@ -92,7 +95,32 @@ export const buildRecommendationsSidebarList = (
 export interface RecommendationsViewProps {
   onSelectPlan: (planId: string) => void;
   onJobStarted?: (res: { jobId: string }) => void;
+  /**
+   * Where "Create Issue" gets a repository to run `gh` in. A recommendation names only its project,
+   * and the source plan's own repos are not on the recommendation DTO, so the project's list is what
+   * there is.
+   */
+  projects?: ProjectSummary[];
 }
+
+/**
+ * The source plan, shaped as the `PlanSummary` `CreateIssueDialog` expects.
+ *
+ * The dialog needs a plan for two things: `plan.id` becomes the job's `folderPath`, and the plan is
+ * what it offers repositories from. A recommendation carries its source plan's id and title but not
+ * its repos, and `PlanSummary` has no `repos` field at all — so the dialog's `"repos" in plan` test
+ * is false and it falls through to `projectRepos`, which is the intended path here.
+ *
+ * `state` is `Completed` because that is the only source state this page ever lists.
+ */
+const sourcePlanOf = (rec: CrossPlanRecommendation): PlanSummary => ({
+  id: rec.planId,
+  title: rec.planTitle ?? rec.title,
+  state: "Completed",
+  project: rec.project,
+  level: "",
+  verifications: [],
+});
 
 /**
  * The Recommendations page.
@@ -108,6 +136,7 @@ export interface RecommendationsViewProps {
 export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
   onSelectPlan,
   onJobStarted,
+  projects = [],
 }) => {
   const [recommendations, setRecommendations] = useState<CrossPlanRecommendation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -122,6 +151,15 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
     rec: CrossPlanRecommendation;
     action: "Accept" | "Decline";
   } | null>(null);
+
+  /**
+   * The recommendation being filed as a GitHub issue, if any.
+   *
+   * Held apart from `activeDialog` rather than folded into it: that one drives a note dialog whose
+   * submit is a state write, and this one drives `CreateIssueDialog`, which writes no recommendation
+   * state at all. Filing an issue deliberately leaves the recommendation `Pending` — see the button.
+   */
+  const [issueRec, setIssueRec] = useState<CrossPlanRecommendation | null>(null);
 
   /**
    * The recommendation an action is mid-flight on, as `"planId::title"`.
@@ -272,6 +310,31 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
     await load();
   };
 
+  /* Memoized so the dialog is handed stable props. It reseeds its fields when these change
+     identity, and a fresh object per render would wipe an edit in progress. */
+  const issueDialogPlan = useMemo(
+    () => (issueRec ? sourcePlanOf(issueRec) : null),
+    [issueRec],
+  );
+  const issueDialogRepos = useMemo(
+    () => (issueRec ? (projects.find((p) => p.name === issueRec.project)?.repos ?? []) : []),
+    [issueRec, projects],
+  );
+  const issueDialogSubject = useMemo(
+    () =>
+      issueRec
+        ? {
+            title: issueRec.title,
+            body: issueRec.description,
+            // The identity `recommendationId` builds, which is also what the job's dedupe key uses
+            // to tell two recommendations of one plan apart.
+            source: recommendationId(issueRec),
+            kind: "Recommendation",
+          }
+        : null,
+    [issueRec],
+  );
+
   const isBusy = pendingId != null;
   const impactClass = selected?.impact
     ? (REC_IMPACT_CLASS[selected.impact] ?? "border border-border text-muted-foreground")
@@ -368,6 +431,28 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
               <CircleCheck className="h-3.5 w-3.5" />
               Accept with Notes
             </Button>
+            {/* V2-only, no V1 counterpart: `Apps/Recommendations/` has no issue button, so this is
+                new behaviour rather than drift from the C#. Issue #214.
+
+                It files the recommendation and stops there — the recommendation stays `Pending`,
+                because "an issue exists for this" has nowhere to live: recommendation states are a
+                closed four-value list both implementations validate, and `Recommendation` has no
+                passthrough map for a new field. Decline it with the issue number as the reason if
+                it should stop appearing. */}
+            <Button
+              type="button"
+              size="sm"
+              variant="outline"
+              data-testid="recommendation-create-issue"
+              disabled={isBusy}
+              onClick={() => setIssueRec(selected)}
+              className="text-xs"
+            >
+              {/* `size-3.5`, not `h-3.5 w-3.5`: upstream 98a09de1 converted every equal pair in
+                  this app and left none behind, so a new one would be the only holdout. */}
+              <Github className="size-3.5" />
+              Create Issue
+            </Button>
             <Button
               type="button"
               size="sm"
@@ -399,6 +484,21 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
             {selected.description}
           </div>
         </>
+      )}
+
+      {/* Create GitHub issue from the selected recommendation */}
+      {issueRec && (
+        <CreateIssueDialog
+          isOpen
+          onClose={() => setIssueRec(null)}
+          plan={issueDialogPlan!}
+          projectRepos={issueDialogRepos}
+          subject={issueDialogSubject!}
+          onJobStarted={(res) => {
+            setIssueRec(null);
+            onJobStarted?.(res);
+          }}
+        />
       )}
 
       {/* Note dialog */}

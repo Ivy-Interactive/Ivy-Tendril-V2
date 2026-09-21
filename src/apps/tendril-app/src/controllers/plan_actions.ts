@@ -267,6 +267,9 @@ export class PlanActionsController {
       ...(fields.assignee ? { assignee: fields.assignee } : {}),
       ...(fields.comment ? { comment: fields.comment } : {}),
       ...(fields.labels && fields.labels.length > 0 ? { labels: fields.labels } : {}),
+      ...(fields.titleOverride ? { titleOverride: fields.titleOverride } : {}),
+      ...(fields.bodyOverride ? { bodyOverride: fields.bodyOverride } : {}),
+      ...(fields.issueSource ? { issueSource: fields.issueSource } : {}),
     });
   }
 

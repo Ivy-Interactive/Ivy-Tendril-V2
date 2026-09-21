@@ -983,6 +983,10 @@ export const App: React.FC = () => {
           <RecommendationsView
             onSelectPlan={handleSelectPlan}
             onJobStarted={(res) => handleSelectJob(res.jobId)}
+            // Filing a recommendation as an issue needs somewhere to run `gh`, and a
+            // recommendation carries only its project name. Same source as the plan detail's own
+            // CreateIssue dialog uses below.
+            projects={projects}
           />
         );
 

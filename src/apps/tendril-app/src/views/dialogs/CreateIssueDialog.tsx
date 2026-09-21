@@ -10,12 +10,34 @@ import {
 import { DialogShell } from "./DialogShell";
 import { SELECT_FIELD_CLASS } from "./selectField";
 
+/**
+ * A subject that is not the plan: the issue is filed about this instead, and the plan only decides
+ * where `gh` runs and which plan the job belongs to.
+ *
+ * Supplying one switches the dialog into subject mode, where Title and Body become editable fields
+ * seeded from `title` and `body`. Without one the dialog behaves exactly as it always has and the
+ * promptware builds the issue from the plan's own revision.
+ */
+export interface CreateIssueSubject {
+  title: string;
+  body: string;
+  /** Stable identity, `planId::title` for a recommendation. Footer citation and dedupe key. */
+  source: string;
+  /** What kind of thing this is, for the dialog's heading. */
+  kind: string;
+}
+
 export interface CreateIssueDialogProps {
   isOpen: boolean;
   onClose: () => void;
+  /**
+   * In subject mode this is the *source* plan — the one the recommendation came from. It is still
+   * what resolves the repo list and the job's plan scope.
+   */
   plan: PlanDetail | PlanSummary;
   /** Fallback when the plan records no repos of its own. */
   projectRepos?: string[];
+  subject?: CreateIssueSubject;
   onJobStarted?: (response: StartJobResponse) => void;
 }
 
@@ -35,6 +57,7 @@ export function CreateIssueDialog({
   onClose,
   plan,
   projectRepos = [],
+  subject,
   onJobStarted,
 }: CreateIssueDialogProps) {
   const repos = React.useMemo(() => {
@@ -46,6 +69,8 @@ export function CreateIssueDialog({
   const [assignee, setAssignee] = React.useState("");
   const [labels, setLabels] = React.useState("");
   const [comment, setComment] = React.useState("");
+  const [title, setTitle] = React.useState(subject?.title ?? "");
+  const [body, setBody] = React.useState(subject?.body ?? "");
   const [isBusy, setIsBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   // V1 puts `.AutoFocus()` on the repository select: it is the one required field, and the only one
@@ -54,19 +79,46 @@ export function CreateIssueDialog({
   const repoRef = React.useRef<HTMLSelectElement>(null);
   const cancelRef = React.useRef<HTMLButtonElement>(null);
 
+  /**
+   * Seeded once per opening, deliberately not on `repos`/`subject` identity.
+   *
+   * Callers build both from their own render state — `projectRepos={projects.find(...)?.repos ?? []}`
+   * and, for a recommendation, a fresh `subject` object — so neither is referentially stable across
+   * a parent render. Keying the reset on them re-ran it mid-edit and discarded whatever the operator
+   * had typed: in subject mode an edited title reverted to the recommendation's wording on the next
+   * render, and in plan mode assignee, labels and comment were being cleared the same way.
+   */
+  const subjectRef = React.useRef(subject);
+  subjectRef.current = subject;
+
   React.useEffect(() => {
-    if (isOpen) {
-      setRepo(repos[0] ?? "");
-      setAssignee("");
-      setLabels("");
-      setComment("");
-      setError(null);
-      setIsBusy(false);
-    }
+    if (!isOpen) return;
+    const seed = subjectRef.current;
+    setAssignee("");
+    setLabels("");
+    setComment("");
+    setTitle(seed?.title ?? "");
+    setBody(seed?.body ?? "");
+    setError(null);
+    setIsBusy(false);
+  }, [isOpen]);
+
+  /**
+   * The repo list can arrive after the dialog opens, because the projects it comes from load
+   * asynchronously. Tracked apart from the seed above so a late arrival still fills the selection,
+   * and only when the current one is absent or no longer offered — returning the same value makes
+   * React bail out, so this stays quiet on the renders where nothing changed.
+   */
+  React.useEffect(() => {
+    if (!isOpen) return;
+    setRepo((current) => (current !== "" && repos.includes(current) ? current : (repos[0] ?? "")));
   }, [isOpen, repos]);
 
   const handleSubmit = async () => {
     if (!repo) return;
+    // Subject mode needs a title: it is the only thing the promptware has to name the issue with,
+    // since it will not be reading the plan's.
+    if (subject && title.trim() === "") return;
     const labelList = labels
       .split(",")
       .map((entry) => entry.trim())
@@ -80,6 +132,13 @@ export function CreateIssueDialog({
         assignee: assignee.trim() || undefined,
         labels: labelList,
         comment: comment.trim() || undefined,
+        ...(subject
+          ? {
+              titleOverride: title.trim(),
+              bodyOverride: body.trim() || undefined,
+              issueSource: subject.source,
+            }
+          : {}),
       });
       onJobStarted?.(response);
       onClose();
@@ -94,11 +153,15 @@ export function CreateIssueDialog({
     <DialogShell
       isOpen={isOpen}
       onClose={onClose}
-      title={`Create GitHub Issue #${plan.id}`}
+      title={subject ? `Create GitHub Issue from ${subject.kind}` : `Create GitHub Issue #${plan.id}`}
       width="rem30"
       shortcut="Ctrl+Enter"
       onShortcut={() => void handleSubmit()}
-      description="CreateIssue writes the issue body from the plan and opens it with `gh` in the selected repository."
+      description={
+        subject
+          ? `CreateIssue opens this with \`gh\` in the selected repository. The issue is filed against plan #${plan.id}, but describes the ${subject.kind.toLowerCase()} rather than the plan's own work.`
+          : "CreateIssue writes the issue body from the plan and opens it with `gh` in the selected repository."
+      }
       testId="create-issue-dialog"
       initialFocusRef={repos.length === 0 ? cancelRef : repoRef}
       footer={
@@ -115,13 +178,56 @@ export function CreateIssueDialog({
           <Button
             onClick={() => void handleSubmit()}
             data-testid="dialog-confirm"
-            disabled={isBusy || repo === ""}
+            disabled={isBusy || repo === "" || (subject != null && title.trim() === "")}
           >
             {isBusy ? "Starting…" : "Create Issue"}
           </Button>
         </>
       }
     >
+      {subject && (
+        <>
+          <div className="mb-4">
+            <label htmlFor="create-issue-title" className="mb-1 block text-xs text-muted-foreground">
+              Title
+            </label>
+            <Input
+              id="create-issue-title"
+              aria-label="Title"
+              value={title}
+              onChange={(event) => setTitle(event.target.value)}
+              placeholder="What the issue is about"
+              data-testid="create-issue-title"
+            />
+            {title.trim() === "" && (
+              <p className="mt-1 text-xs text-warning">
+                A title is required: the plan&apos;s own title is not used here.
+              </p>
+            )}
+          </div>
+
+          <div className="mb-4">
+            <label htmlFor="create-issue-body" className="mb-1 block text-xs text-muted-foreground">
+              Body
+            </label>
+            <Textarea
+              id="create-issue-body"
+              aria-label="Body"
+              rows={6}
+              value={body}
+              onChange={(event) => setBody(event.target.value)}
+              placeholder="What should be done, and why…"
+              className="text-sm"
+              data-testid="create-issue-body"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">
+              Edit before filing if the wording is terse. The agent formats it into Markdown and
+              keeps your words rather than rewriting them.
+            </p>
+          </div>
+        </>
+      )}
+
       <div>
         <label htmlFor="create-issue-repo" className="mb-1 block text-xs text-muted-foreground">
           Repository

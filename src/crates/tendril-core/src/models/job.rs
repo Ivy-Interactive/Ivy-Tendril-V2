@@ -137,6 +137,27 @@ pub struct CreateIssueArgs {
     pub comment: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub labels: Option<String>,
+
+    /// Issue title, when the issue is *not* about the plan itself. The promptware normally builds
+    /// title and body out of `plan.yaml` plus the latest revision; a caller that has its own subject
+    /// — today, a recommendation being filed for later — passes it here and the plan read is
+    /// skipped.
+    ///
+    /// `folder_path` stays required even then: the job is still plan-scoped, because that is what
+    /// resolves the working directory, the project and the plan column in the Jobs view. The
+    /// override changes what the issue *says*, not which plan the job belongs to.
+    #[serde(rename = "titleOverride", skip_serializing_if = "Option::is_none")]
+    pub title_override: Option<String>,
+    /// Issue body to use instead of the plan's Problem / Solution / Tests sections. Paired with
+    /// [`Self::title_override`]; supplying one without the other is accepted and leaves the other
+    /// side to the plan.
+    #[serde(rename = "bodyOverride", skip_serializing_if = "Option::is_none")]
+    pub body_override: Option<String>,
+    /// What the override came from, for the issue's footer and the job log: `"planId::title"` for a
+    /// recommendation. Opaque to the promptware beyond being echoed, so a future caller can use its
+    /// own spelling.
+    #[serde(rename = "issueSource", skip_serializing_if = "Option::is_none")]
+    pub issue_source: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -254,6 +275,43 @@ impl JobArgs {
                 a.project.trim().to_lowercase(),
                 normalize_description(&a.description)
             )),
+            // CreateIssue is the one plan-scoped type that can legitimately run more than once
+            // against the same plan, so it cannot key on the folder alone.
+            //
+            // Recommendations live *inside* their source plan's `plan.yaml`, and one completed plan
+            // routinely yields several. Filing two of them as issues is two different pieces of
+            // work, but on the folder-only key below both submissions hash to
+            // `CreateIssue|<folder>` and the second is refused as duplicate work — which the
+            // operator sees as a button that silently stops responding after the first click.
+            //
+            // So the subject joins the key. `issue_source` is the stable identity when the caller
+            // has one (`planId::title` for a recommendation); the title is the fallback, normalized
+            // the same way a CreatePlan description is so that two spellings of one request still
+            // collide. With neither, the key degrades to the folder and the old behaviour stands:
+            // one issue per plan, which is right for an issue that *is* about the plan.
+            Self::CreateIssue(a) => {
+                let folder = a.folder_path.trim_end_matches(['/', '\\']).trim();
+                if folder.is_empty() {
+                    return None;
+                }
+                let subject = a
+                    .issue_source
+                    .as_deref()
+                    .map(str::trim)
+                    .filter(|s| !s.is_empty())
+                    .map(normalize_description)
+                    .or_else(|| {
+                        a.title_override
+                            .as_deref()
+                            .map(str::trim)
+                            .filter(|s| !s.is_empty())
+                            .map(normalize_description)
+                    });
+                Some(match subject {
+                    Some(subject) => format!("CreateIssue|{}|{}", folder, subject),
+                    None => format!("CreateIssue|{}", folder),
+                })
+            }
             // Every plan-scoped type keys on its folder: one plan, one in-flight job of that type.
             // The type is part of the key, so an ExpandPlan and an ExecutePlan on the same plan do
             // not collide here. The folder is *not* lowercased — Linux paths are case-sensitive, and

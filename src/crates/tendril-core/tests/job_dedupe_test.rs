@@ -25,7 +25,7 @@ use tendril_core::db::open_database;
 use tendril_core::error::TendrilError;
 use tendril_core::jobs::manager::{JobManager, SpecBuilder};
 use tendril_core::models::{
-    CreatePlanArgs, ExecutePlanArgs, JobArgs, JobItem, JobStatus, PlanStatus,
+    CreateIssueArgs, CreatePlanArgs, ExecutePlanArgs, JobArgs, JobItem, JobStatus, PlanStatus,
 };
 
 fn settings() -> TendrilSettings {
@@ -67,6 +67,35 @@ fn create_plan(project: &str, description: &str) -> JobArgs {
 
 /// Writes a job row straight to SQLite, keyed exactly as the submission path would have keyed it.
 /// This is the predecessor no in-memory check can see.
+/// A `CreateIssue` about the plan itself: no subject of its own.
+fn create_issue(folder: &Path) -> JobArgs {
+    JobArgs::CreateIssue(CreateIssueArgs {
+        folder_path: folder.to_string_lossy().to_string(),
+        repo: "/repos/widgets".to_string(),
+        assignee: None,
+        comment: None,
+        labels: None,
+        title_override: None,
+        body_override: None,
+        issue_source: None,
+    })
+}
+
+/// A `CreateIssue` filed for a recommendation stored in `folder`'s plan, identified the way
+/// `RecommendationsView` identifies one: `planId::title`.
+fn create_issue_for_recommendation(folder: &Path, source: &str, title: &str) -> JobArgs {
+    JobArgs::CreateIssue(CreateIssueArgs {
+        folder_path: folder.to_string_lossy().to_string(),
+        repo: "/repos/widgets".to_string(),
+        assignee: None,
+        comment: None,
+        labels: None,
+        title_override: Some(title.to_string()),
+        body_override: Some("Because the cache never expires.".to_string()),
+        issue_source: Some(source.to_string()),
+    })
+}
+
 fn seed_row(home: &HomeFixture, id: &str, args: &JobArgs, status: JobStatus) {
     let mut job = JobItem::new(
         id.to_string(),
@@ -191,6 +220,84 @@ fn the_dedupe_key_identifies_the_work_and_not_the_spelling() {
         })
         .dedupe_key(),
         "expanding a plan and executing it are not the same work"
+    );
+}
+
+/// `CreateIssue` is the one plan-scoped type that may legitimately run twice against one plan.
+///
+/// A completed plan routinely carries several recommendations, and they live inside that plan's
+/// `plan.yaml`, so filing two of them keys on the same folder. On a folder-only key the second
+/// submission is refused as duplicate work, which the operator sees as a button that stops
+/// responding after the first click.
+#[test]
+fn two_recommendations_from_one_plan_are_two_issues() {
+    let folder = Path::new("/tmp/Plans/00001-Thing");
+
+    let first = create_issue_for_recommendation(folder, "00001::Cache the model list", "Cache it");
+    let second = create_issue_for_recommendation(folder, "00001::Retry the fetch", "Retry it");
+
+    assert_ne!(
+        first.dedupe_key(),
+        second.dedupe_key(),
+        "two recommendations in one plan are two pieces of work"
+    );
+
+    assert_eq!(
+        first.dedupe_key(),
+        create_issue_for_recommendation(
+            folder,
+            "  00001::Cache   the MODEL list ",
+            "Something else entirely",
+        )
+        .dedupe_key(),
+        "the source identifies the work, normalized like a description, and outranks the title"
+    );
+
+    assert_ne!(
+        first.dedupe_key(),
+        create_issue(folder).dedupe_key(),
+        "an issue about the plan is not an issue about one of its recommendations"
+    );
+
+    assert_eq!(
+        create_issue(folder).dedupe_key(),
+        create_issue(Path::new("/tmp/Plans/00001-Thing/")).dedupe_key(),
+        "with no subject the key is still the folder, so one plan still gets one issue"
+    );
+}
+
+/// With only a title to go on, that title is the identity. Covers a caller that supplies a subject
+/// but no stable id for it.
+#[test]
+fn an_issue_title_identifies_the_work_when_there_is_no_source() {
+    let folder = Path::new("/tmp/Plans/00001-Thing");
+    let titled = |title: &str| {
+        JobArgs::CreateIssue(CreateIssueArgs {
+            folder_path: folder.to_string_lossy().to_string(),
+            repo: "/repos/widgets".to_string(),
+            assignee: None,
+            comment: None,
+            labels: None,
+            title_override: Some(title.to_string()),
+            body_override: None,
+            issue_source: None,
+        })
+    };
+
+    assert_eq!(
+        titled("Cache the model list").dedupe_key(),
+        titled("  cache   the Model List  ").dedupe_key(),
+        "whitespace and case are how a title was typed, not what it asks for"
+    );
+    assert_ne!(
+        titled("Cache the model list").dedupe_key(),
+        titled("Retry the fetch").dedupe_key(),
+        "a different title is different work"
+    );
+    assert_ne!(
+        titled("Cache the model list").dedupe_key(),
+        create_issue(folder).dedupe_key(),
+        "a titled issue is not the plan's own issue"
     );
 }
 
