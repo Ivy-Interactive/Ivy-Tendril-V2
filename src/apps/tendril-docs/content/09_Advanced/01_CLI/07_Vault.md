@@ -5,18 +5,21 @@ icon: KeyRound
 searchHints:
   - vault
   - sync
+  - pull
   - import
   - push
   - catalog
   - discover
   - connect
   - auto-sync
-  - theme
+  - team
 ---
 
 # vault
 
-Manage team configuration vaults, discover and connect shared repositories on GitHub, inspect catalog assets, import projects, and publish configuration updates directly from the CLI.
+Manage team configuration vaults backed by [Git](https://git-scm.com) and [GitHub](https://github.com). Vaults allow teams to share project configurations, custom skills, [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server configurations, promptware memories, and verifications across workstations. The CLI interacts with the [GitHub CLI (`gh`)](https://cli.github.com) to discover team repositories, import project templates, and submit updates via [GitHub Pull Requests](https://docs.github.com/en/pull-requests).
+
+See [Projects](02_Project.md) for local project configuration and [Global Config](06_Config.md) for global settings.
 
 ## Commands
 
@@ -26,21 +29,14 @@ Manage team configuration vaults, discover and connect shared repositories on Gi
 >tendril vault discover [--json]
 >tendril vault connect <repo-url> [--name <custom-name>]
 >tendril vault create <repo-name> [--public] [--org <org>]
->tendril vault disconnect [vault-id]
+>tendril vault disconnect [vault-id] [-y, --yes]
 >tendril vault sync [vault-id]
 >tendril vault pull [vault-id]
 >tendril vault set-auto-sync <enabled> [--vault <vault-id>]
 >tendril vault catalog [vault-id] [--json]
 >tendril vault import <project-name> [options]
 >tendril vault push <projects...> [options]
->tendril vault delete <project-name> [--vault <vault-id>]
->tendril vault theme list [--vault <vault-id>] [--json]
->tendril vault theme get <theme-id> [--vault <vault-id>] [--json]
->tendril vault theme add [--file <path>] [--stdin] [--id <id>] [--name <name>] [--vault <vault-id>]
->tendril vault theme create <id> --name <name> [options]
->tendril vault theme set <id> <field> <value> [--vault <vault-id>]
->tendril vault theme delete <theme-id> [--vault <vault-id>]
->tendril vault theme apply <theme-id>
+>tendril vault delete <project-name> [--vault <vault-id>] [-y, --yes]
 ```
 
 ## Vault Management
@@ -52,7 +48,7 @@ Manage team configuration vaults, discover and connect shared repositories on Gi
 >tendril vault list --json
 ```
 
-Lists all configured vaults, displaying their ID, name, remote repository URL, current branch, commits ahead/behind, last sync time, and auto-sync state.
+Lists all connected vaults, displaying their ID, name, remote [Git](https://git-scm.com) repository URL, active branch, ahead/behind commit counts, last sync timestamp, and auto-sync status.
 
 #### status
 
@@ -62,7 +58,7 @@ Lists all configured vaults, displaying their ID, name, remote repository URL, c
 >tendril vault status --json
 ```
 
-Shows detailed diagnostic and synchronization status for a specific vault or the primary configured vault.
+Shows detailed diagnostic and synchronization status for a specific vault or the primary configured vault, including uncommitted local modifications and branch tracking state.
 
 #### discover
 
@@ -71,7 +67,7 @@ Shows detailed diagnostic and synchronization status for a specific vault or the
 >tendril vault discover --json
 ```
 
-Scans GitHub using the GitHub CLI (`gh`) to discover existing vault repositories accessible to your account and organizations.
+Scans [GitHub](https://github.com) using the [GitHub CLI (`gh`)](https://cli.github.com) to discover existing vault repositories accessible to your account and organizations.
 
 #### connect
 
@@ -80,7 +76,7 @@ Scans GitHub using the GitHub CLI (`gh`) to discover existing vault repositories
 >tendril vault connect my-org/team-vault --name "Engineering Vault"
 ```
 
-Connects an existing Git repository as a team vault.
+Connects an existing [Git](https://git-scm.com) repository as a team vault. Accepts full repository URLs or `org/repo` shorthand.
 
 #### create
 
@@ -89,16 +85,16 @@ Connects an existing Git repository as a team vault.
 >tendril vault create team-vault --org my-org --public
 ```
 
-Creates a new repository on GitHub (private by default), initializes it as a vault, and connects it locally.
+Creates a new repository on [GitHub](https://github.com) (private by default), initializes standard vault directory layouts, and connects it locally. Use `--org` to target an organization and `--public` for public visibility.
 
 #### disconnect
 
 ```terminal
 >tendril vault disconnect
->tendril vault disconnect <vault-id>
+>tendril vault disconnect <vault-id> -y
 ```
 
-Disconnects a vault from Tendril without deleting local project files.
+Disconnects a vault from local Tendril configuration without deleting the local clone directory. Pass `-y` or `--yes` to skip confirmation prompts.
 
 #### sync / pull
 
@@ -108,7 +104,7 @@ Disconnects a vault from Tendril without deleting local project files.
 >tendril vault sync <vault-id>
 ```
 
-Pulls the latest configuration changes from the remote vault repository and updates tracked local projects.
+Pulls the latest configuration commits from the remote vault repository and updates tracked local projects. `pull` is an alias for `sync`.
 
 #### set-auto-sync
 
@@ -117,7 +113,7 @@ Pulls the latest configuration changes from the remote vault repository and upda
 >tendril vault set-auto-sync false --vault <vault-id>
 ```
 
-Enables or disables automatic synchronization for a vault. Accepts `true`, `false`, `1`, `0`, `yes`, `no`.
+Enables or disables automatic synchronization for a vault. Accepts `true`, `false`, `1`, `0`, `yes`, or `no`.
 
 ## Catalog & Project Sharing
 
@@ -128,7 +124,7 @@ Enables or disables automatic synchronization for a vault. Accepts `true`, `fals
 >tendril vault catalog <vault-id> --json
 ```
 
-Lists all projects and asset counts (repositories, custom skills, MCP servers, memories, review actions, verifications) published in the vault.
+Lists all projects and asset counts (repositories, custom skills, [Model Context Protocol (MCP)](https://modelcontextprotocol.io) servers, promptware memories, and verifications) published in the vault catalog.
 
 #### import
 
@@ -138,15 +134,15 @@ Lists all projects and asset counts (repositories, custom skills, MCP servers, m
 >tendril vault import MyProject --repo api=~/code/api --repo web=~/code/web
 ```
 
-Imports a project from the vault catalog into local Tendril configuration.
+Imports a project definition from the vault catalog into local Tendril configuration.
 
-| Option                 | Description                                               |
-| ---------------------- | --------------------------------------------------------- |
-| `--target-name <name>` | Custom local project name                                 |
-| `--vault <vault-id>`   | Vault ID or name to import from                           |
-| `--repo <name=path>`   | Local path mapping for a repository (repeatable)          |
-| `--no-permissions`     | Skip importing security and permissions rules             |
-| `--merge`              | Merge into an existing local project instead of replacing |
+| Option                 | Description                                                               |
+| ---------------------- | ------------------------------------------------------------------------- |
+| `--target-name <name>` | Custom local project name to register instead of the catalog name         |
+| `--vault <vault-id>`   | Vault ID or name to import from (defaults to active vault)                |
+| `--repo <name=path>`   | Map a vault repository identifier to a local filesystem path (repeatable) |
+| `--no-permissions`     | Skip importing security rules and execution permissions                   |
+| `--merge`              | Merge settings into an existing local project instead of replacing it     |
 
 #### push
 
@@ -156,120 +152,35 @@ Imports a project from the vault catalog into local Tendril configuration.
 >tendril vault push MyProject --reviewer alice,bob --title "feat(vault): update MyProject"
 ```
 
-Collects project configuration, custom skills, MCP servers, memories, review actions, and verifications, commits them to a new branch, and creates a pull request to the vault repository.
+Collects project configuration, custom skills, [Model Context Protocol (MCP)](https://modelcontextprotocol.io) configurations, promptware memories, and verifications, commits them to a feature branch, and opens a [GitHub Pull Request](https://docs.github.com/en/pull-requests) against the vault repository.
 
-| Option                | Description                                   |
-| --------------------- | --------------------------------------------- |
-| `--vault <vault-id>`  | Target vault ID                               |
-| `--version <version>` | Custom version string (defaults to timestamp) |
-| `--changelog <text>`  | Changelog notes included in PR description    |
-| `--title <title>`     | Pull request title                            |
-| `--body <body>`       | Pull request description                      |
-| `--reviewer <names>`  | Reviewer username(s) to assign on GitHub      |
+| Option                | Description                                                                                     |
+| --------------------- | ----------------------------------------------------------------------------------------------- |
+| `--vault <vault-id>`  | Target vault identifier                                                                         |
+| `--version <version>` | Custom version string (defaults to UTC timestamp)                                               |
+| `--changelog <text>`  | Changelog notes included in the pull request description                                        |
+| `--title <title>`     | Custom title for the generated pull request                                                     |
+| `--body <body>`       | Custom body description for the pull request                                                    |
+| `--reviewer <names>`  | [GitHub](https://github.com) username(s) to assign as reviewers (repeatable or comma-separated) |
 
 #### delete
 
 ```terminal
 >tendril vault delete OldProject
->tendril vault delete OldProject --vault <vault-id>
+>tendril vault delete OldProject --vault <vault-id> -y
 ```
 
-Deletes a project from the vault repository and creates a pull request on GitHub to apply the deletion.
-
-## Vault Themes
-
-#### theme list
-
-```terminal
->tendril vault theme list
->tendril vault theme list --json
-```
-
-Lists all themes saved in the vault with their ID, name, mode, description, preview colors, updated timestamp, and author.
-
-#### theme get
-
-```terminal
->tendril vault theme get <theme-id>
->tendril vault theme get <theme-id> --json
-```
-
-Shows full details for a vault theme including font, font size, border radii, shadows, and a complete table of color token values for light and dark modes.
-
-#### theme add
-
-```terminal
->tendril vault theme add --file theme.json
->cat theme.json | tendril vault theme add --stdin
->tendril vault theme add --file theme.json --id my-theme --name "My Theme"
-```
-
-Imports a theme manifest or theme configuration JSON file into the vault repository. Accepts standard vault theme manifests as well as Ivy theme definitions.
-
-#### theme create
-
-```terminal
->tendril vault theme create <id> --name <name> [options]
->tendril vault theme create cyber --name "Cyber" --base dracula --dark --primary "#00ffcc"
-```
-
-Creates a new theme optionally based on an existing preset, applies custom styles or color token overrides, and saves the theme to the vault.
-
-| Option                     | Description                                         |
-| -------------------------- | --------------------------------------------------- |
-| `-n, --name <name>`        | Display name for the theme (required)               |
-| `-d, --description <text>` | Theme description                                   |
-| `-b, --base <preset>`      | Base preset theme ID                                |
-| `--dark / --light`         | Mode flag for the theme                             |
-| `--primary <hex>`          | Primary color override                              |
-| `--secondary <hex>`        | Secondary color override                            |
-| `--accent <hex>`           | Accent color override                               |
-| `--background <hex>`       | Background color override                           |
-| `--foreground <hex>`       | Foreground color override                           |
-| `--color <token=hex>`      | Override any specific color token (repeatable)      |
-| `--font <family>`          | Font family                                         |
-| `--font-size <size>`       | Font size (e.g. 14px)                               |
-| `--radius <value>`         | Border radius for boxes, fields, and selectors      |
-| `--apply-to <mode>`        | Target mode for overrides: light, dark, or both     |
-| `--force`                  | Allow creating even if ID matches a built-in preset |
-| `--vault <vault-id>`       | Target vault ID                                     |
-
-#### theme set
-
-```terminal
->tendril vault theme set <id> <field> <value>
->tendril vault theme set cyber description "Updated theme description"
->tendril vault theme set cyber primary "#ff007f"
->tendril vault theme set cyber light.primary "#3b82f6"
-```
-
-Updates a single metadata property, font, radius, shadow setting, preview colors, or color token on an existing vault theme.
-
-#### theme delete
-
-```terminal
->tendril vault theme delete <theme-id>
-```
-
-Deletes a theme from the vault repository.
-
-#### theme apply
-
-```terminal
->tendril vault theme apply <theme-id>
-```
-
-Loads all vault themes into the active theme registry, resolves the theme ID across all built-in and vault themes, and sets it as the active Tendril theme in configuration.
+Removes a project from the vault repository and creates a [GitHub Pull Request](https://docs.github.com/en/pull-requests) to apply the deletion. Pass `-y` or `--yes` to skip confirmation.
 
 ## Examples
 
 **Connect and sync a team vault:**
 
 ```terminal
-># Discover team vaults on GitHub
+># Discover accessible team vaults on GitHub
 >tendril vault discover
 
-># Connect vault
+># Connect vault repository
 >tendril vault connect https://github.com/my-org/shared-vault.git
 
 ># Pull updates
@@ -282,23 +193,13 @@ Loads all vault themes into the active theme registry, resolves the theme ID acr
 ># Inspect available catalog projects
 >tendril vault catalog
 
-># Import with custom repository paths
->tendril vault import BackendService --repo backend=D:/Projects/backend
+># Import with custom local repository paths
+>tendril vault import BackendService --repo backend=~/Projects/backend
 ```
 
-**Publish project updates:**
+**Publish project updates via pull request:**
 
 ```terminal
-># Push changes and open a pull request
->tendril vault push BackendService --changelog "Added Playwright E2E verification"
-```
-
-**Create and apply a team vault theme:**
-
-```terminal
-># Create a custom theme based on the Dracula preset
->tendril vault theme create team-neon --name "Team Neon" --base dracula --dark --primary "#00ffcc" --accent "#ff007f"
-
-># Apply the theme as active
->tendril vault theme apply team-neon
+># Push changes and open a pull request with assigned reviewers
+>tendril vault push BackendService --changelog "Added Playwright E2E verification" --reviewer alice,bob
 ```

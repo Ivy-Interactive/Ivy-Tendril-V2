@@ -1,6 +1,6 @@
 ---
 title: CLI Overview
-description: Manage plans, projects, databases, and agents directly from your terminal. The tendril binary works as both a web server and a full-featured CLI tool.
+description: Manage plans, projects, databases, and agents directly from your terminal. The tendril binary works as both a server daemon and a full-featured CLI tool.
 icon: Terminal
 searchHints:
   - cli
@@ -11,6 +11,7 @@ searchHints:
   - reset
   - report-bug
   - run
+  - serve
   - doctor
   - version
   - config
@@ -18,17 +19,17 @@ searchHints:
 
 # CLI Overview
 
-Manage plans, projects, databases, and agents directly from your terminal. The `tendril` binary works as both a web server and a full-featured CLI tool.
+Manage plans, projects, databases, and agents directly from your terminal. The `tendril` binary works as both a server daemon and a full-featured CLI tool.
 
 Tendril CLI gives you complete control over your workflow without touching the UI:
 
 - **Plans** — create, list, update, and inspect plans; manage repos, worktrees, verifications, and recommendations
-- **Projects** — configure projects, their repos, build dependencies, and review actions
+- **Projects** — configure projects, their repos, build dependencies, review actions, MCP servers, and custom skills
 - **Verifications** — define and manage reusable verification checks
 - **Config** — read and update top-level settings stored in `config.yaml`
-- **Vault** — connect vaults, pull updates, inspect catalog assets, import and push projects
-- **Database** — run migrations, inspect schema versions, or reset the database
-- **Agents** — run and manage promptwares and their memory
+- **Vault** — connect team vaults, discover remote repos, sync assets, and import or push projects
+- **Database** — run migrations, inspect schema versions, reset tables, check integrity, and vacuum
+- **Agents & Jobs** — run promptwares, manage background jobs, and drive interactive chat sessions
 
 ## Quick Start
 
@@ -38,7 +39,7 @@ Tendril CLI gives you complete control over your workflow without touching the U
 >tendril doctor
 ```
 
-**2. Start the web server**
+**2. Start the daemon server**
 
 ```terminal
 >tendril run
@@ -67,20 +68,17 @@ Tendril CLI gives you complete control over your workflow without touching the U
 
 ## Global Options
 
-| Flag        | Short | Effect                                                 |
-| ----------- | ----- | ------------------------------------------------------ |
-| `--verbose` | `-v`  | Enable detailed debug logging                          |
-| `--quiet`   | `-q`  | Suppress informational messages (errors/warnings only) |
+| Flag            | Effect                                                                                       |
+| --------------- | -------------------------------------------------------------------------------------------- |
+| `--home <path>` | Path to Tendril home directory (can also be set via the `TENDRIL_HOME` environment variable) |
 
 ## Environment Variables
 
-| Variable             | Purpose                                                                                                                                     |
-| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
-| `TENDRIL_HOME`       | Root directory for config, database, inbox, and plans                                                                                       |
-| `TENDRIL_PLANS`      | Override plans directory (defaults to `TENDRIL_HOME/Plans`)                                                                                 |
-| `TENDRIL_VERBOSE`    | Enable verbose debug output (set to `1`)                                                                                                    |
-| `TENDRIL_QUIET`      | Suppress non-essential output (set to `1`)                                                                                                  |
-| `TENDRIL_NOT_MASTER` | Run server without claiming master (set to `1`). Used for development/debugging — the instance won't accept CLI IPC or process inbox files. |
+| Variable        | Purpose                                                                                                                                                               |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TENDRIL_HOME`  | Root directory for config, database, inbox, and plans (defaults to `~/.tendril` or `D:\.tendril`)                                                                     |
+| `TENDRIL_PLANS` | Override plans directory (defaults to `TENDRIL_HOME/Plans`)                                                                                                           |
+| `RUST_LOG`      | Filter directive for process logging on stderr (default: `warn,tendril_cli=info,tendril_core=info,tendril_server=info`). Set to `debug` for detailed diagnostic logs. |
 
 ## Common Commands
 
@@ -88,28 +86,33 @@ Tendril CLI gives you complete control over your workflow without touching the U
 
 ```terminal
 >tendril doctor
+>tendril doctor --rebuild-search-index
 ```
 
-Validates your Tendril installation — checks `TENDRIL_HOME`, `config.yaml`, required tools (`gh`, `git`), `pwsh`, database schema, and agent model availability. Always a good first step when something isn't working.
+Validates your Tendril installation — checks `TENDRIL_HOME`, `config.yaml`, required tools (`git`, `gh`), database connectivity, and agent model availability. Use `--rebuild-search-index` to regenerate the full-text search index from the database.
 
 #### plan doctor
 
 ```terminal
 >tendril plan doctor
->tendril plan doctor --all
 >tendril plan doctor --fix
+>tendril plan doctor --prs
+>tendril plan doctor --prune-husks --dry-run
 ```
 
-Scans every plan folder and reports health: missing or malformed `plan.yaml`, stale worktrees, and plans left `Completed` over a failed verification. See [Plan](01_Plan.md) for the full option and health-code reference.
+Scans every plan folder and reports health: missing or malformed `plan.yaml`, stale worktrees, and plans left `Completed` over a failed verification. See [Plan](01_Plan.md#doctor) for the full option and health-code reference.
 
-#### run
+#### serve and run
 
 ```terminal
+>tendril serve --port 5010 --host 127.0.0.1
+>tendril serve --tls-cert /path/localhost.crt --tls-key /path/localhost.key
 >tendril run
->tendril run --port 8080
 ```
 
-Starts the Tendril web server. Automatically applies pending database migrations before serving. Default port is `5010`.
+`tendril serve` starts the HTTP and WebSocket API server (default port `5010`, host `127.0.0.1`). Optional `--tls-cert` and `--tls-key` flags serve HTTPS.
+
+`tendril run` verifies that the target port is available, automatically applies any pending database migrations, and then launches the daemon.
 
 #### reset
 
@@ -118,31 +121,34 @@ Starts the Tendril web server. Automatically applies pending database migrations
 >tendril reset --force
 ```
 
-Removes all Tendril data from the machine — deletes `TENDRIL_HOME`, `TENDRIL_PLANS`, and clears environment variables. On macOS/Linux, prints a reminder to remove the `export` lines from your shell rc file manually.
+Removes all Tendril data from the machine — deletes `TENDRIL_HOME` and `TENDRIL_PLANS`. Prompts for confirmation unless `--force` is provided.
 
 > [!WARNING]
-> This permanently deletes all data. There is no undo.
+> This permanently deletes all plans, jobs, and configuration data in the target directories.
 
 #### report-bug
 
 ```terminal
->tendril report-bug --plan 03430
->tendril report-bug --job 00042 --description "Agent crashes on worktree creation"
->tendril report-bug --plan 03430 --dry-run
+>tendril report-bug --plan 00042
+>tendril report-bug --job 00150 -d "Agent failed to create worktree"
+>tendril report-bug --plan 00042 --out ~/Desktop/diagnostics.zip
+>tendril report-bug --plan 00042 --submit --yes
 ```
 
-Collects plan files and every job artifact — the Job Log, Job Prompt, Job Raw Log and Job Eventwire Log from `<TendrilHome>/Jobs/` — into a zip archive and submits them to the Tendril bug report API, which opens a GitHub issue automatically.
+Collects plan files and every job artifact — the Job Log, Job Prompt, Job Raw Log and Job Eventwire Log from `<TendrilHome>/Jobs/` — into a zip archive with sanitized configuration and health diagnostics. When `--submit` and `--yes` are given, uploads the archive and opens a GitHub issue.
 
-| Option                 | Effect                                                                                                       |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `--plan <plan-id>`     | Include this plan folder plus every job that ran against it, including the `CreatePlan` job that authored it |
-| `--job <job-id>`       | Include this job's four artifacts plus its plan's context (`plan.yaml`, revisions, worktree manifest)        |
-| `--description` / `-d` | Bug description (prompted interactively if omitted)                                                          |
-| `--yes` / `-y`         | Skip the confirmation prompt                                                                                 |
-| `--dry-run`            | Show what would be sent without uploading                                                                    |
+| Option                  | Effect                                                    |
+| ----------------------- | --------------------------------------------------------- |
+| `--plan <id>`           | Include this plan folder and all jobs that ran against it |
+| `--job <id>`            | Include this job's four artifacts plus its plan's context |
+| `-d, --description <t>` | Bug description (prompted interactively if omitted)       |
+| `--out <path>`          | Destination path for the zip archive                      |
+| `--github-user <name>`  | GitHub username for issue follow-up                       |
+| `--submit`              | Upload report to GitHub (requires `--yes`)                |
+| `-y, --yes`             | Skip the confirmation prompt                              |
 
 > [!WARNING]
-> Attached files are posted to a **public** GitHub issue. If your plan contains sensitive data, use another reporting channel.
+> Submitting a report attaches the zip bundle to a **public** GitHub issue. Secrets are stripped from configs and job logs, but review plan content before submitting.
 
 #### version
 
@@ -150,22 +156,24 @@ Collects plan files and every job artifact — the Job Log, Job Prompt, Job Raw 
 >tendril version
 ```
 
-Prints the installed Tendril version (e.g. `1.0.34`).
+Prints the installed Tendril version (e.g. `tendril v2.0.0`).
 
 #### update-promptwares
 
 ```terminal
 >tendril update-promptwares
+>tendril update-promptwares --dry-run
+>tendril update-promptwares --source /path/to/promptwares
 ```
 
-Refreshes the embedded promptware templates from the bundled source. Run after upgrading Tendril to pick up new or updated promptwares.
+Refreshes deployed promptwares in `<TendrilHome>/Promptwares/`, preserving their `Memory/` and `Tools/` directories.
 
 ## Next Steps
 
 - [Plan commands](01_Plan.md) — full reference for creating and managing plans
-- [Project commands](02_Project.md) — configure projects, repos, and review actions
+- [Project commands](02_Project.md) — configure projects, repos, review actions, MCP servers, and skills
 - [Verification commands](03_Verification.md) — manage global verification definitions
-- [Database commands](04_Database.md) — migrations, schema version, and reset
-- [Other commands](05_Other.md) — promptware, job, MCP, and utilities
+- [Database commands](04_Database.md) — migrations, schema version, integrity, and vacuum
+- [Other commands](05_Other.md) — promptware, job, chat, service, and utilities
 - [Config commands](06_Config.md) — read and update top-level `config.yaml` settings
-- [Vault commands](07_Vault.md) — connect vaults, sync assets, and import or publish projects
+- [Vault commands](07_Vault.md) — connect team vaults, sync assets, and import or publish projects

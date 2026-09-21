@@ -13,108 +13,136 @@ searchHints:
   - concurrency
   - cost
   - tokens
+  - queue
+  - stop-all
 ---
 
 # Lifecycle & Jobs
 
-Every time Tendril does something on your behalf it creates a **job**: one run of one promptware
-against one plan. Jobs are how a plan moves, and they are the thing you watch while it is happening.
+Every time Tendril does something on your behalf it creates a **job**: one run of a single
+[workflow agent (promptware)](02_Promptwares.md) against one [plan](01_Plans.md). Jobs are how a plan
+moves through its lifecycle, and they are what you observe in real time in the desktop app and CLI.
 
 ## Job statuses
 
-| Status        | Meaning                                                                      |
-| ------------- | ---------------------------------------------------------------------------- |
-| **Pending**   | Created, not yet admitted to the queue.                                      |
-| **Queued**    | Waiting for a concurrency slot.                                              |
-| **Running**   | The agent is working.                                                        |
-| **Completed** | Finished successfully.                                                       |
-| **Failed**    | The agent errored, or the work did not pass.                                 |
-| **Timeout**   | Exceeded its time limit and was terminated.                                  |
-| **Stopped**   | Stopped by you.                                                              |
-| **Blocked**   | Cannot proceed — a dependency, a missing credential or a decision is needed. |
+| Status        | Meaning                                                               |
+| ------------- | --------------------------------------------------------------------- |
+| **Pending**   | Created, not yet admitted to the queue.                               |
+| **Queued**    | Waiting for an available concurrency slot.                            |
+| **Running**   | The coding agent process is actively executing.                       |
+| **Completed** | Finished successfully and passed all required gates.                  |
+| **Failed**    | The agent errored, or required verification checks failed.            |
+| **Timeout**   | Exceeded its configured execution time limit and was terminated.      |
+| **Stopped**   | Stopped by user action.                                               |
+| **Blocked**   | Cannot proceed — waiting on a dependent job, credential, or decision. |
 
 ## The execution loop
 
-1. **Queue** — the job is created and queued behind whatever is already running.
-2. **Prepare** — for a job that writes code, Tendril creates a git worktree per repository under the
-   plan's `Worktrees/` folder, so the run never touches your checkout.
-3. **Implement** — the promptware works through the plan, committing as it goes.
-4. **Verify** — each configured verification runs and its result is recorded.
-5. **Report** — output, cost and the resulting plan state are written back.
+1. **Queue** — the job is created and queued behind currently running tasks.
+2. **Prepare** — for code-modifying promptwares ([ExecutePlan](02_Promptwares.md),
+   [RetryPlan](02_Promptwares.md)), Tendril provisions an isolated
+   [Git worktree](https://git-scm.com/docs/git-worktree) per repository under the plan's
+   `Worktrees/{repo-name}/` folder. The run never touches or locks your primary working checkout.
+3. **Implement** — the workflow agent works through the plan phases, making incremental commits.
+4. **Verify** — each configured verification gate executes in the worktree and records its result.
+5. **Report** — output logs, token costs, and updated plan state are saved to disk and reported to the
+   daemon.
 
-Stopping a job returns the plan to the state it was in before the job started, and keeps the work
-product so you can inspect the worktree. See [Plans](01_Plans.md) for the state table.
+Stopping a job returns the plan to the state it was in before the job began, while preserving the
+worktree state so you can inspect partial progress. See [Plans](01_Plans.md) for the complete state table.
 
 ## Verifications
 
-A verification is a named check recorded in the plan's `plan.yaml`. Each one gets a result — `Pass`,
-`Fail` or `Skipped` — plus a written report in the plan's `Verification/` folder. Which checks a plan
-carries depends on what it touches; in this repository the names are:
+A verification is an automated quality gate recorded in `plan.yaml`. Each check produces a result —
+`Pass`, `Fail`, or `Skipped` — along with a detailed report in the plan's `Verification/` folder.
+Which checks run depends on what files the plan modifies:
 
-| Verification    | Checks                                                              |
-| --------------- | ------------------------------------------------------------------- |
-| **NpmBuild**    | The pnpm workspace builds.                                          |
-| **NpmLint**     | Lint and formatting pass on the TypeScript packages.                |
-| **NpmTest**     | The Vitest suites pass.                                             |
-| **RustBuild**   | The Cargo workspace compiles.                                       |
-| **RustClippy**  | Clippy is clean.                                                    |
-| **RustFormat**  | `cargo fmt` reports no changes.                                     |
-| **RustTest**    | The Rust tests pass.                                                |
-| **Screenshots** | UI evidence was captured for a visible change.                      |
-| **CheckResult** | The agent's own end-to-end confirmation that the plan's tests hold. |
+| Verification    | Checks                                                           |
+| --------------- | ---------------------------------------------------------------- |
+| **NpmBuild**    | The pnpm / npm workspace builds cleanly.                         |
+| **NpmLint**     | Linting and formatting pass on TypeScript / JavaScript packages. |
+| **NpmTest**     | Automated test suites pass (Vitest, Jest, etc.).                 |
+| **RustBuild**   | Cargo packages compile without compiler errors.                  |
+| **RustClippy**  | Clippy linter reports no warnings or errors.                     |
+| **RustFormat**  | `cargo fmt --check` reports consistent formatting.               |
+| **RustTest**    | Rust unit and integration test suites pass.                      |
+| **Screenshots** | Visual evidence was captured for UI modifications.               |
+| **CheckResult** | The agent's own end-to-end confirmation that plan criteria hold. |
 
-A verification that does not apply to a plan is marked `Skipped` rather than quietly dropped, so a
-report exists either way. A plan reaches **Review** only when its required verifications pass;
-otherwise it goes to **Failed** and `RetryPlan` can take another pass with the failure as context.
+A verification that does not apply to a plan is marked `Skipped` rather than silently omitted,
+ensuring an explicit audit trail. A plan reaches **Review** only when its required verifications pass.
+If a verification fails, the plan enters **Failed**, and
+[RetryPlan](02_Promptwares.md) can take another pass with the exact error output
+and current diff as context.
 
 > [!TIP]
-> When a verification fails, run its command by hand in the plan's worktree. The command is usually
-> correct and the worktree is usually missing a setup step — see
-> [Onboarding a Codebase](../01_GettingStarted/03_Onboarding.md).
+> When a verification fails, inspect the report in `Verification/` and test the command directly in
+> the plan's worktree. The check is usually correct and the worktree may just be missing a dependency
+> or build artifact — see [Onboarding a Codebase](../01_GettingStarted/03_Onboarding.md).
 
 ## Concurrency & worktrees
 
-Several jobs can run at once, capped by `maxConcurrentJobs` in `config.yaml` (default `20`):
+Multiple jobs can run simultaneously, governed by `maxConcurrentJobs` in
+[~/.tendril/config.yaml](../03_Configuration/01_Setup.md) (default `20`):
 
 ```yaml
 maxConcurrentJobs: 4
 ```
 
-Because each executing plan gets its own worktrees, parallel jobs on the same repository do not
-collide — but they do share your machine and your agent's rate limits, so lower the cap if runs start
-starving each other.
+Because each executing plan operates inside dedicated [git worktrees](https://git-scm.com/docs/git-worktree),
+parallel jobs on the same repository do not collide. However, parallel runs share your CPU, memory, and
+coding agent API rate limits, so adjust `maxConcurrentJobs` to suit your workstation.
 
 ## Cost tracking
 
-Every run records the tokens it spent and what they cost. The durable record is the plan's
-`costs.csv`, appended one row per run:
+Every run records the tokens spent and estimated dollar costs. The durable audit log is the plan's
+`costs.csv`, appended with one row per run:
 
-```
+```csv
 Promptware,Tokens,Cost,Model,CostSource,Agent
 ExecutePlan,148213,1.9042,claude-opus-5,api,claude
 ```
 
-The `Cost` field is left empty rather than zeroed when a run cannot be priced — a flat-rate
-subscription, for example — so the tokens are still on record without inventing a number.
+When an agent runs on an unmetered subscription (or local model like Apple Foundation Models), the
+`Cost` field remains empty rather than recording zero, preserving token metrics without fabricating
+dollar amounts.
 
-## Watching jobs
+## Managing & inspecting jobs
 
-The desktop app shows live status and streaming output, and the CLI reads the same data:
+The desktop app displays live job status and streaming terminal output via the daemon's WebSocket
+stream. The CLI provides full parity:
 
 ```bash
+# List all active and recent jobs
 tendril job list
+
+# Filter jobs by status
+tendril job list --status Running
+tendril job list --status Failed
+
+# Inspect dispatch queue order and available slots
 tendril job queue
+
+# Promote a queued or blocked job to run immediately
+tendril job force-start <job-id>
+
+# Cancel a running job
+tendril job cancel <job-id> -m "Stopping for review"
+
+# Halt every running, queued, and blocked job
+tendril job stop-all
+
+# Clean up completed or failed jobs from the database
+tendril job clear --completed
+tendril job clear --failed
 ```
 
-`tendril job list` shows every job with its status and plan; `tendril job queue` shows dispatch order,
-which is what you want when a job is sitting in `Queued` longer than expected. A job that is blocked
-behind others can be promoted with `tendril job force-start <id>`.
-
-Full output for every job lives on disk at `$TENDRIL_HOME/Jobs/{jobId}-{planId}-{promptware}/` — the
-job log, the exact prompt the agent received and the raw agent transcript.
+Full logs and transcripts for every run are permanently stored on disk at
+`$TENDRIL_HOME/Jobs/{jobId}-{planId}-{promptware}/`, including the raw system prompt, tool execution
+traces, and agent transcripts.
 
 ## Next steps
 
 - [Plans](01_Plans.md) — the states jobs move a plan between.
 - [Promptwares](02_Promptwares.md) — what actually runs inside a job.
-- [Troubleshooting](../01_GettingStarted/06_Troubleshooting.md) — when a job does not behave.
+- [Troubleshooting](../01_GettingStarted/06_Troubleshooting.md) — diagnosing stuck or failing jobs.

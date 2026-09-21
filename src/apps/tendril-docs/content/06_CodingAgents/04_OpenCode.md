@@ -24,8 +24,12 @@ For more details on `config.yaml` structure and settings, see [Setup & Settings]
 
 ## Requirements
 
-- The OpenCode CLI must be installed and available as `opencode` on your PATH (`npm install -g opencode-ai`)
-- Run `opencode providers login` to authenticate with your chosen model provider
+- **Bundled Sidecar**: Tendril ships [OpenCode](https://opencode.ai) as a bundled sidecar beside the desktop app and automatically prefers it over any version on PATH. No manual installation is required on fresh setups.
+- **Standalone Installation** (optional): If you want to install or run a standalone copy:
+  ```bash
+  curl -fsSL https://opencode.ai/install | bash
+  ```
+- **Authentication**: Run `opencode providers login` (or `opencode auth login`) to authenticate with your selected provider (e.g. [Anthropic](https://www.anthropic.com), [OpenAI](https://openai.com), [Google AI](https://ai.google.dev), [Groq](https://groq.com)).
 
 ## Profiles
 
@@ -37,13 +41,24 @@ Tendril maps effort levels to OpenCode models:
 | `balanced` | default | medium | Standard plan execution      |
 | `quick`    | default | low    | Simple fixes and small edits |
 
-OpenCode supports multiple backend providers (Anthropic, OpenAI, Google, etc.) and manages model selection internally. Use `tendril models` to see discovered models.
+Effort levels map directly to OpenCode's `--variant` flag (`low`, `medium`, `high`, `max`).
 
-The profile is selected automatically based on the plan's complexity level, or can be configured per promptware in `config.yaml`.
+The default catalog model is `moonshotai/Kimi-K3`. OpenCode also supports pinned Anthropic and OpenAI models such as `claude-fable-5-1`, `claude-opus-5`, `claude-opus-4-7`, `claude-sonnet-5`, `claude-sonnet-4-6`, and `gpt-5.5`.
 
-## Local Ollama Setup
+## Bring-Your-Own LLM & Providers
 
-When running OpenCode with local Ollama models, specify the server URL directly in `config.yaml`:
+OpenCode powers Tendril's **Bring-Your-Own LLM** cards in **Settings > Coding Agent**:
+
+- **[OpenAI](https://openai.com)**: Points OpenCode to `https://api.openai.com` with your `OPENAI_API_KEY`.
+- **[Anthropic](https://www.anthropic.com)**: Points OpenCode to `https://api.anthropic.com/v1` with your `ANTHROPIC_API_KEY`.
+- **[Berget AI](../08_ModelProviders/01_Berget.md)**: Points OpenCode to `https://api.berget.ai/v1` with your [Berget AI](https://berget.ai) API key.
+- **Custom Endpoints**: Configure custom base URLs and keys for any OpenAI-compatible or Anthropic-compatible reverse proxy. For more providers, see [Model Providers](../08_ModelProviders/_Index.md).
+
+Tendril configures these providers non-destructively using `OPENCODE_CONFIG_CONTENT` so your global `opencode.json` configuration is never overwritten.
+
+## Local [Ollama](https://ollama.com) Setup
+
+When running OpenCode with local [Ollama](https://ollama.com) models, specify the server URL directly in `config.yaml`:
 
 ```yaml
 codingAgents:

@@ -12,6 +12,39 @@ searchHints:
 
 # Release Notes
 
+## 2.0.0 (2026-09-21)
+
+Tendril v2 is a generational architectural reimagining of the Tendril platform, rewriting the daemon and core execution engine in [Rust](https://www.rust-lang.org), adopting [Tauri v2](https://tauri.app) for the desktop application, introducing a high-performance [Vite+](https://viteplus.dev) frontend, and adding native multi-agent worktree concurrency, live terminal interactions, and expanded [model providers](../08_ModelProviders/_Index.md).
+
+### Major Architecture Shifts
+
+- **High-Performance Rust Daemon (`tendril-server` & `tendril-core`)**: Replaced the legacy .NET backend with an asynchronous [Rust](https://www.rust-lang.org) daemon powered by [Tokio](https://tokio.rs) and [Axum](https://github.com/tokio-rs/axum). The new daemon delivers sub-millisecond route dispatch, robust [SQLite](https://www.sqlite.org) connection pooling with busy timeouts, atomic config file writes, and a single-process master election protocol for zero-overhead local IPC.
+- **Tauri v2 Desktop Application**: Transitioned the desktop shell to [Tauri v2](https://tauri.app), providing a compact, memory-efficient desktop distribution on macOS, Linux, and Windows. Leverages native system webviews, hardened IPC bridging, native window decor, and system tray integration while eliminating legacy runtime framework dependencies.
+- **Vite+ React Frontend**: Rebuilt the desktop user interface from the ground up using [Vite+](https://viteplus.dev) and [React 19](https://react.dev). Shares atomic design tokens and renderer components with `@ivy-interactive/components`, supporting instant hot reloading, unified theme presets (Default, Dracula, Forest, Lovably), and responsive multi-breakpoint layouts.
+- **Parallel Worktree Execution**: Automated multi-repo [git worktree](https://git-scm.com/docs/git-worktree) provisioning for concurrent [plan](../02_Concepts/01_Plans.md) execution. Multiple [coding agents](../06_CodingAgents/_Index.md) can execute separate plans simultaneously on isolated branches without git index locking, repository collisions, or branch switching side-effects. Includes a background reaper service (`worktreeReaperInterval` and `worktreeReaperGrace`) to automatically prune idle or orphaned worktrees.
+- **Live Terminal & Interactive Chats**: Introduced embedded [PTY](https://en.wikipedia.org/wiki/Pseudoterminal) terminal emulation powered by [Xterm.js](https://xtermjs.org) directly within the application shell. Operators can toggle between structured chat and raw terminal interaction (`chatMode: terminal` or `chatMode: chat`), interact with running agents via stdin, inspect live streaming tool executions, and maintain persistent queued prompts across session switches.
+- **Expanded Model Integrations & Bundled Sidecars**:
+  - **Bundled OpenCode Sidecar**: Ships the [OpenCode](https://opencode.ai) CLI binary directly with the desktop installer (`binaries/opencode`), enabling zero-config [OpenCode agent](../06_CodingAgents/04_OpenCode.md) execution and immediate access to hundreds of open-source and proprietary models without requiring separate Node or CLI installs.
+  - **Bring Your Own LLM (BYO LLM)**: First-class onboarding and settings cards for [OpenAI](https://openai.com), [Anthropic](https://www.anthropic.com), and European sovereign provider [Berget AI](../08_ModelProviders/01_Berget.md) (`https://api.berget.ai/v1`), with automatic base URL normalization and credential dispatch to both OpenAI and Anthropic SDK variables.
+  - **Apple Foundation Model Integration**: Native support for Apple on-device models via macOS `fm serve`, executing inference locally with zero cloud API costs and complete offline privacy.
+  - **Dynamic Model Catalog Enrichment**: Integrates dynamic catalog discovery from [models.dev](https://models.dev) with offline [SQLite](https://www.sqlite.org) caching, staleness detection, and manual synchronization endpoints (`POST /api/models/refresh`).
+  - **Tiered Model Profiles**: Declarative model profile tiers (`deep`, `balanced`, `quick`) across all supported [coding agents](../06_CodingAgents/_Index.md) ([Claude Code](../06_CodingAgents/01_ClaudeCode.md), [Copilot](../06_CodingAgents/03_Copilot.md), [Codex](../06_CodingAgents/02_Codex.md), [Gemini](../06_CodingAgents/05_Gemini.md), [Antigravity](https://antigravity.google), [OpenCode](../06_CodingAgents/04_OpenCode.md), [Cursor](https://cursor.com), and Apple), including configurable reasoning effort pickers (`low`, `medium`, `high`, `max`).
+
+### Features
+
+- **Embedded PTY Terminal for Review Actions & Agents**: Run review actions and interactive agent sessions inside full ANSI-capable terminal tabs with real-time process tree tracking.
+- **Multi-Repo Git Worktree Management**: Isolated plan workspaces structured under `Worktrees/<owner>/<repo>` with branch tracking, upstream base branch fork detection, and safe unpushed commit protection.
+- **Centralized Team Vault Sync**: Connect, import, and push project configurations, custom [MCP servers](../09_Advanced/03_MCP.md), and [agent skills](../06_CodingAgents/00_Skills.md) to remote Git-backed vaults via [Team Vault](../09_Advanced/01_CLI/07_Vault.md) with automated credential sanitization.
+- **Cloudflare Quick Tunnels**: Share read-only plan reviews and live verification status over secure [Cloudflare](https://www.cloudflare.com) tunnels with QR codes, [Argon2](https://en.wikipedia.org/wiki/Argon2) password session protection, and anonymous reviewer personas.
+- **In-App Config Editor**: Full syntax-styled in-app editor for `config.yaml` with live conflict detection, reload hooks, and assistant-guided prompt actions (see [Configuration Setup](../03_Configuration/01_Setup.md)).
+
+### Improvements
+
+- **Sub-Millisecond CLI Invocations**: Rewrote the `tendril` CLI in Rust (`src/crates/tendril-cli`), achieving near-instant command startup and seamless daemon proxying (see [CLI Overview](../09_Advanced/01_CLI/00_Overview.md)).
+- **Token & Cost Ledger**: Real-time per-job token breakdown sheets and cost tracking calibrated across all major provider models, with automated fallback pricing for custom endpoints.
+- **Automated Verification Solvers**: Structured verification runner executing project check suites (build, test, format, lint) with live streaming output and automatic failure diagnostics (see [Verification Checks](../09_Advanced/01_CLI/03_Verification.md)).
+- **Unified Markdown Renderer**: Shared markdown rendering engine across plans, notes, and documentation, supporting GFM tables, syntax-highlighted code fences, [Mermaid](https://github.com/mermaid-js/mermaid) diagrams, and character-anchored inline diff comments in the [Review App](../04_Apps/02_Review.md).
+
 ## 1.2.0 (2026-09-01)
 
 ### Features

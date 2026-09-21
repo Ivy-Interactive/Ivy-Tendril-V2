@@ -1,134 +1,141 @@
 ---
 title: Other Commands
-description: Promptware execution, job tracking, master claim inspection and recovery, and agent instructions.
+description: Promptware execution, background job orchestration, chat sessions, background service registration, and utilities.
 icon: Wrench
 searchHints:
   - promptware
   - memory
   - tool
   - job
+  - chat
+  - service
+  - autostart
+  - launchd
+  - systemd
   - status
-  - mcp
-  - hash
-  - password
-  - update
+  - models
+  - hash-password
+  - generate-certs
   - agent-instructions
-  - instructions
-  - prompt
-  - master
-  - claim
-  - release
 ---
 
 # Other Commands
 
+Reference for promptware execution, background job tracking, interactive chat sessions, OS background service management, and Tendril CLI utility commands.
+
 ## promptware
+
+Tendril uses [promptwares](../../02_Concepts/02_Promptwares.md) to structure agent execution workflows. For background details, see [Promptwares Concept](../../02_Concepts/02_Promptwares.md).
 
 #### promptware run
 
 ```terminal
->tendril promptware run <promptware-name> [args...] [options]
+>tendril promptware run <name> [args...] [options]
 ```
 
-Runs a promptware by name.
+Runs a promptware directly on the host machine, bypassing the server job queue.
 
-| Option                 | Effect                                               |
-| ---------------------- | ---------------------------------------------------- |
-| `--profile <profile>`  | Override agent profile (`deep`, `balanced`, `quick`) |
-| `--working-dir <path>` | Working directory for the agent process              |
-| `--value <key=value>`  | Additional firmware header values (repeatable)       |
+| Option                 | Effect                                                                            |
+| ---------------------- | --------------------------------------------------------------------------------- |
+| `--profile <profile>`  | Override the agent reasoning profile (`deep`, `balanced`, `quick`)                |
+| `--working-dir <path>` | Working directory for the agent execution process                                 |
+| `--value <key=value>`  | Additional firmware header values (repeatable)                                    |
+| `--plan <id>`          | Target plan ID or folder path                                                     |
+| `--agent <provider>`   | Override agent provider (`claude`, `antigravity`, `codex`, `copilot`, `opencode`) |
+| `--dry-run`            | Print the compiled firmware to stdout and exit without launching an agent         |
+
+#### Memory and Tools
 
 ```terminal
->tendril promptware run CreatePlan "Fix the login bug" --value Project=Tendril
+>tendril promptware list-memory <name>
+>tendril promptware read-memory <name> [files...]
+>tendril promptware write-memory <name> <filename> [--file <path>] [--stdin]
+>tendril promptware delete-memory <name> <filename>
+>tendril promptware write-tool <name> <tool_name> [--file <path>] [--stdin]
 ```
 
-#### promptware read-memory / write-memory / write-tool
+Agents use these commands to persist learned patterns in a promptware's `Memory/` directory and author custom tools in `Tools/`.
+
+#### Deployment & Layers
 
 ```terminal
->tendril promptware read-memory <name> <filename>
->cat content.md | tendril promptware write-memory <name> <filename> --stdin
->cat tool.md | tendril promptware write-tool <name> <filename> --stdin
+>tendril promptware deploy
+>tendril promptware layers [name]
 ```
 
-Read and write files in a promptware's `Memory/` and `Tools/` directories. Used by agents to persist and reload learned patterns and custom tool definitions. Write commands print the file path to stdout.
-
-```terminal
->tendril promptware read-memory ExecutePlan cli-quirks.md
->echo "Always use --force when cleaning worktrees" | \
->  tendril promptware write-memory ExecutePlan cli-quirks.md --stdin
-```
+- **deploy** — compiles and installs standard promptwares into `<TendrilHome>/Promptwares/`.
+- **layers** — inspects which layer (shipped default or team overlay) supplied each promptware file.
 
 ## job
+
+Manage asynchronous background agent jobs. Jobs run through the daemon queue and report live status. For UI inspection, see the [Jobs App](../../04_Apps/04_Jobs.md).
 
 #### job list
 
 ```terminal
 >tendril job list
->tendril job list --project Ivy-Tendril --status Running
->tendril job list --type ExecutePlan --limit 20
->tendril job list --format json
+>tendril job list --status Running
+>tendril job list --limit 50
+>tendril job list --json
 ```
 
-Lists jobs from the Tendril database. Works without a running server by directly reading `tendril.db`. Filters by project, status, type, or plan ID. Results are ordered with in-flight jobs (NULL `CompletedAt`) first, then by most recent start time.
+Lists recent background jobs from the Tendril daemon server.
 
 | Option              | Effect                                                                                                    |
 | ------------------- | --------------------------------------------------------------------------------------------------------- |
-| `--project <name>`  | Filter by project name (validated against configured projects)                                            |
 | `--status <status>` | Filter by status (`Pending`, `Queued`, `Running`, `Completed`, `Failed`, `Timeout`, `Stopped`, `Blocked`) |
-| `--type <type>`     | Filter by job type (e.g., `CreatePlan`, `ExecutePlan`, `CreatePr`)                                        |
-| `--plan <id>`       | Filter by plan ID                                                                                         |
-| `--limit <n>`       | Maximum results (default: 50)                                                                             |
-| `--format <fmt>`    | Output format: `table` (default), `ids`, `json`                                                           |
-
-```terminal
->tendril job list --project Ivy-Tendril --status Failed
->tendril job list --plan 00152 --format ids
-```
-
-> [!TIP]
-> Unlike `plan list`, `job list` reads directly from the database and does not require the Tendril server to be running. It only reads `tendril.db` from `TENDRIL_HOME`, falling back to `~/.tendril` when the environment variable is unset.
+| `--limit <n>`       | Maximum number of results (default: 20)                                                                   |
+| `--json`            | Output jobs as structured JSON                                                                            |
 
 #### job start
 
 ```terminal
->tendril job start <job-type> <plan-id> [options]
+>tendril job start <job-type> [plan-id] [options]
 ```
 
-Starts a job on the running Tendril server. Requires Tendril to be running (communicates via HTTP).
+Starts an asynchronous background job on the running Tendril daemon. Supported job types: `CreatePlan`, `ExecutePlan`, `RetryPlan`, `UpdatePlan`, `ExpandPlan`, `SplitPlan`, `CreatePr`, `CreateIssue`, `SetupProject`, `AddProject`, `SyncRepo`.
 
-| Job Type      | Required Options                | Optional                                                                                                 |
-| ------------- | ------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `ExecutePlan` | `<plan-id>`                     | `--note`                                                                                                 |
-| `UpdatePlan`  | `<plan-id>`, `--instructions`   | —                                                                                                        |
-| `SplitPlan`   | `<plan-id>`                     | —                                                                                                        |
-| `ExpandPlan`  | `<plan-id>`                     | —                                                                                                        |
-| `CreateIssue` | `<plan-id>`, `--repo`           | `--assignee`, `--comment`, `--labels`                                                                    |
-| `CreatePr`    | `<plan-id>`                     | `--no-merge`, `--no-delete-branch`, `--no-artifacts`, `--assignee`, `--reviewer`, `--comment`, `--draft` |
-| `RetryPlan`   | `<plan-id>`, `--change-request` | —                                                                                                        |
-| `CreatePlan`  | `--description`, `--project`    | `--priority`, `--force`, `--source-path`                                                                 |
+| Option                    | Effect                                                                               |
+| ------------------------- | ------------------------------------------------------------------------------------ |
+| `--priority <number>`     | Priority ranking for queue dispatch (higher runs first)                              |
+| `--chat-session <id>`     | Associate job with a chat session (defaults to `$TENDRIL_CHAT_SESSION_ID`)           |
+| `--wait-for <job-id>`     | Job ID that must complete before this job can be queued (repeatable)                 |
+| `--idempotency-key <key>` | Idempotency token: resubmissions return the existing job instead of creating another |
+| `--force`                 | Resubmit even if identical work is already in flight                                 |
+| `--description <text>`    | Task description (used with `CreatePlan`)                                            |
+| `--project <name>`        | Target project (used with `CreatePlan`)                                              |
+| `--note <text>`           | Execution note (used with `ExecutePlan`)                                             |
+| `--instructions <text>`   | Refinement prompt (used with `UpdatePlan`)                                           |
+| `--change-request <text>` | Reviewer feedback (used with `RetryPlan`)                                            |
+| `--repo <name>`           | Repository (used with `CreateIssue`)                                                 |
+| `--assignee <user>`       | Assignee username on GitHub (used with `CreateIssue` / `CreatePr`)                   |
+| `--reviewer <user>`       | Reviewer username on GitHub (used with `CreatePr`, repeatable)                       |
+| `--draft`                 | Create as a draft PR (used with `CreatePr`)                                          |
 
 ```terminal
 >tendril job start ExecutePlan 00042
->tendril job start RetryPlan 00042 --change-request "Fix the failing tests"
->tendril job start CreatePlan --description "Add dark mode" --project MyProject
+>tendril job start RetryPlan 00042 --change-request "Fix failing unit tests"
+>tendril job start CreatePlan --description "Add dark mode toggle" --project MyProject
 ```
 
-> [!NOTE]
-> The Tendril server must be running for this command to work. It discovers the server via the `.master` lock file in `TENDRIL_HOME`.
-
-#### job status
+#### job status and fail
 
 ```terminal
 >tendril job status <job-id> --message <text> [--plan-id <id>] [--plan-title <title>]
+>tendril job fail <job-id> --message <text>
 ```
 
-Reports a status update to the running Tendril server for a job in progress. Used internally by agents to report progress visible in the Tendril UI.
+Reports progress telemetry or job failure directly to the daemon. Used internally by promptware scripts during execution.
 
-| Option             | Effect                             |
-| ------------------ | ---------------------------------- |
-| `--message` / `-m` | Status message to display          |
-| `--plan-id`        | Plan ID associated with the job    |
-| `--plan-title`     | Plan title associated with the job |
+#### job cancel and delete
+
+```terminal
+>tendril job cancel <job-id> [--message <reason>]
+>tendril job delete <job-id>
+```
+
+- **cancel** — signals a running job to abort.
+- **delete** — removes a job record from the database (log files on disk are preserved).
 
 #### job add-log
 
@@ -136,77 +143,106 @@ Reports a status update to the running Tendril server for a job in progress. Use
 >tendril job add-log <job-id> <action> [--summary <text>]
 ```
 
-Appends an `## Agent Log` section to the job's log in `<TendrilHome>/Jobs/` and prints the path to
-stdout. Writes straight to disk, so unlike `job start` and `job status` it does not need the Tendril
-server to be running. Agents pass the `TendrilJobId` firmware header value as `<job-id>`.
+Appends an `## Agent Log` narrative entry directly into the job's log file in `<TendrilHome>/Jobs/`. Operates directly on the filesystem and does not require the server daemon to be reachable.
 
-| Option      | Effect                      |
-| ----------- | --------------------------- |
-| `--summary` | Body text for the log entry |
-
-## master
-
-Inspects and, when necessary, breaks the master claim in `<TendrilHome>/.master` — the file every CLI command uses to find the running server. Reach for these when commands start reporting that the server is not running, or is hung, while you can see it in front of you.
-
-#### master status
+#### Queue and Maintenance
 
 ```terminal
->tendril master status
->tendril master status --json
+>tendril job queue [--json]
+>tendril job force-start <job-id>
+>tendril job stop-all
+>tendril job clear [--completed] [--failed] [--all] [-y/--yes]
+>tendril job maintenance
 ```
 
-Prints the claim (PID, port, scheme, start time, heartbeat age) and probes `/ivy/health` on the recorded address to say whether the process it names is actually serving. Never writes to or deletes `.master`, so looking does not destroy the evidence.
+- **queue** — prints pending jobs in dispatch order
+- **force-start** — bypasses concurrency and dependency gates to dispatch a job immediately
+- **stop-all** — cancels every active and queued job
+- **clear** — bulk-deletes completed or failed jobs
+- **maintenance** — runs a job cleanup and reconciliation pass immediately
 
-| Option   | Effect                                     |
-| -------- | ------------------------------------------ |
-| `--json` | Emit the report as JSON instead of a table |
+## chat
 
-Exits 0 when the holder is alive and answering — including when its heartbeat is late — and 1 otherwise, so a script can gate on it without parsing anything.
-
-| Verdict               | Meaning                                                                                |
-| --------------------- | -------------------------------------------------------------------------------------- |
-| `Healthy`             | Alive, beating and answering on the scheme it recorded                                 |
-| `SaturatedButServing` | Answering, heartbeat late. The server is busy, not gone: leave the claim alone         |
-| `WedgedNotServing`    | The process is running but answers on neither scheme, or has not published a port yet  |
-| `SchemeMismatch`      | Only the other scheme answers, so the recorded one is what every command fails against |
-| `DeadHolder`          | The recorded PID is not running. The next launch reclaims the claim automatically      |
-| `NoClaim`             | No `.master` at all, so nothing can discover the server                                |
-| `Unreadable`          | A claim exists but does not parse, which is what an interrupted write leaves behind    |
-
-#### master release
+Drive interactive agent coding sessions from your terminal:
 
 ```terminal
->tendril master release
->tendril master release --yes
->tendril master release --force
+>tendril chat list [--json]
+>tendril chat get <session-id> [--json]
+>tendril chat create [--agent <agent>] [--model <model>] [--title <title>] [--effort <level>] [--plan <folder>] [--json]
+>tendril chat send <session-id> "<message>" [--agent <agent>] [--model <model>] [--effort <effort>]
+>tendril chat delete <session-id>
 ```
 
-Deletes the claim. Prompts for confirmation first, and refuses outright when the process it names is alive and answering `/ivy/health`.
+`tendril chat send` connects to the daemon, dispatches the prompt turn, and streams real-time token responses and tool-call events directly to stdout.
 
-| Option         | Effect                                                              |
-| -------------- | ------------------------------------------------------------------- |
-| `--yes` / `-y` | Skip the confirmation prompt                                        |
-| `--force`      | Release even a master that is alive and answering (implies `--yes`) |
+## service
 
-> [!WARNING]
-> Releasing the claim of a server that is still running lets the next launch come up as a second master against the same `TENDRIL_HOME`, with both running jobs. Stop the process first, or trust `master status`: a late heartbeat on its own is not a reason to release anything.
+Manage the Tendril background daemon autostart service across platforms:
 
-#### Recovering a missing or wedged claim
+- **macOS** — registers a [launchd](https://en.wikipedia.org/wiki/Launchd) agent at `~/Library/LaunchAgents/io.tendril.daemon.plist`
+- **Linux** — registers a [systemd](https://systemd.io) user service unit
+- **Windows** — registers a scheduled task with [Task Scheduler](https://learn.microsoft.com/en-us/windows/win32/taskschd/task-scheduler-start-page)
 
-1. Run `tendril master status`.
-2. `SaturatedButServing` — do nothing. The server is running and answering; its heartbeat will catch up when load drops.
-3. `NoClaim` — a running master re-asserts its own claim within 30 seconds, logging `Re-asserted the master claim` to `<TendrilHome>/crash.log`. Wait one beat and look again; if nothing appears, no server is running, so start one with `tendril`.
-4. `Unreadable` — same as above: a running master replaces it on its next beat. Otherwise `tendril master release --yes` and start a server.
-5. `DeadHolder` — nothing to do; the next launch reclaims it. `tendril master release --yes` removes it now.
-6. `WedgedNotServing` or `SchemeMismatch` — stop the process the claim names, then `tendril master release --yes` and start a server.
+```terminal
+>tendril service install [--no-start] [--force]
+>tendril service status [--json]
+>tendril service uninstall [--purge-binaries] [--force]
+```
 
-> [!NOTE]
-> Every claim transition — taken, published, re-asserted, released, refused — is appended to `<TendrilHome>/crash.log`, which is written directly to disk and so survives a server too wedged to log anything else. That file is the history behind whatever `master status` shows you now.
+- **install** — registers the running executable as the background service. Use `--no-start` to register for next login without starting immediately.
+- **status** — reports whether the service is registered, loaded, and serving (including URL and PID).
+- **uninstall** — unregisters the autostart configuration. Use `--purge-binaries` to remove sidecars installed into `<home>/bin`.
 
-## agent-instructions
+## Utilities
+
+#### models
+
+```terminal
+>tendril models
+>tendril models --refresh
+```
+
+Lists supported LLM models, provider affiliations, context window limits, and live pricing. Use `--refresh` to fetch updated rates from the model registry.
+
+#### generate-certs
+
+```terminal
+>tendril generate-certs <output-directory>
+```
+
+Generates a self-signed `localhost.crt` and `localhost.key` PEM pair for serving HTTPS with `tendril serve --tls-cert <path> --tls-key <path>`.
+
+#### hash-password
+
+```terminal
+>tendril hash-password <password> [secret]
+```
+
+Hashes a password with [Argon2](https://en.wikipedia.org/wiki/Argon2) for use in `config.yaml`'s `auth:` section. Prints the encoded hash string and the pepper secret.
+
+#### project-analyzer
+
+```terminal
+>tendril project-analyzer <folder-path>
+```
+
+Inspects a directory and prints a trimmed YAML stack analysis identifying language runtimes, package managers, and test frameworks.
+
+#### agent-instructions
 
 ```terminal
 >tendril agent-instructions
 ```
 
-Prints the compiled agent system prompt — the same instructions the Agent app gives the interactive assistant — to stdout, with `{TENDRIL_HOME}` and `{PLAN_FOLDER}` substituted from `config.yaml`. Exits 1 if the embedded prompt resource is missing. Useful for piping into another agent or diffing prompt changes.
+Compiles and prints the complete agent system prompt template with installation paths substituted, formatted for piping into an autonomous agent prompt.
+
+#### wireframe
+
+```terminal
+>tendril wireframe setup [path] [--tailwind superset|jit] [--force] [--quiet]
+>tendril wireframe serve [path] [--port <port>] [--host <host>] [--no-open]
+>tendril wireframe screenshot [path] [--out <path>] [--width <w>] [--height <h>]
+>tendril wireframe agent-readme [path]
+```
+
+Scaffolds, serves, previews with hot reload, and screenshots React wireframes designed during plan authoring.

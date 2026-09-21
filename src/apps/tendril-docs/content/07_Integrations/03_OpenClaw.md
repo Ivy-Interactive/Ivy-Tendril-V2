@@ -14,7 +14,7 @@ searchHints:
 
 ## Overview
 
-Tendril watches an **Inbox folder** for new markdown files and automatically converts them into plans. This provides a simple, file-based integration point for any tool that can write files to disk.
+Tendril watches an **Inbox folder** for new markdown files and automatically converts them into [plans](../02_Concepts/01_Plans.md). This provides a simple, file-based integration point for external tools like OpenClaw or custom scripts that write files to disk.
 
 ## Inbox Folder Location
 
@@ -22,7 +22,7 @@ Tendril watches an **Inbox folder** for new markdown files and automatically con
 $TENDRIL_HOME/Inbox/
 ```
 
-The `InboxWatcherService` monitors this directory for new `.md` files.
+For details on the Tendril home directory and configuration, see [Setup & Settings](../03_Configuration/01_Setup.md). Tendril's filesystem watcher monitors this directory for new `.md` files.
 
 ## File Format
 
@@ -35,7 +35,7 @@ sourcePath: optional/path/to/code
 ---
 
 Describe the plan here. This text becomes the plan description
-and is passed to the CreatePlan promptware.
+and is passed to the [CreatePlan promptware](../02_Concepts/02_Promptwares.md).
 ```
 
 | Field        | Required | Description                              |

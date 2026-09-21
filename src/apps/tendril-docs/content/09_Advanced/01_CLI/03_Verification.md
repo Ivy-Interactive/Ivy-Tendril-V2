@@ -8,42 +8,53 @@ searchHints:
   - check
   - prompt
   - definition
+  - gates
 ---
 
 # verification
 
-Manage global verification definitions stored in `config.yaml`. These can be referenced by projects and plans.
+Manage global verification definitions stored in `config.yaml`. Verification gates define automated quality, build, and test checks that coding agents must satisfy before a [plan](01_Plan.md) can transition to `Completed`. They are assigned to projects via [`tendril project add-verification`](02_Project.md#verifications).
 
 ## Commands
 
 ```terminal
->tendril verification list
+>tendril verification list [--json]
 >tendril verification get <name>
 >tendril verification add <name> [--prompt <text>]
->tendril verification remove <name>
->tendril verification set <name> <field> <value>
+>tendril verification set <name> [--new-name <name>] [--prompt <text>]
+>tendril verification remove <name> [--force]
 ```
 
-- **list** — shows all definitions with a preview of the prompt
-- **get** — prints the full prompt to stdout
-- **add** — provide `--prompt`, `--file`, or `--stdin`
-- **set** — supported fields: `name`, `prompt`
+- **list** — displays all registered global verifications. Pass `--json` to output as structured JSON.
+- **get** — prints the verification's name and full evaluation prompt text to stdout.
+- **add** — registers a new verification check with an optional prompt description.
+- **set** — updates a verification definition's prompt or renames it. Renaming a verification updates all project references, plan YAML records, and database rows automatically.
+- **remove** — deletes a verification definition. If any active project references the check, Tendril refuses the removal unless `--force` (or `-f`) is supplied, which cleans up references across all projects.
 
 ## Examples
 
 ```terminal
-># Add with inline prompt
->tendril verification add BuildPasses --prompt "Run dotnet build and confirm exit code 0"
+># Add a new verification gate with prompt instructions
+>tendril verification add CargoTest --prompt "Run cargo test --workspace and ensure all test suites pass with exit code 0."
 
-># Add from file
->cat prompt.md | tendril verification add BuildPasses --stdin
+># Inspect full prompt details
+>tendril verification get CargoTest
 
-># Update the prompt
->tendril verification set BuildPasses prompt "Run dotnet build --no-restore and check for errors"
+># Update the evaluation prompt
+>tendril verification set CargoTest --prompt "Run cargo test --workspace --all-targets and verify zero test failures."
 
-># List all definitions
->tendril verification list
+># Rename a verification definition across projects and plans
+>tendril verification set CargoTest --new-name RustWorkspaceTests
 
-># View full prompt
->tendril verification get BuildPasses
+># List all definitions in JSON format
+>tendril verification list --json
+
+># Remove a verification, cleaning up project references
+>tendril verification remove RustWorkspaceTests --force
 ```
+
+## Related
+
+- [project verifications](02_Project.md#verifications) — configure which checks are required for a project
+- [plan verifications](01_Plan.md#verifications) — inspect or override verification gate statuses on a plan
+- [Configuration Reference](../../03_Configuration/01_Setup.md) — manage global settings in `config.yaml`

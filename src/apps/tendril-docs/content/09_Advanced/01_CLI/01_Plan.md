@@ -21,6 +21,8 @@ searchHints:
   - doctor
   - depends
   - related
+  - env
+  - wireframes
 ---
 
 # plan
@@ -35,18 +37,21 @@ Create, read, update, and validate plans from the terminal. All subcommands reso
 >tendril plan create <title> <project> [options]
 ```
 
-Creates a new plan folder and `plan.yaml` scaffold with state `Draft`. The plan ID is auto-allocated from the `.counter` file. Repos are derived from the project configuration.
+Creates a new plan folder and `plan.yaml` scaffold with state `Draft`. The plan ID is auto-allocated from the `.counter` file. Repositories and default verifications are derived from the project configuration.
 
-| Option                          | Description                              |
-| ------------------------------- | ---------------------------------------- |
-| `--level <level>`               | Priority level (default: Feature)        |
-| `--initial-prompt <text>`       | Initial prompt text                      |
-| `--source-url <url>`            | Source URL (GitHub issue or PR)          |
-| `--execution-profile <profile>` | Execution profile (`deep` or `balanced`) |
-| `--priority <number>`           | Priority number (default: 0)             |
-| `--verification <Name=Status>`  | Verification entry (repeatable)          |
-| `--related-plan <folder>`       | Related plan folder name (repeatable)    |
-| `--depends-on <folder>`         | Dependency plan folder name (repeatable) |
+| Option                          | Description                                            |
+| ------------------------------- | ------------------------------------------------------ |
+| `--level <level>`               | Priority level (default: Feature)                      |
+| `--initial-prompt <text>`       | Initial prompt text                                    |
+| `--source-url <url>`            | Source URL (GitHub issue or PR)                        |
+| `--execution-profile <profile>` | Execution profile (`deep` or `balanced`)               |
+| `--priority <number>`           | Priority number (default: 0)                           |
+| `--verification <Name=Status>`  | Verification entry (repeatable)                        |
+| `--related-plan <folder>`       | Related plan folder name (repeatable)                  |
+| `--depends-on <folder>`         | Dependency plan folder name (repeatable)               |
+| `--chat-session <id>`           | Associate with a chat session                          |
+| `--plans-dir <path>`            | Override plans directory path                          |
+| `--no-duplicate-check`          | Skip duplicate detection against existing active plans |
 
 #### plan list
 
@@ -56,16 +61,17 @@ Creates a new plan folder and `plan.yaml` scaffold with state `Draft`. The plan 
 
 Lists plans with optional filters.
 
-| Option               | Effect                                                         |
-| -------------------- | -------------------------------------------------------------- |
-| `--state <state>`    | Filter by state (e.g. `Draft`, `Executing`, `Failed`)          |
-| `--project <name>`   | Filter by project name (validated against configured projects) |
-| `--level <level>`    | Filter by level (e.g. `Bug`, `Feature`, `Epic`)                |
-| `--has-pr`           | Only plans that have associated PRs                            |
-| `--has-worktree`     | Only plans that have worktrees                                 |
-| `--limit <n>`        | Maximum number of results                                      |
-| `--format <fmt>`     | Output format: `table` (default), `ids`, `folders`, `json`     |
-| `--plans-dir <path>` | Override plans directory path                                  |
+| Option                     | Effect                                                         |
+| -------------------------- | -------------------------------------------------------------- |
+| `--status` / `--state <s>` | Filter by state (e.g. `Draft`, `Executing`, `Failed`)          |
+| `-p, --project <name>`     | Filter by project name (validated against configured projects) |
+| `--level <level>`          | Filter by level (e.g. `Bug`, `Feature`, `Epic`)                |
+| `--has-pr`                 | Only plans that have associated PRs                            |
+| `--has-worktree`           | Only plans that have worktrees                                 |
+| `-q, --search <query>`     | Filter by text search substring in title or ID                 |
+| `--limit <n>`              | Maximum number of results                                      |
+| `--format <fmt>`           | Output format: `table` (default), `ids`, `folders`, `json`     |
+| `--plans-dir <path>`       | Override plans directory path                                  |
 
 ```terminal
 >tendril plan list --state Draft
@@ -85,28 +91,45 @@ Lists plans with optional filters.
 
 Prints the full YAML, or a single field value when `[field]` is provided.
 
-**Scalar fields:** `state`, `project`, `level`, `title`, `created`, `updated`, `executionProfile`, `initialPrompt`, `sourceUrl`, `priority`, `partialDelivery`
+**Scalar fields:** `id`, `title`, `state`, `project`, `level`, `created`, `updated`, `executionProfile`, `initialPrompt`, `sourceUrl`, `priority`, `partialDelivery`
 
 **List fields:** `repos`, `prs`, `commits`, `verifications`, `dependsOn`, `relatedPlans`, `recommendations` (each item on its own line)
 
 #### plan set
 
 ```terminal
->tendril plan set <plan-id> <field> <value>
+>tendril plan set <plan-id> <field> <value> [options]
 >tendril plan set <plan-id> state Completed --allow-failed-verifications
 ```
 
 Updates a single field and bumps the `updated` timestamp automatically.
 
-Setting `state` to `Completed` is refused while any verification is in the `Fail` state: a plan that reads as done while a gate rejected the work hides a missing deliverable from duplicate detection. Re-run the verification, or set it to `Skipped` with an explicit reason. `--allow-failed-verifications` records the transition anyway and sets `partialDelivery: true`, which marks the plan's deliverable as possibly missing.
+Supported fields: `state`, `title`, `level`, `project`, `executionProfile`, `initialPrompt`, `sourceUrl`, `priority`.
+
+Setting `state` to `Completed` is refused while any verification is in the `Fail` state: a plan that reads as done while a gate rejected the work hides a missing deliverable from duplicate detection. Re-run the verification, or set it to `Skipped` with an explicit reason. Passing `--allow-failed-verifications` records the transition anyway and sets `partialDelivery: true`.
+
+| Option                         | Effect                                                              |
+| ------------------------------ | ------------------------------------------------------------------- |
+| `--allow-failed-verifications` | Allow moving to `Completed` even with failing verifications         |
+| `--reason <text>`              | Explain why the edit was made (reported to listening chat sessions) |
+| `--chat-session <id>`          | Originating chat session (excluded from self-notification)          |
 
 #### plan update
 
 ```terminal
 >cat revised.yaml | tendril plan update <plan-id> --stdin
+>tendril plan update <plan-id> --file revised.yaml
 ```
 
 Replaces the entire `plan.yaml` content from `--file` or `--stdin` (required — `--stdin` is not implicit).
+
+#### plan check-wireframes
+
+```terminal
+>tendril plan check-wireframes <plan-id>
+```
+
+Checks for wireframe code leakage in a plan's modified files. Exits 0 if clean, or exits 1 with a diagnostic report if any wireframe markers are found.
 
 #### plan validate
 
@@ -114,37 +137,38 @@ Replaces the entire `plan.yaml` content from `--file` or `--stdin` (required —
 >tendril plan validate <plan-id>
 ```
 
-Checks that the plan has all required fields and is internally consistent. Exits with code `1` on failure.
+Checks that the plan has all required fields and is internally consistent. Exits with code `1` on structural errors.
 
 ## Repos
 
 ```terminal
->tendril plan add-repo <plan-id> <repo-path>
->tendril plan remove-repo <plan-id> <repo-path>
+>tendril plan add-repo <plan-id> <repo-path> [--reason <text>] [--chat-session <id>]
+>tendril plan remove-repo <plan-id> <repo-path> [--reason <text>] [--chat-session <id>]
 ```
 
-Manage the list of repositories associated with a plan. Adding an existing repo is a no-op.
+Manage the list of repositories associated with a plan. Adding an existing repo is an idempotent no-op.
 
 ## Links
 
 ```terminal
->tendril plan add-pr <plan-id> <pr-url>
->tendril plan add-commit <plan-id> <sha>
->tendril plan add-related-plan <plan-id> <folder-name>
->tendril plan remove-related-plan <plan-id> <folder-name>
->tendril plan add-depends-on <plan-id> <folder-name>
->tendril plan remove-depends-on <plan-id> <folder-name>
+>tendril plan add-pr <plan-id> <pr-url> [--reason <text>] [--chat-session <id>]
+>tendril plan remove-pr <plan-id> <pr-url> [--reason <text>] [--chat-session <id>]
+>tendril plan add-commit <plan-id> <sha> [--reason <text>] [--chat-session <id>]
+>tendril plan add-related-plan <plan-id> <folder-name> [--reason <text>] [--chat-session <id>]
+>tendril plan remove-related-plan <plan-id> <folder-name> [--reason <text>] [--chat-session <id>]
+>tendril plan add-depends-on <plan-id> <folder-name> [--reason <text>] [--chat-session <id>]
+>tendril plan remove-depends-on <plan-id> <folder-name> [--reason <text>] [--chat-session <id>]
 ```
 
-Manage PR URLs, commit SHAs, related plans, and blocking dependencies. `add-depends-on` makes ExecutePlan wait for the dependency to reach `Completed` state before executing. All names are matched case-insensitively.
+Manage PR URLs, commit SHAs, related plans, and blocking dependencies. `add-depends-on` causes `ExecutePlan` to wait for the dependency to reach `Completed` state and merge its PRs before executing. All names are matched case-insensitively.
 
 ## Verifications
 
 ```terminal
->tendril plan set-verification <plan-id> <name> <status>
->tendril plan verification list <plan-id> [--status <status>]
->tendril plan verification add <plan-id> <name> [--status <status>]
->tendril plan verification remove <plan-id> <name>
+>tendril plan set-verification <plan-id> <name> <status> [--reason <text>] [--chat-session <id>]
+>tendril plan verification list <plan-id> [--status <status>] [--json]
+>tendril plan verification add <plan-id> <name> [--status <status>] [--reason <text>] [--chat-session <id>]
+>tendril plan verification remove <plan-id> <name> [--reason <text>] [--chat-session <id>]
 ```
 
 Manage verifications on a plan. Valid statuses: `Pending`, `Pass`, `Fail`, `Skipped`. Default status for `add` is `Pending`.
@@ -157,7 +181,7 @@ Manage verifications on a plan. Valid statuses: `Pending`, `Pass`, `Fail`, `Skip
 >tendril plan cleanup <plan-id> [--force]
 ```
 
-Removes all git worktrees associated with a plan. By default only runs on plans in a terminal state (`Completed`, `Failed`, `Skipped`, `Icebox`). Use `--force` to skip that check.
+Removes all git worktrees associated with a plan. By default only runs on plans in a terminal state (`Completed`, `Failed`, `Skipped`, `Icebox`). Use `--force` to remove worktrees for non-terminal plans.
 
 #### plan add-worktree
 
@@ -165,14 +189,7 @@ Removes all git worktrees associated with a plan. By default only runs on plans 
 >tendril plan add-worktree <plan-id> <repo> [--base <branch>]
 ```
 
-Creates a git worktree for the given plan under `<plan-folder>/Worktrees/<repo-name>`,
-branching from `origin/<base>` (default: auto-detected default branch). The branch is
-named `tendril/<plan-folder-name>` (e.g. `tendril/00025-AddSymmetricPlanAddWorktreeCLICommand`).
-
-On failure (repo path missing, stale worktree, fetch failure, or git worktree add
-failure), the command prints the specific step that failed along with git's raw
-stderr and exits non-zero, instead of throwing a generic error - this lets an agent
-read the exact git failure and decide how to recover.
+Creates a git worktree for the given plan under `<plan-folder>/Worktrees/<repo-name>`, branching from `origin/<base>` (default: auto-detected default branch). The branch is named `tendril/<plan-folder-name>`.
 
 #### plan remove-worktree
 
@@ -184,26 +201,24 @@ Removes a single worktree from `Worktrees/<repo-name>`. Attempts `git worktree r
 
 ## Revisions
 
-Execution logs are written per job, not per plan — see `tendril job add-log`.
-
 ```terminal
 >cat revision.md | tendril plan write-revision <plan-id> --stdin
 >tendril plan write-revision <plan-id> --file revision.md
 ```
 
-Writes a numbered revision file to `Revisions/` (e.g. `002.md`) from stdin or `--file`. Prints the path to stdout.
+Writes a numbered revision file to `Revisions/` (e.g. `002.md`) from stdin or `--file`. Supports `--no-question-check` to bypass validation, and `--reason` / `--chat-session` for audit attribution.
 
 ```terminal
->tendril plan get-revision <plan-id> [--latest] [--number <n>]
+>tendril plan get-revision <plan-id> [--number <n>]
 ```
 
-Prints revision content to stdout — the latest revision by default, or a specific numbered revision with `--number`.
+Prints revision content to stdout — the latest revision by default, or a specific numbered revision when `--number` is given.
 
 ## Questions
 
-A revision can carry questions for the user in fenced `questions` blocks. Promptwares run headless and cannot ask anything mid-run, so a planning agent that hits an ambiguity it cannot research away emits a block instead. The user answers in the UI, which writes the answers back into the same block, and UpdatePlan then folds them into the plan and removes the questions.
+A revision can carry questions for the user in fenced `questions` blocks:
 
-````
+````markdown
 ```questions
 questions:                    # 1-4 items
   - id:          string       # required, stable, unique across the whole revision
@@ -220,34 +235,43 @@ questions:                    # 1-4 items
 ```
 ````
 
-A block may appear anywhere in the document, and a revision may contain any number of them. No `answer` key means unanswered; `answer: null` means the user deliberately skipped the question and left the decision to the agent. An answer is addressed by its question's `id` alone, so an `id` has to be unique across the whole revision rather than just within its own block.
-
-`write-revision` validates every block and refuses the write if any is malformed, printing each problem prefixed with the line of its opening fence. Nothing is written on rejection, so a rejected revision does not consume a revision number. A block whose body predates the schema (plain prose rather than a `questions` mapping) is reported as a warning and written unchanged.
-
-```terminal
->tendril plan write-revision <plan-id> --file revision.md --no-question-check
-```
-
-`--no-question-check` skips the validation. It exists for scripted and test use — promptwares should not use it.
+`write-revision` validates every question block against this schema and rejects the revision if any block is malformed. Use `--no-question-check` only in automated tests.
 
 ## Recommendations
 
 ```terminal
 >tendril plan rec list <plan-id> [--state <state>]
+>tendril plan rec all [--project <project>] [--state <state>]
+>tendril plan rec rebuild
 >tendril plan rec add <plan-id> <title> [-d <description>] [--impact <level>]
 >tendril plan rec set <plan-id> <title> <field> <value>
 >tendril plan rec accept <plan-id> <title> [--notes <text>]
->tendril plan rec decline <plan-id> <title> [--reason <text>]
+>tendril plan rec decline <plan-id> <title> [--reason <text>] [--edit-reason <text>]
 >tendril plan rec remove <plan-id> <title>
 ```
 
-Manage recommendations stored in a plan's YAML.
+Manage recommendations stored in a plan's YAML:
 
-- **list** — filter by state: `Pending`, `Accepted`, `AcceptedWithNotes`, `Declined`
-- **add** — impact levels: `Small`, `Medium`, `High`; provide `--description`, `--file`, or `--stdin`
-- **set** — supported fields: `title`, `description`, `state`, `impact`, `declineReason`
+- **list** — list recommendations for a plan; filter by state: `Pending`, `Accepted`, `AcceptedWithNotes`, `Declined`
+- **all** — list recommendations across every plan
+- **rebuild** — rebuild the denormalized recommendations projection from disk
+- **add** — impact levels: `Small`, `Medium`, `High`
+- **set** — supported fields: `title`, `description`, `state`, `impact`, `declineReason`, `notes`
 - **accept** — sets state to `Accepted`, or `AcceptedWithNotes` if `--notes` is provided
-- **decline** — sets state to `Declined` with an optional reason
+- **decline** — sets state to `Declined`. `--reason` records why it was declined in `plan.yaml`; `--edit-reason` specifies the notification reason for chat sessions
+- **remove** — permanently deletes a recommendation
+
+## Environment
+
+```terminal
+>tendril plan env materialize <plan-id> [--repo <repo>] [--force] [--json]
+>tendril plan env get <plan-id> [--repo <repo>] [--json]
+```
+
+Inspect and write the plan's port allocations and environment files:
+
+- **materialize** — allocates non-conflicting service ports and writes environment files into the plan's worktrees. Use `--force` to overwrite existing files.
+- **get** — prints allocated ports and resolved environment variables for a worktree.
 
 ## Doctor
 
@@ -257,37 +281,23 @@ Manage recommendations stored in a plan's YAML.
 
 Scans every folder in the plans directory and reports health issues.
 
-| Option            | Effect                                      |
-| ----------------- | ------------------------------------------- |
-| `--all`           | Show all plans (default hides healthy ones) |
-| `--fix`           | Automatically repair detected issues        |
-| `--prune`         | Remove empty/junk plan folders              |
-| `--state <state>` | Filter by plan state                        |
-| `--worktrees`     | Show only plans with worktrees              |
-
-| Health Code            | Meaning                                                  |
-| ---------------------- | -------------------------------------------------------- |
-| `YAML:Missing`         | No `plan.yaml` in the folder                             |
-| `YAML:Empty`           | File exists but is empty                                 |
-| `YAML:No repos`        | Plan has no repositories configured                      |
-| `YAML:Missing title`   | Title field is blank                                     |
-| `YAML:Missing project` | Project field is blank                                   |
-| `StaleWorktree`        | Worktree directory exists without a valid `.git` pointer |
-| `NestedWorktree`       | Worktree contains nested git checkouts                   |
-
-With `--fix`: creates scaffold YAML for missing files, fills in missing fields, and removes stale or nested worktrees.
+| Option          | Effect                                                                |
+| --------------- | --------------------------------------------------------------------- |
+| `--fix`         | Migrate plan schemas to the latest version automatically              |
+| `--prs`         | Verify every recorded pull request against GitHub via `gh`            |
+| `--prune-husks` | Remove empty plan folders that hold no revision and no work artifacts |
+| `--dry-run`     | With `--prune-husks`, report what would be removed without deleting   |
 
 ```terminal
 >tendril plan doctor
 >tendril plan doctor --fix
->tendril plan doctor --prune
+>tendril plan doctor --prs
+>tendril plan doctor --prune-husks --dry-run
 ```
 
 ### Partial delivery backfill
 
-The report also lists plans sitting at `Completed` with a verification in the `Fail` state and no `partialDelivery` flag. These predate the completion guard, so duplicate detection reads them as fully delivered even though the deliverable may be missing.
-
-Nothing is mutated: these are historical records, and whether a given plan really was a partial delivery is the user's call. Review each one, then flag the genuinely partial ones:
+The report lists plans marked `Completed` with a verification in the `Fail` state and no `partialDelivery` flag. These predate the completion guard. To acknowledge the partial delivery:
 
 ```terminal
 >tendril plan set <id> state Completed --allow-failed-verifications
