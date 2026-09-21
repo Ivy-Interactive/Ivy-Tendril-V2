@@ -1,0 +1,45 @@
+---
+title: Codex
+description: Codex is an alternative coding agent powered by OpenAI's GPT models.
+icon: Terminal
+searchHints:
+  - codex
+  - openai
+  - gpt
+  - coding agent
+---
+
+# Codex
+
+## Configuration
+
+Set Codex as your coding agent in `config.yaml`:
+
+```yaml
+codingAgent: codex
+```
+
+Or select it in **Settings > Coding Agent**.
+
+For more details on `config.yaml` structure and settings, see [Setup & Settings](../03_Configuration/01_Setup.md).
+
+## Requirements
+
+- The Codex CLI must be installed and available as `codex` on your PATH
+- Run `codex login` to authenticate before using Tendril
+
+## Profiles
+
+Tendril maps effort levels to Codex models:
+
+| Profile    | Model         | Effort | Use Case                     |
+| ---------- | ------------- | ------ | ---------------------------- |
+| `deep`     | gpt-5.6-sol   | high   | Complex multi-file changes   |
+| `balanced` | gpt-5.6-terra | medium | Standard plan execution      |
+| `quick`    | gpt-5.6-luna  | low    | Simple fixes and small edits |
+
+The profile is selected automatically based on the plan's complexity level, or can be configured per promptware in `config.yaml`.
+
+### Supported Models
+
+In addition to the default profile models, the Codex catalog supports models such as `gpt-6-astra` for manual selection or custom configuration in `config.yaml`.

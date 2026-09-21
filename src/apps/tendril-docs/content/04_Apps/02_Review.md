@@ -1,0 +1,33 @@
+---
+title: Review
+description: "Queue of finished work: Review or Failed plans. Nothing merges without you."
+icon: ThumbsUp
+searchHints:
+  - review
+  - approve
+  - reject
+  - diff
+  - verify
+---
+
+# Review
+
+## What shows up
+
+`ExecutePlan` (and similar) finishes in a frozen worktree. Review lists those plans and shows the result here.
+
+## In the panel
+
+- **Diff** — Changes vs. your tracked branch.
+- **Verification output** — Logs from hooks (`DotnetBuild`, `NpmTest`, …).
+- **Plan text** — Latest `revisions/*.md` (what the agent was implementing).
+- **Git tab**: Worktrees, recorded commits and PRs for the plan, with a button to synchronize a worktree with its remote.
+
+## Actions
+
+| Action                  | Effect                                                                       |
+| ----------------------- | ---------------------------------------------------------------------------- |
+| **Approve (Make PR)**   | Marks **Completed**, starts **CreatePr** on GitHub.                          |
+| **Needs work (Revise)** | **UpdatePlan** on the same worktree with your feedback.                      |
+| **Decline (Discard)**   | **Skipped**, worktree removed.                                               |
+| **Manually resolve**    | Edit files in the workspace for small fixes without another full agent loop. |

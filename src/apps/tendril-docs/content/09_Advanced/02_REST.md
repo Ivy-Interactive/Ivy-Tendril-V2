@@ -1,0 +1,237 @@
+---
+title: REST API
+description: Tendril exposes a REST API for programmatic plan management at your Tendril server URL (default port 5010).
+icon: Server
+searchHints:
+  - api
+  - rest
+  - http
+  - endpoint
+  - plans
+  - inbox
+  - authentication
+  - X-Api-Key
+---
+
+# REST API
+
+Tendril exposes a REST API for programmatic plan management. All endpoints are available at your Tendril server URL (default `https://localhost:5010`).
+
+## Authentication
+
+When `api.apiKey` is set in `config.yaml`, all API requests require the `X-Api-Key` header:
+
+```yaml
+# config.yaml
+api:
+  apiKey: "your-secret-key"
+```
+
+```bash
+curl -H "X-Api-Key: your-secret-key" https://localhost:5010/api/plans
+```
+
+If no `apiKey` is configured, all routes are open.
+
+## Plans
+
+### Get Plan
+
+```
+GET /api/plans/{planId}
+GET /api/plans/{planId}?field=state
+```
+
+Returns the full plan object, or a single field value when `?field=` is specified.
+
+### List Plans
+
+```
+GET /api/plans?state=Draft&project=MyProject&limit=50
+```
+
+| Parameter | Type   | Description                  |
+| --------- | ------ | ---------------------------- |
+| `state`   | string | Filter by plan state         |
+| `project` | string | Filter by project name       |
+| `limit`   | int    | Maximum results (default 50) |
+
+### Update Field
+
+```
+PUT /api/plans/{planId}
+Content-Type: application/json
+
+{ "field": "state", "value": "Executing" }
+```
+
+Supported fields: `state`, `project`, `level`, `title`, `executionProfile`, `initialPrompt`, `sourceUrl`, `priority`.
+
+Setting `state` to `Completed` returns `400` while any of the plan's verifications is in the `Fail` state. Add `"allowFailedVerifications": true` to record it anyway; the plan is then flagged with `partialDelivery: true`, which marks its deliverable as possibly missing.
+
+### Add Repository
+
+```
+POST /api/plans/{planId}/repos
+Content-Type: application/json
+
+{ "repoPath": "D:\\Repos\\MyRepo" }
+```
+
+### Remove Repository
+
+```
+DELETE /api/plans/{planId}/repos
+Content-Type: application/json
+
+{ "repoPath": "D:\\Repos\\MyRepo" }
+```
+
+### Add PR
+
+```
+POST /api/plans/{planId}/prs
+Content-Type: application/json
+
+{ "prUrl": "https://github.com/org/repo/pull/42" }
+```
+
+### Add Commit
+
+```
+POST /api/plans/{planId}/commits
+Content-Type: application/json
+
+{ "sha": "abc1234def5678" }
+```
+
+### Set Verification
+
+```
+PUT /api/plans/{planId}/verifications
+Content-Type: application/json
+
+{ "name": "DotnetBuild", "status": "Pass" }
+```
+
+Valid statuses: `Pending`, `Pass`, `Fail`, `Skipped`.
+
+## Recommendations
+
+### List Recommendations
+
+```
+GET /api/plans/{planId}/recommendations
+GET /api/plans/{planId}/recommendations?state=Pending
+```
+
+### Add Recommendation
+
+```
+POST /api/plans/{planId}/recommendations
+Content-Type: application/json
+
+{ "title": "Add tests", "description": "Coverage is low", "impact": "Medium" }
+```
+
+### Accept Recommendation
+
+```
+PUT /api/plans/{planId}/recommendations/{title}/accept
+Content-Type: application/json
+
+{ "notes": "Only integration tests" }
+```
+
+### Decline Recommendation
+
+```
+PUT /api/plans/{planId}/recommendations/{title}/decline
+Content-Type: application/json
+
+{ "reason": "Not needed for this scope" }
+```
+
+### Remove Recommendation
+
+```
+DELETE /api/plans/{planId}/recommendations/{title}
+```
+
+## Inbox
+
+### Submit Plan
+
+```
+POST /api/inbox
+Content-Type: application/json
+
+{ "description": "Fix the login bug", "project": "MyProject", "sourcePath": "D:\\Sessions\\Session1" }
+```
+
+Starts a `CreatePlan` job and returns the job ID.
+
+## Jobs
+
+### Start Job
+
+```
+POST /api/jobs
+Content-Type: application/json
+
+{ "$type": "ExecutePlan", "folderPath": "D:\\TendrilHome\\Plans\\00042-fix-login" }
+```
+
+Starts a job and returns the job ID. The request body is a polymorphic `JobArgsBase` — the `$type` discriminator selects the job type.
+
+Available types: `CreatePlan`, `ExecutePlan`, `RetryPlan`, `ExpandPlan`, `UpdatePlan`, `SplitPlan`, `CreatePr`, `CreateIssue`.
+
+Response:
+
+```json
+{ "jobId": "00143", "status": "Started" }
+```
+
+### Get Job
+
+```
+GET /api/jobs/{jobId}
+```
+
+Returns the current status of a job.
+
+### Add Log
+
+Appends an `## Agent Log` section to the job's log in `<TendrilHome>/Jobs/`.
+
+```
+POST /api/jobs/{jobId}/logs
+Content-Type: application/json
+
+{ "action": "ExecutePlan", "summary": "Completed successfully" }
+```
+
+### Update Job Status
+
+```
+PUT /api/jobs/{jobId}/status
+Content-Type: application/json
+
+{ "message": "Running verifications...", "planId": "01234", "planTitle": "My Plan" }
+```
+
+Updates progress for a running job. Used by promptware agents via the `tendril job status` CLI command.
+
+Returns `404 { "error": "Job not found" }` if the job id is unknown to the server (for example, the
+server restarted since the job started, or the job was deleted). The `tendril job status` CLI treats
+that response as a warning printed to stderr rather than a command failure, since a dropped progress
+report should not make an otherwise-successful agent script look broken. The same applies to
+`tendril job fail` against `PUT /api/jobs/{jobId}/fail`.
+
+### Health Check
+
+```
+GET /api/jobs/health
+```
+
+Returns `{ "status": "ok", "pid": 12345 }`. Used for master election validation.

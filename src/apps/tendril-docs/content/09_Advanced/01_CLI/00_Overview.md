@@ -1,0 +1,171 @@
+---
+title: CLI Overview
+description: Manage plans, projects, databases, and agents directly from your terminal. The tendril binary works as both a web server and a full-featured CLI tool.
+icon: Terminal
+searchHints:
+  - cli
+  - command
+  - terminal
+  - tendril
+  - shell
+  - reset
+  - report-bug
+  - run
+  - doctor
+  - version
+  - config
+---
+
+# CLI Overview
+
+Manage plans, projects, databases, and agents directly from your terminal. The `tendril` binary works as both a web server and a full-featured CLI tool.
+
+Tendril CLI gives you complete control over your workflow without touching the UI:
+
+- **Plans** — create, list, update, and inspect plans; manage repos, worktrees, verifications, and recommendations
+- **Projects** — configure projects, their repos, build dependencies, and review actions
+- **Verifications** — define and manage reusable verification checks
+- **Config** — read and update top-level settings stored in `config.yaml`
+- **Vault** — connect vaults, pull updates, inspect catalog assets, import and push projects
+- **Database** — run migrations, inspect schema versions, or reset the database
+- **Agents** — run and manage promptwares and their memory
+
+## Quick Start
+
+**1. Check your installation**
+
+```terminal
+>tendril doctor
+```
+
+**2. Start the web server**
+
+```terminal
+>tendril run
+```
+
+**3. Create a new plan**
+
+```terminal
+>tendril plan create "Fix login bug" MyProject
+```
+
+**4. List active plans**
+
+```terminal
+>tendril plan list --state Executing
+```
+
+**5. Reset everything and start fresh**
+
+```terminal
+>tendril reset
+```
+
+> [!TIP]
+> Every command supports `--help` for detailed usage. For example: `tendril plan create --help`.
+
+## Global Options
+
+| Flag        | Short | Effect                                                 |
+| ----------- | ----- | ------------------------------------------------------ |
+| `--verbose` | `-v`  | Enable detailed debug logging                          |
+| `--quiet`   | `-q`  | Suppress informational messages (errors/warnings only) |
+
+## Environment Variables
+
+| Variable             | Purpose                                                                                                                                     |
+| -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| `TENDRIL_HOME`       | Root directory for config, database, inbox, and plans                                                                                       |
+| `TENDRIL_PLANS`      | Override plans directory (defaults to `TENDRIL_HOME/Plans`)                                                                                 |
+| `TENDRIL_VERBOSE`    | Enable verbose debug output (set to `1`)                                                                                                    |
+| `TENDRIL_QUIET`      | Suppress non-essential output (set to `1`)                                                                                                  |
+| `TENDRIL_NOT_MASTER` | Run server without claiming master (set to `1`). Used for development/debugging — the instance won't accept CLI IPC or process inbox files. |
+
+## Common Commands
+
+#### doctor
+
+```terminal
+>tendril doctor
+```
+
+Validates your Tendril installation — checks `TENDRIL_HOME`, `config.yaml`, required tools (`gh`, `git`), `pwsh`, database schema, and agent model availability. Always a good first step when something isn't working.
+
+#### plan doctor
+
+```terminal
+>tendril plan doctor
+>tendril plan doctor --all
+>tendril plan doctor --fix
+```
+
+Scans every plan folder and reports health: missing or malformed `plan.yaml`, stale worktrees, and plans left `Completed` over a failed verification. See [Plan](01_Plan.md) for the full option and health-code reference.
+
+#### run
+
+```terminal
+>tendril run
+>tendril run --port 8080
+```
+
+Starts the Tendril web server. Automatically applies pending database migrations before serving. Default port is `5010`.
+
+#### reset
+
+```terminal
+>tendril reset
+>tendril reset --force
+```
+
+Removes all Tendril data from the machine — deletes `TENDRIL_HOME`, `TENDRIL_PLANS`, and clears environment variables. On macOS/Linux, prints a reminder to remove the `export` lines from your shell rc file manually.
+
+> [!WARNING]
+> This permanently deletes all data. There is no undo.
+
+#### report-bug
+
+```terminal
+>tendril report-bug --plan 03430
+>tendril report-bug --job 00042 --description "Agent crashes on worktree creation"
+>tendril report-bug --plan 03430 --dry-run
+```
+
+Collects plan files and every job artifact — the Job Log, Job Prompt, Job Raw Log and Job Eventwire Log from `<TendrilHome>/Jobs/` — into a zip archive and submits them to the Tendril bug report API, which opens a GitHub issue automatically.
+
+| Option                 | Effect                                                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `--plan <plan-id>`     | Include this plan folder plus every job that ran against it, including the `CreatePlan` job that authored it |
+| `--job <job-id>`       | Include this job's four artifacts plus its plan's context (`plan.yaml`, revisions, worktree manifest)        |
+| `--description` / `-d` | Bug description (prompted interactively if omitted)                                                          |
+| `--yes` / `-y`         | Skip the confirmation prompt                                                                                 |
+| `--dry-run`            | Show what would be sent without uploading                                                                    |
+
+> [!WARNING]
+> Attached files are posted to a **public** GitHub issue. If your plan contains sensitive data, use another reporting channel.
+
+#### version
+
+```terminal
+>tendril version
+```
+
+Prints the installed Tendril version (e.g. `1.0.34`).
+
+#### update-promptwares
+
+```terminal
+>tendril update-promptwares
+```
+
+Refreshes the embedded promptware templates from the bundled source. Run after upgrading Tendril to pick up new or updated promptwares.
+
+## Next Steps
+
+- [Plan commands](01_Plan.md) — full reference for creating and managing plans
+- [Project commands](02_Project.md) — configure projects, repos, and review actions
+- [Verification commands](03_Verification.md) — manage global verification definitions
+- [Database commands](04_Database.md) — migrations, schema version, and reset
+- [Other commands](05_Other.md) — promptware, job, MCP, and utilities
+- [Config commands](06_Config.md) — read and update top-level `config.yaml` settings
+- [Vault commands](07_Vault.md) — connect vaults, sync assets, and import or publish projects

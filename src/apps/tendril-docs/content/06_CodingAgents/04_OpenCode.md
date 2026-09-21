@@ -1,0 +1,54 @@
+---
+title: OpenCode
+description: OpenCode is an alternative coding agent that supports multiple model providers through a unified CLI.
+icon: Cpu
+searchHints:
+  - opencode
+  - open code
+  - coding agent
+---
+
+# OpenCode
+
+## Configuration
+
+Set OpenCode as your coding agent in `config.yaml`:
+
+```yaml
+codingAgent: opencode
+```
+
+Or select it in **Settings > Coding Agent**.
+
+For more details on `config.yaml` structure and settings, see [Setup & Settings](../03_Configuration/01_Setup.md).
+
+## Requirements
+
+- The OpenCode CLI must be installed and available as `opencode` on your PATH (`npm install -g opencode-ai`)
+- Run `opencode providers login` to authenticate with your chosen model provider
+
+## Profiles
+
+Tendril maps effort levels to OpenCode models:
+
+| Profile    | Model   | Effort | Use Case                     |
+| ---------- | ------- | ------ | ---------------------------- |
+| `deep`     | default | high   | Complex multi-file changes   |
+| `balanced` | default | medium | Standard plan execution      |
+| `quick`    | default | low    | Simple fixes and small edits |
+
+OpenCode supports multiple backend providers (Anthropic, OpenAI, Google, etc.) and manages model selection internally. Use `tendril models` to see discovered models.
+
+The profile is selected automatically based on the plan's complexity level, or can be configured per promptware in `config.yaml`.
+
+## Local Ollama Setup
+
+When running OpenCode with local Ollama models, specify the server URL directly in `config.yaml`:
+
+```yaml
+codingAgents:
+  - name: opencode
+    environmentVariables:
+      OLLAMA_HOST: "http://localhost:11434"
+      OLLAMA_BASE_URL: "http://localhost:11434"
+```
