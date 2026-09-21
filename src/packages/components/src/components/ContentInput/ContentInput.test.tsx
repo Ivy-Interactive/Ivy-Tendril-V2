@@ -513,6 +513,155 @@ describe("ContentInput attachments", () => {
     expect(chips()).toHaveLength(1);
   });
 
+  /**
+   * The bug this whole group pins: a declared attachment carried a name, a type and a size and no
+   * bytes, so the strip had nothing to draw and every chip -- image, PDF or archive alike -- rendered
+   * the same grey extension pill. `previewSource` is the channel for those bytes, and these assert the
+   * chip actually uses them, cleans up after them, and still shows the pill for everything it cannot
+   * decode.
+   */
+  describe("attachment previews", () => {
+    const PIXEL_PNG =
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==";
+
+    const previewImg = () =>
+      document.querySelector<HTMLImageElement>(".civ-thumbnail-image-preview");
+    const pills = () => document.querySelectorAll(".civ-thumbnail-doc-meta");
+
+    it("renders a declared image attachment as a preview pointed at its source", () => {
+      render(
+        <ContentInput
+          id="civ-1"
+          value=" [file: shot.png]"
+          attachedFiles={[{ name: "shot.png", type: "image/png", previewSource: PIXEL_PNG }]}
+        />,
+      );
+
+      expect(previewImg()).toHaveAttribute("src", PIXEL_PNG);
+      // A decorative background: the filename beside it already names the attachment, so alt text
+      // here would only make a screen reader announce the same thing twice.
+      expect(previewImg()).toHaveAttribute("alt", "");
+      // The "Document" line is what the preview replaces; the filename has to survive it.
+      expect(pills()).toHaveLength(0);
+      expect(screen.getByText("shot.png")).toBeInTheDocument();
+    });
+
+    it("mints an object URL for a Blob source and revokes it on unmount", () => {
+      const createObjectURL = vi
+        .spyOn(URL, "createObjectURL")
+        .mockReturnValue("blob:http://localhost/preview-1");
+      const revokeObjectURL = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => {});
+
+      const blob = new Blob(["bytes"], { type: "image/png" });
+      const { unmount } = render(
+        <ContentInput
+          id="civ-1"
+          value=" [file: shot.png]"
+          attachedFiles={[{ name: "shot.png", type: "image/png", previewSource: blob }]}
+        />,
+      );
+
+      expect(createObjectURL).toHaveBeenCalledWith(blob);
+      expect(previewImg()).toHaveAttribute("src", "blob:http://localhost/preview-1");
+
+      // The leak this pins is real: without the unmount revoke the blob is pinned in memory for the
+      // lifetime of the document, and a composer that opens and closes per message leaks one per
+      // attachment per open.
+      expect(revokeObjectURL).not.toHaveBeenCalled();
+      unmount();
+      expect(revokeObjectURL).toHaveBeenCalledWith("blob:http://localhost/preview-1");
+
+      createObjectURL.mockRestore();
+      revokeObjectURL.mockRestore();
+    });
+
+    it("falls back to the extension pill when the image fails to decode", () => {
+      render(
+        <ContentInput
+          id="civ-1"
+          value=" [file: broken.png]"
+          attachedFiles={[
+            { name: "broken.png", type: "image/png", size: "4 KB", previewSource: PIXEL_PNG },
+          ]}
+        />,
+      );
+
+      const img = previewImg();
+      expect(img).toBeInTheDocument();
+
+      // What the browser does for bytes that will not decode. Leaving the <img> mounted paints the
+      // broken-image glyph across the card, which reads as a bug rather than as "no preview".
+      fireEvent.error(img!);
+
+      expect(previewImg()).not.toBeInTheDocument();
+      // Exactly the pre-existing pill rendering, down to the "Document" line: the fallback is the
+      // correct answer for content we could not show, so a decode failure has to land on it rather
+      // than on some third state invented for the occasion.
+      expect(pills()).toHaveLength(1);
+      expect(screen.getByText("Document")).toBeInTheDocument();
+      expect(screen.getByText("PNG")).toBeInTheDocument();
+    });
+
+    it("keeps the extension pill for a type that cannot be previewed", () => {
+      render(
+        <ContentInput
+          id="civ-1"
+          value=" [file: bundle.zip]"
+          attachedFiles={[
+            { name: "bundle.zip", type: "application/zip", size: "8 MB", previewSource: PIXEL_PNG },
+          ]}
+        />,
+      );
+
+      // Even handed a decodable source: a `.zip` has no first frame, so the pill is the correct
+      // rendering and the source is ignored rather than rendered as something it is not.
+      expect(previewImg()).not.toBeInTheDocument();
+      expect(pills()).toHaveLength(1);
+      expect(screen.getByText("ZIP")).toBeInTheDocument();
+    });
+
+    // A background that swallowed the one control on the card would be a worse bug than no preview.
+    it("keeps the remove button working with a preview present", () => {
+      const onIvyEvent = vi.fn();
+      render(
+        <ContentInput
+          id="civ-1"
+          value=" [file: shot.png]"
+          attachedFiles={[{ name: "shot.png", type: "image/png", previewSource: PIXEL_PNG }]}
+          onIvyEvent={onIvyEvent}
+        />,
+      );
+
+      expect(previewImg()).toBeInTheDocument();
+      fireEvent.click(screen.getByLabelText("Remove file"));
+
+      expect(onIvyEvent).toHaveBeenCalledWith("OnRemoveAttachment", "civ-1", ["shot.png"]);
+      expect(chips()).toHaveLength(0);
+    });
+
+    // A path is not bytes: the webview cannot load `file://` under the app's CSP, so attempting it
+    // only trades the pill for the broken-image glyph.
+    it("ignores a preview source the webview could not load", () => {
+      render(
+        <ContentInput
+          id="civ-1"
+          value=" [file: shot.png]"
+          attachedFiles={[
+            {
+              name: "shot.png",
+              type: "image/png",
+              size: "1 MB",
+              previewSource: "file:///Users/me/shot.png",
+            },
+          ]}
+        />,
+      );
+
+      expect(previewImg()).not.toBeInTheDocument();
+      expect(pills()).toHaveLength(1);
+    });
+  });
+
   // Attaching the same file twice is one attachment: the name is the key everything else is stored by.
   it("does not duplicate a file attached twice", async () => {
     const { container } = render(<ContentInput id="civ-1" value="" />);

@@ -5,6 +5,7 @@ import { IconButton } from "../ui/IconButton";
 import { TuiBadge } from "../ui/TuiBadge";
 import { VoiceRecorder, type VoiceStatus } from "./voice-recorder";
 import { clipboardFiles } from "../../lib/clipboard";
+import { isImageFile as isKnownImageType } from "../../lib/imageUtils";
 import { useOutsideClick } from "../../hooks/use-outside-click";
 import { useMenuKeyboard } from "../../hooks/use-menu-keyboard";
 import "./content-input.css";
@@ -75,9 +76,13 @@ export const resetPdfJsCacheForTest = () => {
   pdfjsPromise = null;
 };
 
-export const PdfThumbnail: React.FC<{ url: string }> = ({ url }) => {
+export const PdfThumbnail: React.FC<{ url: string; onError?: () => void }> = ({ url, onError }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [error, setError] = useState(false);
+  // The callback is read through a ref so a caller passing an inline arrow -- a new function every
+  // render, which the strip does -- cannot re-run the render effect and re-parse the document.
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
 
   useEffect(() => {
     let active = true;
@@ -115,7 +120,12 @@ export const PdfThumbnail: React.FC<{ url: string }> = ({ url }) => {
         await page.render(renderContext).promise;
       } catch (err) {
         console.error("PDF.js render failed:", err);
-        if (active) setError(true);
+        if (active) {
+          setError(true);
+          // Tells the owning chip the document did not render, so it can fall back to the extension
+          // pill rather than leave the glyph below standing in for a preview that will never arrive.
+          onErrorRef.current?.();
+        }
       }
     };
 
@@ -126,23 +136,10 @@ export const PdfThumbnail: React.FC<{ url: string }> = ({ url }) => {
     };
   }, [url]);
 
+  // Only reached by a caller that passed no `onError`; one that did has already replaced this whole
+  // subtree with the extension pill by the time this would render.
   if (error) {
-    return (
-      <div
-        style={{
-          width: "100%",
-          height: "100%",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          fontSize: "1.5rem",
-          background: "var(--muted)",
-          color: "var(--muted-foreground)",
-        }}
-      >
-        📄
-      </div>
-    );
+    return <div className="civ-thumbnail-pdf-fallback" aria-hidden="true" />;
   }
 
   return (
@@ -163,6 +160,20 @@ export interface AttachedFile {
   name: string;
   type: string;
   size?: string;
+  /**
+   * Bytes for the thumbnail, for an attachment the consumer declares rather than one the user picked.
+   *
+   * A picked, dropped or pasted file arrives as a `File`, so `handleFiles` mints an object URL from it
+   * and the chip previews itself. A declared attachment carried a name, a MIME type and a size and
+   * nothing else -- no path a webview may read and no bytes to read from -- so the strip had nothing
+   * to render and every declared chip fell back to the extension pill whatever its type. This is the
+   * channel for those bytes: a `File`/`Blob` (object URL minted and revoked here), or a URL the
+   * webview can already load (`data:`, `blob:` or a served `http(s):`), used verbatim.
+   *
+   * Anything else -- a bare `file://` URL or an OS path -- is not loadable from the webview and is
+   * deliberately rejected rather than attempted; such an attachment keeps the pill.
+   */
+  previewSource?: Blob | string;
 }
 
 export interface ContentInputProps {
@@ -207,6 +218,24 @@ const findScrollableParent = (el: HTMLElement): HTMLElement | null => {
 
 const fileRegExp = /\s?\[file:\s*([^\]]+)\]/g;
 
+/**
+ * Whether a preview URL is one the webview may load.
+ *
+ * `previewSource` is consumer-supplied and a chip feeds it to `<img src>` or to pdf.js, so only the
+ * three schemes that carry their own bytes are allowed through: `data:`, `blob:` and `http(s):`. A
+ * `file://` URL or a bare OS path is rejected rather than attempted -- the webview cannot load either
+ * under the app's CSP, and letting one through paints the broken-image glyph this change exists to
+ * remove. Written as an allowlist so `javascript:` is excluded by construction rather than by a
+ * blocklist someone has to keep complete.
+ */
+const isLoadablePreviewUrl = (url: string) => /^(data:|blob:|https?:)/i.test(url.trim());
+
+/** True for a PDF named either by extension or by MIME type. */
+const isPdfName = (nameOrType: string) => {
+  const lower = nameOrType.toLowerCase();
+  return lower === "application/pdf" || lower.split(".").pop() === "pdf";
+};
+
 const parseValue = (val: string) => {
   const filePaths: string[] = [];
   const cleanText = val.replace(fileRegExp, (_match, path) => {
@@ -247,6 +276,14 @@ export const ContentInput: React.FC<ContentInputProps> = ({
   const [isFocused, setIsFocused] = useState(false);
 
   const [previews, setPreviews] = useState<Record<string, string>>({});
+  /**
+   * Attachments whose preview URL loaded but whose bytes would not decode, keyed as `previews` is.
+   *
+   * A dead `<img src>` paints the browser's broken-image glyph across the whole card, which reads as
+   * a bug rather than as "no preview available". Recording the failure demotes that chip back to the
+   * extension pill, which is the honest rendering for content we could not show.
+   */
+  const [previewFailed, setPreviewFailed] = useState<Record<string, true>>({});
   const [fileMeta, setFileMeta] = useState<Record<string, { lineCount?: number; size: string }>>(
     {},
   );
@@ -275,15 +312,132 @@ export const ContentInput: React.FC<ContentInputProps> = ({
     }
   }, [autoFocus]);
 
-  const isImageFile = (path: string) => {
-    const ext = path.split(".").pop()?.toLowerCase();
-    return ["png", "jpg", "jpeg", "webp", "gif", "svg"].includes(ext || "");
+  /**
+   * The object URLs this component minted, so unmount can revoke every one of them.
+   *
+   * A ref rather than a derivation from `previews` at cleanup time: a cleanup closure captures the
+   * `previews` value from the render that created it, so any URL minted after that render would leak
+   * for the lifetime of the document. The ref is the same object on every render, so the unmount
+   * effect below sees them all. Only our own URLs go in -- revoking a consumer's `blob:` URL would
+   * break their copy of it, and a `data:`/`http(s):` URL has nothing to revoke.
+   */
+  const ownedObjectUrls = useRef<Set<string>>(new Set());
+
+  const registerObjectUrl = (url: string) => {
+    ownedObjectUrls.current.add(url);
+    return url;
   };
 
-  const isPdfFile = (path: string) => {
-    const ext = path.split(".").pop()?.toLowerCase();
-    return ext === "pdf";
+  const releaseObjectUrl = (url: string) => {
+    if (!ownedObjectUrls.current.delete(url)) return;
+    try {
+      URL.revokeObjectURL(url);
+    } catch {
+      // An environment without URL support has nothing to clean up.
+    }
   };
+
+  // On unmount, not on every `previews` change: the strip re-renders constantly and a URL still
+  // referenced by a mounted <img> has to outlive those renders.
+  useEffect(
+    () => () => {
+      for (const url of ownedObjectUrls.current) {
+        try {
+          URL.revokeObjectURL(url);
+        } catch {
+          // ignore
+        }
+      }
+      ownedObjectUrls.current.clear();
+    },
+    [],
+  );
+
+  /**
+   * The source each declared attachment's preview URL was derived from, so a re-run can tell "same
+   * bytes as last time" from "new bytes for the same name". A `Blob` has no value identity to compare
+   * -- two reads of one file are two unequal objects -- so the object itself is the key.
+   */
+  const declaredPreviews = useRef<Map<string, { source: Blob | string; url: string }>>(new Map());
+
+  /**
+   * Gives a consumer-declared attachment the preview URL a picked file already gets from `handleFiles`.
+   *
+   * Written to be idempotent, not merely cheap. `attachedFiles` defaults to a fresh `[]` and consumers
+   * routinely pass an inline array literal, so this effect re-runs on essentially every render; a body
+   * that minted a URL or returned a new `previews` object each time would set state on every render
+   * and spin React until it threw "Maximum update depth exceeded". So a source already mapped is left
+   * alone, and `setPreviews` returns `prev` unchanged when nothing moved -- which makes the re-run a
+   * genuine no-op rather than a cheap one.
+   */
+  useEffect(() => {
+    const seen = new Set<string>();
+    const resolved: Array<[string, string]> = [];
+
+    for (const attachment of attachedFiles) {
+      const source = attachment.previewSource;
+      if (!source) continue;
+      seen.add(attachment.name);
+
+      const existing = declaredPreviews.current.get(attachment.name);
+      if (existing && existing.source === source) {
+        resolved.push([attachment.name, existing.url]);
+        continue;
+      }
+
+      let url: string | null = null;
+      if (typeof source === "string") {
+        if (isLoadablePreviewUrl(source)) url = source;
+      } else if (typeof URL !== "undefined" && typeof URL.createObjectURL === "function") {
+        try {
+          url = URL.createObjectURL(source);
+          registerObjectUrl(url);
+        } catch {
+          url = null;
+        }
+      }
+
+      // Swapping an attachment's bytes must not strand the URL minted for the previous ones.
+      if (existing) releaseObjectUrl(existing.url);
+      if (!url) {
+        declaredPreviews.current.delete(attachment.name);
+        continue;
+      }
+      declaredPreviews.current.set(attachment.name, { source, url });
+      resolved.push([attachment.name, url]);
+    }
+
+    // An attachment the consumer dropped takes its URL with it; otherwise a long-lived composer
+    // accumulates one blob per attachment it has ever been handed.
+    for (const [name, entry] of declaredPreviews.current) {
+      if (seen.has(name)) continue;
+      releaseObjectUrl(entry.url);
+      declaredPreviews.current.delete(name);
+    }
+
+    setPreviews((prev) => {
+      let changed = false;
+      const next = { ...prev };
+      for (const [name, url] of resolved) {
+        if (next[name] === url) continue;
+        next[name] = url;
+        changed = true;
+      }
+      // Returning `prev` is what stops the render loop described above.
+      return changed ? next : prev;
+    });
+  }, [attachedFiles]);
+
+  /**
+   * `lib/imageUtils`' predicate, not a second list: the local copy had drifted (it omitted `bmp`) and
+   * two lists of previewable extensions is exactly the bug that leaves one call site rendering a
+   * thumbnail and another rendering a pill for the same file. `avif` is handled alongside it because
+   * every webview this ships in decodes it natively while the shared list predates the format.
+   */
+  const isImageFile = (path: string) =>
+    isKnownImageType(path) || path.split(".").pop()?.toLowerCase() === "avif";
+
+  const isPdfFile = (path: string) => isPdfName(path);
 
   const getFileMetadata = (filePath: string) => {
     const fileName = filePath.split(/[/\\]/).pop() || "";
@@ -309,14 +463,23 @@ export const ContentInput: React.FC<ContentInputProps> = ({
     };
   };
 
-  const getPreviewUrl = (filePath: string) => {
+  /**
+   * The preview URL for a chip, together with the `previews` key it was found under.
+   *
+   * The key comes back because `previews` is keyed by the original file name while a chip is keyed by
+   * its ` [file: ...]` ref -- the upload path may rename a file on the way through -- so `onError` has
+   * no other way to record a decode failure under the key the next lookup will use. Returns nothing
+   * once a URL is known not to decode, which is what demotes the chip to the extension pill.
+   */
+  const getPreview = (filePath: string) => {
     const fileName = filePath.split(/[/\\]/).pop() || "";
     const lowerName = fileName.toLowerCase();
 
     for (const [origName, url] of Object.entries(previews)) {
       const origBase = origName.split(".")[0].toLowerCase().replace(/\s+/g, "_");
       if (lowerName.includes(origBase)) {
-        return url;
+        if (previewFailed[origName]) return null;
+        return { key: origName, url };
       }
     }
     return null;
@@ -607,12 +770,8 @@ export const ContentInput: React.FC<ContentInputProps> = ({
         [file.name]: { lineCount, size: sizeStr },
       }));
 
-      if (
-        file.type.startsWith("image/") ||
-        file.type === "application/pdf" ||
-        file.name.toLowerCase().endsWith(".pdf")
-      ) {
-        const objectUrl = URL.createObjectURL(file);
+      if (isImageFile(file.type) || isImageFile(file.name) || isPdfName(file.type || file.name)) {
+        const objectUrl = registerObjectUrl(URL.createObjectURL(file));
         setPreviews((prev) => ({
           ...prev,
           [file.name]: objectUrl,
@@ -628,7 +787,7 @@ export const ContentInput: React.FC<ContentInputProps> = ({
     // being dead. Registering the name here is what makes an attachment exist at all.
     //
     // The name, not a path: a `File` from an `<input>` or a clipboard exposes no path (see the same
-    // note in `ChatView.processFiles`), and the name is what `getPreviewUrl`/`getFileMetadata` key the
+    // note in `ChatView.processFiles`), and the name is what `getPreview`/`getFileMetadata` key the
     // object URL and the size badge by.
     const names = list.map((file) => file.name);
     const nextFiles = [...filesRef.current, ...names.filter((n) => !filesRef.current.includes(n))];
@@ -691,10 +850,18 @@ export const ContentInput: React.FC<ContentInputProps> = ({
     for (const [origName, url] of Object.entries(previews)) {
       const origBase = origName.split(".")[0].toLowerCase().replace(/\s+/g, "_");
       if (lowerName.includes(origBase)) {
-        URL.revokeObjectURL(url);
+        releaseObjectUrl(url);
         const newPreviews = { ...previews };
         delete newPreviews[origName];
         setPreviews(newPreviews);
+        // Clearing the failure alongside the URL keeps a re-attached file from inheriting the verdict
+        // reached about the bytes it no longer has.
+        setPreviewFailed((prev) => {
+          if (!(origName in prev)) return prev;
+          const next = { ...prev };
+          delete next[origName];
+          return next;
+        });
         break;
       }
     }
@@ -796,23 +963,41 @@ export const ContentInput: React.FC<ContentInputProps> = ({
             {files.map((filePath, idx) => {
               const isImage = isImageFile(filePath);
               const isPdf = isPdfFile(filePath);
-              const previewUrl = isImage || isPdf ? getPreviewUrl(filePath) : null;
+              // Only a type we can actually decode reaches `getPreview`; everything else -- and
+              // anything that decoded to nothing -- keeps the extension pill, which stays the
+              // correct rendering for content we cannot show.
+              const preview = isImage || isPdf ? getPreview(filePath) : null;
               const meta = getFileMetadata(filePath);
+              // `onError` fires during the paint that shows the broken glyph, so the demotion has to
+              // be keyed by the `previews` entry rather than the chip index: the strip re-orders as
+              // files are removed and an index would follow the wrong card.
+              const markFailed = (key: string) =>
+                setPreviewFailed((prev) => ({ ...prev, [key]: true }));
 
               return (
-                <div key={idx} className="civ-thumbnail-card">
+                <div
+                  key={idx}
+                  className={`civ-thumbnail-card${preview ? " civ-thumbnail-card-previewed" : ""}`}
+                >
                   {/* Background Preview for images/PDFs */}
-                  {(isImage || isPdf) && previewUrl && (
+                  {preview && (
                     <div className="civ-thumbnail-preview-container">
                       {isImage ? (
+                        // An `<img>` even for SVG, never inlined markup: the image context refuses
+                        // to run script, so a hostile `<svg onload=...>` an attachment smuggles in
+                        // is inert here and would not be if the source were dropped into the DOM.
                         <img
                           className="civ-thumbnail-image-preview"
-                          src={previewUrl}
-                          alt="preview"
+                          src={preview.url}
+                          alt=""
+                          onError={() => markFailed(preview.key)}
                         />
                       ) : (
-                        <PdfThumbnail url={previewUrl} />
+                        <PdfThumbnail url={preview.url} onError={() => markFailed(preview.key)} />
                       )}
+                      {/* Scrim: the card's own text sits on top of arbitrary pixels, so this is what
+                          keeps it readable. See `.civ-thumbnail-preview-overlay` for why it is a
+                          two-ended gradient rather than a flat wash. */}
                       <div className="civ-thumbnail-preview-overlay" />
                     </div>
                   )}
@@ -831,14 +1016,12 @@ export const ContentInput: React.FC<ContentInputProps> = ({
 
                   {/* Overlaid File Metadata & Badge */}
                   <div className="civ-thumbnail-content">
-                    {!(previewUrl && (isImage || isPdf)) ? (
-                      <div style={{ minWidth: 0 }}>
-                        <div className="civ-thumbnail-doc-name">{meta.name}</div>
-                        <div className="civ-thumbnail-doc-meta">{meta.metaText}</div>
-                      </div>
-                    ) : (
-                      <div />
-                    )}
+                    <div style={{ minWidth: 0 }}>
+                      <div className="civ-thumbnail-doc-name">{meta.name}</div>
+                      {/* The thumbnail is the better answer to "what is this", so the "Document" /
+                          size line only earns its space on a card with nothing to show. */}
+                      {!preview && <div className="civ-thumbnail-doc-meta">{meta.metaText}</div>}
+                    </div>
                     <TuiBadge className="civ-thumbnail-doc-badge" caps>
                       {meta.badge}
                     </TuiBadge>
