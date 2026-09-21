@@ -200,4 +200,78 @@ describe("chatStore agent / model / effort selection", () => {
     expect(state.selectedEffort).toBe("default");
     expect(state.error).toBeNull();
   });
+
+  /* Issue #240: the catalog fetch that loses a race with a still-starting daemon used to be the last
+     one the process ever made. `loadAgents` swallows its failure, so `runInit` succeeds, so `init()`
+     keeps its memo — and nothing else calls `loadAgents`, leaving the picker on `AgentPicker`'s
+     synthetic single row with no models until a restart. */
+  describe("the one retry a failed catalog fetch gets", () => {
+    it("fills the picker when the second fetch succeeds", async () => {
+      const listAgents = vi
+        .spyOn(agentsApi, "listAgents")
+        .mockRejectedValueOnce(new Error("daemon still starting"))
+        .mockResolvedValueOnce(CATALOG);
+
+      const agents = await chatStore.loadAgents();
+
+      expect(listAgents).toHaveBeenCalledTimes(2);
+      expect(agents).toEqual(CATALOG);
+      // The catalog landing late is the whole point: the picker has real models again.
+      expect(chatStore.getState().agents).toEqual(CATALOG);
+      expect(chatStore.getState().selectedAgentId).toBe("claude");
+    });
+
+    it("restores the remembered agent on the retry, exactly as a first-try fetch would", async () => {
+      localStorage.setItem(SELECTED_AGENT_STORAGE_KEY, "codex");
+      vi.spyOn(agentsApi, "listAgents")
+        .mockRejectedValueOnce(new Error("daemon still starting"))
+        .mockResolvedValueOnce(CATALOG);
+
+      await chatStore.loadAgents();
+
+      expect(chatStore.getState().selectedAgentId).toBe("codex");
+    });
+
+    it("degrades to the empty floor rather than hanging when the retry also fails", async () => {
+      const listAgents = vi
+        .spyOn(agentsApi, "listAgents")
+        .mockRejectedValue(new Error("service down"));
+
+      const agents = await chatStore.loadAgents();
+
+      // Exactly two: one retry, not a loop that keeps the awaited `init()` off screen.
+      expect(listAgents).toHaveBeenCalledTimes(2);
+      expect(agents).toEqual([]);
+      expect(chatStore.getState().agents).toEqual([]);
+      expect(chatStore.getState().selectedAgentId).toBe("claude");
+      expect(chatStore.getState().selectedModelId).toBe("default");
+    });
+
+    it("resolves init() rather than leaving it pending on the retry", async () => {
+      vi.spyOn(agentsApi, "listAgents")
+        .mockRejectedValueOnce(new Error("daemon still starting"))
+        .mockResolvedValueOnce(CATALOG);
+      vi.spyOn(chatApi, "listSessions").mockResolvedValue([]);
+
+      // The delay sits inside the promise `init()` memoizes, so both StrictMode calls must settle on
+      // it — the guard the memo exists for has to survive the extra await window.
+      await Promise.all([chatStore.init(), chatStore.init()]);
+
+      expect(chatStore.getState().agents).toEqual(CATALOG);
+    });
+
+    it("leaves a store destroyed mid-wait alone", async () => {
+      const store = new ChatStore();
+      vi.spyOn(agentsApi, "listAgents")
+        .mockRejectedValueOnce(new Error("daemon still starting"))
+        .mockResolvedValueOnce(CATALOG);
+
+      const pending = store.loadAgents();
+      // The plan panel is torn down inside exactly this window under StrictMode.
+      store.destroy();
+      await pending;
+
+      expect(store.getState().agents).toEqual([]);
+    });
+  });
 });

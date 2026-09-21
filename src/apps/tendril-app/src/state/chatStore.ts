@@ -57,6 +57,14 @@ export const FALLBACK_AGENT_ID = "claude";
  */
 export const TURN_INTERRUPT_TIMEOUT_MS = 5000;
 
+/**
+ * How long a failed agent-catalog fetch waits before its one retry. See
+ * {@link ChatStore.loadAgents} for why it retries at all. Short on purpose: `init()` awaits the
+ * wait, so it has to be long enough for a daemon that is still starting to answer the second ask
+ * and short enough that nobody notices it on a startup that was going to fail anyway.
+ */
+export const AGENT_CATALOG_RETRY_DELAY_MS = 400;
+
 /** How a row in the Chats list reads while, or just after, its own turn runs. */
 export type ChatSessionRowState = "working" | "completed" | null;
 
@@ -372,27 +380,58 @@ export class ChatStore {
    * Fetches the agent catalog and restores the last-used agent along with the model and effort
    * that agent is remembered with. A failure leaves the catalog empty and the selection on the
    * `claude` / `default` floor, which is what the backend would have used anyway.
+   *
+   * The first failure is retried once, after {@link AGENT_CATALOG_RETRY_DELAY_MS}, because an empty
+   * catalog here is permanent in a way the `claude` / `default` floor above makes easy to miss. This
+   * swallows rather than rethrows — deliberately, since a chat is usable without the catalog and V1
+   * likewise carried on when `ChatApp` could not fill its agent dropdown — so `runInit` completes,
+   * `init()`'s memo at {@link ChatStore.init} is never cleared, and nothing calls this a second
+   * time: there is no refresh, reconnect or focus path that reaches it, so the picker stays on
+   * `AgentPicker`'s synthetic single row, offering no models, until the process restarts. The
+   * failure this is really for is a race rather than an outage — the app's first paint beating the
+   * daemon to a `cmd_list_agents` it will happily answer a moment later.
+   *
+   * One retry, not a loop with backoff: `init()` is awaited by `ChatView`'s mount effect, so every
+   * millisecond spent here is a millisecond the conversation is not on screen. A daemon that is
+   * genuinely down should reach the empty-catalog floor fast rather than hold the view hostage.
+   *
+   * The wait is guarded by `generation` for the same reason `runInit`'s `onChatEvent` is: the delay
+   * is a second await window, and the plan panel is mounted, unmounted and mounted again inside one
+   * — so a store `destroy()`d mid-wait must not go on to `notify()` listeners that were cleared, or
+   * overwrite the agent selection belonging to the store that replaced it.
    */
   public async loadAgents(): Promise<AgentOption[]> {
+    const generation = this.generation;
     try {
-      const agents = await agentsApi.listAgents();
-      this.state.agents = agents;
-      const remembered = loadStoredSelectedAgent();
-      const restored =
-        agents.find((a) => a.id === remembered) ??
-        agents.find((a) => a.id === this.state.selectedAgentId) ??
-        agents[0];
-      if (restored) {
-        this.state.selectedAgentId = restored.id;
-      }
-      this.applyAgentPreference(this.state.selectedAgentId);
-      this.notify();
-      return agents;
+      return this.acceptAgents(await agentsApi.listAgents());
+    } catch {
+      // First failure only; a second one falls through to the empty floor below.
+    }
+    await new Promise((resolve) => setTimeout(resolve, AGENT_CATALOG_RETRY_DELAY_MS));
+    if (generation !== this.generation) return this.state.agents;
+    try {
+      return this.acceptAgents(await agentsApi.listAgents());
     } catch {
       this.state.agents = [];
       this.notify();
       return [];
     }
+  }
+
+  /** Takes a fetched catalog: restores the remembered agent and the model and effort it wears. */
+  private acceptAgents(agents: AgentOption[]): AgentOption[] {
+    this.state.agents = agents;
+    const remembered = loadStoredSelectedAgent();
+    const restored =
+      agents.find((a) => a.id === remembered) ??
+      agents.find((a) => a.id === this.state.selectedAgentId) ??
+      agents[0];
+    if (restored) {
+      this.state.selectedAgentId = restored.id;
+    }
+    this.applyAgentPreference(this.state.selectedAgentId);
+    this.notify();
+    return agents;
   }
 
   private agentById(agentId: string): AgentOption | undefined {
@@ -730,6 +769,11 @@ export class ChatStore {
     this.optimisticMessageIds = new Set();
     // Drop the event subscription and the `init()` memo together: a test that reset the store and
     // called `init()` again would otherwise keep the previous test's listener and skip the reload.
+    // The `generation` bump is the same disowning `destroy()` does, and for the same reason: nulling
+    // the memo only stops a *future* `init()`, while a previous test's `runInit` may still be parked
+    // on an await — `loadAgents`' retry delay is one — and would otherwise wake after this reset and
+    // register its `chat-event` listener into the next test's store.
+    this.generation += 1;
     this.eventUnsubscribe?.();
     this.eventUnsubscribe = null;
     this.initPromise = null;
