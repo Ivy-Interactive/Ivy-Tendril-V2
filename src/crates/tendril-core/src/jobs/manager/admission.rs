@@ -392,7 +392,7 @@ fn resolve_job_priority(args: &JobArgs, plan_folder: &Path, override_priority: O
 
 /// The conversation a plan already belongs to, used to link a job that names the plan but was started
 /// without a `--chat-session` of its own. Empty for a job with no plan — a `CreatePlan` has none yet,
-/// which is why [`JobManager::finish_job`] stamps the link the other way round once the plan exists.
+/// which is why [`finish_job`](super::completion::finish_job) stamps the link the other way round once the plan exists.
 fn plan_chat_session_id(plan_folder: &Path) -> Option<String> {
     if plan_folder.as_os_str().is_empty() || !plan_folder.is_dir() {
         return None;

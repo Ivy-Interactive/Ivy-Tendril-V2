@@ -1,13 +1,13 @@
 //! Chat turn execution: prompt assembly, provider invocation, streaming, persistence.
 //!
-//! The modules follow one turn's life. [`manager`] holds the state every part of it reads — the
+//! The modules follow one turn's life. `manager` holds the state every part of it reads — the
 //! session cache, the queue, the cancellation handles and the live output buffers — plus the
 //! operations that do not run an agent at all (create, rename, enqueue, answer a question block).
-//! [`turn`] is the loop that actually runs one: it assembles the prompt with [`prompt`], streams the
-//! provider's output through [`streaming`] into those buffers, and closes the turn out with
-//! [`outcome`], which decides what the finished message says and why. [`titles`] is the separate,
-//! 30s-budgeted naming run that renames a session from its first user message, [`answers`] the
-//! in-place rewriting of a question block's answers into a stream of eventwire lines, and [`events`]
+//! `turn` is the loop that actually runs one: it assembles the prompt with `prompt`, streams the
+//! provider's output through `streaming` into those buffers, and closes the turn out with
+//! `outcome`, which decides what the finished message says and why. `titles` is the separate,
+//! 30s-budgeted naming run that renames a session from its first user message, `answers` the
+//! in-place rewriting of a question block's answers into a stream of eventwire lines, and `events`
 //! the `chat.*` frames all of them broadcast.
 //!
 //! `turn` and `titles` are further `impl ChatExecutionManager` blocks rather than free functions, so

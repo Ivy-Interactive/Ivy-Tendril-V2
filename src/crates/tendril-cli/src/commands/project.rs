@@ -4,10 +4,10 @@
 //! Every subcommand is tried against the running daemon first and falls back to editing
 //! `config.yaml` directly, so the two handler modules mirror each other arm for arm:
 //!
-//! - [`cli`] is the clap surface, [`daemon`] the HTTP path, [`local`] the filesystem path.
-//! - [`edits`] holds the `ProjectConfig` mutations and printing both paths share, so a rule like
+//! - `cli` is the clap surface, `daemon` the HTTP path, `local` the filesystem path.
+//! - `edits` holds the `ProjectConfig` mutations and printing both paths share, so a rule like
 //!   "is this a duplicate?" has exactly one answer.
-//! - [`import`] resolves the repo an `import` subcommand names.
+//! - `import` resolves the repo an `import` subcommand names.
 //!
 //! What stays here is the entry point that chooses between the two paths, plus the review-action
 //! ordering and project lookup helpers the filesystem path uses.

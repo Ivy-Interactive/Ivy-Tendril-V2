@@ -120,7 +120,8 @@ fn default_project_color() -> String {
 }
 
 /// A partial update to a project's [`AgentSecurityConfig`]: every field is `Option`, and only the
-/// ones a request body actually names get applied — see [`update_project`]. Flattened directly onto
+/// ones a request body actually names get applied — see
+/// [`update_project`](super::crud::update_project). Flattened directly onto
 /// [`UpdateProjectRequest`], the same shape as [`CreateProjectRequest::security`].
 #[derive(Debug, Deserialize, Default)]
 pub struct AgentSecurityPatch {

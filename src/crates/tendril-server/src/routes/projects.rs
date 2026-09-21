@@ -1,9 +1,9 @@
 //! `/api/projects` — the project registry the app and CLI both drive.
 //!
-//! One module per sub-resource, mirroring the route tree in [`super::router`]: [`crud`] for the
-//! project record, then [`repos`], [`verifications`], [`review_actions`] and [`hooks`] for the
-//! collections hanging off it. [`payloads`] holds the request bodies, which are shared across
-//! several of those, and [`cloning`] the remote-URL-to-local-clone pass that create and update and
+//! One module per sub-resource, mirroring the route tree this crate's router builds: `crud` for the
+//! project record, then `repos`, `verifications`, `review_actions` and `hooks` for the
+//! collections hanging off it. `payloads` holds the request bodies, which are shared across
+//! several of those, and `cloning` the remote-URL-to-local-clone pass that create and update and
 //! add-repo all need.
 //!
 //! Every handler is re-exported here so the router keeps naming them `projects::<handler>`.

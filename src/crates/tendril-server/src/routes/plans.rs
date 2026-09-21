@@ -1,9 +1,9 @@
 //! `/api/plans` — the plan folders the app, the CLI and the agents all read and write.
 //!
-//! One module per sub-resource, mirroring the route tree in [`super::router`]: [`crud`] for the
-//! plan record and its field updates, then [`revisions`], [`diff_comments`], [`annotations`],
-//! [`recommendations`], [`verifications`] and [`references`] for what hangs off it. [`events`]
-//! holds the chat-session announcements a write produces, and [`lifecycle`] the folder-level
+//! One module per sub-resource, mirroring the route tree this crate's router builds: `crud` for the
+//! plan record and its field updates, then `revisions`, `diff_comments`, `annotations`,
+//! `recommendations`, `verifications` and `references` for what hangs off it. `events`
+//! holds the chat-session announcements a write produces, and `lifecycle` the folder-level
 //! operations — repo status, git data, reset and delete.
 //!
 //! The response and id helpers below are shared by several of those modules, so they stay here

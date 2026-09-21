@@ -9,9 +9,9 @@
 //! `Result<String>` because several vault operations need the output of a *failing* call — probing
 //! whether a repository already exists, or deciding whether a failed `gh pr create` is recoverable.
 //!
-//! The operations are grouped one module per lifecycle stage — [`discovery`] and [`connection`] to
-//! get a vault, [`push`] and [`import`] to move projects through it, [`status`], [`catalog`] and
-//! [`maintenance`] to keep it current — over the shared plumbing in [`internals`]. Every public
+//! The operations are grouped one module per lifecycle stage — `discovery` and `connection` to
+//! get a vault, `push` and `import` to move projects through it, `status`, `catalog` and
+//! `maintenance` to keep it current — over the shared plumbing in `internals`. Every public
 //! function is re-exported here, so `vault::service::*` is the same surface it has always been.
 
 mod catalog;

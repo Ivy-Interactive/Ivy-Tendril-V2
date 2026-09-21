@@ -121,7 +121,7 @@ pub fn stuck_job_reason(
 }
 
 /// Polls a detached job's surviving PID through to exit, then finalises it exactly as
-/// [`spawn_runner`] finalises a job it launched itself.
+/// [`spawn_runner`](super::runner::spawn_runner) finalises a job it launched itself.
 ///
 /// The one thing this can never do that `spawn_runner` can is trust an exit code: the daemon whose
 /// callback would have captured this agent's stdout is the one that restarted, so nothing has read a

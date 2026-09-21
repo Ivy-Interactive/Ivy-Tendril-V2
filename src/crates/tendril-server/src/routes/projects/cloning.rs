@@ -24,7 +24,8 @@ use tendril_core::models::RepoRef;
 /// same fact V1 gets from a pre-clone `ls-remote --symref`, without the extra round trip.
 ///
 /// Cloning shells out to `git clone`, which can run for minutes on a large repository, so the whole
-/// pass runs off the async runtime — the precedent [`sync_project_repos`] sets for `git fetch`.
+/// pass runs off the async runtime — the precedent
+/// [`sync_project_repos`](super::repos::sync_project_repos) sets for `git fetch`.
 pub(super) async fn materialize_repos(
     tendril_home: PathBuf,
     project_name: String,

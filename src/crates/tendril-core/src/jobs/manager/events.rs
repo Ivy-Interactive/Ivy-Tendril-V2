@@ -29,7 +29,8 @@ pub const JOB_EVENT_COMPLETED: &str = "job.completed";
 /// `Stopped`.
 pub const JOB_EVENT_FAILED: &str = "job.failed";
 
-/// A job lifecycle notification, broadcast to anything watching a [`JobManager`].
+/// A job lifecycle notification, broadcast to anything watching a
+/// [`JobManager`](super::JobManager).
 ///
 /// The `job.` prefix is load-bearing rather than decorative. The desktop bridge
 /// (`ws_bridge.rs::route_ws_message`) claims `chat.`, `plan.`, `state` and `status` for their own

@@ -27,7 +27,8 @@ pub const SUPPORTED_PLAN_STATES: &[&str] = &[
 /// default table.
 pub const PLAN_LIST_FORMATS: &[&str] = &["table", "ids", "folders", "json"];
 
-/// The fields `plan set` can write. A subset of [`SUPPORTED_PLAN_FIELDS`]: `id`, `created`,
+/// The fields `plan set` can write. A subset of
+/// [`SUPPORTED_PLAN_FIELDS`](tendril_core::plans::SUPPORTED_PLAN_FIELDS): `id`, `created`,
 /// `updated` and the list fields are read-only through `plan set` (the lists have their own
 /// `add-*`/`remove-*` verbs), so naming one of those is an error rather than a silent no-op.
 pub const SETTABLE_PLAN_FIELDS: &[&str] = &[

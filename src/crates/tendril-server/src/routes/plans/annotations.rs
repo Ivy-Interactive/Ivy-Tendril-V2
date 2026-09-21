@@ -49,7 +49,8 @@ impl ReplaceAnnotationsBody {
 /// Tell every connected client that a plan's annotations moved.
 ///
 /// Goes through [`AppState::dispatch_ws_event`] for the same reason as
-/// [`broadcast_diff_comments_changed`]: so a resuming or backfilling client sees it too.
+/// `diff_comments::broadcast_diff_comments_changed`: so a resuming or backfilling client sees it
+/// too.
 fn broadcast_annotations_changed(state: &AppState, folder_name: &str, count: usize) {
     state.dispatch_ws_event(json!({
         "type": "plan.annotations_changed",

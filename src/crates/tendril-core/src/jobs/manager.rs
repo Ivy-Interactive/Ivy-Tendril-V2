@@ -1,12 +1,12 @@
 //! The job engine: everything between "start this" and "it is done".
 //!
-//! One module per lifecycle stage, in the order a job passes through them — [`admission`] decides
-//! whether a job may exist at all, [`dispatch`] gets it a slot, [`runner`] runs it, [`progress`]
-//! keeps it honest while it does, and [`completion`] writes down what happened. [`conflicts`] and
-//! [`waiting`] hold the two gates admission and maintenance both consult; [`termination`] is the
-//! other way out; [`supervision`] and [`maintenance`] are the recovery paths for jobs no live task
-//! is watching any more. [`plan_state`], [`usage`] and [`worktrees`] are the things a job does to
-//! the world around it, and [`internals`] and [`events`] are the state and the single status write
+//! One module per lifecycle stage, in the order a job passes through them — `admission` decides
+//! whether a job may exist at all, `dispatch` gets it a slot, `runner` runs it, `progress`
+//! keeps it honest while it does, and `completion` writes down what happened. `conflicts` and
+//! `waiting` hold the two gates admission and maintenance both consult; `termination` is the
+//! other way out; `supervision` and `maintenance` are the recovery paths for jobs no live task
+//! is watching any more. `plan_state`, `usage` and `worktrees` are the things a job does to
+//! the world around it, and `internals` and `events` are the state and the single status write
 //! every stage shares.
 //!
 //! Every public item is re-exported here, so `jobs::manager::*` is the same surface it has always

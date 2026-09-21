@@ -21,7 +21,8 @@ pub struct RemoveRepoParams {
 
 /// `POST /api/projects/:name/repos` — adds one repository, cloning it first when it is a URL.
 ///
-/// Same contract as [`create_project`]: what is stored is a path on disk, never a URL.
+/// Same contract as [`create_project`](super::crud::create_project): what is stored is a path on
+/// disk, never a URL.
 pub async fn add_project_repo(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,

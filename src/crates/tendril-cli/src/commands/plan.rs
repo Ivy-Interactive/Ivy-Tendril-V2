@@ -3,15 +3,15 @@
 //! verifications it must pass and the recommendations it turned up.
 //!
 //! Unlike the project commands there is no daemon path here: every subcommand is filesystem-first,
-//! and the daemon is only ever *told* about an edit after the fact (see [`events`]). One module per
+//! and the daemon is only ever *told* about an edit after the fact (see `events`). One module per
 //! kind of thing a plan holds:
 //!
-//! - [`cli`] is the clap surface; [`vocabulary`] the accepted values it validates against.
-//! - [`lifecycle`] reads and rewrites `plan.yaml` wholesale — `list`, `create`, `update`, `get`,
-//!   `set` and the revisions. [`links`] only appends to or removes from one of its arrays.
-//! - [`verifications`], [`recommendations`] and [`env`] each own one subcommand subtree.
-//! - [`worktrees`] owns the checkouts, [`health`] the read-only verdicts.
-//! - [`events`] is how any of them reports what it did to the plan's other chat sessions.
+//! - `cli` is the clap surface; `vocabulary` the accepted values it validates against.
+//! - `lifecycle` reads and rewrites `plan.yaml` wholesale — `list`, `create`, `update`, `get`,
+//!   `set` and the revisions. `links` only appends to or removes from one of its arrays.
+//! - `verifications`, `recommendations` and `env` each own one subcommand subtree.
+//! - `worktrees` owns the checkouts, `health` the read-only verdicts.
+//! - `events` is how any of them reports what it did to the plan's other chat sessions.
 //!
 //! What stays here is the dispatcher that resolves the plans directory and database once and hands
 //! an arm to its module.

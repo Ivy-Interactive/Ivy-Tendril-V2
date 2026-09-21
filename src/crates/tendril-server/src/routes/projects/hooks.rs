@@ -29,7 +29,8 @@ fn default_hook_when() -> String {
 }
 
 /// Adds or replaces a project hook, keyed by name — the same upsert as
-/// [`add_project_review_action`], so re-running the request does not accumulate duplicates.
+/// [`add_project_review_action`](super::review_actions::add_project_review_action), so
+/// re-running the request does not accumulate duplicates.
 ///
 /// An unrecognised `when` is rejected here rather than stored: the config model treats it as
 /// matching no phase, which would leave the caller with a hook that silently never fires.

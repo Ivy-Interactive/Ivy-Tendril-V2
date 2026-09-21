@@ -432,7 +432,8 @@ fn enrich_failure_message(
 
 /// Removes the folder a CreatePlan run left behind with no revision in it.
 ///
-/// The counterpart to [`JobManager::attribute_created_plan`], for the half of the stop paths that
+/// The counterpart to [`JobManager::attribute_created_plan`](super::JobManager::attribute_created_plan),
+/// for the half of the stop paths that
 /// arrives here instead of there, and it resolves the same folder through the same resolver -- so it
 /// records the link on the same terms. Without that, whether a stopped `CreatePlan` ended up linked
 /// to the plan it made came down to which of the two paths happened to reach it first.

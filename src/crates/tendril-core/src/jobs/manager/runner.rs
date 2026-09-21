@@ -2,7 +2,7 @@
 //!
 //! [`spawn_runner`] resolves the agent, compiles its firmware, runs the `before` hooks, spawns the
 //! process, wires up the liveness plumbing and the cancellation watch, then classifies the outcome
-//! and hands it to [`finish_job`](super::completion::finish_job). It is one long function on
+//! and hands it to [`finish_job`]. It is one long function on
 //! purpose: the ordering of those steps is the contract, and each early return has to unwind exactly
 //! the steps taken so far.
 
