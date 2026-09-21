@@ -144,6 +144,78 @@ describe("BadgeSelect keyboard support", () => {
   });
 });
 
+describe("BadgeSelect keyboard support (combobox trigger with a preselected value)", () => {
+  it("opens via ArrowDown, and a second ArrowDown moves focus into the list instead of closing it", async () => {
+    const user = userEvent.setup();
+    render(<BadgeSelect id="bs-6" options={projectOptions} value={["Tendril-Services"]} />);
+
+    const trigger = screen.getByRole("combobox");
+    trigger.focus();
+    await user.keyboard("{ArrowDown}");
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+
+    await user.keyboard("{ArrowDown}");
+
+    // The list must still be open and focus must have moved to the first option — a regression
+    // here means the trigger's own ArrowDown handler re-toggled the list shut instead of leaving
+    // navigation to useMenuKeyboard.
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    expect(screen.getAllByRole("option")[0]).toHaveFocus();
+  });
+
+  it("wraps ArrowDown/ArrowUp between options", async () => {
+    const user = userEvent.setup();
+    render(<BadgeSelect id="bs-7" options={projectOptions} value={["Tendril-Services"]} />);
+
+    const trigger = screen.getByRole("combobox");
+    trigger.focus();
+    await user.keyboard("{ArrowDown}");
+    const options = screen.getAllByRole("option");
+
+    await user.keyboard("{ArrowDown}");
+    expect(options[0]).toHaveFocus();
+    await user.keyboard("{ArrowDown}");
+    expect(options[1]).toHaveFocus();
+    await user.keyboard("{ArrowDown}");
+    expect(options[0]).toHaveFocus();
+    await user.keyboard("{ArrowUp}");
+    expect(options[1]).toHaveFocus();
+  });
+
+  it("closes on Escape and returns focus to the combobox trigger", async () => {
+    const user = userEvent.setup();
+    render(<BadgeSelect id="bs-8" options={projectOptions} value={["Tendril-Services"]} />);
+
+    const trigger = screen.getByRole("combobox");
+    trigger.focus();
+    await user.keyboard("{ArrowDown}");
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("still toggles open/closed with Enter and Space", async () => {
+    const user = userEvent.setup();
+    render(<BadgeSelect id="bs-9" options={projectOptions} value={["Tendril-Services"]} />);
+
+    const trigger = screen.getByRole("combobox");
+    trigger.focus();
+
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    await user.keyboard("{Enter}");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+
+    await user.keyboard(" ");
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    await user.keyboard(" ");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+});
+
 describe("BadgeSelect chip overflow", () => {
   it("keeps every chip that fits in the available width, instead of collapsing to +N", () => {
     const clientWidthSpy = vi

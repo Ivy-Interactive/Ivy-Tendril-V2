@@ -375,9 +375,16 @@ export function BadgeSelect({
             setOpen((v) => !v);
           }}
           onKeyDown={(e) => {
-            if (e.key === "Enter" || e.key === " " || e.key === "ArrowDown") {
+            if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
               setOpen((v) => !v);
+              return;
+            }
+            // Only opens the list; once open, ArrowDown is useMenuKeyboard's to move focus into
+            // the first option, not the trigger's to toggle the list shut again mid-navigation.
+            if (e.key === "ArrowDown" && !open) {
+              e.preventDefault();
+              setOpen(true);
             }
           }}
         >
