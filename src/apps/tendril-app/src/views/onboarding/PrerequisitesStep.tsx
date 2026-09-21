@@ -1,6 +1,6 @@
 import type { DoctorCheck, DoctorCheckStatus } from "../../types/api";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Button } from "@ivy-interactive/components/ui";
+import { Badge, Button } from "@ivy-interactive/components/ui";
 import { ErrorBanner } from "../../components/ErrorBanner";
 
 /**
@@ -38,11 +38,12 @@ const STATUS_LABELS: Record<DoctorCheckStatus, string> = {
 
 export function CheckBadge({ status }: { status: DoctorCheckStatus }) {
   return (
-    <span
+    <Badge
+      variant="outline"
       className={`rounded border px-1.5 py-0.5 text-2xs font-bold uppercase ${CHECK_STATUS_CLASSES[status]}`}
     >
       {STATUS_LABELS[status]}
-    </span>
+    </Badge>
   );
 }
 
