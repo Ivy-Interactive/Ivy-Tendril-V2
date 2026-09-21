@@ -949,8 +949,27 @@ export const App: React.FC = () => {
           }}
           /* Reset to Draft is the exception: it puts the plan *into* the Plans queue rather than
              taking it out of one, so the page stays on the plan and just re-reads it. The store has
-             already patched the row to Draft; the detail is what this page renders from. */
+             already patched the row to Draft; the detail is what this page renders from.
+
+             Staying put is not the same as changing nothing, though. The plan has still left the
+             queue it was being triaged in — `ReviewView` says the same thing from the other side, and
+             advances *its* selection on reset — so the sidebar this page is showing still lists it.
+             That list is a frozen retained snapshot (`sidebarListStore.retainFor`) with no mounted
+             publisher to re-derive it, so without this the reset plan keeps a row in a Review sidebar
+             it no longer belongs to: the badge counts one fewer than the rows beneath it, and
+             clicking the stale row lands on an unrelated plan through `resolvePlanSelection`'s
+             bounce-to-newest. Dropping the row is all of `advanceWithinQueue` that applies here —
+             the navigation half is exactly what must not happen.
+
+             Only from a Review list, and read from the published list rather than from
+             `detail.state`. Reset is offered on Blocked as well (`PlanActionsController.canReset`),
+             and Blocked and Draft are both Plans-queue states, so that plan keeps its row and
+             dropping it would be the same defect pointed the other way. `detail.state` cannot answer
+             which queue it was: `resetPlanOptimistic` patches `selectedPlan` to Draft before this
+             callback runs, so by now the page's own copy has forgotten. The sidebar still knows, and
+             it is the thing being corrected. */
           onPlanReset={(id) => {
+            if (sidebarListStore.getState()?.appId === "review") sidebarListStore.removeItem(id);
             plansStore.fetchPlanDetail(id).catch(() => {});
           }}
           onPlanDeleted={(id) => {

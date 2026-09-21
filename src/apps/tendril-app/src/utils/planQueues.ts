@@ -57,9 +57,27 @@ export const PLANS_LIST_STATES = ["Draft", "Blocked"] as const;
  */
 export const REVIEW_QUEUE_STATES = ["Review", "Failed"] as const;
 
+/** Whether a plan belongs to V1's Plans app, under {@link normalizePlanState}'s current name. */
+export const isPlansListState = (state: string | undefined): boolean =>
+  (PLANS_LIST_STATES as readonly string[]).includes(normalizePlanState(state));
+
 /** Whether a plan belongs to V1's Review app, under {@link normalizePlanState}'s current name. */
 export const isReviewState = (state: string | undefined): boolean =>
   (REVIEW_QUEUE_STATES as readonly string[]).includes(normalizePlanState(state));
+
+/**
+ * Whether a plan in this state still sits in one of the two queues an operator works down.
+ *
+ * The union of the two predicates above, which between them are every state
+ * `PlanSearchDialog.ResolveTarget` routes to a queue page. Completed, Skipped, Icebox and the
+ * in-flight states are in neither: a plan in one of those has left the list it was being triaged in,
+ * and its position there can no longer be read from the live list.
+ *
+ * That is the distinction `plansStore` needs to tell a **departure** from an arrival, and a departure
+ * is the only kind of move whose pre-action list is worth keeping.
+ */
+export const isQueuedState = (state: string | undefined): boolean =>
+  isPlansListState(state) || isReviewState(state);
 
 /**
  * `PlansApp.Build`'s `activePlanFolders`/`activeCreatePlanIds` and `ReviewApp.Build`'s
@@ -97,13 +115,7 @@ const newestFirst = (plans: PlanSummary[]): PlanSummary[] =>
  */
 export const draftQueueFor = (plans: PlanSummary[], jobs?: Job[]): PlanSummary[] => {
   const held = heldPlanIds(jobs);
-  return newestFirst(
-    plans.filter(
-      (p) =>
-        (PLANS_LIST_STATES as readonly string[]).includes(normalizePlanState(p.state)) &&
-        !held.has(p.id),
-    ),
-  );
+  return newestFirst(plans.filter((p) => isPlansListState(p.state) && !held.has(p.id)));
 };
 
 /**
