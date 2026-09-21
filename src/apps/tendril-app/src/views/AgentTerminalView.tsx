@@ -41,6 +41,14 @@ export interface AgentTerminalViewProps {
  * an outer scroller would fight it for the scroll position. The page itself is registered full-bleed
  * in `navigation.ts`, so this draws to the frame's edges rather than removing padding of its own.
  */
+/**
+ * How much unsent typing is held while the agent starts, in characters.
+ *
+ * Generous for a human at a keyboard and for the paste that a shell prompt invites, small enough that
+ * a pane whose spawn never returns cannot accumulate anything that matters.
+ */
+const MAX_PENDING_INPUT = 4096;
+
 export const AgentTerminalView: React.FC<AgentTerminalViewProps> = ({
   sessionId,
   prompt,
@@ -71,6 +79,25 @@ export const AgentTerminalView: React.FC<AgentTerminalViewProps> = ({
    * stays silent.
    */
   const gridRef = React.useRef<{ rows: number; cols: number } | null>(null);
+  /**
+   * Keystrokes typed before there was a pty to send them to.
+   *
+   * The pane looks ready long before it is: the terminal takes focus on mount (`autoFocus`), and the
+   * loading overlay is `pointer-events: none`, so it neither blocks nor even looks like it blocks a
+   * cursor that is already blinking. Meanwhile the spawn is a round trip to the daemon. Everything
+   * typed in that window went to `runRef.current?.sendInput` while `runRef` was still null and was
+   * dropped without a trace -- the "I can't type into it" half of the report that survived the
+   * double-spawn fix, and the reason a first keystroke could vanish even on a healthy start.
+   *
+   * V1 has the same guard (`UsePty`'s `HandleInput` returns early when `pty` is null) and does not
+   * need this: its pty starts in-process, so the gap is a render rather than an IPC round trip.
+   *
+   * Truncated rather than grown without bound, and from the *end*, so what survives is the prefix the
+   * user typed first. Dropping the tail can only cost a command its terminating newline -- the
+   * command then sits unsent on the agent's prompt, which is visible and recoverable, where dropping
+   * the head would submit a mangled one.
+   */
+  const pendingInputRef = React.useRef("");
 
   const write = React.useCallback((bytes: Uint8Array) => {
     const handle = terminalRef.current;
@@ -129,6 +156,13 @@ export const AgentTerminalView: React.FC<AgentTerminalViewProps> = ({
         // was fitted to.
         const grid = gridRef.current;
         if (grid) void run.resize(grid.rows, grid.cols);
+        // After the resize, never before: an agent that reads its window size on the first keystroke
+        // should read the pane's, not the 80x24 the pty was spawned with.
+        const queued = pendingInputRef.current;
+        if (queued) {
+          pendingInputRef.current = "";
+          void run.sendInput(queued);
+        }
       })
       .catch((err) => {
         if (!cancelled) setError(describeBridgeError(err));
@@ -180,7 +214,14 @@ export const AgentTerminalView: React.FC<AgentTerminalViewProps> = ({
           closed={closed}
           loading
           loadingText={`Starting ${session?.agentId?.trim() || "agent"}…`}
-          onInput={(data) => void runRef.current?.sendInput(data)}
+          onInput={(data) => {
+            const run = runRef.current;
+            if (run) {
+              void run.sendInput(data);
+              return;
+            }
+            pendingInputRef.current = (pendingInputRef.current + data).slice(0, MAX_PENDING_INPUT);
+          }}
           onResize={(rows, cols) => {
             // Recorded as well as forwarded: a report that lands before the spawn returns is replayed
             // when it does, and is what a later mount re-reports after adopting a running agent.

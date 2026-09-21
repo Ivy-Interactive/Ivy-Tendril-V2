@@ -49,6 +49,7 @@ const SESSION: ChatSession = {
 type FakeRun = AgentTerminalRun & {
   closed: number;
   resize: AgentTerminalRun["resize"] & { mock: { calls: unknown[] } };
+  sendInput: AgentTerminalRun["sendInput"] & { mock: { calls: unknown[][] } };
 };
 
 const makeRun = (): FakeRun => {
@@ -63,6 +64,27 @@ const makeRun = (): FakeRun => {
   };
   return run as FakeRun;
 };
+
+/**
+ * A keystroke as the emulator receives one.
+ *
+ * `keyCode` is set because xterm's `evaluateKeyboardEvent` still switches on it, and jsdom defaults
+ * it to 0 -- an event without it is read as a key xterm has no mapping for and produces no input at
+ * all, so the assertion would pass or fail for a reason that has nothing to do with the pane.
+ */
+const typeKey = (input: Element, key: string): void => {
+  input.dispatchEvent(
+    new KeyboardEvent("keydown", { key, keyCode: key.toUpperCase().charCodeAt(0), bubbles: true }),
+  );
+};
+
+/** The emulator's own input element, once xterm's dynamic import has resolved and attached it. */
+const terminalInput = (container: HTMLElement | undefined): Promise<Element> =>
+  waitFor(() => {
+    const found = container?.querySelector("textarea");
+    if (!found) throw new Error("terminal has not attached its input yet");
+    return found;
+  });
 
 describe("one agent per chat session", () => {
   beforeEach(() => {
@@ -173,6 +195,68 @@ describe("one agent per chat session", () => {
     });
 
     await waitFor(() => expect(run.resize.mock.calls.length).toBeGreaterThan(0));
+  });
+
+  it("sends what was typed while the agent was still starting", async () => {
+    const run = makeRun();
+    let release: ((run: AgentTerminalRun) => void) | undefined;
+    vi.spyOn(agentTerminal, "startAgentTerminal").mockReturnValue(
+      new Promise<AgentTerminalRun>((resolve) => {
+        release = resolve;
+      }),
+    );
+
+    let container: HTMLElement | undefined;
+    await act(async () => {
+      ({ container } = render(
+        <React.StrictMode>
+          <AgentTerminalView sessionId="term-1" />
+        </React.StrictMode>,
+      ));
+    });
+
+    // The emulator is on screen, focused, and accepting keystrokes -- the loading overlay is
+    // `pointer-events: none`, so nothing about the pane says "not yet".
+    const input = await terminalInput(container);
+
+    await act(async () => {
+      for (const key of ["y", "e", "s"]) typeKey(input, key);
+    });
+
+    // Nothing has been sent, because there is nothing to send to yet -- but nothing has been lost.
+    expect(run.sendInput.mock.calls).toHaveLength(0);
+
+    await act(async () => {
+      release?.(run);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => expect(run.sendInput.mock.calls).toEqual([["yes"]]));
+    // The agent must learn the pane's size before it reads a keystroke, or it answers the first
+    // prompt at the grid it was spawned with.
+    expect(run.resize.mock.calls.length).toBeGreaterThan(0);
+  });
+
+  it("sends a later keystroke straight through, holding nothing back", async () => {
+    const run = makeRun();
+    vi.spyOn(agentTerminal, "startAgentTerminal").mockResolvedValue(run);
+
+    let container: HTMLElement | undefined;
+    await act(async () => {
+      ({ container } = render(
+        <React.StrictMode>
+          <AgentTerminalView sessionId="term-1" />
+        </React.StrictMode>,
+      ));
+    });
+
+    const input = await terminalInput(container);
+
+    await act(async () => {
+      typeKey(input, "k");
+    });
+
+    await waitFor(() => expect(run.sendInput.mock.calls).toEqual([["k"]]));
   });
 
   it("forgets a run whose start failed, so the next mount may try again", async () => {
