@@ -10,6 +10,9 @@ import {
   generatePrivacyPage,
   generateHomepageHtml,
   generate404Html,
+  generate404Markdown,
+  generateStructuredErrorJson,
+  generateDeveloperPortalPage,
   generateOpenApiSpec,
   generateOAuthServerMetadata,
   generateOAuthResourceMetadata,
@@ -154,21 +157,60 @@ describe("homepage HTML and JSON-LD structured data", () => {
   });
 });
 
-describe("agent-friendly 404", () => {
+describe("developer portal (/developers)", () => {
+  const devPortal = generateDeveloperPortalPage();
+
+  it("contains rich semantic HTML with over 1500 characters", () => {
+    expect(devPortal.length).toBeGreaterThan(1500);
+  });
+
+  it("has clear sequential headings and key sections", () => {
+    expect(devPortal).toContain("<h1>Ivy Tendril Developer Portal</h1>");
+    expect(devPortal).toContain("<h2>Quickstart & Local Setup</h2>");
+    expect(devPortal).toContain("<h2>Self-Serve API Keys & Authentication</h2>");
+    expect(devPortal).toContain("<h2>Interactive Sandbox & Test Environment</h2>");
+    expect(devPortal).toContain("<h2>REST Rate Limits & Deprecation Policy</h2>");
+  });
+
+  it("highlights zero-friction onboarding, free tier, and sandbox mode", () => {
+    expect(devPortal).toContain("100% Free and Source-Available");
+    expect(devPortal).toContain("tendril vault init");
+    expect(devPortal).toContain("tendril run --sandbox");
+  });
+});
+
+describe("agent-friendly 404 and structured JSON errors", () => {
   const page404 = generate404Html();
+  const md404 = generate404Markdown();
+  const errorJson = JSON.parse(generateStructuredErrorJson());
 
   it("includes a markdown error body with at least 20 characters and links", () => {
     expect(page404).toContain("# 404 Not Found");
-    expect(page404).toContain("The requested page was not found");
+    expect(page404).toContain("The requested path was not found");
     expect(page404).toContain(
       "Documentation: https://ivy-interactive.github.io/Ivy-Tendril-V2/docs",
+    );
+    expect(page404).toContain(
+      "Developer Portal: https://ivy-interactive.github.io/Ivy-Tendril-V2/developers",
     );
     expect(page404).toContain(
       "Sitemap: https://ivy-interactive.github.io/Ivy-Tendril-V2/sitemap.xml",
     );
     expect(page404).toContain(
-      "LLMs Guide: https://ivy-interactive.github.io/Ivy-Tendril-V2/llms.txt",
+      "LLM Agent Guidelines: https://ivy-interactive.github.io/Ivy-Tendril-V2/llms.txt",
     );
+  });
+
+  it("provides clean standalone 404 markdown file", () => {
+    expect(md404).toContain("# 404 Not Found");
+    expect(md404.length).toBeGreaterThan(100);
+  });
+
+  it("generates structured JSON error responses with codes and hints", () => {
+    expect(errorJson.code).toBe("RESOURCE_NOT_FOUND");
+    expect(errorJson.message).toBeDefined();
+    expect(errorJson.hint).toBeDefined();
+    expect(errorJson.status).toBe(404);
   });
 });
 
@@ -183,6 +225,14 @@ describe("MCP server discovery manifest", () => {
     expect(mcp.transport.args).toContain("mcp");
     expect(mcp.endpoints.streamable_http).toBe("http://127.0.0.1:5010/mcp");
   });
+
+  it("includes full tools array with inputSchemas for function calling", () => {
+    expect(Array.isArray(mcp.tools)).toBe(true);
+    expect(mcp.tools.length).toBeGreaterThanOrEqual(5);
+    const planList = mcp.tools.find((t: { name: string }) => t.name === "plan_list");
+    expect(planList).toBeDefined();
+    expect(planList.inputSchema.type).toBe("object");
+  });
 });
 
 describe("OpenAPI specification", () => {
@@ -195,6 +245,24 @@ describe("OpenAPI specification", () => {
     expect(spec.paths["/api/v1/plans"].get).toBeDefined();
     expect(spec.paths["/api/v1/plans"].post).toBeDefined();
     expect(spec.paths["/api/v1/worktrees"]).toBeDefined();
+    expect(spec.paths["/api/v1/verification/run"]).toBeDefined();
+  });
+
+  it("declares RFC 9457 ProblemDetails and ErrorResponse typed error models", () => {
+    expect(spec.components.schemas.ProblemDetails).toBeDefined();
+    expect(spec.components.schemas.ProblemDetails.required).toContain("type");
+    expect(spec.components.schemas.ProblemDetails.required).toContain("code");
+    expect(spec.components.schemas.ErrorResponse).toBeDefined();
+    expect(spec.components.schemas.ErrorResponse.required).toContain("code");
+  });
+
+  it("documents standard rate-limit and deprecation headers", () => {
+    expect(spec.components.headers["RateLimit-Limit"]).toBeDefined();
+    expect(spec.components.headers["RateLimit-Remaining"]).toBeDefined();
+    expect(spec.components.headers["RateLimit-Reset"]).toBeDefined();
+    expect(spec.components.headers["Retry-After"]).toBeDefined();
+    expect(spec.components.headers.Deprecation).toBeDefined();
+    expect(spec.components.headers.Sunset).toBeDefined();
   });
 
   it("declares OAuth2 security scheme with scoped permissions", () => {
