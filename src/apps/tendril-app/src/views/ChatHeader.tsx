@@ -112,7 +112,7 @@ export const JobsMenu: React.FC<JobsMenuProps> = ({
           <div className="flex items-center gap-1.5">
             {runningCount > 0 && (
               <span className="inline-flex items-center gap-1 rounded-selector bg-muted px-1.5 py-0.5 text-2xs text-foreground">
-                <Spinner size={10} aria-hidden="true" />
+                <Spinner size={10} borderWidth="1.5px" aria-hidden="true" />
                 {runningCount} running
               </span>
             )}

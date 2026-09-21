@@ -5,8 +5,8 @@ import {
   QuestionsDraftContext,
   QuestionsSubmitContext,
 } from "@ivy-interactive/components/tendril";
-import { CheckCheck, Paperclip, Sparkles, XCircle } from "lucide-react";
 import { Spinner } from "@ivy-interactive/components/ui";
+import { CheckCheck, Paperclip, Sparkles, XCircle } from "lucide-react";
 import {
   isImageAttachment,
   resetAttachmentPreviewsForTesting,
