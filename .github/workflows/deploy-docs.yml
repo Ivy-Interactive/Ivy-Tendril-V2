@@ -69,10 +69,13 @@ jobs:
       - name: Prepare Pages directory structure
         run: |
           mkdir -p dist-pages/docs
-          # Copy entire built docs distribution into /docs subpath
-          cp -r src/apps/tendril-docs/dist/* dist-pages/docs/
+          # Copy entire built docs distribution into /docs subpath (including hidden files)
+          cp -r src/apps/tendril-docs/dist/. dist-pages/docs/
           # Also copy root assets (robots.txt, sitemap.xml, llms.txt, og-image.png, trust pages, .well-known) to root of Pages
-          cp -r src/apps/tendril-docs/dist/* dist-pages/
+          cp -r src/apps/tendril-docs/dist/. dist-pages/
+          # Ensure .well-known is explicitly copied
+          cp -r src/apps/tendril-docs/dist/.well-known dist-pages/
+          cp -r src/apps/tendril-docs/dist/.well-known dist-pages/docs/
           # Set the rich, agent-ready homepage with full HTML, JSON-LD, and sequential headings as dist-pages/index.html
           cp src/apps/tendril-docs/dist/homepage.html dist-pages/index.html
           # Set the agent-friendly 404 page as dist-pages/404.html
