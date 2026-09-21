@@ -326,7 +326,7 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
 
           <div className="tdb-block tdb-side-block tdb-jobs">
             <div className="tdb-block-title">Active Jobs</div>
-            <div className="tdb-jobs-list">
+            <div className="tdb-jobs-list hidden-scrollbar">
               {jobs.length === 0 && <div className="tdb-empty-note">No jobs running</div>}
               {jobs.map((job) => (
                 <button

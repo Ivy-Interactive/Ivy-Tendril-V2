@@ -30,7 +30,7 @@
   border-radius: var(--radius-lg);
   color: var(--destructive);
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   animation: civ-slideDown var(--duration-moderate) var(--ease-out);
 }
 
@@ -165,7 +165,7 @@
 
 .civ-timer {
   font-size: 0.75rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--foreground);
   font-variant-numeric: tabular-nums;
 }
@@ -202,8 +202,8 @@
 
 /* Recording/processing shrinks the pill to a plain icon button. */
 .civ-mic-btn[data-active="true"] {
-  width: 28px;
-  height: 28px;
+  width: var(--control-height-sm);
+  height: var(--control-height-sm);
   border: none;
   background: transparent;
 }
@@ -223,8 +223,8 @@
 
 /* Submit Button */
 .civ-submit-btn {
-  width: 32px;
-  height: 32px;
+  width: var(--control-height);
+  height: var(--control-height);
   border-radius: 50%;
   border: none;
   background: var(--primary);
@@ -261,11 +261,11 @@
 /* Labeled button style */
 .civ-submit-btn.civ-submit-btn-labeled {
   width: auto;
-  height: 32px;
+  height: var(--control-height);
   border-radius: var(--radius-lg);
   padding: 0 16px;
   font-size: var(--text-sm);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   background: var(--primary);
   color: var(--primary-foreground);
   box-shadow: 0 1px 3px color-mix(in srgb, var(--foreground) 10%, transparent);
@@ -338,7 +338,7 @@
   background: var(--primary);
   border-radius: var(--radius-lg);
   box-shadow: 0 1px 3px color-mix(in srgb, var(--foreground) 10%, transparent);
-  height: 32px;
+  height: var(--control-height);
 }
 
 .civ-split-btn-container:hover {
@@ -369,7 +369,7 @@
 
 /* Arrow button on the right */
 .civ-split-btn-arrow {
-  width: 32px;
+  width: var(--control-height);
   height: 100%;
   border-top-right-radius: var(--radius-lg);
   border-bottom-right-radius: var(--radius-lg);
@@ -422,7 +422,7 @@
   width: 100%;
   padding: 8px 12px;
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   text-align: left;
   background: transparent;
   border: none;
@@ -551,7 +551,7 @@
 
 .civ-thumbnail-doc-name {
   font-size: var(--text-sm-tight);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--foreground);
   white-space: nowrap;
   overflow: hidden;

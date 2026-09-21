@@ -1,7 +1,7 @@
 import React from "react";
 
 /** Detects if the current platform is Mac/iOS */
-export const isMac =
+export const isMac = (): boolean =>
   typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/.test(navigator.userAgent);
 
 export interface ParsedShortcut {
@@ -22,10 +22,10 @@ export const parseShortcut = (shortcutStr?: string): ParsedShortcut | null => {
   if (!shortcutStr) return null;
   const parts = shortcutStr.toLowerCase().split("+");
   return {
-    ctrl: !isMac && (parts.includes("ctrl") || parts.includes("mod")),
+    ctrl: !isMac() && (parts.includes("ctrl") || parts.includes("mod")),
     shift: parts.includes("shift"),
     alt: parts.includes("alt"),
-    meta: isMac
+    meta: isMac()
       ? parts.includes("ctrl") ||
         parts.includes("meta") ||
         parts.includes("cmd") ||
@@ -125,7 +125,7 @@ export const formatShortcutForDisplay = (shortcutStr?: string): React.ReactNode[
     arrowdown: "↓",
     arrowleft: "←",
     arrowright: "→",
-    ...(isMac ? { shift: "⇧", alt: "⌥", option: "⌥" } : {}),
+    ...(isMac() ? { shift: "⇧", alt: "⌥", option: "⌥" } : {}),
   };
 
   parts.forEach((part, index) => {
@@ -137,7 +137,7 @@ export const formatShortcutForDisplay = (shortcutStr?: string): React.ReactNode[
     if (symbol) {
       result.push(symbol);
     } else if (
-      isMac &&
+      isMac() &&
       (part.toLowerCase() === "ctrl" ||
         part.toLowerCase() === "cmd" ||
         part.toLowerCase() === "command" ||
@@ -153,7 +153,7 @@ export const formatShortcutForDisplay = (shortcutStr?: string): React.ReactNode[
           "⌘",
         ),
       );
-    } else if (!isMac && part.toLowerCase() === "ctrl") {
+    } else if (!isMac() && part.toLowerCase() === "ctrl") {
       result.push("Ctrl");
     } else {
       result.push(part.charAt(0).toUpperCase() + part.slice(1));
@@ -169,9 +169,9 @@ export const getPlatformShortcut = (shortcut: string): string => {
   if (!parsed) return shortcut;
   const parts: string[] = [];
   if (parsed.ctrl) parts.push("Ctrl");
-  if (parsed.meta) parts.push(isMac ? "⌘" : "Ctrl");
-  if (parsed.alt) parts.push(isMac ? "⌥" : "Alt");
-  if (parsed.shift) parts.push(isMac ? "⇧" : "Shift");
+  if (parsed.meta) parts.push(isMac() ? "⌘" : "Ctrl");
+  if (parsed.alt) parts.push(isMac() ? "⌥" : "Alt");
+  if (parsed.shift) parts.push(isMac() ? "⇧" : "Shift");
   if (parsed.key) parts.push(parsed.key.toUpperCase());
   return parts.join("+");
 };
