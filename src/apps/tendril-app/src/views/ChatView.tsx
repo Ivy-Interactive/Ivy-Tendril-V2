@@ -940,7 +940,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   type="button"
                   data-testid="chat-scroll-tail-button"
                   onClick={() => scrollToTail(true)}
-                  className="pointer-events-auto flex cursor-pointer items-center gap-2 rounded-full border border-border bg-popover/90 px-3.5 py-1.5 text-xs font-medium text-foreground shadow-lg backdrop-blur transition-colors hover:bg-accent"
+                  className="pointer-events-auto flex cursor-pointer items-center gap-2 rounded-full border border-border bg-popover/90 px-3.5 py-1.5 text-xs font-medium text-foreground shadow-lg backdrop-blur transition-colors hover:bg-secondary/60"
                 >
                   <ArrowDown className="size-3.5 text-muted-foreground" />
                   {isGenerating ? (
