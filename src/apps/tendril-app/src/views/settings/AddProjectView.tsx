@@ -36,7 +36,7 @@ import {
  *   `DELETE /api/projects/:name`, and it is deliberately not run from here: a Cancel that deleted a
  *   project the setup agent may already have cloned repositories into is a destructive act behind a
  *   non-destructive word. So the step-1 Back button is gone once the project is registered, the copy
- *   says the project exists rather than pretending it can be rolled back, and Delete Project on the
+ *   says the project exists rather than pretending it can be rolled back, and Remove Project on the
  *   project's own screen - with its confirm - is where a removal goes.
  *
  * The name check is `InputSanitizer.DescribeProjectNameError`'s two refusals plus V1's

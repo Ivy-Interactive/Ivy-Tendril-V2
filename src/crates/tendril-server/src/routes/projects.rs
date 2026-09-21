@@ -18,7 +18,7 @@ mod verifications;
 
 pub use crud::{
     create_project, delete_project, get_project, get_project_issues, get_project_issues_metadata,
-    list_projects, update_project,
+    list_projects, purge_project, update_project,
 };
 pub use hooks::{add_project_hook, remove_project_hook};
 pub use repos::{add_project_repo, remove_project_repo, sync_project_repos};

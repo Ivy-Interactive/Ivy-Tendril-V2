@@ -4,6 +4,7 @@ import { unansweredQuestionsSurface, pendingAnnotationsSurface } from "./guards"
 import {
   confirmSurface,
   deletePlanSurface,
+  removeProjectSurface,
   deleteProjectSurface,
   resetToDraftSurface,
   partialDeliverySurface,
@@ -40,6 +41,7 @@ export const SURFACES: readonly Surface[] = [
 
   confirmSurface,
   deletePlanSurface,
+  removeProjectSurface,
   deleteProjectSurface,
   resetToDraftSurface,
   partialDeliverySurface,
@@ -74,5 +76,7 @@ export const NOT_SURFACES: Readonly<Record<string, string>> = {
   PLAN_SEARCH_DEBOUNCE_MS: "a constant",
   shareTunnelApi: "the live API object a scenario replaces with a frozen one",
   shareUrlForPlan: "a pure function, tested directly in ShareTunnelDialog.test.tsx",
+  confirmsProjectName:
+    "a pure predicate - the typed-name gate, asserted directly in settings-project-config.test.tsx",
   SHARE_POLL_INTERVAL_MS: "a constant",
 };

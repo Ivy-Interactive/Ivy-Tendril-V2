@@ -11,7 +11,7 @@ export type { ProjectSettingsViewProps };
  * `Apps/Settings/ProjectDetailView.cs` plus the editors in `Apps/Settings/Blades/`, which is where
  * V1 puts every per-project setting. V2 had none of it: repos and base branches, verifications and
  * their run order, review actions, MCP servers, skills, ports, env files, colour, the inline rename
- * and Delete Project had no counterpart anywhere in the app.
+ * and the danger zone had no counterpart anywhere in the app.
  *
  * The block order is `ProjectDetailView.innerContent`'s: header, repositories, review actions,
  * verifications, ports, environment files, agent behaviour, security, local permissions (MCP),

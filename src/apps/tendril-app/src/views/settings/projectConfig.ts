@@ -36,7 +36,8 @@ import {
  * - Renaming or deleting a **project** is not possible over `PUT /api/config` at all: a renamed
  *   entry matches nothing and is appended next to the original, and omission is not deletion. Both
  *   go through their own daemon route instead - `PUT /api/projects/:name` with `newName`, and
- *   `DELETE /api/projects/:name` - which the bridge reaches as `renameProject` and `deleteProject`.
+ *   `DELETE /api/projects/:name` - which the bridge reaches as `renameProject` and `removeProject`.
+ *   Deleting a project's *data* is a third route again, `DELETE /api/projects/:name/data`.
  */
 
 export const PORTS_ARE_MERGED =

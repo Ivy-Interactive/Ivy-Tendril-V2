@@ -217,6 +217,13 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                 .put(projects::update_project)
                 .delete(projects::delete_project),
         )
+        // The destructive sibling of `DELETE /api/projects/:name`, as its own route rather than a
+        // flag on that one: they remove different things, and a boolean would put the irreversible
+        // one a character away from the reversible one.
+        .route(
+            "/api/projects/:name/data",
+            axum::routing::delete(projects::purge_project),
+        )
         .route(
             "/api/projects/:name/issues",
             get(projects::get_project_issues),

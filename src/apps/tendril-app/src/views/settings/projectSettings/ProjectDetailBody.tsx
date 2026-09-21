@@ -61,6 +61,7 @@ import {
 } from "../projectConfig";
 import { classifyRepoPath, isValidRepoPath, normalizeRepoPath } from "../../onboarding/validation";
 import { DeleteProjectDialog } from "../../dialogs/DeleteProjectDialog";
+import { RemoveProjectDialog } from "../../dialogs/RemoveProjectDialog";
 import {
   EnvFileBlade,
   McpServerBlade,
@@ -115,6 +116,7 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
   isBeta,
   onSaveRaw,
   onReloadConfig,
+  onRemoved,
   onDeleted,
 }) => {
   const { push, pop } = useBlades();
@@ -122,6 +124,7 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
   const [repoDraft, setRepoDraft] = React.useState("");
   const [repoError, setRepoError] = React.useState<string | null>(null);
   const [isAddingRepo, setIsAddingRepo] = React.useState(false);
+  const [isRemoving, setIsRemoving] = React.useState(false);
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [basic, setBasic] = React.useState({ color: project.color, context: project.context });
   const [security, setSecurity] = React.useState<ProjectSecurityForm>(project.security);
@@ -1088,26 +1091,54 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
         </SubSection>
       )}
 
-      {/* Section 10: danger zone. */}
+      {/* Section 10: danger zone — two actions, because "delete" used to mean neither.
+          V1 offers one button, labelled "Delete Project", which calls `SettingsApp.onDeleteProject`
+          and only drops the `config.yaml` entry; V2 inherited both the label and the mismatch, and
+          patched it with the paragraph of copy that used to sit here. Copy is the wrong instrument:
+          it corrects the reader who reads it and nobody else. So the two things that were being
+          conflated are now two buttons with the verbs that happen, each saying its own consequence.
+          Remove is listed first and is the outline button: it is the one that is almost always
+          meant, and the destructive fill is reserved for the one that is not. */}
       <SubSection title="Danger Zone" testId="project-danger-zone">
-        <div className="space-y-2">
-          <Button
-            type="button"
-            variant="destructive"
-            onClick={() => setIsDeleting(true)}
-            data-testid="delete-project"
-          >
-            Delete Project
-          </Button>
-          {/* What the button does *not* do, said before it is pressed as well as in the dialog:
-              `delete_project` touches no file on disk, and an operator deciding whether to click
-              should not have to open the dialog to learn that. */}
-          <p className="text-xs text-muted-foreground">
-            Removes the project from config.yaml. Cloned repositories and plan folders are left on
-            disk.
-          </p>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsRemoving(true)}
+              data-testid="remove-project"
+            >
+              Remove Project
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Removes the project from config.yaml. Cloned repositories, plan folders and history
+              are left on disk, so adding the project back by name restores it.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => setIsDeleting(true)}
+              data-testid="delete-project"
+            >
+              Delete Project
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Permanently deletes the project&apos;s plans, its cloned repositories under
+              {" <TENDRIL_HOME>/Projects/"}, its database rows and its config entry. This cannot be
+              undone, and asks you to type the project name first.
+            </p>
+          </div>
         </div>
       </SubSection>
+
+      <RemoveProjectDialog
+        isOpen={isRemoving}
+        onClose={() => setIsRemoving(false)}
+        projectName={project.name}
+        onRemoved={onRemoved}
+      />
 
       <DeleteProjectDialog
         isOpen={isDeleting}

@@ -7,8 +7,13 @@ import { bridge } from "../src/api/bridge";
  * `update_config_raw` merges the root `projects` sequence **by name**, which makes both of these
  * unreachable through `putConfig`: a renamed entry matches nothing and is appended beside the
  * original (two projects where there was one), and an omitted entry is read as unchanged rather
- * than deleted. So the project settings screen had a disabled Rename pencil and a disabled Delete
+ * than deleted. So the project settings screen had a disabled Rename pencil and a disabled Remove
  * button until these wrappers existed.
+ *
+ * Three mutations now, because the Danger Zone's single "Delete Project" was two actions wearing
+ * one name: `removeProject` forgets the project and `deleteProjectData` deletes it. They are
+ * separate routes rather than a flag, so that the irreversible one cannot be reached by getting a
+ * boolean wrong - and separate commands, which is what the assertions below actually pin.
  *
  * What is pinned here is the wiring, because that is what silently breaks: a Tauri command that is
  * written but never added to `invoke_handler` type-checks, builds, and fails only at runtime. These
@@ -61,18 +66,54 @@ describe("renameProject", () => {
   });
 });
 
-describe("deleteProject", () => {
-  it("calls the delete command with the project name", async () => {
+describe("removeProject", () => {
+  it("calls the remove command with the project name", async () => {
     invokeMock.mockResolvedValue({ message: "Project 'gone' removed" });
 
-    await expect(bridge.deleteProject("gone")).resolves.toBeUndefined();
+    await expect(bridge.removeProject("gone")).resolves.toBeUndefined();
 
-    expect(invokeMock).toHaveBeenCalledWith("cmd_delete_project", { name: "gone" });
+    expect(invokeMock).toHaveBeenCalledWith("cmd_remove_project", { name: "gone" });
   });
 
   it("propagates a refusal rather than swallowing it", async () => {
-    invokeMock.mockRejectedValue(new Error("Failed to delete project (404): not found"));
+    invokeMock.mockRejectedValue(new Error("Failed to remove project (404): not found"));
 
-    await expect(bridge.deleteProject("ghost")).rejects.toThrow("404");
+    await expect(bridge.removeProject("ghost")).rejects.toThrow("404");
+  });
+
+  /*
+   * The whole point of the split is that these two are different calls, so the harmless one must
+   * not be able to reach the route that deletes. `cmd_remove_project` hits `DELETE
+   * /api/projects/:name`, which contains no `fs::` call; `cmd_delete_project_data` hits
+   * `/data`, which removes plan folders and the project directory. One wrong command name here and
+   * the button labelled Remove would erase repositories.
+   */
+  it("never reaches the destructive command", async () => {
+    invokeMock.mockResolvedValue({});
+
+    await bridge.removeProject("gone");
+
+    expect(invokeMock).toHaveBeenCalledTimes(1);
+    expect(invokeMock).not.toHaveBeenCalledWith("cmd_delete_project_data", expect.anything());
+  });
+});
+
+describe("deleteProjectData", () => {
+  it("calls the destructive command with the project name", async () => {
+    invokeMock.mockResolvedValue({ message: "Project 'gone' deleted", plansDeleted: 3 });
+
+    await expect(bridge.deleteProjectData("gone")).resolves.toBeUndefined();
+
+    expect(invokeMock).toHaveBeenCalledWith("cmd_delete_project_data", { name: "gone" });
+  });
+
+  /* 409 is the daemon refusing to delete a worktree out from under a running job. It has to reach
+     the dialog intact - the answer is to stop the job, not to press the button again. */
+  it("propagates a refusal rather than swallowing it", async () => {
+    invokeMock.mockRejectedValue(
+      new Error("Failed to delete project data (409): job #1184 is still running"),
+    );
+
+    await expect(bridge.deleteProjectData("busy")).rejects.toThrow("409");
   });
 });

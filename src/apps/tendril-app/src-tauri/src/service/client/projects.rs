@@ -222,7 +222,8 @@ impl TendrilClient {
     /// What this does **not** remove is as important as what it does, and the caller has to say so
     /// before asking: the project's plans, its rows in Plans/Jobs/Recommendations, and any
     /// repository the daemon cloned for it all stay on disk. Only the `config.yaml` entry goes.
-    pub async fn delete_project(&self, name: &str) -> Result<serde_json::Value, BridgeError> {
+    /// [`TendrilClient::delete_project_data`] is the call that removes those.
+    pub async fn remove_project(&self, name: &str) -> Result<serde_json::Value, BridgeError> {
         let url = format!("{}/api/projects/{}", self.base_url, path_segment(name));
         let resp = self
             .client
@@ -235,8 +236,44 @@ impl TendrilClient {
             let status = resp.status();
             let text = resp.text().await.unwrap_or_default();
             return Err(BridgeError::new(
-                "DELETE_PROJECT_FAILED",
-                format!("Failed to delete project ({status}): {text}"),
+                "REMOVE_PROJECT_FAILED",
+                format!("Failed to remove project ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+
+    /// Deletes a project and its data (`DELETE /api/projects/:name/data`).
+    ///
+    /// Everything [`TendrilClient::remove_project`] leaves behind: the plan folders naming the
+    /// project, its directory under `<TENDRIL_HOME>/Projects/`, and its Plans/Jobs/Recommendations
+    /// rows, with the `config.yaml` entry removed last so a crash partway leaves a project that is
+    /// still listed rather than orphaned directories nothing can name.
+    ///
+    /// `CLONE_TIMEOUT` rather than the shared 10s: this walks the plans directory, cleans a worktree
+    /// per plan and then recursively deletes a directory that holds the project's clones. On a large
+    /// project that takes minutes, and reporting a failure over a delete that then completes would
+    /// leave the operator retrying a project the daemon has already removed.
+    ///
+    /// The daemon's own message is relayed verbatim. It names projects, plan folders and paths under
+    /// `TENDRIL_HOME`, never a repository URL -- so there is no credential in it to redact.
+    pub async fn delete_project_data(&self, name: &str) -> Result<serde_json::Value, BridgeError> {
+        let url = format!("{}/api/projects/{}/data", self.base_url, path_segment(name));
+        let resp = self
+            .client
+            .delete(&url)
+            .headers(self.headers())
+            .timeout(CLONE_TIMEOUT)
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "DELETE_PROJECT_DATA_FAILED",
+                format!("Failed to delete project data ({status}): {text}"),
             ));
         }
 

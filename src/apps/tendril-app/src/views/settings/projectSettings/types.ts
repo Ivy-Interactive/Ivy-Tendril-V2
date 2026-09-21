@@ -20,7 +20,16 @@ export interface ProjectSettingsViewProps {
    * into a message under the field instead of a failed round trip.
    */
   siblingNames?: string[];
-  /** Called once the project's entry is gone, so the parent can move the selection off it. */
+  /**
+   * Called once the project's `config.yaml` entry is gone but its data is still on disk, so the
+   * parent can move the selection off it.
+   */
+  onRemoved?: (name: string) => void;
+  /**
+   * Called once the project and everything it owned on disk are gone. Separate from
+   * {@link onRemoved} only so the parent can say which of the two happened - the selection has to
+   * move either way.
+   */
   onDeleted?: (name: string) => void;
 }
 

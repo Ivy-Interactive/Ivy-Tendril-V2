@@ -10,8 +10,11 @@ use axum::Json;
 use serde_json::json;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tendril_core::config::{load_config, save_config};
+use tendril_core::config::{
+    get_project_root_dir, load_config, sanitize_project_name, save_config,
+};
 use tendril_core::db::open_database;
+use tendril_core::plans::delete_project_plans;
 use tendril_core::git::{query_project_issues, resolve_project_github_repos, IssueQueryParams};
 use tendril_core::models::{ProjectConfig, ProjectVerificationRef, RepoRef};
 
@@ -512,6 +515,16 @@ pub async fn update_project(
     (StatusCode::OK, Json(json!(updated_project))).into_response()
 }
 
+/// `DELETE /api/projects/:name` — **forget** the project, keeping everything it owns.
+///
+/// The config entry and nothing else: no `fs::` call, no database write. The clones under
+/// `<TENDRIL_HOME>/Projects/<name>/`, the plan folders, and the rows in `Plans`, `Jobs` and
+/// `Recommendations` all survive, which is why the reply says *removed* rather than *deleted*.
+///
+/// This route exists at all because `PUT /api/config` cannot express it: the merge reads an omitted
+/// project as unchanged, never as deleted.
+///
+/// For the destructive one, see [`purge_project`].
 pub async fn delete_project(
     State(state): State<Arc<AppState>>,
     Path(name): Path<String>,
@@ -554,6 +567,228 @@ pub async fn delete_project(
     (
         StatusCode::OK,
         Json(json!({ "message": format!("Project '{}' removed", removed.name) })),
+    )
+        .into_response()
+}
+
+/// `DELETE /api/projects/:name/data` — remove the project **and** what it owns on disk.
+///
+/// The destructive half of the Danger Zone, and the reason [`delete_project`] was renamed to
+/// "Remove" in the UI rather than given a flag: they are different operations with different
+/// consequences, and a boolean on one route makes the safe one a keystroke from the unsafe one.
+///
+/// What goes, in this order — filesystem first, config entry last:
+///
+/// 1. Every plan folder whose `plan.yaml` names the project, worktrees cleaned before each folder
+///    ([`delete_project_plans`]).
+/// 2. `<TENDRIL_HOME>/Projects/<sanitized name>/`, which is where the daemon's clones, skills, MCP
+///    definitions and memories live.
+/// 3. The rows in `Plans`, `Jobs` and `Recommendations` ([`tendril_core::db::delete_project`]).
+/// 4. The `config.yaml` entry.
+///
+/// Config last is deliberate. If the process dies partway, a project still listed with some of its
+/// data gone is recoverable — the operator can see it and ask again. A config entry removed first
+/// would leave orphaned directories nothing in the UI can name, which is the state
+/// `delete_plan_handler` orders its own steps to avoid.
+///
+/// **What stays:** the job logs under `<TENDRIL_HOME>/Logs/Jobs/`. They are keyed by job id, not by
+/// project, and the codebase already keeps them when a job row is deleted — a job's log "is not the
+/// forensic record of what it did" only while the row exists. Deleting a project should not quietly
+/// change that rule, so the dialog says they stay rather than this route removing them.
+///
+/// **Guards**, modelled on `delete_plan_handler`:
+/// - 404 when no project of that name is in `config.yaml`, so this cannot be used to delete a
+///   directory that is not a project's.
+/// - 400 on a name that sanitizes to nothing. `get_project_root_dir` returns the bare `Projects`
+///   directory for an empty name, so without this a project named `"  "` or `"///"` would take
+///   every project's data with it.
+/// - 400 unless the resolved directory is strictly inside `<TENDRIL_HOME>/Projects`, the same
+///   canonicalize-and-contain check, for the same reason: this is the call site of a
+///   `remove_dir_all`.
+/// - 409 while a non-terminal job names the project. Deleting the worktrees out from under a
+///   running agent is the one failure that is not merely destructive but confusing, and the plan
+///   route already refuses its own version of it.
+///
+/// A step that fails after an earlier one succeeded is reported, not rolled back — nothing here can
+/// be un-deleted. The reply names what was removed so a partial result is visible rather than read
+/// as a clean sweep.
+pub async fn purge_project(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    let mut settings = match load_config(&state.config_path) {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to load config: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    let proj_idx = match settings
+        .projects
+        .iter()
+        .position(|p| p.name.eq_ignore_ascii_case(&name))
+    {
+        Some(idx) => idx,
+        None => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Project '{}' not found", name) })),
+            )
+                .into_response();
+        }
+    };
+
+    // The stored spelling, not the caller's: the path is derived from it, and the lookup above is
+    // case-insensitive.
+    let stored_name = settings.projects[proj_idx].name.clone();
+
+    if sanitize_project_name(&stored_name).is_empty() {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": format!(
+                    "Refusing to delete the data of project '{}': its name contains no character that maps to a directory, so it has no data directory of its own",
+                    stored_name
+                )
+            })),
+        )
+            .into_response();
+    }
+
+    match state.job_manager.list_non_terminal_jobs().await {
+        Ok(jobs) => {
+            let holders: Vec<String> = jobs
+                .iter()
+                .filter(|j| j.project.eq_ignore_ascii_case(&stored_name))
+                .map(|j| j.id.clone())
+                .collect();
+            if !holders.is_empty() {
+                return (
+                    StatusCode::CONFLICT,
+                    Json(json!({
+                        "error": format!(
+                            "Project '{}' has {} job(s) still running ({}): cancel them before deleting its data",
+                            stored_name,
+                            holders.len(),
+                            holders.join(", ")
+                        )
+                    })),
+                )
+                    .into_response();
+            }
+        }
+        Err(e) => {
+            // Not fatal on its own, but it is the guard against deleting a running agent's
+            // worktrees, so it is refused rather than skipped.
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({
+                    "error": format!("Could not check for running jobs before deleting: {}", e)
+                })),
+            )
+                .into_response();
+        }
+    }
+
+    let projects_root = state.tendril_home.join("Projects");
+    let project_dir = get_project_root_dir(&state.tendril_home, &stored_name);
+
+    // Canonicalize both before comparing, as `delete_plan_handler` does: a symlinked TENDRIL_HOME
+    // otherwise compares a resolved path against an unresolved root and fails a containment check
+    // it should pass. `starts_with` on `Path` compares whole components, so a sibling sharing a name
+    // prefix cannot satisfy it.
+    if project_dir.exists() {
+        let resolved_root = std::fs::canonicalize(&projects_root).unwrap_or_else(|_| projects_root.clone());
+        let resolved_dir = std::fs::canonicalize(&project_dir).unwrap_or_else(|_| project_dir.clone());
+        if !resolved_dir.starts_with(&resolved_root) || resolved_dir == resolved_root {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({
+                    "error": format!(
+                        "Refusing to delete '{}': it is not a project directory inside {}",
+                        resolved_dir.display(),
+                        resolved_root.display()
+                    )
+                })),
+            )
+                .into_response();
+        }
+    }
+
+    let mut warnings: Vec<String> = Vec::new();
+
+    let plans_deleted = match delete_project_plans(&state.plans_dir, &stored_name) {
+        Ok(outcome) => {
+            if outcome.is_partial() {
+                warnings.push(outcome.failure_summary());
+            }
+            outcome.deleted
+        }
+        Err(e) => {
+            warnings.push(format!(
+                "could not enumerate the plans directory {}: {e}",
+                state.plans_dir.display()
+            ));
+            0
+        }
+    };
+
+    let mut directory_removed = false;
+    if project_dir.exists() {
+        match std::fs::remove_dir_all(&project_dir) {
+            Ok(()) => directory_removed = true,
+            Err(e) => warnings.push(format!(
+                "could not remove the project directory {}: {e}",
+                project_dir.display()
+            )),
+        }
+    }
+
+    match open_database(&state.db_path) {
+        Ok(conn) => {
+            if let Err(e) = tendril_core::db::delete_project(&conn, &stored_name) {
+                warnings.push(format!("could not remove the database rows: {e}"));
+            }
+        }
+        Err(e) => warnings.push(format!("could not open the database: {e}")),
+    }
+
+    settings.projects.remove(proj_idx);
+    if let Err(e) = save_config(&state.config_path, &settings) {
+        return (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({
+                "error": format!(
+                    "Removed the data of project '{}' but failed to save config: {}",
+                    stored_name, e
+                )
+            })),
+        )
+            .into_response();
+    }
+
+    let message = if warnings.is_empty() {
+        format!("Project '{}' and its data were deleted", stored_name)
+    } else {
+        format!(
+            "Project '{}' was deleted, but some of its data could not be removed: {}",
+            stored_name,
+            warnings.join("; ")
+        )
+    };
+
+    (
+        StatusCode::OK,
+        Json(json!({
+            "message": message,
+            "plansDeleted": plans_deleted,
+            "directoryRemoved": directory_removed,
+            "warnings": warnings,
+        })),
     )
         .into_response()
 }

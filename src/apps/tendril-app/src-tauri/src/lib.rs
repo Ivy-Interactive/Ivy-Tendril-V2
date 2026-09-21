@@ -173,7 +173,8 @@ pub fn run() {
             // never becomes a checkout. This route clones first.
             cmd_add_project_repo,
             cmd_rename_project,
-            cmd_delete_project,
+            cmd_remove_project,
+            cmd_delete_project_data,
             cmd_get_config,
             cmd_put_config,
             cmd_get_config_text,

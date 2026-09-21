@@ -2,6 +2,7 @@ import { Button } from "@ivy-interactive/components/ui";
 import {
   ConfirmDialog,
   DeletePlanDialog,
+  RemoveProjectDialog,
   DeleteProjectDialog,
   ResetToDraftDialog,
   PartialDeliveryDialog,
@@ -182,16 +183,16 @@ export const deletePlanSurface = defineSurface("DeletePlanDialog", "dialog", Del
   },
 ]);
 
-export const deleteProjectSurface = defineSurface(
-  "DeleteProjectDialog",
+export const removeProjectSurface = defineSurface(
+  "RemoveProjectDialog",
   "dialog",
-  DeleteProjectDialog,
+  RemoveProjectDialog,
   [
     {
       title: "Ordinary project",
-      hint: "The base case. V1's body is a bare `This cannot be undone.`, which is vaguer than the truth: `delete_project` removes the config entry and nothing on disk.",
+      hint: "The base case. V1's body is a bare `This cannot be undone.`, which is vaguer than the truth and points the wrong way: `delete_project` removes the config entry and nothing on disk, so this *is* undone by adding the project back.",
       props: { projectName: "Ivy-Tendril-V2" },
-      expectText: ["Ivy-Tendril-V2"],
+      expectText: ["Ivy-Tendril-V2", "stay on disk"],
     },
     {
       title: "Project with a long name",
@@ -214,6 +215,53 @@ export const deleteProjectSurface = defineSurface(
     {
       title: "Single-character name",
       hint: "The shortest legal name, where a layout that assumes width has nowhere to hide.",
+      props: { projectName: "x" },
+      expectText: ["x"],
+    },
+  ],
+);
+
+/**
+ * The destructive sibling, and the app's only typed-name gate.
+ *
+ * Every scenario here opens with the confirm *disabled*, which is the state that matters: the
+ * harness shows a dialog whose primary action is refused until the name is typed, and whose
+ * Ctrl+Enter cap is absent for the same reason. The names below are the ones where typing is
+ * awkward - spaces, a leading dot, a single character - because the gate is only as good as the
+ * phrase it asks for.
+ */
+export const deleteProjectSurface = defineSurface(
+  "DeleteProjectDialog",
+  "dialog",
+  DeleteProjectDialog,
+  [
+    {
+      title: "Ordinary project",
+      hint: "The base case, before anything is typed: the confirm is visible and refused, and the body lists what deletion actually removes.",
+      props: { projectName: "Ivy-Tendril-V2" },
+      expectText: ["Ivy-Tendril-V2", "cannot be undone", "Type"],
+    },
+    {
+      title: "Project with a long name",
+      hint: "The name appears in the body, in the path bullet, in the field label and as the placeholder - four wrapping cases from one string.",
+      props: { projectName: "Company.Product.Infrastructure.Provisioning" },
+      expectText: ["Company.Product.Infrastructure.Provisioning"],
+    },
+    {
+      title: "Name with spaces",
+      hint: "A name the operator has to reproduce exactly, spaces and all, to arm the confirm.",
+      props: { projectName: "My Side Project" },
+      expectText: ["My Side Project"],
+    },
+    {
+      title: "Name with a dot prefix",
+      hint: "A leading dot is easy to drop when retyping, which is the gate doing its job rather than a defect.",
+      props: { projectName: ".scratch" },
+      expectText: [".scratch"],
+    },
+    {
+      title: "Single-character name",
+      hint: "The weakest the gate ever is: one character. Still a deliberate act, and still not a slip of the mouse between two adjacent buttons.",
       props: { projectName: "x" },
       expectText: ["x"],
     },

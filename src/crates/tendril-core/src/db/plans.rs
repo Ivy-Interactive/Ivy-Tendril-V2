@@ -803,6 +803,40 @@ pub fn rebuild_recommendations_projection(
     Ok((rows, plans))
 }
 
+/// Deletes every row naming `project` from `Plans`, `Jobs` and `Recommendations`, returning the
+/// number of plans removed.
+///
+/// The destructive counterpart to [`rename_project`], and it cascades over exactly the same three
+/// tables for the same reason: those are the three that carry a bare `Project` string rather than a
+/// foreign key, so a project removed anywhere else leaves them naming one that no longer exists.
+/// The rename repoints them; this removes them.
+///
+/// One transaction, so a project is never half-deleted from the database. `LOWER(...)` matching
+/// mirrors `rename_project` and the `eq_ignore_ascii_case` every config lookup uses — `config.yaml`
+/// is hand-edited, so `Tendril` and `tendril` are one project everywhere else and have to be one
+/// here.
+///
+/// `set_last_sync_time` afterwards, as [`delete_plan`] does: the plan rows are gone and a reader
+/// that trusted the old stamp would treat the cache as current.
+pub fn delete_project(conn: &Connection, project: &str) -> Result<usize> {
+    let tx = conn.unchecked_transaction()?;
+    let count = tx.execute(
+        "DELETE FROM Plans WHERE LOWER(Project) = LOWER(?1)",
+        params![project],
+    )?;
+    tx.execute(
+        "DELETE FROM Jobs WHERE LOWER(Project) = LOWER(?1)",
+        params![project],
+    )?;
+    tx.execute(
+        "DELETE FROM Recommendations WHERE LOWER(Project) = LOWER(?1)",
+        params![project],
+    )?;
+    tx.commit()?;
+    set_last_sync_time(conn, Utc::now())?;
+    Ok(count)
+}
+
 pub fn rename_project(conn: &Connection, old_name: &str, new_name: &str) -> Result<usize> {
     let tx = conn.unchecked_transaction()?;
     let count = tx.execute(
