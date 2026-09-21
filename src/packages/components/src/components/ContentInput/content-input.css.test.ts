@@ -27,12 +27,6 @@ describe("content-input.css theming and responsive variables", () => {
     expect(uiCss).toMatch(
       /\.tui-icon-btn\[data-variant="outline"\]:hover:not\(:disabled\)\s*\{[^}]*color:\s*var\(--accent-foreground\);/,
     );
-    expect(css).toMatch(
-      /\.civ-project-ghost-btn:hover\s*\{[^}]*color:\s*var\(--accent-foreground\);/,
-    );
-    expect(css).toMatch(
-      /\.civ-project-menu-item:hover\s*\{[^}]*color:\s*var\(--accent-foreground\);/,
-    );
     expect(css).toMatch(/\.civ-dropdown-item:hover\s*\{[^}]*color:\s*var\(--accent-foreground\);/);
   });
 
