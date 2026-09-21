@@ -22,7 +22,7 @@
   position: relative;
 }
 
-:is(.dark, [data-theme="dark"]) .aov-shell {
+.dark .aov-shell {
   --aov-fg-muted: #a1a1aa;
   --aov-fg-faint: #9ca3af;
 }
