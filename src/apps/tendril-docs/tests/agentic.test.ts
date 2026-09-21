@@ -13,9 +13,17 @@ import {
   generate404Markdown,
   generateStructuredErrorJson,
   generateDeveloperPortalPage,
+  generateDeveloperPortalMarkdown,
   generateOpenApiSpec,
   generateOAuthServerMetadata,
   generateOAuthResourceMetadata,
+  generateArdManifest,
+  generateGettingStartedPage,
+  generateGettingStartedMarkdown,
+  generateMcpPage,
+  generateMcpMarkdown,
+  generateDocsOverviewPage,
+  generateDocsOverviewMarkdown,
 } from "../src/plugins/emit-agentic-assets";
 import { readContent } from "./helpers";
 import { routesForContent } from "../src/plugins/emit-route-shells";
@@ -286,5 +294,89 @@ describe("OAuth metadata", () => {
     const resource = JSON.parse(generateOAuthResourceMetadata());
     expect(resource.resource).toBe("http://127.0.0.1:5010");
     expect(resource.scopes_supported).toContain("plans:read");
+  });
+});
+
+describe("Agentic Resource Discovery (ARD) Manifest", () => {
+  const ard = JSON.parse(generateArdManifest());
+
+  it("conforms to ARD specification with valid specVersion and host", () => {
+    expect(ard.specVersion).toBe("1.0");
+    expect(ard.host).toBeDefined();
+    expect(ard.host.displayName).toBe("Ivy Interactive");
+    expect(ard.host.url).toContain("https://ivy-interactive.github.io");
+  });
+
+  it("includes entries with domain-anchored urn:air identifiers", () => {
+    expect(Array.isArray(ard.entries)).toBe(true);
+    expect(ard.entries.length).toBeGreaterThanOrEqual(4);
+
+    for (const entry of ard.entries) {
+      expect(entry.identifier).toMatch(/^urn:air:/);
+      expect(entry.displayName).toBeDefined();
+      expect(entry.type).toBeDefined();
+      expect(entry.url).toBeDefined();
+      expect(entry.description).toBeDefined();
+      expect(Array.isArray(entry.representativeQueries)).toBe(true);
+      expect(entry.representativeQueries.length).toBeGreaterThan(0);
+    }
+
+    const mcpEntry = ard.entries.find(
+      (e: { type: string }) => e.type === "application/mcp-server+json",
+    );
+    expect(mcpEntry).toBeDefined();
+    expect(mcpEntry.identifier).toBe("urn:air:ivy-interactive.github.io:mcp:tendril");
+
+    const apiEntry = ard.entries.find(
+      (e: { type: string }) => e.type === "application/openapi+json",
+    );
+    expect(apiEntry).toBeDefined();
+    expect(apiEntry.identifier).toBe("urn:air:ivy-interactive.github.io:api:openapi");
+  });
+});
+
+describe("Agent Probing Aliases (/getting-started, /mcp-server, /docs)", () => {
+  const gsHtml = generateGettingStartedPage();
+  const gsMd = generateGettingStartedMarkdown();
+  const mcpHtml = generateMcpPage();
+  const mcpMd = generateMcpMarkdown();
+  const docsHtml = generateDocsOverviewPage();
+  const docsMd = generateDocsOverviewMarkdown();
+  const devMd = generateDeveloperPortalMarkdown();
+
+  it("each HTML alias page contains at least 1500 chars of meaningful semantic HTML", () => {
+    expect(gsHtml.length).toBeGreaterThan(2000);
+    expect(mcpHtml.length).toBeGreaterThan(1500);
+    expect(docsHtml.length).toBeGreaterThan(2000);
+  });
+
+  it("includes ARD links and canonical links in HTML alias pages", () => {
+    for (const page of [gsHtml, mcpHtml, docsHtml]) {
+      expect(page).toContain('rel="ard"');
+      expect(page).toContain('rel="ai-catalog"');
+      expect(page).toContain('rel="canonical"');
+    }
+  });
+
+  it("getting-started page provides clear CLI quickstarts and commands", () => {
+    expect(gsHtml).toContain("tendril doctor");
+    expect(gsHtml).toContain("tendril onboarding");
+    expect(gsHtml).toContain("tendril run");
+    expect(gsHtml).toContain("tendril plan create");
+    expect(gsMd).toContain("tendril doctor");
+  });
+
+  it("mcp page provides config snippet and tools table", () => {
+    expect(mcpHtml).toContain("plan_list");
+    expect(mcpHtml).toContain("worktree_list");
+    expect(mcpHtml).toContain("verification_run");
+    expect(mcpMd).toContain("tendril mcp");
+  });
+
+  it("developer portal and docs overview markdown provide structured guides and commands", () => {
+    expect(devMd).toContain("# Ivy Tendril Developer Portal");
+    expect(devMd).toContain("tendril vault init");
+    expect(devMd).toContain("tendril run --sandbox");
+    expect(docsMd).toContain("# Ivy Tendril Documentation Overview");
   });
 });

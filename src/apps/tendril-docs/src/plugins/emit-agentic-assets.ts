@@ -128,6 +128,48 @@ export function generateSitemap(routes: string[], rawSiteUrl: string = CANONICAL
     <changefreq>monthly</changefreq>
     <priority>0.8</priority>
   </url>`,
+    `  <url>
+    <loc>${siteRootUrl}/getting-started</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.95</priority>
+  </url>`,
+    `  <url>
+    <loc>${siteRootUrl}/gettingstarted</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.95</priority>
+  </url>`,
+    `  <url>
+    <loc>${siteRootUrl}/mcp-server</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.95</priority>
+  </url>`,
+    `  <url>
+    <loc>${siteRootUrl}/mcp</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.95</priority>
+  </url>`,
+    `  <url>
+    <loc>${siteRootUrl}/setup</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.95</priority>
+  </url>`,
+    `  <url>
+    <loc>${siteRootUrl}/install</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.95</priority>
+  </url>`,
+    `  <url>
+    <loc>${siteRootUrl}/docs</loc>
+    <lastmod>${today}</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>0.95</priority>
+  </url>`,
   ];
 
   for (const route of routes) {
@@ -1028,6 +1070,579 @@ export function generateOAuthResourceMetadata(): string {
   );
 }
 
+export function generateArdManifest(rawSiteUrl: string = CANONICAL_BASE_URL): string {
+  const { siteRootUrl, docsBaseUrl } = resolveSiteUrls(rawSiteUrl);
+  return JSON.stringify(
+    {
+      specVersion: "1.0",
+      host: {
+        displayName: "Ivy Interactive",
+        url: siteRootUrl,
+      },
+      entries: [
+        {
+          identifier: "urn:air:ivy-interactive.github.io:mcp:tendril",
+          displayName: "Ivy Tendril MCP Server",
+          type: "application/mcp-server+json",
+          url: "http://127.0.0.1:5010/mcp",
+          description:
+            "Model Context Protocol server for Tendril autonomous agent orchestration, plan lifecycles, and git worktree management.",
+          representativeQueries: [
+            "Connect to Tendril MCP server",
+            "Run autonomous coding agents in worktrees",
+            "Create an execution plan in Tendril",
+            "Run automated verification gates",
+          ],
+        },
+        {
+          identifier: "urn:air:ivy-interactive.github.io:api:openapi",
+          displayName: "Ivy Tendril Daemon OpenAPI Specification",
+          type: "application/openapi+json",
+          url: `${siteRootUrl}/openapi.json`,
+          description:
+            "OpenAPI 3.1.0 specification with typed RFC 9457 error models and standard rate-limiting headers.",
+          representativeQueries: [
+            "Tendril REST API documentation",
+            "Submit plan via API",
+            "List active worktrees",
+            "Inspect daemon endpoints",
+          ],
+        },
+        {
+          identifier: "urn:air:ivy-interactive.github.io:portal:developers",
+          displayName: "Ivy Tendril Developer Portal",
+          type: "text/html",
+          url: `${siteRootUrl}/developers`,
+          description:
+            "Developer quickstart, self-serve keyring vault API keys, local sandbox daemon instructions, and API deprecation policies.",
+          representativeQueries: [
+            "Tendril developer portal",
+            "Tendril API keys",
+            "Tendril sandbox testing",
+            "Tendril SDK quickstart",
+          ],
+        },
+        {
+          identifier: "urn:air:ivy-interactive.github.io:doc:llms-txt",
+          displayName: "Ivy Tendril Agent Guidelines (llms.txt)",
+          type: "text/markdown",
+          url: `${siteRootUrl}/llms.txt`,
+          description:
+            "Concise machine-readable guide, quickstart, CLI tool usage, and links for LLM agents.",
+          representativeQueries: [
+            "How to use Ivy Tendril",
+            "Tendril CLI commands",
+            "Tendril agent instructions",
+          ],
+        },
+        {
+          identifier: "urn:air:ivy-interactive.github.io:doc:getting-started",
+          displayName: "Ivy Tendril Getting Started & Setup Guide",
+          type: "text/html",
+          url: `${docsBaseUrl}/gettingstarted/introduction`,
+          description:
+            "Official documentation covering architecture, installation, onboarding, and first plan walkthrough.",
+          representativeQueries: [
+            "Install Ivy Tendril",
+            "Tendril setup guide",
+            "Tendril onboarding tutorial",
+          ],
+        },
+      ],
+    },
+    null,
+    2,
+  );
+}
+
+export function generateGettingStartedPage(rawSiteUrl: string = CANONICAL_BASE_URL): string {
+  const { siteRootUrl, docsBaseUrl } = resolveSiteUrls(rawSiteUrl);
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Getting Started with Ivy Tendril · Quickstart Guide</title>
+  <meta name="description" content="Official setup guide for Ivy Tendril. Install the desktop app or CLI, initialize projects, launch local daemons, and run autonomous coding agents in parallel git worktrees.">
+  <link rel="canonical" href="${docsBaseUrl}/gettingstarted/introduction">
+  <link rel="alternate" type="text/markdown" href="${siteRootUrl}/getting-started/index.md" title="Getting Started Markdown">
+  <link rel="ard" type="application/json" href="${siteRootUrl}/.well-known/ard.json">
+  <link rel="ai-catalog" type="application/json" href="${siteRootUrl}/.well-known/ai-catalog.json">
+  <meta property="og:title" content="Getting Started with Ivy Tendril">
+  <meta property="og:description" content="Setup guide, CLI commands, daemon initialization, and first plan walkthrough for Ivy Tendril.">
+  <meta property="og:image" content="${siteRootUrl}/og-image.png">
+  <meta property="og:type" content="website">
+  <meta http-equiv="refresh" content="2;url=${docsBaseUrl}/gettingstarted/introduction">
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.6; max-width: 850px; margin: 0 auto; padding: 2rem 1rem; color: #1f2937; background: #ffffff; }
+    h1, h2, h3 { color: #111827; }
+    h1 { font-size: 2.2rem; font-weight: 800; margin-bottom: 0.5rem; }
+    h2 { font-size: 1.4rem; font-weight: 700; margin-top: 2rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin-top: 1.25rem; }
+    a { color: #2563eb; text-decoration: underline; text-underline-offset: 3px; }
+    nav a { margin-right: 1.25rem; font-weight: 500; }
+    header { border-bottom: 1px solid #e5e7eb; padding-bottom: 1.5rem; margin-bottom: 2rem; }
+    pre { background: #f3f4f6; padding: 1rem; border-radius: 6px; overflow-x: auto; font-family: monospace; font-size: 0.9rem; border: 1px solid #e5e7eb; }
+    code { background: #f3f4f6; padding: 0.15rem 0.35rem; border-radius: 4px; font-family: monospace; font-size: 0.9em; }
+    .card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1.25rem; margin: 1.25rem 0; }
+    footer { border-top: 1px solid #e5e7eb; padding-top: 1.5rem; margin-top: 3rem; font-size: 0.875rem; color: #6b7280; }
+  </style>
+</head>
+<body>
+  <header>
+    <nav aria-label="Main Navigation">
+      <a href="${siteRootUrl}/">Home</a>
+      <a href="${siteRootUrl}/developers">Developer Portal</a>
+      <a href="${docsBaseUrl}/gettingstarted/introduction">Documentation</a>
+      <a href="${siteRootUrl}/llms.txt">llms.txt</a>
+      <a href="${siteRootUrl}/sitemap.xml">Sitemap</a>
+    </nav>
+    <h1>Getting Started with Ivy Tendril</h1>
+    <p>The Agentic Software Factory for 10x Builders. Run autonomous coding agents in parallel git worktrees with verification gates and human-in-the-loop plan supervision.</p>
+  </header>
+  <main>
+    <section>
+      <h2>Quick 5-Step Setup Walkthrough</h2>
+
+      <h3>Step 1: Install Tendril Desktop App or CLI</h3>
+      <p>Download the native desktop application for macOS (Apple Silicon / Intel), Linux (.AppImage, .deb), or Windows (.msi) from GitHub Releases, or install the CLI toolchain via Cargo:</p>
+      <pre><code># Install CLI toolchain via Cargo:
+cargo install tendril-cli
+
+# Run system health check and verify prerequisites:
+tendril doctor</code></pre>
+
+      <h3>Step 2: Initialize Your Workspace & Projects</h3>
+      <p>Tendril organizes repositories as Projects with isolated git worktrees so agents never modify your primary working tree without permission:</p>
+      <pre><code># Interactive onboarding wizard:
+tendril onboarding
+
+# Or register an existing git repository directly:
+tendril project add /path/to/repository --name my-project</code></pre>
+
+      <h3>Step 3: Launch the Tendril Background Daemon</h3>
+      <p>Tendril includes an Axum REST and WebSocket daemon that coordinates agent runs, tool calls, and real-time terminal output on port 5010:</p>
+      <pre><code># Launch background daemon:
+tendril run
+
+# Or launch in ephemeral sandbox mode for risk-free testing:
+tendril run --sandbox</code></pre>
+
+      <h3>Step 4: Create and Execute Your First Plan</h3>
+      <p>Tasks are modeled as structured Plans. Once approved, Tendril spins up an isolated worktree branch and starts your selected coding agent (Claude Code, OpenAI Codex, GitHub Copilot, OpenCode, or Google Gemini):</p>
+      <pre><code># Create a new plan:
+tendril plan create "Implement user authentication with OAuth2 PKCE"
+
+# Execute plan with Claude Code in an isolated worktree:
+tendril plan run &lt;plan-id&gt; --agent claude-code
+
+# Check verification gates (compiler, linter, tests, visual screenshots):
+tendril verification run --plan &lt;plan-id&gt;</code></pre>
+
+      <h3>Step 5: Connect via Model Context Protocol (MCP)</h3>
+      <p>Expose Tendril's plan and worktree tools to Claude Desktop, ChatGPT, or custom agent runners:</p>
+      <pre><code># Start standard I/O MCP server:
+tendril mcp
+
+# Streamable HTTP endpoint:
+http://127.0.0.1:5010/mcp</code></pre>
+    </section>
+
+    <section>
+      <h2>Detailed Documentation Sections</h2>
+      <ul>
+        <li><a href="${docsBaseUrl}/gettingstarted/introduction">Introduction & Architecture</a> — Understand the fundamental shift to parallel agentic development.</li>
+        <li><a href="${docsBaseUrl}/gettingstarted/installation">Installation Guide</a> — Native packages, dependencies, and shell completion.</li>
+        <li><a href="${docsBaseUrl}/gettingstarted/onboarding">Onboarding Wizard</a> — First-time setup, keyring encryption, and workspace paths.</li>
+        <li><a href="${docsBaseUrl}/gettingstarted/tutorial">First Plan Walkthrough</a> — Step-by-step tutorial running your first unattended agent plan.</li>
+        <li><a href="${docsBaseUrl}/concepts/plans">Plans & Supervision</a> — Plan states (Draft, Approved, Running, Completed, Failed, Icebox) and annotations.</li>
+        <li><a href="${docsBaseUrl}/codingagents">Supported Coding Agents</a> — Setting up Claude Code, Codex, Copilot, OpenCode, and Gemini.</li>
+        <li><a href="${docsBaseUrl}/advanced/mcp">MCP Server Reference</a> — Tool schemas and integration patterns.</li>
+        <li><a href="${siteRootUrl}/developers">Developer Portal</a> — API keys, sandbox daemon, rate limits, and schemas.</li>
+      </ul>
+    </section>
+  </main>
+  <footer>
+    <p>&copy; ${new Date().getFullYear()} Ivy Interactive AB. All rights reserved.</p>
+  </footer>
+</body>
+</html>`;
+}
+
+export function generateGettingStartedMarkdown(rawSiteUrl: string = CANONICAL_BASE_URL): string {
+  const { siteRootUrl, docsBaseUrl } = resolveSiteUrls(rawSiteUrl);
+  return `# Getting Started with Ivy Tendril
+
+> The Agentic Software Factory for 10x Builders. Tendril runs autonomous coding agents in parallel git worktrees with verification gates, plan annotations, and multi-model support.
+
+## 5-Step Quickstart
+
+### 1. Install Tendril Desktop App or CLI
+- Download desktop app for macOS, Linux, or Windows.
+- Or install CLI via Cargo:
+  \`\`\`bash
+  cargo install tendril-cli
+  tendril doctor
+  \`\`\`
+
+### 2. Register Your Project
+\`\`\`bash
+tendril onboarding
+# or
+tendril project add /path/to/repo --name my-project
+\`\`\`
+
+### 3. Launch Local Daemon
+\`\`\`bash
+tendril run             # Runs on http://127.0.0.1:5010
+tendril run --sandbox   # Runs mock environment for risk-free agent testing
+\`\`\`
+
+### 4. Create and Run an Agent Plan
+\`\`\`bash
+tendril plan create "Add OAuth2 authentication"
+tendril plan run <plan-id> --agent claude-code
+tendril verification run --plan <plan-id>
+\`\`\`
+
+### 5. Connect AI Agents via Model Context Protocol (MCP)
+\`\`\`bash
+tendril mcp
+\`\`\`
+Endpoint: \`http://127.0.0.1:5010/mcp\` | Manifest: [mcp.json](${siteRootUrl}/.well-known/mcp.json)
+
+## Canonical Links
+
+- [Introduction](${docsBaseUrl}/gettingstarted/introduction)
+- [Installation](${docsBaseUrl}/gettingstarted/installation)
+- [Onboarding](${docsBaseUrl}/gettingstarted/onboarding)
+- [Tutorial](${docsBaseUrl}/gettingstarted/tutorial)
+- [Developer Portal](${siteRootUrl}/developers)
+- [OpenAPI Specification](${siteRootUrl}/openapi.json)
+- [LLM Guidance (llms.txt)](${siteRootUrl}/llms.txt)
+`;
+}
+
+export function generateMcpPage(rawSiteUrl: string = CANONICAL_BASE_URL): string {
+  const { siteRootUrl, docsBaseUrl } = resolveSiteUrls(rawSiteUrl);
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ivy Tendril · Model Context Protocol (MCP) Server</title>
+  <meta name="description" content="Connect AI coding agents to Tendril via Model Context Protocol (MCP). Control plans, worktrees, and verification gates programmatically.">
+  <link rel="canonical" href="${docsBaseUrl}/advanced/mcp">
+  <link rel="alternate" type="text/markdown" href="${siteRootUrl}/mcp/index.md" title="MCP Markdown">
+  <link rel="ard" type="application/json" href="${siteRootUrl}/.well-known/ard.json">
+  <link rel="ai-catalog" type="application/json" href="${siteRootUrl}/.well-known/ai-catalog.json">
+  <meta property="og:title" content="Ivy Tendril MCP Server">
+  <meta property="og:description" content="Model Context Protocol tools and configuration for Ivy Tendril autonomous software factory.">
+  <meta property="og:image" content="${siteRootUrl}/og-image.png">
+  <meta property="og:type" content="website">
+  <meta http-equiv="refresh" content="2;url=${docsBaseUrl}/advanced/mcp">
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.6; max-width: 850px; margin: 0 auto; padding: 2rem 1rem; color: #1f2937; background: #ffffff; }
+    h1, h2, h3 { color: #111827; }
+    h1 { font-size: 2.2rem; font-weight: 800; margin-bottom: 0.5rem; }
+    h2 { font-size: 1.4rem; font-weight: 700; margin-top: 2rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin-top: 1.25rem; }
+    a { color: #2563eb; text-decoration: underline; text-underline-offset: 3px; }
+    nav a { margin-right: 1.25rem; font-weight: 500; }
+    header { border-bottom: 1px solid #e5e7eb; padding-bottom: 1.5rem; margin-bottom: 2rem; }
+    pre { background: #f3f4f6; padding: 1rem; border-radius: 6px; overflow-x: auto; font-family: monospace; font-size: 0.9rem; border: 1px solid #e5e7eb; }
+    code { background: #f3f4f6; padding: 0.15rem 0.35rem; border-radius: 4px; font-family: monospace; font-size: 0.9em; }
+    .card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1.25rem; margin: 1.25rem 0; }
+    table { width: 100%; border-collapse: collapse; margin: 1.5rem 0; }
+    th, td { text-align: left; padding: 0.75rem; border-bottom: 1px solid #e5e7eb; }
+    th { background: #f9fafb; font-weight: 600; }
+    footer { border-top: 1px solid #e5e7eb; padding-top: 1.5rem; margin-top: 3rem; font-size: 0.875rem; color: #6b7280; }
+  </style>
+</head>
+<body>
+  <header>
+    <nav aria-label="Main Navigation">
+      <a href="${siteRootUrl}/">Home</a>
+      <a href="${siteRootUrl}/developers">Developer Portal</a>
+      <a href="${docsBaseUrl}/gettingstarted/introduction">Documentation</a>
+      <a href="${siteRootUrl}/llms.txt">llms.txt</a>
+      <a href="${siteRootUrl}/sitemap.xml">Sitemap</a>
+    </nav>
+    <h1>Ivy Tendril MCP Server</h1>
+    <p>Connect Claude, ChatGPT, and custom orchestrators directly to Tendril's agentic execution engine.</p>
+  </header>
+  <main>
+    <section>
+      <h2>Connection Options</h2>
+      <div class="card">
+        <h3>1. Standard I/O (stdio)</h3>
+        <pre><code>tendril mcp</code></pre>
+      </div>
+      <div class="card">
+        <h3>2. Streamable HTTP / Server-Sent Events</h3>
+        <p>Endpoint: <code>http://127.0.0.1:5010/mcp</code></p>
+        <p>Discovery manifest: <a href="${siteRootUrl}/.well-known/mcp.json">/.well-known/mcp.json</a></p>
+      </div>
+      <div class="card">
+        <h3>Claude Desktop / Claude Code Configuration</h3>
+        <pre><code>{
+  "mcpServers": {
+    "tendril": {
+      "command": "tendril",
+      "args": ["mcp"]
+    }
+  }
+}</code></pre>
+      </div>
+    </section>
+
+    <section>
+      <h2>Available Tools</h2>
+      <table>
+        <thead>
+          <tr><th>Tool</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr><td><code>plan_list</code></td><td>List all plans in active workspace filtered by status.</td></tr>
+          <tr><td><code>plan_get</code></td><td>Retrieve complete plan details, annotations, and verification status.</td></tr>
+          <tr><td><code>plan_create</code></td><td>Create a new execution plan for an autonomous coding agent.</td></tr>
+          <tr><td><code>plan_run</code></td><td>Trigger execution of an approved plan in an isolated git worktree.</td></tr>
+          <tr><td><code>worktree_list</code></td><td>List all active isolated git worktrees.</td></tr>
+          <tr><td><code>verification_run</code></td><td>Run automated compiler, linter, unit test, and visual verification gates.</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section>
+      <h2>Documentation & Resources</h2>
+      <ul>
+        <li><a href="${docsBaseUrl}/advanced/mcp">Complete MCP Documentation</a></li>
+        <li><a href="${siteRootUrl}/.well-known/mcp.json">MCP Manifest (JSON Schema)</a></li>
+        <li><a href="${siteRootUrl}/developers">Developer Portal</a></li>
+        <li><a href="${siteRootUrl}/openapi.json">OpenAPI 3.1.0 Specification</a></li>
+      </ul>
+    </section>
+  </main>
+  <footer>
+    <p>&copy; ${new Date().getFullYear()} Ivy Interactive AB. All rights reserved.</p>
+  </footer>
+</body>
+</html>`;
+}
+
+export function generateMcpMarkdown(rawSiteUrl: string = CANONICAL_BASE_URL): string {
+  const { siteRootUrl, docsBaseUrl } = resolveSiteUrls(rawSiteUrl);
+  return `# Ivy Tendril Model Context Protocol (MCP) Server
+
+> Connect AI coding agents directly to Tendril's autonomous plan lifecycle and git worktree engine.
+
+## Connection
+
+### Stdio
+\`\`\`bash
+tendril mcp
+\`\`\`
+
+### Streamable HTTP
+- Endpoint: \`http://127.0.0.1:5010/mcp\`
+- Manifest: [mcp.json](${siteRootUrl}/.well-known/mcp.json)
+
+## Configuration
+\`\`\`json
+{
+  "mcpServers": {
+    "tendril": {
+      "command": "tendril",
+      "args": ["mcp"]
+    }
+  }
+}
+\`\`\`
+
+## Available Tools
+- \`plan_list\`: List plans in workspace filtered by status
+- \`plan_get\`: Retrieve plan details, annotations, and verification status
+- \`plan_create\`: Create new plan for autonomous coding agent
+- \`plan_run\`: Trigger approved plan in isolated git worktree
+- \`worktree_list\`: List active isolated git worktrees
+- \`verification_run\`: Run verification test suites (compiler, linter, tests, visual)
+
+## Links
+- [Complete MCP Documentation](${docsBaseUrl}/advanced/mcp)
+- [Developer Portal](${siteRootUrl}/developers)
+- [OpenAPI Specification](${siteRootUrl}/openapi.json)
+`;
+}
+
+export function generateDocsOverviewPage(rawSiteUrl: string = CANONICAL_BASE_URL): string {
+  const { siteRootUrl, docsBaseUrl } = resolveSiteUrls(rawSiteUrl);
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Ivy Tendril Documentation Overview</title>
+  <meta name="description" content="Comprehensive documentation for Ivy Tendril: getting started, core concepts, apps, coding agents, model providers, and advanced CLI/REST/MCP reference.">
+  <link rel="canonical" href="${docsBaseUrl}/gettingstarted/introduction">
+  <link rel="alternate" type="text/markdown" href="${siteRootUrl}/docs/index.md" title="Documentation Markdown">
+  <link rel="ard" type="application/json" href="${siteRootUrl}/.well-known/ard.json">
+  <link rel="ai-catalog" type="application/json" href="${siteRootUrl}/.well-known/ai-catalog.json">
+  <meta property="og:title" content="Ivy Tendril Documentation Overview">
+  <meta property="og:description" content="Index and quick reference for all Ivy Tendril documentation sections.">
+  <meta property="og:image" content="${siteRootUrl}/og-image.png">
+  <meta property="og:type" content="website">
+  <meta http-equiv="refresh" content="2;url=${docsBaseUrl}/gettingstarted/introduction">
+  <style>
+    body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.6; max-width: 850px; margin: 0 auto; padding: 2rem 1rem; color: #1f2937; background: #ffffff; }
+    h1, h2, h3 { color: #111827; }
+    h1 { font-size: 2.2rem; font-weight: 800; margin-bottom: 0.5rem; }
+    h2 { font-size: 1.4rem; font-weight: 700; margin-top: 2rem; border-bottom: 1px solid #e5e7eb; padding-bottom: 0.5rem; }
+    h3 { font-size: 1.1rem; font-weight: 600; margin-top: 1.25rem; }
+    a { color: #2563eb; text-decoration: underline; text-underline-offset: 3px; }
+    nav a { margin-right: 1.25rem; font-weight: 500; }
+    header { border-bottom: 1px solid #e5e7eb; padding-bottom: 1.5rem; margin-bottom: 2rem; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 1.25rem; margin: 1.5rem 0; }
+    .card { background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 8px; padding: 1.25rem; }
+    footer { border-top: 1px solid #e5e7eb; padding-top: 1.5rem; margin-top: 3rem; font-size: 0.875rem; color: #6b7280; }
+  </style>
+</head>
+<body>
+  <header>
+    <nav aria-label="Main Navigation">
+      <a href="${siteRootUrl}/">Home</a>
+      <a href="${siteRootUrl}/developers">Developer Portal</a>
+      <a href="${docsBaseUrl}/gettingstarted/introduction">Documentation</a>
+      <a href="${siteRootUrl}/llms.txt">llms.txt</a>
+      <a href="${siteRootUrl}/sitemap.xml">Sitemap</a>
+    </nav>
+    <h1>Ivy Tendril Documentation</h1>
+    <p>Explore the complete documentation for the Ivy Tendril agentic software factory.</p>
+  </header>
+  <main>
+    <div class="grid">
+      <div class="card">
+        <h3><a href="${docsBaseUrl}/gettingstarted/introduction">1. Getting Started</a></h3>
+        <p>Introduction, installation, onboarding wizard, and your first autonomous plan walkthrough.</p>
+      </div>
+      <div class="card">
+        <h3><a href="${docsBaseUrl}/concepts/plans">2. Core Concepts</a></h3>
+        <p>Plans lifecycle, promptwares, worktree isolation, and verification gates.</p>
+      </div>
+      <div class="card">
+        <h3><a href="${docsBaseUrl}/configuration/setup">3. Configuration</a></h3>
+        <p>Config.yaml schema, projects management, danger zones, and key storage.</p>
+      </div>
+      <div class="card">
+        <h3><a href="${docsBaseUrl}/apps/dashboard">4. Applications</a></h3>
+        <p>Dashboard, Review, Plans, Jobs, Icebox, PRs, and Recommendations views.</p>
+      </div>
+      <div class="card">
+        <h3><a href="${docsBaseUrl}/codingagents">5. Coding Agents</a></h3>
+        <p>Integrate Claude Code, OpenAI Codex, GitHub Copilot, OpenCode, and Google Gemini.</p>
+      </div>
+      <div class="card">
+        <h3><a href="${docsBaseUrl}/integrations">6. Integrations</a></h3>
+        <p>GitHub CLI (gh), JamDev bug recording, and OpenClaw issue capture.</p>
+      </div>
+      <div class="card">
+        <h3><a href="${docsBaseUrl}/modelproviders">7. Model Providers</a></h3>
+        <p>Berget, Evroc, Zai, Scaleway, Opper, OpenRouter, Cloudflare, NVIDIA, and Vercel.</p>
+      </div>
+      <div class="card">
+        <h3><a href="${docsBaseUrl}/advanced/cli/overview">8. CLI Reference</a></h3>
+        <p>Full command syntax for tendril plan, run, project, doctor, vault, and config.</p>
+      </div>
+      <div class="card">
+        <h3><a href="${docsBaseUrl}/advanced/rest">9. REST & WebSocket API</a></h3>
+        <p>Axum HTTP daemon endpoints on port 5010, streaming events, and schemas.</p>
+      </div>
+      <div class="card">
+        <h3><a href="${docsBaseUrl}/advanced/mcp">10. Model Context Protocol</a></h3>
+        <p>MCP server configuration, available tools, and AI orchestrator integration.</p>
+      </div>
+    </div>
+  </main>
+  <footer>
+    <p>&copy; ${new Date().getFullYear()} Ivy Interactive AB. All rights reserved.</p>
+  </footer>
+</body>
+</html>`;
+}
+
+export function generateDocsOverviewMarkdown(rawSiteUrl: string = CANONICAL_BASE_URL): string {
+  const { siteRootUrl, docsBaseUrl } = resolveSiteUrls(rawSiteUrl);
+  return `# Ivy Tendril Documentation Overview
+
+> Explore the complete documentation for the Ivy Tendril agentic software factory.
+
+## Documentation Sections
+
+1. [Getting Started](${docsBaseUrl}/gettingstarted/introduction) — Installation, onboarding wizard, and first plan walkthrough.
+2. [Core Concepts](${docsBaseUrl}/concepts/plans) — Plans lifecycle, promptwares, worktree isolation, and verification gates.
+3. [Configuration](${docsBaseUrl}/configuration/setup) — Config.yaml schema, projects management, danger zones, and key storage.
+4. [Applications](${docsBaseUrl}/apps/dashboard) — Dashboard, Review, Plans, Jobs, Icebox, PRs, and Recommendations views.
+5. [Coding Agents](${docsBaseUrl}/codingagents) — Claude Code, OpenAI Codex, GitHub Copilot, OpenCode, and Google Gemini.
+6. [Integrations](${docsBaseUrl}/integrations) — GitHub CLI (gh), JamDev bug recording, and OpenClaw issue capture.
+7. [Model Providers](${docsBaseUrl}/modelproviders) — Berget, Evroc, Zai, Scaleway, Opper, OpenRouter, Cloudflare, NVIDIA, and Vercel.
+8. [CLI Reference](${docsBaseUrl}/advanced/cli/overview) — Full command syntax for tendril plan, run, project, doctor, vault, and config.
+9. [REST & WebSocket API](${docsBaseUrl}/advanced/rest) — Axum HTTP daemon endpoints on port 5010, streaming events, and schemas.
+10. [Model Context Protocol](${docsBaseUrl}/advanced/mcp) — MCP server configuration, available tools, and AI orchestrator integration.
+
+## Additional Resources
+- [Developer Portal](${siteRootUrl}/developers)
+- [OpenAPI 3.1.0 Specification](${siteRootUrl}/openapi.json)
+- [LLM Agent Guidelines (llms.txt)](${siteRootUrl}/llms.txt)
+- [Full Documentation (llms-full.txt)](${siteRootUrl}/llms-full.txt)
+`;
+}
+
+export function generateDeveloperPortalMarkdown(rawSiteUrl: string = CANONICAL_BASE_URL): string {
+  const { siteRootUrl, docsBaseUrl } = resolveSiteUrls(rawSiteUrl);
+  return `# Ivy Tendril Developer Portal
+
+> Everything you need to integrate, orchestrate, and build on Ivy Tendril's agentic software factory.
+
+## Quickstart & Local Setup
+
+### 1. Model Context Protocol (MCP)
+- Stdio transport: \`tendril mcp\`
+- Streamable HTTP: \`http://127.0.0.1:5010/mcp\`
+- MCP Manifest: [mcp.json](${siteRootUrl}/.well-known/mcp.json)
+- MCP Documentation: [MCP Guide](${docsBaseUrl}/advanced/mcp)
+
+### 2. Tendril CLI
+\`\`\`bash
+tendril run             # Start background daemon on 127.0.0.1:5010
+tendril plan create "Add OAuth2 PKCE flow"
+tendril plan run <plan-id> --agent claude-code
+tendril doctor          # Check environment health
+\`\`\`
+
+## Self-Serve API Keys & Authentication
+- 100% Free and Source-Available under FSL-1.1-ALv2.
+- Local encrypted vault:
+  \`\`\`bash
+  tendril vault init
+  tendril config set-key anthropic <your-key>
+  tendril config set-key openai <your-key>
+  \`\`\`
+- OAuth 2.0 discovery: [oauth-authorization-server](${siteRootUrl}/.well-known/oauth-authorization-server)
+
+## Sandbox & Test Environment
+\`\`\`bash
+tendril run --sandbox
+curl -s http://127.0.0.1:5010/sandbox/plans
+\`\`\`
+
+## Key Endpoints & Specifications
+- OpenAPI 3.1.0: [openapi.json](${siteRootUrl}/openapi.json)
+- LLM Guidelines: [llms.txt](${siteRootUrl}/llms.txt)
+- Full Documentation: [llms-full.txt](${siteRootUrl}/llms-full.txt)
+- Sitemap: [sitemap.xml](${siteRootUrl}/sitemap.xml)
+- Getting Started: [Setup Guide](${docsBaseUrl}/gettingstarted/introduction)
+`;
+}
+
 export function generateAboutPage(rawSiteUrl: string = CANONICAL_BASE_URL): string {
   const { siteRootUrl, docsBaseUrl } = resolveSiteUrls(rawSiteUrl);
   return `<!DOCTYPE html>
@@ -1038,6 +1653,8 @@ export function generateAboutPage(rawSiteUrl: string = CANONICAL_BASE_URL): stri
   <title>About Ivy Interactive & Tendril</title>
   <meta name="description" content="About Ivy Interactive and Ivy Tendril — The Agentic Software Factory for 10x Builders.">
   <link rel="canonical" href="${siteRootUrl}/about">
+  <link rel="ard" type="application/json" href="${siteRootUrl}/.well-known/ard.json">
+  <link rel="ai-catalog" type="application/json" href="${siteRootUrl}/.well-known/ai-catalog.json">
   <meta property="og:title" content="About Ivy Interactive & Tendril">
   <meta property="og:description" content="Ivy Interactive builds developer tools for the agentic software era.">
   <meta property="og:image" content="${siteRootUrl}/og-image.png">
@@ -1118,6 +1735,8 @@ export function generateContactPage(rawSiteUrl: string = CANONICAL_BASE_URL): st
   <title>Contact Ivy Interactive</title>
   <meta name="description" content="Contact details, support channels, and office location for Ivy Interactive and Ivy Tendril.">
   <link rel="canonical" href="${siteRootUrl}/contact">
+  <link rel="ard" type="application/json" href="${siteRootUrl}/.well-known/ard.json">
+  <link rel="ai-catalog" type="application/json" href="${siteRootUrl}/.well-known/ai-catalog.json">
   <meta property="og:title" content="Contact Ivy Interactive">
   <meta property="og:description" content="Get in touch with the Ivy Tendril engineering and support teams.">
   <meta property="og:image" content="${siteRootUrl}/og-image.png">
@@ -1195,6 +1814,8 @@ export function generatePrivacyPage(rawSiteUrl: string = CANONICAL_BASE_URL): st
   <title>Privacy Policy · Ivy Tendril</title>
   <meta name="description" content="Privacy policy and data governance practices for Ivy Tendril desktop app and documentation.">
   <link rel="canonical" href="${siteRootUrl}/privacy">
+  <link rel="ard" type="application/json" href="${siteRootUrl}/.well-known/ard.json">
+  <link rel="ai-catalog" type="application/json" href="${siteRootUrl}/.well-known/ai-catalog.json">
   <meta property="og:title" content="Privacy Policy · Ivy Tendril">
   <meta property="og:description" content="Ivy Tendril local-first architecture and privacy commitments.">
   <meta property="og:image" content="${siteRootUrl}/og-image.png">
@@ -1315,6 +1936,8 @@ export function generateDeveloperPortalPage(rawSiteUrl: string = CANONICAL_BASE_
   <meta name="description" content="Ivy Tendril Developer Portal: Quickstarts, REST & WebSocket APIs, Model Context Protocol (MCP) server, self-serve API keys, and sandbox environment.">
   <link rel="canonical" href="${siteRootUrl}/developers">
   <link rel="alternate" type="text/markdown" href="${siteRootUrl}/developers/index.md" title="Developer Portal Markdown">
+  <link rel="ard" type="application/json" href="${siteRootUrl}/.well-known/ard.json">
+  <link rel="ai-catalog" type="application/json" href="${siteRootUrl}/.well-known/ai-catalog.json">
   <meta property="og:title" content="Developer Portal · Ivy Tendril">
   <meta property="og:description" content="Quickstart guides, REST API, Model Context Protocol (MCP), self-serve API keys, and sandbox environment for Ivy Tendril.">
   <meta property="og:image" content="${siteRootUrl}/og-image.png">
@@ -1506,6 +2129,8 @@ export function generate404Html(rawSiteUrl: string = CANONICAL_BASE_URL): string
   <meta name="description" content="The requested page could not be found on Ivy Tendril documentation and developer services.">
   <link rel="canonical" href="${siteRootUrl}/404">
   <link rel="alternate" type="text/markdown" href="${siteRootUrl}/404.md" title="404 Markdown">
+  <link rel="ard" type="application/json" href="${siteRootUrl}/.well-known/ard.json">
+  <link rel="ai-catalog" type="application/json" href="${siteRootUrl}/.well-known/ai-catalog.json">
   <style>
     body { font-family: system-ui, -apple-system, sans-serif; line-height: 1.6; max-width: 800px; margin: 0 auto; padding: 2rem 1rem; color: #1f2937; background: #ffffff; }
     h1 { color: #111827; font-size: 2rem; margin-bottom: 0.5rem; }
@@ -1569,6 +2194,8 @@ export function generateHomepageHtml(rawSiteUrl: string = CANONICAL_BASE_URL): s
   <link rel="canonical" href="${siteRootUrl}/">
   <link rel="alternate" type="text/markdown" href="${siteRootUrl}/llms.txt" title="LLM Guidance">
   <link rel="alternate" type="text/markdown" href="${siteRootUrl}/index.md" title="Markdown">
+  <link rel="ard" type="application/json" href="${siteRootUrl}/.well-known/ard.json">
+  <link rel="ai-catalog" type="application/json" href="${siteRootUrl}/.well-known/ai-catalog.json">
   <meta property="og:title" content="Ivy Tendril — The Agentic Software Factory for 10x Builders">
   <meta property="og:description" content="Tendril replaces your IDE with autonomous coding agents running in parallel git worktrees with verification, annotations, and multi-model support.">
   <meta property="og:image" content="${siteRootUrl}/og-image.png">
@@ -1812,7 +2439,11 @@ export function emitAgenticAssets(options: EmitAgenticAssetsOptions): Plugin {
         mkdirSync(dirPath, { recursive: true });
         writeFileSync(path.join(dirPath, "index.html"), html, "utf8");
         if (subDir === "developers") {
-          writeFileSync(path.join(dirPath, "index.md"), generate404Markdown(siteUrl), "utf8");
+          writeFileSync(
+            path.join(dirPath, "index.md"),
+            generateDeveloperPortalMarkdown(siteUrl),
+            "utf8",
+          );
         }
       }
 
@@ -1891,6 +2522,39 @@ export function emitAgenticAssets(options: EmitAgenticAssetsOptions): Plugin {
 
       // 8. Rich, agent-ready homepage.html for site root
       writeFileSync(path.join(outDir, "homepage.html"), generateHomepageHtml(siteUrl), "utf8");
+
+      // 9. Agentic Resource Discovery Manifests: /.well-known/ard.json and /.well-known/ai-catalog.json
+      const ardManifest = generateArdManifest(siteUrl);
+      writeFileSync(path.join(wellKnownDir, "ard.json"), ardManifest, "utf8");
+      writeFileSync(path.join(wellKnownDir, "ai-catalog.json"), ardManifest, "utf8");
+
+      // 10. Agent Probing Aliases with rich HTML and Markdown bodies:
+      // /getting-started, /gettingstarted, /mcp-server, /mcp, /setup, /install, /docs
+      const gettingStartedHtml = generateGettingStartedPage(siteUrl);
+      const gettingStartedMd = generateGettingStartedMarkdown(siteUrl);
+      const mcpPageHtml = generateMcpPage(siteUrl);
+      const mcpPageMd = generateMcpMarkdown(siteUrl);
+      const docsOverviewHtml = generateDocsOverviewPage(siteUrl);
+      const docsOverviewMd = generateDocsOverviewMarkdown(siteUrl);
+
+      for (const dir of ["getting-started", "gettingstarted", "setup", "install"] as const) {
+        const dirPath = path.join(outDir, dir);
+        mkdirSync(dirPath, { recursive: true });
+        writeFileSync(path.join(dirPath, "index.html"), gettingStartedHtml, "utf8");
+        writeFileSync(path.join(dirPath, "index.md"), gettingStartedMd, "utf8");
+      }
+
+      for (const dir of ["mcp-server", "mcp"] as const) {
+        const dirPath = path.join(outDir, dir);
+        mkdirSync(dirPath, { recursive: true });
+        writeFileSync(path.join(dirPath, "index.html"), mcpPageHtml, "utf8");
+        writeFileSync(path.join(dirPath, "index.md"), mcpPageMd, "utf8");
+      }
+
+      const docsDir = path.join(outDir, "docs");
+      mkdirSync(docsDir, { recursive: true });
+      writeFileSync(path.join(docsDir, "index.html"), docsOverviewHtml, "utf8");
+      writeFileSync(path.join(docsDir, "index.md"), docsOverviewMd, "utf8");
     },
   };
 }
