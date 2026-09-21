@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { buildUpdatePrompt } from "../update_prompt";
+import { buildUpdatePrompt } from "../updatePrompt";
 import type { Annotation } from "../../types/api";
 
 function annotation(overrides: Partial<Annotation> = {}): Annotation {

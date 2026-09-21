@@ -73,5 +73,3 @@ export function usePendingChatQuestions(
     [messages, visibleRange?.startIndex, visibleRange?.endIndex],
   );
 }
-
-export default usePendingChatQuestions;

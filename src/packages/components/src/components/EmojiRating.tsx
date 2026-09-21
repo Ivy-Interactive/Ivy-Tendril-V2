@@ -133,5 +133,3 @@ export function EmojiRating({
     </div>
   );
 }
-
-export default EmojiRating;

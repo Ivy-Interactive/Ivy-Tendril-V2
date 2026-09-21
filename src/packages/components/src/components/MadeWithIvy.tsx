@@ -1,6 +1,6 @@
 "use client";
 import { useState, useEffect } from "react";
-import IvyLogo from "./IvyLogo";
+import { IvyLogo } from "./IvyLogo";
 import type React from "react";
 
 function toGitHubUrl(value: string): string {
@@ -94,5 +94,3 @@ export function MadeWithIvy(_props?: MadeWithIvyProps) {
     </div>
   ) : null;
 }
-
-export default MadeWithIvy;

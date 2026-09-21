@@ -140,5 +140,3 @@ export function StarRating({
     </div>
   );
 }
-
-export default StarRating;

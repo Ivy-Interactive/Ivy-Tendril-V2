@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { PartialDeliveryDialog } from "../PartialDeliveryDialog";
-import { PlanActionsController } from "../../../controllers/plan_actions";
+import { PlanActionsController } from "../../../controllers/planActions";
 import { bridge } from "../../../api/bridge";
 import { planSummary, verification } from "../../../../tests/fixtures/plan.fixture";
 

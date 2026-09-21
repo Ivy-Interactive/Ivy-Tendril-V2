@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Button, Callout, Input, Textarea } from "@ivy-interactive/components/ui";
-import { PlanActionsController } from "../../controllers/plan_actions";
+import { PlanActionsController } from "../../controllers/planActions";
 import {
   describeBridgeError,
   type CreatePrOptions,

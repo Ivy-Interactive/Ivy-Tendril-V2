@@ -398,7 +398,7 @@ const tauriClient = {
    * V1 routes answers through `IPlanReaderService.UpdateLatestRevision` on the stated grounds that
    * "answering a question is not a new revision of the plan, it is filling in a blank the plan left".
    * An append would claim the agent produced a new plan, and it would inflate `revisionCount`, which
-   * `execute_guards.unfoldedAnswerCount` reads as `revisionCount === 1` — so one answer would switch
+   * `executeGuards.unfoldedAnswerCount` reads as `revisionCount === 1` — so one answer would switch
    * that guard off. The returned `revision` is the number that did *not* move.
    */
   async updateLatestRevision(this: void, id: string, content: string): Promise<RevisionResult> {

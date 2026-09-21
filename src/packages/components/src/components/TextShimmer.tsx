@@ -53,5 +53,3 @@ export function TextShimmer({
     </LazyMotion>
   );
 }
-
-export default TextShimmer;
