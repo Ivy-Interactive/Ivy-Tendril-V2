@@ -6,6 +6,7 @@ import { canonicalPageUrl } from "./pageUrl";
 import { Toolbar, type ToolbarAction } from "./Toolbar";
 import { DEVICE_LABELS, DEVICE_VIEWPORTS, toDeviceKey, type DeviceKey } from "./devices";
 import { TuiBadge } from "../ui/TuiBadge";
+import { TooltipScope } from "../ui/TuiTooltip";
 import { useProxyOrigin } from "@/contexts/webviewer-context";
 
 // ---------------------------------------------------------------------------
@@ -731,163 +732,165 @@ export const WebViewer: React.FC<WebViewerProps> = ({
   const loading = !!frameSrc && loadedKey !== frameKey;
 
   return (
-    <div className="wvr-shell" style={shellStyle}>
-      {toolbar && (
-        <Toolbar
-          url={currentUrl}
-          canGoBack={canGoBack}
-          canGoForward={canGoForward}
-          loading={loading}
-          device={devKey}
-          selecting={selecting}
-          actions={actions}
-          onBack={goBack}
-          onForward={goForward}
-          onReload={reload}
-          onNavigate={navigateFromBar}
-          onDevice={chooseDevice}
-          onToggleSelect={() => setSelectMode(!selectingRef.current, true)}
-          onAction={(actionId) => emit("action", { id: actionId })}
-        />
-      )}
-      <div className={"wvr-stage" + (dev.w ? " wvr-device" : "")}>
-        {!currentUrl ? (
-          <div className="wvr-empty">
-            {toolbar
-              ? "Enter a URL in the address bar to load a page."
-              : "No URL -- set the Url prop to load a page."}
-          </div>
-        ) : frameSrc ? (
-          <iframe
-            ref={frameRef}
-            key={frameKey}
-            className="wvr-frame"
-            src={toViewUrl(frameSrc, viewerId, devKey, origin)}
-            title="Web content"
-            style={iframeStyle}
-            onLoad={() => {
-              setLoadedKey(frameKey);
-              healEscapedFrame();
-              // The document that just loaded has no pins yet: the agent is injected fresh
-              // on every load and knows nothing of what the last one drew.
-              pushMarkers();
-              if (selectingRef.current) postToFrame({ __proxyCmd: "select-start" });
-            }}
+    <TooltipScope>
+      <div className="wvr-shell" style={shellStyle}>
+        {toolbar && (
+          <Toolbar
+            url={currentUrl}
+            canGoBack={canGoBack}
+            canGoForward={canGoForward}
+            loading={loading}
+            device={devKey}
+            selecting={selecting}
+            actions={actions}
+            onBack={goBack}
+            onForward={goForward}
+            onReload={reload}
+            onNavigate={navigateFromBar}
+            onDevice={chooseDevice}
+            onToggleSelect={() => setSelectMode(!selectingRef.current, true)}
+            onAction={(actionId) => emit("action", { id: actionId })}
           />
-        ) : null}
-      </div>
-
-      {pending && (
-        <div className="wvr-overlay" onMouseDown={cancelComment}>
-          <div
-            className="tui-popover-shell wvr-comment-box"
-            onMouseDown={(e) => e.stopPropagation()}
-          >
-            <div className="wvr-comment-title">
-              {pending.mode === "edit" && (
-                <span className="wvr-comment-pin">
-                  {comments.find((m) => m.id === pending.markerId)?.number}
-                </span>
-              )}
-              Comment on
-              {pending.meta?.tag && (
-                <TuiBadge className="wvr-comment-tag" size="md" mono>
-                  {pending.meta.tag}
-                </TuiBadge>
-              )}
-              {pending.meta?.text && (
-                <span className="wvr-comment-snippet">{quote(pending.meta.text)}</span>
-              )}
+        )}
+        <div className={"wvr-stage" + (dev.w ? " wvr-device" : "")}>
+          {!currentUrl ? (
+            <div className="wvr-empty">
+              {toolbar
+                ? "Enter a URL in the address bar to load a page."
+                : "No URL -- set the Url prop to load a page."}
             </div>
-            {pending.resolving && (
-              <div className="wvr-comment-field">
-                <div className="wvr-comment-label">source</div>
-                <div className="wvr-comment-value wvr-comment-muted">resolving source map…</div>
-              </div>
-            )}
-            {!pending.resolving && sourceLabel(pending.debug) && (
-              <div className="wvr-comment-field">
-                <div className="wvr-comment-label">source</div>
-                <div className="wvr-comment-value wvr-comment-source">
-                  {sourceLabel(pending.debug)}
-                </div>
-                <div className="wvr-comment-note">
-                  {[pending.debug?.provenance, pending.debug?.confidence]
-                    .filter(Boolean)
-                    .join(" · ")}
-                </div>
-              </div>
-            )}
-            {(pending.debug?.ownerChain?.length ?? 0) > 0 && (
-              <div className="wvr-comment-field">
-                <div className="wvr-comment-label">components</div>
-                <div className="wvr-comment-value">
-                  {(pending.debug?.ownerChain ?? [])
-                    .map((owner) => owner.name)
-                    .filter(Boolean)
-                    .join(" › ")}
-                </div>
-              </div>
-            )}
-            {!pending.resolving &&
-              (pending.debug?.codeFrame || pending.debug?.source?.codeFrame) && (
-                <pre className="wvr-comment-code" ref={codeRef}>
-                  {(pending.debug.codeFrame || pending.debug.source?.codeFrame || "")
-                    .trimEnd()
-                    .split("\n")
-                    .map((line, i) => (
-                      <div key={i} className={line.startsWith(">") ? "wvr-code-hit" : undefined}>
-                        {line}
-                      </div>
-                    ))}
-                </pre>
-              )}
-            {pending.xpath && (
-              <div className="wvr-comment-field">
-                <div className="wvr-comment-label">xpath</div>
-                <div className="wvr-comment-value">{pending.xpath}</div>
-              </div>
-            )}
-            {pending.selector && (
-              <div className="wvr-comment-field">
-                <div className="wvr-comment-label">selector</div>
-                <div className="wvr-comment-value">{pending.selector}</div>
-              </div>
-            )}
-            <textarea
-              ref={commentRef}
-              className="wvr-comment-input tui-comment-textarea"
-              value={comment}
-              onChange={(e) => setComment(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Escape") cancelComment();
-                if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submitComment();
+          ) : frameSrc ? (
+            <iframe
+              ref={frameRef}
+              key={frameKey}
+              className="wvr-frame"
+              src={toViewUrl(frameSrc, viewerId, devKey, origin)}
+              title="Web content"
+              style={iframeStyle}
+              onLoad={() => {
+                setLoadedKey(frameKey);
+                healEscapedFrame();
+                // The document that just loaded has no pins yet: the agent is injected fresh
+                // on every load and knows nothing of what the last one drew.
+                pushMarkers();
+                if (selectingRef.current) postToFrame({ __proxyCmd: "select-start" });
               }}
-              placeholder="Type a comment… (Ctrl+Enter to submit)"
-              rows={4}
             />
-            <div className="wvr-comment-actions">
-              {pending.mode === "edit" && (
-                // Left of the gap, away from Save: this one cannot be undone.
-                <button
-                  type="button"
-                  className="tui-btn tui-btn--danger wvr-comment-delete"
-                  onClick={deleteComment}
-                >
-                  Delete
-                </button>
+          ) : null}
+        </div>
+
+        {pending && (
+          <div className="wvr-overlay" onMouseDown={cancelComment}>
+            <div
+              className="tui-popover-shell wvr-comment-box"
+              onMouseDown={(e) => e.stopPropagation()}
+            >
+              <div className="wvr-comment-title">
+                {pending.mode === "edit" && (
+                  <span className="wvr-comment-pin">
+                    {comments.find((m) => m.id === pending.markerId)?.number}
+                  </span>
+                )}
+                Comment on
+                {pending.meta?.tag && (
+                  <TuiBadge className="wvr-comment-tag" size="md" mono>
+                    {pending.meta.tag}
+                  </TuiBadge>
+                )}
+                {pending.meta?.text && (
+                  <span className="wvr-comment-snippet">{quote(pending.meta.text)}</span>
+                )}
+              </div>
+              {pending.resolving && (
+                <div className="wvr-comment-field">
+                  <div className="wvr-comment-label">source</div>
+                  <div className="wvr-comment-value wvr-comment-muted">resolving source map…</div>
+                </div>
               )}
-              <button type="button" className="tui-btn tui-btn--ghost" onClick={cancelComment}>
-                Cancel
-              </button>
-              <button type="button" className="tui-btn tui-btn--primary" onClick={submitComment}>
-                {pending.mode === "edit" ? "Save" : "Add"}
-              </button>
+              {!pending.resolving && sourceLabel(pending.debug) && (
+                <div className="wvr-comment-field">
+                  <div className="wvr-comment-label">source</div>
+                  <div className="wvr-comment-value wvr-comment-source">
+                    {sourceLabel(pending.debug)}
+                  </div>
+                  <div className="wvr-comment-note">
+                    {[pending.debug?.provenance, pending.debug?.confidence]
+                      .filter(Boolean)
+                      .join(" · ")}
+                  </div>
+                </div>
+              )}
+              {(pending.debug?.ownerChain?.length ?? 0) > 0 && (
+                <div className="wvr-comment-field">
+                  <div className="wvr-comment-label">components</div>
+                  <div className="wvr-comment-value">
+                    {(pending.debug?.ownerChain ?? [])
+                      .map((owner) => owner.name)
+                      .filter(Boolean)
+                      .join(" › ")}
+                  </div>
+                </div>
+              )}
+              {!pending.resolving &&
+                (pending.debug?.codeFrame || pending.debug?.source?.codeFrame) && (
+                  <pre className="wvr-comment-code" ref={codeRef}>
+                    {(pending.debug.codeFrame || pending.debug.source?.codeFrame || "")
+                      .trimEnd()
+                      .split("\n")
+                      .map((line, i) => (
+                        <div key={i} className={line.startsWith(">") ? "wvr-code-hit" : undefined}>
+                          {line}
+                        </div>
+                      ))}
+                  </pre>
+                )}
+              {pending.xpath && (
+                <div className="wvr-comment-field">
+                  <div className="wvr-comment-label">xpath</div>
+                  <div className="wvr-comment-value">{pending.xpath}</div>
+                </div>
+              )}
+              {pending.selector && (
+                <div className="wvr-comment-field">
+                  <div className="wvr-comment-label">selector</div>
+                  <div className="wvr-comment-value">{pending.selector}</div>
+                </div>
+              )}
+              <textarea
+                ref={commentRef}
+                className="wvr-comment-input tui-comment-textarea"
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Escape") cancelComment();
+                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submitComment();
+                }}
+                placeholder="Type a comment… (Ctrl+Enter to submit)"
+                rows={4}
+              />
+              <div className="wvr-comment-actions">
+                {pending.mode === "edit" && (
+                  // Left of the gap, away from Save: this one cannot be undone.
+                  <button
+                    type="button"
+                    className="tui-btn tui-btn--danger wvr-comment-delete"
+                    onClick={deleteComment}
+                  >
+                    Delete
+                  </button>
+                )}
+                <button type="button" className="tui-btn tui-btn--ghost" onClick={cancelComment}>
+                  Cancel
+                </button>
+                <button type="button" className="tui-btn tui-btn--primary" onClick={submitComment}>
+                  {pending.mode === "edit" ? "Save" : "Add"}
+                </button>
+              </div>
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </div>
+    </TooltipScope>
   );
 };
 
