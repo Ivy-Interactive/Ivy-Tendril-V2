@@ -112,6 +112,7 @@ jobs:
     needs: refresh
     if: needs.refresh.outputs.drifted == 'true'
     runs-on: ubuntu-latest
+    timeout-minutes: 5
     permissions:
       contents: read
       pull-requests: write
@@ -121,6 +122,7 @@ jobs:
       SOURCE_REF: ${{ github.ref_name }}
     steps:
       - name: Open the pull request
+        shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_REPO: ${{ github.repository }}
