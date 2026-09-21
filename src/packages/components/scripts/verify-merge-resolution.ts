@@ -129,10 +129,16 @@ function gitMergeBase(ref1: string, ref2: string): string {
 }
 
 function gitDir(): string {
-  return execFileSync("git", ["rev-parse", "--absolute-git-dir"], {
-    cwd: repoRoot,
-    encoding: "utf8",
-  }).trim();
+  try {
+    return execFileSync("git", ["rev-parse", "--absolute-git-dir"], {
+      cwd: repoRoot,
+      encoding: "utf8",
+    }).trim();
+  } catch {
+    throw new Error(
+      `Not a git repository (git rev-parse --absolute-git-dir failed in ${repoRoot})`,
+    );
+  }
 }
 
 function gitRevList(range: string): string[] {
@@ -610,7 +616,7 @@ function checkRange(ref: string): CommitFindingResult[] {
 function checkInProgress(): Finding[] {
   const mergeHeadPath = join(gitDir(), "MERGE_HEAD");
   if (!existsSync(mergeHeadPath)) {
-    throw new Error("Not in a merge (no .git/MERGE_HEAD found)");
+    throw new Error("Not in a merge (no MERGE_HEAD found)");
   }
 
   const theirs = readFileSync(mergeHeadPath, "utf8").trim();
