@@ -10,13 +10,11 @@ use axum::Json;
 use serde_json::json;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tendril_core::config::{
-    get_project_root_dir, load_config, sanitize_project_name, save_config,
-};
+use tendril_core::config::{get_project_root_dir, load_config, sanitize_project_name, save_config};
 use tendril_core::db::open_database;
-use tendril_core::plans::delete_project_plans;
 use tendril_core::git::{query_project_issues, resolve_project_github_repos, IssueQueryParams};
 use tendril_core::models::{ProjectConfig, ProjectVerificationRef, RepoRef};
+use tendril_core::plans::delete_project_plans;
 
 pub async fn list_projects(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let settings = load_config(&state.config_path).unwrap_or_default();
@@ -702,8 +700,10 @@ pub async fn purge_project(
     // it should pass. `starts_with` on `Path` compares whole components, so a sibling sharing a name
     // prefix cannot satisfy it.
     if project_dir.exists() {
-        let resolved_root = std::fs::canonicalize(&projects_root).unwrap_or_else(|_| projects_root.clone());
-        let resolved_dir = std::fs::canonicalize(&project_dir).unwrap_or_else(|_| project_dir.clone());
+        let resolved_root =
+            std::fs::canonicalize(&projects_root).unwrap_or_else(|_| projects_root.clone());
+        let resolved_dir =
+            std::fs::canonicalize(&project_dir).unwrap_or_else(|_| project_dir.clone());
         if !resolved_dir.starts_with(&resolved_root) || resolved_dir == resolved_root {
             return (
                 StatusCode::BAD_REQUEST,

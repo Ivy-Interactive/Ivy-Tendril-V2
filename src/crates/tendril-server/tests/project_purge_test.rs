@@ -121,7 +121,11 @@ impl TestServer {
         let dir = self.tendril_home.join("Projects").join(name);
         std::fs::create_dir_all(dir.join("Repos").join("owner").join("repo")).unwrap();
         std::fs::create_dir_all(dir.join("Skills")).unwrap();
-        std::fs::write(dir.join("Repos").join("owner").join("repo").join("a.txt"), "x").unwrap();
+        std::fs::write(
+            dir.join("Repos").join("owner").join("repo").join("a.txt"),
+            "x",
+        )
+        .unwrap();
         dir
     }
 
