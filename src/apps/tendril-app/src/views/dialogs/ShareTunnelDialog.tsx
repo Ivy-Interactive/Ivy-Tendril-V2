@@ -215,6 +215,13 @@ export function ShareTunnelDialog({
       testId="share-tunnel-dialog"
       width="rem32"
       initialFocusRef={closeRef}
+      // Deliberately no `shortcut`, unlike the rest of the dialog family. `DialogShellProps`
+      // documents the chord as belonging to "the primary footer button", and this footer holds only
+      // Close — a decline, which Escape already owns. The real actions are in the body and they are
+      // status-dependent: Start Share Tunnel while `disabled`, Stop Sharing while `connected`. One
+      // chord over the pair would mean the same keystroke starts a tunnel in one state and tears it
+      // down in another, which is a worse affordance than none. If a hint is ever wanted here it
+      // belongs on those two body buttons with their own explicit bindings, not on the shell.
       footer={
         <Button ref={closeRef} variant="outline" onClick={onClose} data-testid="dialog-close">
           Close

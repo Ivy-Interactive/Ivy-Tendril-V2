@@ -6,8 +6,17 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
+  TuiKbd,
 } from "@ivy-interactive/components/ui";
 import { DIALOG_WIDTH, type DialogWidth } from "./fieldStyles";
+
+/**
+ * The chords a dialog is allowed to nominate. Shared by `DialogShellProps.shortcut` and
+ * {@link DialogShortcutHint} so a rendered cap can never name a chord the shell does not listen
+ * for — `handleKeyDown` below rejects a `Ctrl+Enter` outright when the dialog declared bare
+ * `Enter`, and `SuggestChangesDialog` renders one shell of each.
+ */
+export type DialogShortcut = "Enter" | "Ctrl+Enter";
 
 export interface DialogShellProps {
   isOpen: boolean;
@@ -30,14 +39,49 @@ export interface DialogShellProps {
    * why V1 puts it on the dialogs that have one. Bare `Enter` is ignored while a `textarea` or a
    * button holds focus: a newline is what Enter means in the first, and the second already fires its
    * own click, which would submit twice.
+   *
+   * Declaring it only binds the key. The *visible* half is {@link DialogShortcutHint}, which the
+   * nominated button renders — see that component for why the shell cannot inject it itself.
    */
-  shortcut?: "Enter" | "Ctrl+Enter";
+  shortcut?: DialogShortcut;
   onShortcut?: () => void;
   /**
    * Extra classes on the footer row. `flex-wrap` is the port of V1's `Layout.Wrap()`, which the
    * dialogs carrying three or four choices use so the last one does not fall off a narrow window.
    */
   footerClassName?: string;
+}
+
+/**
+ * The key cap for the chord a dialog declared, rendered *inside* the button that chord fires.
+ *
+ * The shell binds `shortcut` and the footer renders the button, and until now those were the two
+ * halves of V1's `.ShortcutKey(...)` with only one of them visible: ten dialogs listened for
+ * Ctrl+Enter and not one showed a cap, so the only way to discover the chord was to read this file.
+ *
+ * Three decisions worth keeping:
+ *
+ * - **`TuiKbd`, not `ShortcutKeys`/`Kbd`.** `TuiKbd` is `aria-hidden` (`TuiKbd.tsx`: "a button
+ *   labelled 'Execute Plan' carrying an `X` hint announces itself as 'Execute Plan X'"), so the cap
+ *   decorates the button without joining its accessible name — which is what lets every existing
+ *   `getByRole("button", { name })` in the suite keep working, and what keeps `ConfirmDialog`'s
+ *   contract point 3 ("the label is the verb") true of the name a screen reader reads.
+ * - **`platform`, not `getPlatformShortcut`.** The prop defaults to `false`, and without it the cap
+ *   reads a literal "Ctrl+Enter" on a Mac. `getPlatformShortcut` is right for
+ *   `KeyboardShortcutsHelp`, which formats arbitrary registry `displayKey` strings, but it
+ *   uppercases the key word into "⌘+ENTER"; `TuiKbd`'s own mapping gives ⌘/Ctrl *and* glyphs Enter
+ *   as ↵.
+ * - **`outline`.** The documented variant for "hints on a colored surface ... where the cap must
+ *   ride the parent's own text color" (`ui.css`), which is exactly a filled or destructive button.
+ *
+ * Typed against the same union as `DialogShellProps.shortcut`, so a cap that names a chord the
+ * shell would reject is a type error rather than a wrong label. The shell cannot render this into
+ * `footer` itself: `footer` is an opaque `ReactNode` and there is no reliable way to pick the
+ * primary button out of it, so the nominated button opts in by rendering the hint as its last
+ * child. `ContentInput`'s submit button is the precedent this copies.
+ */
+export function DialogShortcutHint({ shortcut }: { shortcut: DialogShortcut }) {
+  return <TuiKbd keys={shortcut} platform variant="outline" />;
 }
 
 /**
@@ -61,7 +105,9 @@ export interface DialogShellProps {
  * 5. `role="dialog"`/`aria-modal` come from Radix; a `DialogTitle` is always
  *    rendered, since Radix warns without one.
  * 6. `shortcut` is the keyboard half of V1's primary footer button, gated so it
- *    can only ever fire the *non*-destructive action a dialog nominates.
+ *    can only ever fire the *non*-destructive action a dialog nominates. The
+ *    button it fires renders {@link DialogShortcutHint}, so the chord is
+ *    advertised where it is pressed rather than only in this file.
  */
 export function DialogShell({
   isOpen,

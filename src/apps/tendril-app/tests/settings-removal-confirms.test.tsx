@@ -224,10 +224,14 @@ describe("the settings removal confirm follows Framework's shape", () => {
     const confirm = within(dialog).getByTestId("dialog-confirm");
 
     const footer = cancel.parentElement as HTMLElement;
-    expect([...footer.querySelectorAll("button")].map((b) => b.textContent)).toEqual([
-      "Cancel",
-      "Remove",
-    ]);
+    // Accessible names rather than `textContent`: the confirm carries an `aria-hidden`
+    // `DialogShortcutHint` cap, which is exactly what keeps the *name* the bare verb while the
+    // rendered text reads "Remove Ctrl \u21b5". See the same assertion in `DeletePlanDialog.test.tsx`.
+    const buttons = [...footer.querySelectorAll("button")];
+    expect(buttons).toHaveLength(2);
+    ["Cancel", "Remove"].forEach((name, i) =>
+      expect(buttons[i]).toHaveAccessibleName(name),
+    );
     expect(cancel).toHaveClass("border", "bg-background");
     expect(confirm).toHaveClass("bg-destructive");
     expect(confirm).toBeEnabled();

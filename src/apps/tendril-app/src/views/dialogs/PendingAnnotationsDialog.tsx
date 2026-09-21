@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Button } from "@ivy-interactive/components/ui";
-import { DialogShell } from "./DialogShell";
+import { DialogShell, DialogShortcutHint } from "./DialogShell";
 
 export interface PendingAnnotationsDialogProps {
   isOpen: boolean;
@@ -133,9 +133,16 @@ export function PendingAnnotationsDialog({
           <Button variant="outline" onClick={onProceed} data-testid="guard-proceed">
             {declineLabel}
           </Button>
+          {/* The cap lives inside the same conditional as the shortcut spread above, so the two
+              appear and disappear together: without `onUpdateAndExecute` there is no primary, the
+              shell is given no chord, and a cap here would name a key the dialog does not listen
+              for. It is on this button rather than `guard-proceed` because the chord fires this
+              one — the decline is outline, and the chord belongs to the answer that resolves the
+              warning. */}
           {onUpdateAndExecute && (
             <Button onClick={onUpdateAndExecute} data-testid="guard-update-and-execute">
               Update Plan &amp; Execute
+              <DialogShortcutHint shortcut="Ctrl+Enter" />
             </Button>
           )}
         </>
