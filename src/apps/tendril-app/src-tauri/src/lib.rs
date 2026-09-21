@@ -15,6 +15,7 @@ pub use commands::inbox::*;
 pub use commands::jobs::*;
 pub use commands::local_file::*;
 pub use commands::plans::*;
+pub use commands::promptwares::*;
 pub use commands::pull_requests::*;
 pub use commands::state::*;
 pub use commands::tables::*;
@@ -177,6 +178,7 @@ pub fn run() {
             cmd_put_config,
             cmd_get_config_text,
             cmd_put_config_text,
+            cmd_get_promptware_program,
             cmd_get_onboarding_status,
             cmd_complete_onboarding,
             cmd_dismiss_onboarding,

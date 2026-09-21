@@ -16,6 +16,7 @@ pub mod onboarding;
 pub mod ping;
 pub mod plans;
 pub mod projects;
+pub mod promptwares;
 pub mod pull_requests;
 pub mod recommendations;
 pub mod tables;
@@ -326,6 +327,12 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/agents/:agent/usage",
             get(agents::get_agent_usage_handler),
+        )
+        // The prompt a promptware runs, for the Settings pane that configures it. Read-only: editing a
+        // program is `promptwareOverlay`'s job, a directory the team owns and version-controls.
+        .route(
+            "/api/promptwares/:name/program",
+            get(promptwares::get_promptware_program_handler),
         )
         // Config
         .route(

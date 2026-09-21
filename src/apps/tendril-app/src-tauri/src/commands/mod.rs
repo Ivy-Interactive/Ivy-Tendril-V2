@@ -8,6 +8,7 @@ pub mod inbox;
 pub mod jobs;
 pub mod local_file;
 pub mod plans;
+pub mod promptwares;
 pub mod pull_requests;
 pub mod state;
 pub mod tables;

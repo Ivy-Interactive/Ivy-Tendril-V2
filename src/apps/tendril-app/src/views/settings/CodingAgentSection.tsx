@@ -739,7 +739,7 @@ export const CodingAgentSection: React.FC<{
               : discovered && discovered.length > 0
                 ? // `CodingAgentStepView`'s wording for the same block once its fetch has come back.
                   "Select models from your endpoint for each profile level."
-                : "Promptwares are configured to use different profiles depending on the complexity of the task. You can specify what model and effort level to use for each profile."
+                : "Workflow agents are configured to use different profiles depending on the complexity of the task. You can specify what model and effort level to use for each profile."
           }
           testId="profile-models-block"
         >

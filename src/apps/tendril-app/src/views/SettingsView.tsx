@@ -13,6 +13,7 @@ import {
   Callout,
 } from "@ivy-interactive/components/ui";
 import { Plus } from "lucide-react";
+import { PlanMarkdown } from "@ivy-interactive/components/tendril";
 import { bridge } from "../api/bridge";
 import { notificationsStore } from "../state/notificationsStore";
 import { uiStore } from "../state/uiStore";
@@ -37,12 +38,14 @@ import {
   NumberField,
   SaveError,
   SettingsSection,
+  SubSection,
   SelectField,
   asOptions,
 } from "./settings/fields";
 import { asRecord, asString, parseLines } from "./settings/configValues";
 import { readLevels, readProjectEntries, readVerificationDefs } from "./settings/projectConfig";
 import { PROFILE_TIERS, readAgentEntries } from "./settings/codingAgents";
+import { promptwaresApi, type PromptwareProgram } from "../api/promptwaresApi";
 import { ProjectSettingsView } from "./settings/ProjectSettingsView";
 import { AddProjectView } from "./settings/AddProjectView";
 /**
@@ -191,6 +194,83 @@ const formOf = (cfg: TendrilConfig | null): SettingsForm => {
 };
 
 /**
+ * The prompt the selected agent runs, read from the deployed `Promptwares/<Name>/Program.md`.
+ *
+ * The deployed copy rather than `src/promptwares/<Name>/Program.md`: a `promptwareOverlay` can
+ * replace `Program.md`, and the overlay's copy is what a job actually compiles into its firmware, so
+ * the shipped source would show a prompt that is not the one running.
+ *
+ * `PlanMarkdown` renders it, not a `<pre>`: a program is markdown - headings, fenced code, tables -
+ * and that component is already how this app renders every other body of agent-authored markdown
+ * (`ChatMessageRow`, `InboxView`, the plan tabs). `flow` drops the plan-page shell, which is what
+ * leaves it laid out as a block inside the settings column instead of a page inside a page.
+ */
+const PromptwareProgramPane: React.FC<{ name: string }> = ({ name }) => {
+  const [program, setProgram] = React.useState<PromptwareProgram | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [isLoading, setIsLoading] = React.useState(false);
+
+  // `_default` is the reserved fallback key rather than an agent, so there is no directory to read
+  // and no request to make - the effect below never fires for it.
+  const isDefaultKey = name === DEFAULT_PROMPTWARE_KEY;
+
+  React.useEffect(() => {
+    if (isDefaultKey) {
+      setProgram(null);
+      setError(null);
+      return;
+    }
+    // Guards a selection changed while an earlier read was still in flight: without it the slower
+    // response wins and the pane shows the previous agent's prompt under the new agent's name.
+    let active = true;
+    setIsLoading(true);
+    setProgram(null);
+    setError(null);
+    promptwaresApi
+      .readProgram(name)
+      .then((next) => {
+        if (active) setProgram(next);
+      })
+      .catch((err: unknown) => {
+        if (active) setError(describeBridgeError(err));
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [name, isDefaultKey]);
+
+  return (
+    <SubSection
+      title="Prompt"
+      hint={
+        program?.layer === "overlay"
+          ? "From your overlay directory, which replaces the shipped prompt."
+          : "The deployed prompt this agent runs. Read-only: change it from your overlay directory."
+      }
+      testId="promptware-program"
+    >
+      {isDefaultKey ? (
+        <p className="text-sm text-muted-foreground">
+          _default is the fallback applied to every agent rather than an agent of its own, so it has
+          no prompt. Select an agent to read one.
+        </p>
+      ) : isLoading ? (
+        <p className="text-sm text-muted-foreground">Loading prompt...</p>
+      ) : error ? (
+        <p className="text-sm text-muted-foreground">{error}</p>
+      ) : program ? (
+        <div className="rounded-box border border-border bg-card/40 p-4">
+          <PlanMarkdown id={`promptware-program-${name}`} content={program.program} article flow />
+        </div>
+      ) : null}
+    </SubSection>
+  );
+};
+
+/**
  * `PromptwaresSetupView` plus its `EditPromptwareDialogContent`, as one inline editor.
  *
  * Two deliberate departures from the original, both forced by how V2 writes config: the entries are
@@ -243,9 +323,9 @@ const PromptwaresCard: React.FC<{
     setError(null);
     try {
       await onSave("promptwares", { [key]: value });
-      notificationsStore.notifySuccess("Saved", "Promptware saved");
+      notificationsStore.notifySuccess("Saved", "Agent saved");
     } catch (err) {
-      setError(`Failed to save promptware: ${describeBridgeError(err)}`);
+      setError(`Failed to save agent: ${describeBridgeError(err)}`);
     } finally {
       setIsSaving(false);
     }
@@ -253,18 +333,18 @@ const PromptwaresCard: React.FC<{
 
   return (
     <SettingsSection
-      title="Promptware Configuration"
-      hint="Configure agent profile and tool permissions for each promptware."
+      title="Workflow Agents"
+      hint="Read each agent's prompt, and configure the coding-agent profile and tool permissions it runs with."
       testId="promptwares-card"
     >
       <div className="max-w-170 space-y-4">
         <SelectField
           id="promptware-select"
-          label="Promptware"
+          label="Agent"
           value={selected}
           options={known.map((key) => ({
             value: key,
-            label: key === DEFAULT_PROMPTWARE_KEY ? "_default (every promptware)" : key,
+            label: key === DEFAULT_PROMPTWARE_KEY ? "_default (every agent)" : key,
           }))}
           hint={
             entries.some((entry) => entry.key === selected)
@@ -274,12 +354,14 @@ const PromptwaresCard: React.FC<{
           onChange={setSelected}
         />
 
+        <PromptwareProgramPane name={selected} />
+
         <SelectField
           id="promptware-profile-select"
           label="Profile"
           value={draft.profile === "" ? "default" : draft.profile}
           options={[{ value: "default", label: "Default (unset)" }, ...asOptions(profileOptions)]}
-          hint="Last writer wins: _default, then this promptware, then a per-plan or CLI override."
+          hint="Last writer wins: _default, then this agent, then a per-plan or CLI override."
           onChange={(value) =>
             setDraft((prev) => ({ ...prev, profile: value === "default" ? "" : value }))
           }
@@ -343,12 +425,12 @@ const PromptwaresCard: React.FC<{
               htmlFor="promptware-new-name"
               className="text-xs font-medium text-muted-foreground"
             >
-              Add Promptware
+              Add Agent
             </Label>
             <Input
               id="promptware-new-name"
               value={newName}
-              placeholder="Promptware name (e.g. CreatePlan)..."
+              placeholder="Agent name (e.g. CreatePlan)..."
               onChange={(e) => setNewName(e.target.value)}
             />
           </div>
@@ -609,14 +691,18 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   /**
-   * `SettingsApp`'s `onDeleteProject`, minus the write: the dialog has already called
-   * `DELETE /api/projects/:name`. What is left is V1's two lines - re-read, then fall back to the
-   * first remaining project, or to Coding Agent when that was the last one - and V1's toast.
+   * `SettingsApp`'s `onDeleteProject`, minus the write: the dialog has already called the route.
+   * What is left is V1's two lines - re-read, then fall back to the first remaining project, or to
+   * Coding Agent when that was the last one - and a toast.
    *
    * The config is re-read here rather than trusted from local state, because the daemon is the only
    * thing that knows what the file holds now: the `tendril` CLI writes to it too.
+   *
+   * `title`/`message` are the caller's because the two Danger Zone actions end here identically -
+   * the selection has to move off the project either way - but must not *read* identically. A
+   * "Deleted" toast after Remove Project is the same false promise the button's old label made.
    */
-  const selectAfterDelete = (name: string) => {
+  const selectAfterGone = (name: string, title: string, message: string) => {
     void (async () => {
       let remaining = projects.filter((project) => project.name !== name);
       try {
@@ -628,9 +714,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
         // because the entry this handler was called for is gone whatever the refresh did.
       }
       setSelected(remaining.length > 0 ? projectTag(0) : SettingsTag.CodingAgent);
-      notificationsStore.notifySuccess("Deleted", `Deleted project '${name}'`);
+      notificationsStore.notifySuccess(title, message);
     })();
   };
+
+  const selectAfterRemove = (name: string) =>
+    selectAfterGone(name, "Removed", `Removed project '${name}'. Its files are still on disk.`);
+
+  const selectAfterDelete = (name: string) =>
+    selectAfterGone(name, "Deleted", `Deleted project '${name}' and its data`);
 
   /**
    * `ConfigYamlUiHelper.OpenOrNavigate`, now taking its *navigate* arm.
@@ -821,6 +913,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 onSaveRaw={saveRawKey}
                 onReloadConfig={reloadConfig}
                 siblingNames={projectNames.filter((name) => name !== selectedProject.name)}
+                onRemoved={selectAfterRemove}
                 onDeleted={selectAfterDelete}
               />
             </div>

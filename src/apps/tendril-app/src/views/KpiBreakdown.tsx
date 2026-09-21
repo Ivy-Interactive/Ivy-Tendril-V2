@@ -574,7 +574,7 @@ export function buildKpiBlade(kpiId: string, data: KpiBreakdownData): BladeDescr
 
       return blade("Recent plans; a dash means the rows were never priced", [
         <Callout.Info key="note" title="7-Day Rolling Average" className="m-4">
-          Average Cost per Plan calculates the mean execution and promptware spend for plans created
+          Average Cost per Plan calculates the mean execution and agent spend for plans created
           in the last {PLAN_WINDOW_DAYS} days that reached Completed, Failed, or Review state.
           Unpriced plans (e.g. subscription runs where cost is null) are excluded from the divisor
           so they do not artificially deflate the average.

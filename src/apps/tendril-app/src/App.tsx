@@ -972,7 +972,7 @@ export const App: React.FC = () => {
       const job = detail ??
         summary ?? {
           id: jobId,
-          type: "Promptware Job",
+          type: "Agent Job",
           project: "Tendril",
           status: "Running" as const,
         };
