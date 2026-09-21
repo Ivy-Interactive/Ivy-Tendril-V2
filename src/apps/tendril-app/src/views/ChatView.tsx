@@ -769,7 +769,14 @@ export const ChatView: React.FC<ChatViewProps> = ({
             </div>
           )}
           {/* Error Banner */}
-          {error && <ErrorBanner data-testid="chat-error">{error}</ErrorBanner>}
+          {error && (
+            <div
+              data-testid="chat-error"
+              className="flex items-center justify-between border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-xs text-destructive"
+            >
+              <span>{error}</span>
+            </div>
+          )}
 
           {/*
           Header Toolbar. Embedded there is none: `ChatWidget` renders
