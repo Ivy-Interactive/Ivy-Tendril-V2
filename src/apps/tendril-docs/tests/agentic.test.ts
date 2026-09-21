@@ -10,6 +10,9 @@ import {
   generatePrivacyPage,
   generateHomepageHtml,
   generate404Html,
+  generateOpenApiSpec,
+  generateOAuthServerMetadata,
+  generateOAuthResourceMetadata,
 } from "../src/plugins/emit-agentic-assets";
 import { readContent } from "./helpers";
 import { routesForContent } from "../src/plugins/emit-route-shells";
@@ -179,5 +182,41 @@ describe("MCP server discovery manifest", () => {
     expect(mcp.transport.command).toBe("tendril");
     expect(mcp.transport.args).toContain("mcp");
     expect(mcp.endpoints.streamable_http).toBe("http://127.0.0.1:5010/mcp");
+  });
+});
+
+describe("OpenAPI specification", () => {
+  const spec = JSON.parse(generateOpenApiSpec());
+
+  it("validates OpenAPI 3.1.0 structure", () => {
+    expect(spec.openapi).toBe("3.1.0");
+    expect(spec.info.title).toContain("Tendril");
+    expect(spec.paths["/api/v1/plans"]).toBeDefined();
+    expect(spec.paths["/api/v1/plans"].get).toBeDefined();
+    expect(spec.paths["/api/v1/plans"].post).toBeDefined();
+    expect(spec.paths["/api/v1/worktrees"]).toBeDefined();
+  });
+
+  it("declares OAuth2 security scheme with scoped permissions", () => {
+    const oauth = spec.components.securitySchemes.OAuth2;
+    expect(oauth.type).toBe("oauth2");
+    const scopes = oauth.flows.authorizationCode.scopes;
+    expect(scopes["plans:read"]).toBeDefined();
+    expect(scopes["plans:write"]).toBeDefined();
+  });
+});
+
+describe("OAuth metadata", () => {
+  it("generates valid authorization server metadata", () => {
+    const authServer = JSON.parse(generateOAuthServerMetadata());
+    expect(authServer.issuer).toBe("https://ivy.app");
+    expect(authServer.scopes_supported).toContain("plans:read");
+    expect(authServer.code_challenge_methods_supported).toContain("S256");
+  });
+
+  it("generates valid protected resource metadata (RFC 9728)", () => {
+    const resource = JSON.parse(generateOAuthResourceMetadata());
+    expect(resource.resource).toBe("http://127.0.0.1:5010");
+    expect(resource.scopes_supported).toContain("plans:read");
   });
 });

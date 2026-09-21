@@ -273,6 +273,206 @@ export function generateMcpManifest(rawSiteUrl: string = CANONICAL_BASE_URL): st
   );
 }
 
+export function generateOpenApiSpec(): string {
+  return JSON.stringify(
+    {
+      openapi: "3.1.0",
+      info: {
+        title: "Ivy Tendril Daemon REST API",
+        version: "2.0.0",
+        description: "Local and remote orchestration API for Ivy Tendril agentic software factory.",
+        contact: {
+          name: "Ivy Interactive",
+          email: "support@ivy.app",
+          url: "https://ivy.app",
+        },
+      },
+      servers: [
+        {
+          url: "http://127.0.0.1:5010",
+          description: "Local daemon",
+        },
+      ],
+      paths: {
+        "/api/v1/plans": {
+          get: {
+            summary: "List plans",
+            description:
+              "Returns all plans in the current workspace with state and branch information.",
+            operationId: "listPlans",
+            security: [{ OAuth2: ["plans:read"] }],
+            responses: {
+              "200": {
+                description: "List of plans",
+                content: {
+                  "application/json": {
+                    schema: {
+                      type: "array",
+                      items: { $ref: "#/components/schemas/Plan" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          post: {
+            summary: "Create plan",
+            description: "Creates a new plan for agent execution.",
+            operationId: "createPlan",
+            security: [{ OAuth2: ["plans:write"] }],
+            requestBody: {
+              required: true,
+              content: {
+                "application/json": {
+                  schema: { $ref: "#/components/schemas/CreatePlanRequest" },
+                },
+              },
+            },
+            responses: {
+              "201": {
+                description: "Plan created successfully",
+                content: {
+                  "application/json": {
+                    schema: { $ref: "#/components/schemas/Plan" },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "/api/v1/plans/{id}": {
+          get: {
+            summary: "Get plan",
+            description: "Returns full plan details including annotations and verification status.",
+            operationId: "getPlan",
+            parameters: [{ name: "id", in: "path", required: true, schema: { type: "string" } }],
+            security: [{ OAuth2: ["plans:read"] }],
+            responses: {
+              "200": {
+                description: "Plan details",
+                content: {
+                  "application/json": {
+                    schema: { $ref: "#/components/schemas/Plan" },
+                  },
+                },
+              },
+            },
+          },
+        },
+        "/api/v1/worktrees": {
+          get: {
+            summary: "List worktrees",
+            description: "Inspect active git worktrees and agent isolation environments.",
+            operationId: "listWorktrees",
+            security: [{ OAuth2: ["worktrees:read"] }],
+            responses: {
+              "200": {
+                description: "Active worktrees",
+                content: {
+                  "application/json": {
+                    schema: {
+                      type: "array",
+                      items: { $ref: "#/components/schemas/Worktree" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      components: {
+        securitySchemes: {
+          OAuth2: {
+            type: "oauth2",
+            description: "OAuth 2.0 authentication with scoped permissions",
+            flows: {
+              authorizationCode: {
+                authorizationUrl: "http://127.0.0.1:5010/oauth/authorize",
+                tokenUrl: "http://127.0.0.1:5010/oauth/token",
+                scopes: {
+                  "plans:read": "Read-only access to plans and annotations",
+                  "plans:write": "Create, approve, and run plans",
+                  "worktrees:read": "List and inspect isolated git worktrees",
+                  "worktrees:write": "Create and clean up git worktrees",
+                },
+              },
+            },
+          },
+        },
+        schemas: {
+          Plan: {
+            type: "object",
+            required: ["id", "title", "state"],
+            properties: {
+              id: { type: "string" },
+              title: { type: "string" },
+              state: {
+                type: "string",
+                enum: ["Draft", "Approved", "Running", "Completed", "Failed", "Icebox"],
+              },
+              branch: { type: "string" },
+              annotations: { type: "array", items: { type: "string" } },
+            },
+          },
+          CreatePlanRequest: {
+            type: "object",
+            required: ["title"],
+            properties: {
+              title: { type: "string" },
+              description: { type: "string" },
+              agent: {
+                type: "string",
+                enum: ["claude-code", "codex", "copilot", "opencode", "gemini"],
+              },
+            },
+          },
+          Worktree: {
+            type: "object",
+            required: ["path", "branch"],
+            properties: {
+              path: { type: "string" },
+              branch: { type: "string" },
+              clean: { type: "boolean" },
+            },
+          },
+        },
+      },
+    },
+    null,
+    2,
+  );
+}
+
+export function generateOAuthServerMetadata(): string {
+  return JSON.stringify(
+    {
+      issuer: "https://ivy.app",
+      authorization_endpoint: "http://127.0.0.1:5010/oauth/authorize",
+      token_endpoint: "http://127.0.0.1:5010/oauth/token",
+      scopes_supported: ["plans:read", "plans:write", "worktrees:read", "worktrees:write"],
+      response_types_supported: ["code", "token"],
+      grant_types_supported: ["authorization_code", "refresh_token"],
+      code_challenge_methods_supported: ["S256"],
+    },
+    null,
+    2,
+  );
+}
+
+export function generateOAuthResourceMetadata(): string {
+  return JSON.stringify(
+    {
+      resource: "http://127.0.0.1:5010",
+      authorization_servers: ["https://ivy.app"],
+      scopes_supported: ["plans:read", "plans:write", "worktrees:read", "worktrees:write"],
+      bearer_methods_supported: ["header"],
+    },
+    null,
+    2,
+  );
+}
+
 export function generateAboutPage(rawSiteUrl: string = CANONICAL_BASE_URL): string {
   const { siteRootUrl, docsBaseUrl } = resolveSiteUrls(rawSiteUrl);
   return `<!DOCTYPE html>
@@ -705,6 +905,32 @@ export function generateHomepageHtml(rawSiteUrl: string = CANONICAL_BASE_URL): s
   <footer>
     <p>&copy; ${new Date().getFullYear()} Ivy Interactive AB. All rights reserved. Registered office: Strandvägen 7A, 114 56 Stockholm, Sweden.</p>
   </footer>
+  <script>
+    if (typeof document !== 'undefined') {
+      const register = (tool) => {
+        try {
+          if (document.modelContext && typeof document.modelContext.registerTool === 'function') {
+            document.modelContext.registerTool(tool);
+          } else if (typeof navigator !== 'undefined' && navigator.modelContext && typeof navigator.modelContext.registerTool === 'function') {
+            navigator.modelContext.registerTool(tool);
+          }
+        } catch (e) {}
+      };
+      register({
+        name: "tendril_mcp_info",
+        description: "Retrieve Ivy Tendril agent orchestration tools, MCP manifest, and daemon endpoints.",
+        parameters: { type: "object", properties: {} },
+        execute: async () => ({
+          mcp_endpoint: "http://127.0.0.1:5010/mcp",
+          docs_url: "${docsBaseUrl}/gettingstarted/introduction",
+          status: "ready"
+        })
+      });
+    }
+  </script>
+  <form toolname="tendril_search_docs" tooldescription="Search Ivy Tendril documentation and architecture guide" action="${docsBaseUrl}/gettingstarted/introduction" method="get" style="display:none">
+    <input name="q" type="text" placeholder="Search Tendril docs..." />
+  </form>
 </body>
 </html>`;
 }
@@ -757,18 +983,37 @@ export function emitAgenticAssets(options: EmitAgenticAssetsOptions): Plugin {
         writeFileSync(path.join(dirPath, "index.html"), html, "utf8");
       }
 
-      // 5. MCP Discovery Manifest at /.well-known/mcp & /.well-known/mcp.json
+      // 5. MCP Discovery Manifest at /.well-known/mcp & /.well-known/mcp.json, OAuth metadata
       const wellKnownDir = path.join(outDir, ".well-known");
       mkdirSync(wellKnownDir, { recursive: true });
       const mcpContent = generateMcpManifest(siteUrl);
       writeFileSync(path.join(wellKnownDir, "mcp"), mcpContent, "utf8");
       writeFileSync(path.join(wellKnownDir, "mcp.json"), mcpContent, "utf8");
       writeFileSync(path.join(wellKnownDir, "agent-instructions"), llmsTxtContent, "utf8");
+      writeFileSync(
+        path.join(wellKnownDir, "oauth-authorization-server"),
+        generateOAuthServerMetadata(),
+        "utf8",
+      );
+      writeFileSync(
+        path.join(wellKnownDir, "oauth-protected-resource"),
+        generateOAuthResourceMetadata(),
+        "utf8",
+      );
 
-      // 6. Agent-friendly 404.html
+      // 6. OpenAPI Specifications at /openapi.json, /openapi.yaml, /api/openapi.json
+      const openApiSpec = generateOpenApiSpec();
+      writeFileSync(path.join(outDir, "openapi.json"), openApiSpec, "utf8");
+      writeFileSync(path.join(outDir, "openapi.yaml"), openApiSpec, "utf8");
+      const apiDir = path.join(outDir, "api");
+      mkdirSync(apiDir, { recursive: true });
+      writeFileSync(path.join(apiDir, "openapi.json"), openApiSpec, "utf8");
+      writeFileSync(path.join(apiDir, "openapi.yaml"), openApiSpec, "utf8");
+
+      // 7. Agent-friendly 404.html
       writeFileSync(path.join(outDir, "404.html"), generate404Html(siteUrl), "utf8");
 
-      // 7. Rich, agent-ready homepage.html for site root
+      // 8. Rich, agent-ready homepage.html for site root
       writeFileSync(path.join(outDir, "homepage.html"), generateHomepageHtml(siteUrl), "utf8");
     },
   };
