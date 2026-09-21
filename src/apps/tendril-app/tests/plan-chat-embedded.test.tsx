@@ -163,6 +163,28 @@ describe("the plan chat is the chat view, embedded", () => {
     }
   });
 
+  /**
+   * …and centres them, like every other line of the empty state.
+   *
+   * `justify-content: flex-start` is V1's, but V1 only has it because embedded it lays the chips out
+   * as a `flex-wrap: nowrap` overflow-x scroller, where "centering an overflowing nowrap scroller
+   * would push leading chips past the scroll origin" (`chat-widget.css:1848`). The test above is the
+   * decision to drop that scroller; the `flex-start` came across with it and outlived its reason, so
+   * the panel's chips hung off the left under a centred greeting and a centred headline.
+   *
+   * Asserted as a class because jsdom computes no layout — the same trade `Sample Prompt Chip
+   * Wrapping` and `plan-markdown.css.test.ts` make. The geometry behind it was measured in Chromium
+   * against the panel's real class chain: at a 420px panel the first row's chips sat 32px left of the
+   * row's centre and the wrapped row 103px, and both went to 0 with `justify-center`.
+   */
+  it("centres its chips, rather than hanging them off the left of a centred empty state", async () => {
+    render(<PlanChatPanel plan={plan()} />);
+
+    const chips = await screen.findByTestId("sample-prompts");
+    expect(chips).toHaveClass("justify-center");
+    expect(chips).not.toHaveClass("justify-start");
+  });
+
   it("drafts a chip into the composer instead of sending it", async () => {
     const executeTurn = vi.spyOn(chatApi, "executeTurn").mockResolvedValue(undefined);
     render(<PlanChatPanel plan={plan()} />);
