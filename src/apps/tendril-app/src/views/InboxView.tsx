@@ -16,6 +16,7 @@ import {
   Badge,
   Button,
   DataTable,
+  HeaderLayout,
   Sheet,
   SheetContent,
   SheetHeader,
@@ -1115,7 +1116,10 @@ export const InboxView: React.FC<InboxViewProps> = ({
       <div data-testid="inbox-content" className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
         {/* Header: title, refresh and the Auto-Accept state on the left; the bulk actions on the
             right, in V1's order (`ContentView.BuildIssuesView`). */}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
+        {/* `shrink-0` on every piece of chrome in this column, here and below: the panel and the
+            table are the two things that may give up height, and anything else that shrinks does it
+            by clipping its own wrapped rows rather than by scrolling. */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3 shrink-0">
           <div className="flex min-w-0 items-center gap-2">
             <h1 className="text-2xl font-bold text-foreground">{title}</h1>
             <Button
@@ -1243,7 +1247,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
         </div>
 
         {/* Freshness and, for a multi-repo project, which repo is being listed. */}
-        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+        <div className="flex shrink-0 flex-wrap items-center gap-3 text-xs text-muted-foreground">
           {selectedCategory === "project-issues" && activeProjectRepos.length > 1 && (
             <div className="flex items-center gap-1.5">
               <label htmlFor="inbox-repo-select">Repo:</label>
@@ -1297,7 +1301,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
         </div>
 
         {fireNotice && (
-          <p data-testid="inbox-fire-notice" className="text-xs text-muted-foreground">
+          <p data-testid="inbox-fire-notice" className="shrink-0 text-xs text-muted-foreground">
             {fireNotice}
           </p>
         )}
@@ -1311,31 +1315,64 @@ export const InboxView: React.FC<InboxViewProps> = ({
             not filtered by category or project, and repeating them under Reviews or a project's
             issues would attach them to a list they have nothing to do with. */}
         {isMyIssues && checkSummary && proposals.length === 0 && !proposalError && (
-          <p data-testid="inbox-check-summary" className="text-xs text-muted-foreground">
+          <p data-testid="inbox-check-summary" className="shrink-0 text-xs text-muted-foreground">
             {checkSummary}
           </p>
         )}
 
         {isMyIssues && proposalError && (
-          <ErrorBanner data-testid="inbox-proposal-error">{proposalError}</ErrorBanner>
+          <ErrorBanner data-testid="inbox-proposal-error" className="shrink-0">
+            {proposalError}
+          </ErrorBanner>
         )}
 
         {isMyIssues && proposals.length > 0 && (
-          <div data-testid="inbox-proposals" className="space-y-2">
-            <div className="flex items-baseline justify-between">
-              <h2 className="text-sm font-semibold text-foreground">
-                Assigned issues awaiting your decision
-                <span className="ml-2 text-xs font-normal text-muted-foreground">
-                  {proposals.length}
-                </span>
-              </h2>
-              {checkSummary && (
-                <span data-testid="inbox-check-summary" className="text-xs text-muted-foreground">
-                  {checkSummary}
-                </span>
-              )}
-            </div>
+          /* `HeaderLayout`, not a `space-y` block, and this is the panel that was breaking the page.
+             It is the codebase's own fixed-chrome-over-scrolling-content primitive
+             (`ui/panel-layout.tsx`, porting `Ivy-Framework/.../HeaderLayoutWidget.tsx`), so the
+             heading and its count stay put while the cards scroll under them.
 
+             Why the panel and not the table: a sweep can import dozens of proposals, and this block
+             had no bound of any kind. The column's own `min-h-0` lets it *shrink*, but shrinking is
+             distributed over the flex line — an unbounded `flex-shrink: 1` sibling keeps its content
+             height as its basis, so it took 496px of a 568px column and left the table `height: 0`.
+             The table's `fillHeight` chain was intact the whole time; it was handed nothing to fill,
+             the column overflowed, and the frame's `overflow-y-auto` (`CONTENT_PADDED_CLASS`,
+             `ShellLayout.tsx:75`) became the scroller — which is the rail scrolling away, since the
+             rail is inside that frame.
+
+             `max-h-[min(16rem,33%)]` is the bound that makes the shrink resolve, and it has to be a
+             `min()` of the two: a fixed cap alone (`max-h-64`) is still most of the column in a 400px
+             window, and a percentage alone hands a tall window more queue than it needs. 16rem is
+             about three cards; a third is the share a transient triage queue may take from the list
+             it is triaging into. Measured in Chromium against this view's own compiled markup: as
+             shipped the page scrolls at every height tried (1000 down to 320px) and the rail leaves
+             the viewport with it; with the cap it never scrolls at any of them, the search box stays
+             on screen throughout, and the rail stays at the top.
+
+             `h-auto` overrides the primitive's own `h-full` so one proposal keeps one proposal's
+             height rather than reserving the whole cap, and `contentClassName` drops the default
+             `p-4` for the `space-y-2` this list already had. */
+          <HeaderLayout
+            data-testid="inbox-proposals"
+            className="h-auto max-h-[min(16rem,33%)] min-h-0 shrink"
+            contentClassName="space-y-2 p-0 pt-2"
+            header={
+              <div className="flex items-baseline justify-between">
+                <h2 className="text-sm font-semibold text-foreground">
+                  Assigned issues awaiting your decision
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                    {proposals.length}
+                  </span>
+                </h2>
+                {checkSummary && (
+                  <span data-testid="inbox-check-summary" className="text-xs text-muted-foreground">
+                    {checkSummary}
+                  </span>
+                )}
+              </div>
+            }
+          >
             {proposals.map((proposal) => (
               <div
                 key={proposal.id}
@@ -1381,7 +1418,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                 </div>
               </div>
             ))}
-          </div>
+          </HeaderLayout>
         )}
 
         {/* V1's order in `BuildIssuesView`: the spinner only while the list is still empty, then the
