@@ -357,7 +357,7 @@ describe("answering a question", () => {
    * V1's `ContentView.ApplyAnswer` merges the answer into the same revision and writes it back with
    * `UpdateLatestRevision`. The in-place write is the whole point: falling back to `writeRevision`
    * would **append**, which claims the agent produced a new plan and inflates `revisionCount` — the
-   * term `execute_guards.unfoldedAnswerCount` reads as `revisionCount === 1`, so a single answer would
+   * term `executeGuards.unfoldedAnswerCount` reads as `revisionCount === 1`, so a single answer would
    * switch that guard off.
    */
   it("writes the answer back into the same revision, and never appends one", async () => {

@@ -20,7 +20,7 @@ import {
   type StartJobResponse,
 } from "../types/api";
 import { bridge } from "../api/bridge";
-import { PlanActionsController } from "../controllers/plan_actions";
+import { PlanActionsController } from "../controllers/planActions";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { NoContentView } from "../components/NoContentView";
 import { VERIFICATION_BADGE_CLASS } from "../utils/verificationStatus";
