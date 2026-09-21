@@ -658,3 +658,22 @@
   outline: none;
 }
 
+.tui-comment-textarea:focus {
+  box-shadow: 0 0 0 var(--border-width) var(--ring);
+}
+
+/* The row recipe shared by PlanWorkspace's menu (.pws-menu-item) and Shell's item menu
+   (.tsh-item-menu-item) — only the declarations identical across both; gap, width, font-size,
+   hover background and disabled/danger states differ and stay on the widget's own class. */
+.tui-menu-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}

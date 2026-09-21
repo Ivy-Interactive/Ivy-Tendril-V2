@@ -136,7 +136,7 @@ const OverflowMenu: React.FC<OverflowMenuProps> = ({ items, onFire }) => {
               key={item.tag}
               type="button"
               role="menuitem"
-              className="pws-menu-item"
+              className="pws-menu-item tui-menu-item"
               data-danger={!!item.danger}
               data-tag={item.tag}
               disabled={item.disabled}

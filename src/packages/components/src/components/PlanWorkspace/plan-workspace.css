@@ -237,19 +237,9 @@
 }
 
 .pws-menu-item {
-  display: flex;
-  align-items: center;
   gap: 10px;
   width: 100%;
-  padding: 8px 10px;
-  border: none;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--foreground);
-  font: inherit;
   font-size: var(--text-sm);
-  text-align: left;
-  cursor: pointer;
 }
 
 .pws-menu-item:hover:not(:disabled) {

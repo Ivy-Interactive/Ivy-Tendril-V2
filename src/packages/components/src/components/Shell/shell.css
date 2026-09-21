@@ -1069,18 +1069,8 @@
 }
 
 .tsh-item-menu-item {
-  display: flex;
-  align-items: center;
   gap: 8px;
-  padding: 8px 10px;
-  border: none;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--foreground);
-  font: inherit;
   font-size: var(--text-sm-tight);
-  text-align: left;
-  cursor: pointer;
   white-space: nowrap;
 }
 

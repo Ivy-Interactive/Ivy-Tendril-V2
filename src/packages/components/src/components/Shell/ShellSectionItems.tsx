@@ -154,7 +154,7 @@ const ItemMenu: React.FC<ItemMenuProps> = ({
               <button
                 type="button"
                 role="menuitem"
-                className="tsh-item-menu-item"
+                className="tsh-item-menu-item tui-menu-item"
                 onClick={() => pick(onTogglePin)}
               >
                 {item.pinned ? <PinOff size={14} /> : <Pin size={14} />}
@@ -165,7 +165,7 @@ const ItemMenu: React.FC<ItemMenuProps> = ({
               <button
                 type="button"
                 role="menuitem"
-                className="tsh-item-menu-item"
+                className="tsh-item-menu-item tui-menu-item"
                 onClick={() => pick(onRename)}
               >
                 <Pencil size={14} />
@@ -176,7 +176,7 @@ const ItemMenu: React.FC<ItemMenuProps> = ({
               <button
                 type="button"
                 role="menuitem"
-                className="tsh-item-menu-item tsh-item-menu-item--danger"
+                className="tsh-item-menu-item tui-menu-item tsh-item-menu-item--danger"
                 onClick={() => pick(onDelete)}
               >
                 <Trash2 size={14} />
