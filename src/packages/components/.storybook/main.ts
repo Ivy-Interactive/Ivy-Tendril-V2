@@ -70,7 +70,11 @@ const config: StorybookConfig = {
   // switching `test-storybook` to `--index-json` — the runner's default mode collects `.mdx`
   // into jest's `testMatch` but has no transform for it. See tests/storybook-mdx.test.ts.
   stories: ["../src/**/*.stories.@(js|jsx|mjs|ts|tsx)"],
-  addons: ["@storybook/addon-essentials", "@storybook/addon-a11y", "@storybook/addon-interactions"],
+  // Storybook 9 folded controls, actions, interactions, viewport and backgrounds into core and
+  // deleted `addon-essentials`, so only the two addons that still ship separately are listed.
+  // addon-docs was the one part of essentials that did NOT move into core - it has to be named
+  // explicitly or the 44 stories tagged `autodocs` render no docs page.
+  addons: ["@storybook/addon-docs", "@storybook/addon-a11y"],
   framework: {
     name: "@storybook/react-vite",
     options: {},

@@ -19,7 +19,7 @@ import previewConfig from "../.storybook/preview.tsx";
 import testRunnerConfig from "../.storybook/test-runner.ts";
 
 describe("Storybook Configuration", () => {
-  it("registers essential, a11y, and interactions addons in main.ts", () => {
+  it("registers the docs and a11y addons in main.ts", () => {
     expect(mainConfig).toBeDefined();
     expect(mainConfig.stories).toBeDefined();
     expect(mainConfig.framework).toEqual({
@@ -28,9 +28,12 @@ describe("Storybook Configuration", () => {
     });
 
     const addons = mainConfig.addons ?? [];
-    expect(addons).toContain("@storybook/addon-essentials");
+    expect(addons).toContain("@storybook/addon-docs");
     expect(addons).toContain("@storybook/addon-a11y");
-    expect(addons).toContain("@storybook/addon-interactions");
+    // Storybook 9 deleted `addon-essentials` and moved interactions into core. Listing either
+    // again is not a no-op - it makes Storybook fail to resolve the addon at startup.
+    expect(addons).not.toContain("@storybook/addon-essentials");
+    expect(addons).not.toContain("@storybook/addon-interactions");
   });
 
   it("configures a11y and backgrounds parameters in preview.tsx", () => {
@@ -38,12 +41,25 @@ describe("Storybook Configuration", () => {
     expect(previewConfig.parameters).toBeDefined();
     expect(previewConfig.parameters?.a11y).toBeDefined();
     expect(previewConfig.parameters?.backgrounds).toBeDefined();
-    expect(previewConfig.parameters?.backgrounds?.values).toEqual(
-      expect.arrayContaining([
-        expect.objectContaining({ name: "light", value: "#ffffff" }),
-        expect.objectContaining({ name: "dark", value: "#0a0a0a" }),
-      ]),
+    // SB9's backgrounds format: an `options` map keyed by the value the global takes, replacing
+    // the old `values` array. The chosen key moved to `initialGlobals.backgrounds.value`.
+    expect(previewConfig.parameters?.backgrounds?.options).toEqual(
+      expect.objectContaining({
+        light: expect.objectContaining({ value: "#ffffff" }),
+        dark: expect.objectContaining({ value: "#0a0a0a" }),
+      }),
     );
+    expect(previewConfig.initialGlobals?.backgrounds).toEqual({ value: "light" });
+  });
+
+  it("supplies globalTypes defaults through initialGlobals in preview.tsx", () => {
+    // `globalTypes.defaultValue` stopped being read in SB9; a default left only there silently
+    // becomes undefined, which would strand the theme/density decorator on its fallbacks.
+    for (const globalType of Object.values(previewConfig.globalTypes ?? {})) {
+      expect(globalType).not.toHaveProperty("defaultValue");
+    }
+    expect(previewConfig.initialGlobals?.theme).toBe("light");
+    expect(previewConfig.initialGlobals?.density).toBe("Medium");
   });
 
   it("configures test runner hooks for axe accessibility audits in test-runner.ts", async () => {

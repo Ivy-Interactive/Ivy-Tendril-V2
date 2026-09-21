@@ -16,12 +16,13 @@ const preview: Preview = {
         date: /Date$/i,
       },
     },
+    // SB9 replaced the `values` array + `default` name with an `options` map keyed by the value
+    // the `backgrounds` global takes; the selected one now lives in `initialGlobals` below.
     backgrounds: {
-      default: "light",
-      values: [
-        { name: "light", value: "#ffffff" },
-        { name: "dark", value: "#0a0a0a" },
-      ],
+      options: {
+        light: { name: "Light", value: "#ffffff" },
+        dark: { name: "Dark", value: "#0a0a0a" },
+      },
     },
     a11y: {
       config: {},
@@ -48,11 +49,17 @@ const preview: Preview = {
       );
     },
   ],
+  // SB9 stopped reading `defaultValue` off `globalTypes`; every default now comes from
+  // `initialGlobals`, which is also where the backgrounds selection moved.
+  initialGlobals: {
+    backgrounds: { value: "light" },
+    theme: "light",
+    density: "Medium",
+  },
   globalTypes: {
     theme: {
       name: "Theme",
       description: "Global theme for components",
-      defaultValue: "light",
       toolbar: {
         icon: "circlehollow",
         items: [
@@ -64,7 +71,6 @@ const preview: Preview = {
     density: {
       name: "Density",
       description: "Density scale for components",
-      defaultValue: "Medium",
       toolbar: {
         icon: "unfold",
         items: [
