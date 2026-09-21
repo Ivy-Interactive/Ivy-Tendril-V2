@@ -187,14 +187,7 @@ export const Collapsed: StoryObj = {
 };
 
 export const WidthHints: StoryObj = {
-  // Fixed pixel dimensions, not w-full: the "flex" blade resolves its width against the container's
-  // actual size, which a viewport-relative width would make depend on the canvas frame. 900px sits
-  // well inside the visual test runner's default 1280x720 viewport (#storybook-root itself renders
-  // at ~1248px there), so the screenshot is not clipped by the viewport; the sum of the three fixed
-  // blade widths alone (320+416+544=1280) already exceeds that capture width, so BladeContainer's
-  // own scroll-to-newest-blade behavior -- by design, see BladeContainer.tsx -- is what is on screen
-  // for "sm"/"md" instead of them being visible at the same time as "lg"/"flex"; that is the same
-  // behavior a real drill-down shows, not a bug this story needs to work around.
+  // Fixed 900px, not w-full: it fits the visual test runner's 1280x720 viewport, so the capture is not clipped.
   render: () => (
     <div className="h-[420px] w-[900px] overflow-hidden rounded-box border border-border">
       <BladeContainer

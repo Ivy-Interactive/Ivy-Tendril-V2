@@ -107,10 +107,34 @@ function directDeclarationsOf(body: string): string {
   return out;
 }
 
+/**
+ * Splits a selector list on top-level commas only -- not one inside `:is(...)`, `:where(...)`,
+ * `:not(...)` or `[attr="a,b"]`. Depth tracks both `()` and `[]`; string contents were already
+ * blanked out by `stripCommentsAndStrings`, so a quoted comma inside an attribute value no longer
+ * reads as a comma at all, but the bracket itself still needs to count toward depth.
+ */
+function splitTopLevelCommas(selectorList: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let current = "";
+  for (const char of selectorList) {
+    if (char === "(" || char === "[") depth++;
+    else if (char === ")" || char === "]") depth--;
+    if (char === "," && depth === 0) {
+      parts.push(current);
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  parts.push(current);
+  return parts.map((part) => part.trim()).filter((part) => part.length > 0);
+}
+
 /** Expands a nested prelude's `&` against each parent selector; no `&` means plain descent. */
 function expandSelectors(parents: string[], prelude: string): string[] {
-  if (parents.length === 0) return prelude.split(",").map((s) => s.trim());
-  const nestedSelectors = prelude.split(",").map((s) => s.trim());
+  if (parents.length === 0) return splitTopLevelCommas(prelude);
+  const nestedSelectors = splitTopLevelCommas(prelude);
   const expanded: string[] = [];
   for (const parent of parents) {
     for (const nested of nestedSelectors) {
@@ -187,23 +211,99 @@ function walkBlock(
 /** `:root`, `:host`, and `html`, each optionally combined with other simple/pseudo selectors. */
 const ROOT_LIKE_COMPOUND = /^(:root|:host|html)([.:#[][^\s>+~]*)?$/;
 
-/**
- * True for a selector whose leading compound targets the document root or a shadow host --
- * `:root`, `html`, `:host`, or a compound combining one of those with other simple selectors
- * (`:root:not(.dark)`, `html.foo`) -- and that does not itself select inside `.dark`. `:not(...)`
- * content is stripped before the `.dark` check, since `:not(.dark)` excludes dark rather than
- * targeting it; `.dark` inside `:is()`/`:where()` still counts, matching how the browser resolves
- * those (`agent-output.css`'s `:is(.dark, [data-theme="dark"]) .aov-shell` is a real dark rule).
- */
-export function isRootSelector(selector: string): boolean {
-  if (isDarkSelector(selector)) return false;
+/** The two dark-theme signals this codebase actually uses -- see agent-output.css. */
+const DARK_TOKEN = /(\.dark\b|\[data-theme=(["'])dark\2\])/;
 
+/**
+ * A top-level `:is(...)`/`:where(...)` in `selector`, or `null` if there is none. Depth-aware, so it
+ * finds the *first* one and hands back everything before and after it -- a second one further along
+ * the same selector is picked up by the caller's own recursion over each expanded alternative.
+ */
+function topLevelFunctionalPseudo(
+  selector: string,
+): { before: string; alternatives: string[]; after: string } | null {
+  const match = /:(?:is|where)\(/.exec(selector);
+  if (!match) return null;
+
+  const openParen = match.index + match[0].length - 1;
+  let depth = 0;
+  let closeParen = -1;
+  for (let i = openParen; i < selector.length; i++) {
+    if (selector[i] === "(") depth++;
+    else if (selector[i] === ")") {
+      depth--;
+      if (depth === 0) {
+        closeParen = i;
+        break;
+      }
+    }
+  }
+  if (closeParen === -1) return null;
+
+  return {
+    before: selector.slice(0, match.index),
+    alternatives: splitTopLevelCommas(selector.slice(openParen + 1, closeParen)),
+    after: selector.slice(closeParen + 1),
+  };
+}
+
+/**
+ * Expands every top-level `:is(...)`/`:where(...)` in a selector into the cross-product of plain
+ * selectors it can stand for -- `:is(:root, .dark)` becomes `[":root", ".dark"]`, and `:is(.dark,
+ * [data-theme="dark"]) .aov-shell` becomes `[".dark .aov-shell", "[data-theme=\"dark\"] .aov-shell"]`.
+ * A selector with no functional pseudo expands to itself. Recurses so a second occurrence, or one
+ * nested inside another, is expanded too.
+ */
+function expandFunctionalPseudoAlternatives(selector: string): string[] {
+  const found = topLevelFunctionalPseudo(selector);
+  if (!found) return [selector];
+
+  const results: string[] = [];
+  for (const alternative of found.alternatives) {
+    results.push(
+      ...expandFunctionalPseudoAlternatives(`${found.before}${alternative}${found.after}`),
+    );
+  }
+  return results;
+}
+
+/**
+ * True for a plain (already `:is()`/`:where()`-expanded) selector whose leading compound targets the
+ * document root or a shadow host -- `:root`, `html`, `:host`, or a compound combining one of those
+ * with other simple selectors (`:root:not(.dark)`, `html.foo`) -- and that is not itself a dark
+ * selector. `:not(...)` content is stripped before the dark check, since `:not(.dark)` excludes dark
+ * rather than targeting it.
+ */
+function isRootAlternative(selector: string): boolean {
+  if (isDarkAlternative(selector)) return false;
   const leadingCompound = selector.split(/[\s>+~]/)[0];
   return ROOT_LIKE_COMPOUND.test(leadingCompound);
 }
 
-/** True for a selector that declares inside `.dark` -- see {@link isRootSelector}'s doc comment. */
-export function isDarkSelector(selector: string): boolean {
+/** True for a plain (already expanded) selector that declares inside `.dark`/`[data-theme="dark"]`. */
+function isDarkAlternative(selector: string): boolean {
   const withoutNegations = selector.replace(/:not\([^)]*\)/g, "");
-  return /\.dark\b/.test(withoutNegations);
+  return DARK_TOKEN.test(withoutNegations);
+}
+
+/**
+ * True if any alternative a selector can expand to (through `:is()`/`:where()`) targets the document
+ * root or a shadow host outside `.dark` -- `:is(:root, .dark) { --x: var(--background); }` matches
+ * the root element in light mode through its `:root` alternative, so that alternative alone needs a
+ * `.dark` companion: this is a root-level declaration, exactly as if it had been written `:root,
+ * .dark { ... }`.
+ */
+export function isRootSelector(selector: string): boolean {
+  return expandFunctionalPseudoAlternatives(selector).some(isRootAlternative);
+}
+
+/**
+ * True only if *every* alternative a selector can expand to requires `.dark` (or the equivalent
+ * `[data-theme="dark"]`) -- `:is(.dark, [data-theme="dark"]) .aov-shell` is dark-only this way, but
+ * `:is(:root, .dark)` is not: its `:root` alternative can match outside `.dark`, so this rule alone
+ * must not be trusted to also satisfy that alternative's own need for a `.dark` re-declaration.
+ */
+export function isDarkSelector(selector: string): boolean {
+  const alternatives = expandFunctionalPseudoAlternatives(selector);
+  return alternatives.length > 0 && alternatives.every(isDarkAlternative);
 }
