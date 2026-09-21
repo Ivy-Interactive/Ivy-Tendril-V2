@@ -200,20 +200,21 @@ const fn priorities(kind: ModelProviderKind, tier: ProfileTier) -> &'static [&'s
             "opus",
             "claude-sonnet-5",
         ],
+        // `claude-sonnet-5-1` and `claude-haiku-5-1` used to head these two lists and neither has
+        // ever existed: the Sonnet line stops at `claude-sonnet-5` and the Haiku line at
+        // `claude-haiku-4-5`. Heading the list is the one position where a phantom id is not merely
+        // inert — `select_model` returns `candidates[0]` verbatim when the endpoint lists nothing,
+        // so an unlaunchable head became the stored default and 404'd at launch. Later entries are
+        // only ever returned after matching something the endpoint offered, so a stale id further
+        // down is harmless; these lists are trimmed to ids that resolve anyway.
         (K::Anthropic, T::Balanced) => &[
-            "claude-sonnet-5-1",
             "claude-sonnet-5",
             "claude-sonnet-4-6",
             "claude-sonnet-4-5",
             "sonnet",
             "claude-haiku-4-5",
         ],
-        (K::Anthropic, T::Quick) => &[
-            "claude-haiku-5-1",
-            "claude-haiku-4-5",
-            "claude-3-5-haiku",
-            "haiku",
-        ],
+        (K::Anthropic, T::Quick) => &["claude-haiku-4-5", "claude-3-5-haiku", "haiku"],
 
         (K::Google, T::Deep) => &[
             "gemini-3.8-flash",
@@ -971,6 +972,66 @@ mod tests {
             ("http://localhost:11434/v1", ModelProviderKind::Generic),
         ] {
             assert_eq!(ModelProviderKind::detect(url), expected, "{url}");
+        }
+    }
+
+    /// Every tier's head candidate has to name a model that can actually be launched.
+    ///
+    /// The head is the one entry in each list that is returned *unverified*: `select_model` hands
+    /// back `candidates[0]` verbatim when the endpoint lists nothing, so whatever sits there becomes
+    /// the stored default without ever having been offered by a provider. Every other entry is only
+    /// reached by matching an id the endpoint really returned, so it cannot invent one.
+    ///
+    /// `claude-sonnet-5-1` and `claude-haiku-5-1` headed the two Anthropic lists and neither is a
+    /// real model — the Sonnet line stops at `claude-sonnet-5`, the Haiku line at
+    /// `claude-haiku-4-5` — so onboarding against an endpoint that listed nothing stored an id that
+    /// 404s at launch.
+    ///
+    /// `SPECS` is the launchable set for this purpose: it is the table the rest of the daemon
+    /// resolves a model through, so an id absent from it has no context window, no pricing and no
+    /// launch path. Matched exactly rather than through `model_specs::find`, whose longest-prefix
+    /// fallback would happily resolve `claude-sonnet-5-1` to `claude-sonnet-5` and hide exactly the
+    /// bug this test exists to catch.
+    #[test]
+    fn every_tier_head_names_a_launchable_model() {
+        use super::super::model_specs::{strip_provider_prefix, SPECS};
+
+        let launchable: Vec<String> = SPECS
+            .iter()
+            .map(|spec| normalize_model_id(spec.model_id.as_ref()))
+            .collect();
+
+        for kind in [
+            ModelProviderKind::Generic,
+            ModelProviderKind::Ivy,
+            ModelProviderKind::Anthropic,
+            ModelProviderKind::OpenAi,
+            ModelProviderKind::Google,
+            ModelProviderKind::Berget,
+            ModelProviderKind::OpenCode,
+        ] {
+            for tier in [ProfileTier::Deep, ProfileTier::Balanced, ProfileTier::Quick] {
+                let head = priorities(kind, tier)[0];
+
+                // What an endpoint that listed nothing would store, which is the head verbatim.
+                assert_eq!(
+                    select_model(kind, tier, &[]),
+                    head,
+                    "{kind:?}/{tier:?}: the empty-listing default is the head candidate"
+                );
+
+                // A vendor-qualified head is still launchable — Berget's real wire id is
+                // `moonshotai/Kimi-K3`, which `SPECS` carries unprefixed as `kimi-k3`. Any single
+                // vendor segment is stripped, not just the handful `strip_provider_prefix` knows,
+                // so the check is about whether the *model* exists rather than who serves it.
+                let bare = head.rsplit('/').next().unwrap_or(head);
+                let normalized = normalize_model_id(strip_provider_prefix(bare));
+                assert!(
+                    launchable.contains(&normalized),
+                    "{kind:?}/{tier:?} heads its priority list with '{head}', which is not a \
+                     launchable model id — it would be stored as the default and 404 at launch"
+                );
+            }
         }
     }
 

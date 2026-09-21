@@ -574,6 +574,29 @@ async fn codex_auth() -> AgentAuthResult {
     AgentAuthResult::failed(AuthStatus::CheckFailed, out.stderr, None)
 }
 
+/// What to tell a user whose Gemini CLI is not signed in.
+///
+/// Not `gemini auth`, which V1 suggested and which has never been a subcommand: the CLI's only
+/// subcommands are `mcp`, `extensions`, `skills`, `hooks` and `gemma`, so `gemini auth` is swallowed
+/// as a prompt query — the CLI answers it as a *question*, telling the user to set GEMINI_API_KEY,
+/// and nobody is signed in. Sign-in is `/auth`, a slash command inside the session (gemini-cli's
+/// `authCommand`, whose subcommands are `signin`/`login` and `signout`/`logout` and which defaults
+/// to sign-in), so the hint has to name the binary and the command to type at it separately.
+const GEMINI_SIGN_IN_HINT: &str =
+    "Run 'gemini' and use the /auth slash command, or set GEMINI_API_KEY";
+
+/// What to tell a user whose Copilot CLI is not signed in.
+///
+/// Not `copilot login`, which V1 suggested and which does not exist: GitHub's install page says an
+/// unauthenticated first launch prompts for the `/login` slash command, so sign-in happens inside
+/// the TUI. V1's `gh auth login` alternative is dropped rather than carried over — it authenticates
+/// the GitHub CLI, which is a separate credential from Copilot's even on a machine where
+/// [`resolve_copilot_binary`] falls back to `gh copilot`, so following it leaves the user just as
+/// unauthenticated. The documented unattended route is a token instead, in GitHub's own precedence
+/// order: COPILOT_GITHUB_TOKEN, then GH_TOKEN, then GITHUB_TOKEN.
+const COPILOT_SIGN_IN_HINT: &str = "Run 'copilot' and use the /login slash command, or set \
+     COPILOT_GITHUB_TOKEN (or GH_TOKEN) to a token with the 'Copilot Requests' permission";
+
 /// V1 `GeminiHealthCheck.CheckAuthAsync`: environment first, then the credential files the CLI
 /// writes, and only then a real prompt.
 ///
@@ -640,7 +663,7 @@ async fn gemini_auth() -> AgentAuthResult {
     AgentAuthResult::failed(
         AuthStatus::NotAuthenticated,
         "OAuth credentials not found and no API key set",
-        Some("Run 'gemini auth' or set GEMINI_API_KEY"),
+        Some(GEMINI_SIGN_IN_HINT),
     )
 }
 
@@ -703,7 +726,7 @@ async fn copilot_auth() -> AgentAuthResult {
         return AgentAuthResult::failed(
             AuthStatus::NotAuthenticated,
             out.stderr,
-            Some("Run 'copilot login' or 'gh auth login' to authenticate"),
+            Some(COPILOT_SIGN_IN_HINT),
         );
     }
 
@@ -1452,6 +1475,51 @@ mod tests {
             stdout: stdout.to_string(),
             stderr: stderr.to_string(),
         }
+    }
+
+    /// Neither sign-in hint may name a command its CLI does not have.
+    ///
+    /// Both were carried over from V1 and both were wrong. `gemini auth` is not a subcommand — the
+    /// CLI's subcommands are `mcp`, `extensions`, `skills`, `hooks` and `gemma`, and the bare word
+    /// is swallowed as a prompt, so the user is answered *about* authentication instead of being
+    /// signed in. `copilot login` does not exist at all; GitHub's install page says an
+    /// unauthenticated first launch prompts for the `/login` slash command.
+    ///
+    /// A hint that names a command that does not run is worse than no hint: it sends the user to a
+    /// dead end while the pane insists they are not authenticated.
+    #[test]
+    fn sign_in_hints_name_commands_the_clis_actually_have() {
+        assert!(
+            !GEMINI_SIGN_IN_HINT.contains("gemini auth"),
+            "the Gemini CLI has no 'auth' subcommand: {GEMINI_SIGN_IN_HINT}"
+        );
+        assert!(
+            GEMINI_SIGN_IN_HINT.contains("/auth"),
+            "sign-in is the /auth slash command: {GEMINI_SIGN_IN_HINT}"
+        );
+        assert!(
+            GEMINI_SIGN_IN_HINT.contains("GEMINI_API_KEY"),
+            "the key route stays offered: {GEMINI_SIGN_IN_HINT}"
+        );
+
+        assert!(
+            !COPILOT_SIGN_IN_HINT.contains("copilot login"),
+            "there is no 'copilot login' command: {COPILOT_SIGN_IN_HINT}"
+        );
+        // `gh auth login` authenticates the GitHub CLI, not Copilot -- following it leaves the user
+        // exactly as unauthenticated as before.
+        assert!(
+            !COPILOT_SIGN_IN_HINT.contains("gh auth login"),
+            "gh auth login is a different credential: {COPILOT_SIGN_IN_HINT}"
+        );
+        assert!(
+            COPILOT_SIGN_IN_HINT.contains("/login"),
+            "sign-in is the /login slash command: {COPILOT_SIGN_IN_HINT}"
+        );
+        assert!(
+            COPILOT_SIGN_IN_HINT.contains("COPILOT_GITHUB_TOKEN"),
+            "the unattended route stays offered: {COPILOT_SIGN_IN_HINT}"
+        );
     }
 
     /// The probe must ask `fm` a question it answers. `--version` exits 64 with nothing on stdout,
