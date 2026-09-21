@@ -128,6 +128,13 @@ const IceboxView = React.lazy(() =>
 const JobsView = React.lazy(() =>
   import("./views/JobsView").then((m) => ({ default: m.JobsView })),
 );
+// Lazy for a reason of its own: the scenario registry behind this view imports *every* dialog, so
+// an eager import would pull the whole dialog family into the shell's first chunk. That is the same
+// graph `views/dialogs/index.ts` warns about, and `code-splitting.test.tsx` sits at 93.8% of its
+// eager budget with no room for it. Hidden from the nav, so nothing reaches this unless asked.
+const DebugView = React.lazy(() =>
+  import("./views/debug/DebugView").then((m) => ({ default: m.DebugView })),
+);
 // Lazy for the same reason as the rest, with more at stake: this is the only
 // view that pulls in xterm.js, which nothing else in the shell needs.
 const ReviewActionView = React.lazy(() =>
@@ -1088,6 +1095,11 @@ export const App: React.FC = () => {
             projects={projects}
           />
         );
+
+      // V1's hidden `DialogsApp`. Not in `buildNavItems`, so it is reached by setting `activeNav`
+      // to `debug` rather than by clicking anything.
+      case "debug":
+        return <DebugView />;
 
       case "icebox":
         return (

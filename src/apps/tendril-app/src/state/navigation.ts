@@ -105,6 +105,18 @@ export const APP_DESCRIPTORS: Record<string, AppDescriptor> = {
     fullBleed: true,
   },
   agent: { id: "agent", title: "Agent", allowDuplicateTabs: true, fullBleed: true },
+  /**
+   * V1's `Apps/Debug/DialogsApp.cs`, which is `[App(icon: Icons.Bug, isVisible: false)]`.
+   *
+   * There is no `isVisible` field here and none is needed: the nav is built separately by
+   * `buildNavItems` in `ShellLayout.tsx`, so an app is hidden by being registered here - which is
+   * what gives it a tab title and a padding decision - and left out of that list. `review-action`
+   * is hidden the same way. Reached by setting `activeNav` to `debug`.
+   *
+   * Padded, not full-bleed: the harness is an ordinary document-shaped view and takes the shell's
+   * 16px like every other one.
+   */
+  debug: { id: "debug", title: "Debug", fullBleed: false },
 };
 
 /** Where the shell starts, and where an address with no app leaves it. */

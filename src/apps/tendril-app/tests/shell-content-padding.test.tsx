@@ -46,7 +46,17 @@ const FULL_BLEED_APP_IDS = [
 ] as const;
 
 /** Every app that must keep the host's 16px. The complement of the list above, spelled out. */
-const PADDED_APP_IDS = ["jobs", "inbox", "recommendations", "pull-requests", "icebox"] as const;
+const PADDED_APP_IDS = [
+  "jobs",
+  "inbox",
+  "recommendations",
+  "pull-requests",
+  "icebox",
+  // The hidden dialog harness (V1's `Apps/Debug/DialogsApp.cs`). Document-shaped, so it takes the
+  // shell's inset rather than supplying its own - which is also why `DebugView` sets neither
+  // padding nor a scroll container on its root.
+  "debug",
+] as const;
 
 const renderShell = (pageNav: string) =>
   render(
