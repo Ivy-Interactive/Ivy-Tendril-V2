@@ -38,6 +38,7 @@ export type TerminalOpener = (sessionId: string, prompt?: string) => void;
 class ChatLauncher {
   private mode: ChatMode = APPEARANCE_DEFAULTS.chatMode;
   private openTerminal: TerminalOpener | null = null;
+  private openTerminals = new Set<string>();
   private listeners = new Set<() => void>();
 
   private notify(): void {
@@ -66,6 +67,28 @@ class ChatLauncher {
 
   public registerTerminalOpener(open: TerminalOpener): void {
     this.openTerminal = open;
+  }
+
+  /**
+   * The conversations currently running as terminal panes, republished by the shell whenever its
+   * pane registry changes. Held here for the same reason the opener is: the registry is `App.tsx`'s
+   * own state, but the decision that reads it - "is this row a terminal?" - belongs beside the one
+   * that decides where a *new* chat opens.
+   */
+  public registerOpenTerminals(sessionIds: string[]): void {
+    this.openTerminals = new Set(sessionIds);
+  }
+
+  /**
+   * V1's `ChatApp.SelectSession`: "Terminal sessions belong to the AgentApp pane, never here."
+   * Reveals the pane a conversation is already running in and reports that it did, so the caller
+   * does not also make it the chat view's selection - a terminal session has no messages, so the
+   * chat view would show it as an empty conversation.
+   */
+  public revealTerminal(sessionId: string): boolean {
+    if (!this.openTerminals.has(sessionId)) return false;
+    this.openTerminal?.(sessionId);
+    return true;
   }
 
   /**
@@ -135,6 +158,7 @@ class ChatLauncher {
   public resetForTesting(): void {
     this.mode = APPEARANCE_DEFAULTS.chatMode;
     this.openTerminal = null;
+    this.openTerminals = new Set();
     this.listeners.clear();
   }
 }

@@ -78,6 +78,13 @@ export interface AppDescriptor {
  * the first. `agent` is V1's terminal app, listed so the rule that governs it is already in place
  * when V2 grows one.
  */
+/**
+ * V1's `TendrilAppShell.AgentAppId`. Named here rather than in the shell because two decisions read
+ * it: the router opens this app as a session pane, and the bottom strip leaves it out - V1's
+ * `IsAgentTab`, "Terminal panes are reached from the Chats list".
+ */
+export const AGENT_APP_ID = "agent";
+
 export const APP_DESCRIPTORS: Record<string, AppDescriptor> = {
   // Full-bleed for the same reason V1's is: `TendrilDashboard` is a full-bleed widget that owns its
   // own scroll (`.tdb-root { height: 100%; overflow-y: auto }`) and re-applies the host's inset
@@ -104,7 +111,7 @@ export const APP_DESCRIPTORS: Record<string, AppDescriptor> = {
     allowDuplicateTabs: true,
     fullBleed: true,
   },
-  agent: { id: "agent", title: "Agent", allowDuplicateTabs: true, fullBleed: true },
+  agent: { id: AGENT_APP_ID, title: "Agent", allowDuplicateTabs: true, fullBleed: true },
   /**
    * V1's `Apps/Debug/DialogsApp.cs`, which is `[App(icon: Icons.Bug, isVisible: false)]`.
    *

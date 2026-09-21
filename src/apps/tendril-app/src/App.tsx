@@ -9,7 +9,7 @@ import {
   usePublishedSidebarList,
 } from "./state/sidebarListStore";
 import { seedChatSessionCount, useChatSessionCount } from "./state/chatSessionCount";
-import { toAddressArgs } from "./state/navigation";
+import { AGENT_APP_ID, toAddressArgs } from "./state/navigation";
 import { isPlanId, nextAfterRemoval, plansStore } from "./state/plansStore";
 import { jobsStore } from "./state/jobsStore";
 import { notificationsStore } from "./state/notificationsStore";
@@ -150,15 +150,6 @@ const REVIEW_ACTION_APP_ID = "review-action";
 const AgentTerminalView = React.lazy(() =>
   import("./views/AgentTerminalView").then((m) => ({ default: m.AgentTerminalView })),
 );
-
-/**
- * V1's `AgentApp`: the agent's own terminal, opened instead of the chat view when `chatMode` is
- * `terminal`. `allowDuplicateTabs: true` in the registry, so the router opens it as a session pane
- * keyed by the chat session it belongs to — reopening the same conversation reveals the pane already
- * running it rather than spawning a second agent, which is exactly why V1 keys its agent panes the
- * same way.
- */
-const AGENT_APP_ID = "agent";
 
 /**
  * The session a review action's pane is keyed by. Router rule 3 keys a pane by its session id, so
@@ -525,6 +516,11 @@ export const App: React.FC = () => {
    */
   useEffect(() => {
     chatLauncher.registerTerminalOpener(openTerminalPane);
+    // The pane registry is this component's state, but `chatStore.selectSession` is where the
+    // "terminal sessions belong to the AgentApp pane" check has to live -- it is the one point all
+    // three select paths converge on. Republished here, on the same every-commit schedule and for
+    // the same reason as the opener.
+    chatLauncher.registerOpenTerminals(Object.keys(terminalPanes));
   });
 
   /**
@@ -809,6 +805,20 @@ export const App: React.FC = () => {
 
     const sessionId = selectArgField(args, "sessionId");
     if (sessionId) {
+      /* V1's `ChatApp.SelectSession`: "Terminal sessions belong to the AgentApp pane, never here",
+         so a row whose conversation is already running as a terminal reveals that pane rather than
+         opening the chat view on a session that has no messages to show. This is also what keeps a
+         terminal reachable now that the bottom strip leaves agent panes out - the Chats list is the
+         only way back to one, which is the arrangement V1's strip comment describes.
+
+         `chatStore.selectSession` carries the same check, and has to: `buildSelectArgs` selects the
+         session as a side effect of producing the args this handler receives, so by the time we are
+         here the store has already been asked. This arm is what stops the *navigation* below from
+         opening the chat view over the pane, which the store cannot do from where it sits. */
+      if (terminalPanes[sessionId]) {
+        uiStore.navigate({ appId: AGENT_APP_ID, args: { sessionId } });
+        return;
+      }
       uiStore.navigate({ appId, args: toAddressArgs(args) });
       void import("./state/chatStore").then((m) => m.chatStore.selectSession(sessionId));
       return;
@@ -1208,7 +1218,14 @@ export const App: React.FC = () => {
         connectionStatus={serviceState.status}
         reconnectCountdown={serviceState.reconnectCountdown}
         onSelectNav={(nav) => uiStore.setActiveNav(nav)}
-        onSelectTab={(tab) => uiStore.setActiveNav(tab)}
+        /* V1 `SelectSession`, which redirects with `tabId: tab.Id` (`TendrilAppShell.SelectSession`).
+           `setActiveNav` was the wrong seam: it passes its argument as an *appId*, so navigation
+           rule 1 - the one that reveals an existing pane - was never reached and rule 4 fired
+           instead, setting `pageAppId` to a raw session id and `activeSessionId` to null. Every
+           pane then rendered `data-active="false"`, which is `pointer-events: none`, so the xterm
+           textarea could never take focus again, while the retired pane's pty went on writing ANSI
+           into a terminal now hidden behind the page. */
+        onSelectTab={(tab) => uiStore.navigate({ tabId: tab })}
         onCloseTab={(tab) => uiStore.closeTab(tab)}
         onShowPage={() => uiStore.showPage()}
         onNewPlan={() => {

@@ -2,7 +2,12 @@ import React from "react";
 import { Terminal, type TerminalHandle } from "@ivy-interactive/components/tendril";
 import { HeaderLayout } from "@ivy-interactive/components/ui";
 import { Terminal as TerminalIcon } from "lucide-react";
-import { startAgentTerminal, type AgentTerminalRun } from "../api/agentTerminal";
+import type { AgentTerminalRun } from "../api/agentTerminal";
+import {
+  acquireAgentTerminal,
+  releaseAgentTerminal,
+  type AgentTerminalSink,
+} from "../state/agentTerminalRuns";
 import { NewChatModeButtons } from "../components/chat/NewChatModeButtons";
 import { chatStore } from "../state/chatStore";
 import { describeBridgeError } from "../types/api";
@@ -54,6 +59,18 @@ export const AgentTerminalView: React.FC<AgentTerminalViewProps> = ({
    */
   const pendingRef = React.useRef<Uint8Array[]>([]);
   const retiredRef = React.useRef(false);
+  /**
+   * The grid the emulator last reported, held so the pty can be told about it once there is a pty to
+   * tell. `Terminal` announces its size as soon as it has measured itself -- unconditionally, so that
+   * "a terminal that happened to open at its default size" still reports -- and that is reliably
+   * *before* the daemon has answered the spawn, so `onResize`'s `runRef.current?.resize(...)` found
+   * null and dropped the only size report that was ever going to be made. The agent then drew its
+   * interface to an 80x24 default that had nothing to do with the pane, which is the "it did not
+   * properly resize" half of the report. Re-fitting on reveal cannot stand in for this: the addon
+   * raises `onResize` only when the grid actually *changed*, so a pane that is already the right size
+   * stays silent.
+   */
+  const gridRef = React.useRef<{ rows: number; cols: number } | null>(null);
 
   const write = React.useCallback((bytes: Uint8Array) => {
     const handle = terminalRef.current;
@@ -90,36 +107,37 @@ export const AgentTerminalView: React.FC<AgentTerminalViewProps> = ({
 
   React.useEffect(() => {
     let cancelled = false;
+    const sink: AgentTerminalSink = {
+      onChunk: write,
+      onEnd: (message) => {
+        // Printed into the transcript rather than into chrome above it: the agent's own last words
+        // and the host's report belong in one scrollback, which is where a reader is looking.
+        write(new TextEncoder().encode(`\r\n\x1b[2m${message}\x1b[0m\r\n`));
+        setClosed(true);
+      },
+    };
 
-    void (async () => {
-      try {
-        const run = await startAgentTerminal(sessionId, {
-          prompt,
-          onChunk: write,
-          onEnd: (message) => {
-            // Printed into the transcript rather than into chrome above it: the agent's own last words
-            // and the host's report belong in one scrollback, which is where a reader is looking.
-            write(new TextEncoder().encode(`\r\n\x1b[2m${message}\x1b[0m\r\n`));
-            setClosed(true);
-          },
-        });
-        if (cancelled) {
-          void run.close();
-          return;
-        }
+    // Acquired rather than started: the registry owns the agent, so StrictMode's second invocation
+    // adopts the run the first one started instead of spawning a second pty against the same chat
+    // session id. Ending it is still what a real unmount does; see `releaseAgentTerminal`.
+    void acquireAgentTerminal(sessionId, prompt, sink)
+      .then((run) => {
+        if (cancelled) return;
         runRef.current = run;
-      } catch (err) {
+        // Either the size report that arrived before this run existed, or -- when the registry hands
+        // back an agent another mount started -- this pane's grid, which may differ from the one it
+        // was fitted to.
+        const grid = gridRef.current;
+        if (grid) void run.resize(grid.rows, grid.cols);
+      })
+      .catch((err) => {
         if (!cancelled) setError(describeBridgeError(err));
-      }
-    })();
+      });
 
     return () => {
       cancelled = true;
-      // Ends the agent, not just the reading of it: an interactive session has nothing to serve once
-      // its pane is gone, and leaving one running would leak a model session per closed tab.
-      const run = runRef.current;
       runRef.current = null;
-      if (run) void run.close();
+      releaseAgentTerminal(sessionId, sink);
     };
   }, [sessionId, prompt, write]);
 
@@ -163,7 +181,12 @@ export const AgentTerminalView: React.FC<AgentTerminalViewProps> = ({
           loading
           loadingText={`Starting ${session?.agentId?.trim() || "agent"}…`}
           onInput={(data) => void runRef.current?.sendInput(data)}
-          onResize={(rows, cols) => void runRef.current?.resize(rows, cols)}
+          onResize={(rows, cols) => {
+            // Recorded as well as forwarded: a report that lands before the spawn returns is replayed
+            // when it does, and is what a later mount re-reports after adopting a running agent.
+            gridRef.current = { rows, cols };
+            void runRef.current?.resize(rows, cols);
+          }}
         />
       )}
     </HeaderLayout>

@@ -1,5 +1,6 @@
 import { agentsApi } from "../api/agentsApi";
 import { chatApi } from "../api/chatApi";
+import { chatLauncher } from "./chatLauncher";
 import { publishChatSessionCount } from "./chatSessionCount";
 import { navigation } from "./navigation";
 import { onChatEvent, type EventUnsubscribe } from "../api/events";
@@ -1219,7 +1220,26 @@ export class ChatStore {
     return await chatApi.getSession(id);
   }
 
+  /**
+   * V1's `ChatApp.SelectSession`, including the check it opens with: "Terminal sessions belong to the
+   * AgentApp pane, never here."
+   *
+   * The guard lives here rather than at the callers because V2 has three of them and they are not
+   * interchangeable. `App.tsx`'s `handleSelectSidebarItem` cannot hold it alone: `ShellLayout` routes
+   * a click as `onSelectSidebarItem(appId, itemId, source.buildSelectArgs(itemId))`, and
+   * `chat/sidebarList.ts`'s `buildSelectArgs` calls `onSelect` *while computing the args* — so the
+   * selection has already happened by the time the handler receiving those args runs. `ChatView`'s
+   * own list action and `ChatSearchDialog` reach this directly and never pass through the handler at
+   * all. One check at the point every path converges is what V1 has.
+   *
+   * Returning without touching `activeSessionId` is the point: a terminal session holds no messages
+   * (`AgentTerminalView` writes none), so adopting one here paints the chat view as an empty
+   * conversation — and, because `selectSession` prunes an empty *previous* session on the way out,
+   * leaves that emptiness able to delete the chat the user came from.
+   */
   public async selectSession(id: string): Promise<void> {
+    if (chatLauncher.revealTerminal(id)) return;
+
     const prevId = this.state.activeSessionId;
     const prevSession = this.state.activeSession;
     if (
