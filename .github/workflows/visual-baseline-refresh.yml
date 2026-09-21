@@ -1,0 +1,136 @@
+name: Visual Baseline Refresh
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: visual-baseline-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    name: Regenerate Baselines
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Baselines are rendered in this exact image so that font rasterization matches; see
+    # src/packages/components/.storybook/__image_snapshots__.
+    container:
+      image: mcr.microsoft.com/playwright:v1.63.0-noble-amd64
+    outputs:
+      drifted: ${{ steps.drift.outputs.drifted }}
+    env:
+      REFRESH_BRANCH: chore/visual-baseline-refresh-${{ github.run_id }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      SOURCE_REF: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          run-install: false
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Storybook
+        working-directory: src/packages/components
+        # `-o storybook-static` pins the output dir explicitly, matching what
+        # test-storybook:visual:update:ci serves below -- it cannot drift even if the script's
+        # default changes. (No extra `--` before it: pnpm forwards it to `storybook build` as-is,
+        # and a literal `--` there is passed straight through and silently ignored by Storybook's
+        # own CLI, which then falls back to its default output dir.)
+        run: pnpm run build-storybook -o storybook-static
+
+      # continue-on-error, because a story that fails to render must not hide the drift already
+      # recorded; the outcome is turned into a failure after the diagnostics are published.
+      - name: Regenerate baselines
+        id: regenerate
+        continue-on-error: true
+        working-directory: src/packages/components
+        run: pnpm run test-storybook:visual:update:ci
+
+      - name: Detect drift
+        id: drift
+        run: |
+          # actions/checkout only marks the workspace safe for its own git calls; every later
+          # manual git command in this job (this step, and the push step below) runs as the same
+          # container user against the same $GITHUB_WORKSPACE, so it needs the same marking.
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          changed=$(git status --porcelain -- src/packages/components/.storybook/__image_snapshots__)
+          if [ -z "$changed" ]; then
+            echo "drifted=false" >> "$GITHUB_OUTPUT"
+            echo "All committed baselines match $SOURCE_REF; nothing to refresh." >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "drifted=true" >> "$GITHUB_OUTPUT"
+            echo "### Baselines refreshed" >> "$GITHUB_STEP_SUMMARY"
+            printf '%s\n' "$changed" | sed 's/^/    /' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Upload refreshed baselines
+        if: steps.drift.outputs.drifted == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-baselines
+          path: src/packages/components/.storybook/__image_snapshots__/
+          if-no-files-found: error
+
+      - name: Push the refresh branch
+        if: steps.drift.outputs.drifted == 'true'
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$REFRESH_BRANCH"
+          git add -- src/packages/components/.storybook/__image_snapshots__
+          git commit -m "chore: refresh visual regression baselines rendered from $GITHUB_SHA"
+          git push origin "$REFRESH_BRANCH"
+
+      - name: Fail on an unrenderable story
+        if: steps.regenerate.outcome == 'failure'
+        run: |
+          echo "::error::test-storybook:visual:update:ci exited non-zero: a story failed to render, so the refreshed set may be incomplete. Review the log above; the artifact and branch above still hold whatever did render."
+          exit 1
+
+  open-pr:
+    name: Open Refresh PR
+    needs: refresh
+    if: needs.refresh.outputs.drifted == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      REFRESH_BRANCH: chore/visual-baseline-refresh-${{ github.run_id }}
+      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+      SOURCE_REF: ${{ github.ref_name }}
+    steps:
+      - name: Open the pull request
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          if gh pr create --base "$DEFAULT_BRANCH" --head "$REFRESH_BRANCH" \
+               --title "chore: refresh visual regression baselines" \
+               --body "Baselines regenerated on $SOURCE_REF in mcr.microsoft.com/playwright:v1.63.0-noble-amd64. Only PNGs that failed the 1% threshold, or that did not exist, are in this diff. Review the images: an unexpected change here is a rendering regression, not a bad baseline. The same set is attached to the triggering run as the visual-baselines artifact."; then
+            exit 0
+          fi
+          echo "::error::Could not open the PR with the default GITHUB_TOKEN. The refreshed baselines are pushed to $REFRESH_BRANCH and uploaded as the visual-baselines artifact, so nothing is lost. Either open the PR by hand, or enable Settings / Actions / General / Workflow permissions / 'Allow GitHub Actions to create and approve pull requests'."
+          exit 1
