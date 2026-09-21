@@ -312,10 +312,7 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
 
   /* Memoized so the dialog is handed stable props. It reseeds its fields when these change
      identity, and a fresh object per render would wipe an edit in progress. */
-  const issueDialogPlan = useMemo(
-    () => (issueRec ? sourcePlanOf(issueRec) : null),
-    [issueRec],
-  );
+  const issueDialogPlan = useMemo(() => (issueRec ? sourcePlanOf(issueRec) : null), [issueRec]);
   const issueDialogRepos = useMemo(
     () => (issueRec ? (projects.find((p) => p.name === issueRec.project)?.repos ?? []) : []),
     [issueRec, projects],

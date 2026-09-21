@@ -390,9 +390,11 @@ describe("RecommendationsView create issue", () => {
   };
 
   it("starts a CreateIssue job carrying the recommendation as the subject", async () => {
-    const list = vi.spyOn(bridge, "listCrossPlanRecommendations").mockResolvedValue([
-      rec({ title: "Cache the model list", description: "The catalog refetches every render." }),
-    ]);
+    const list = vi
+      .spyOn(bridge, "listCrossPlanRecommendations")
+      .mockResolvedValue([
+        rec({ title: "Cache the model list", description: "The catalog refetches every render." }),
+      ]);
     const setState = vi.spyOn(bridge, "setRecommendationState").mockResolvedValue(undefined);
     const startJob = vi
       .spyOn(bridge, "startJob")
@@ -466,9 +468,7 @@ describe("RecommendationsView create issue", () => {
     );
     fireEvent.click(screen.getByTestId("recommendation-create-issue"));
 
-    await waitFor(() =>
-      expect(screen.getByTestId("create-issue-no-repos")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByTestId("create-issue-no-repos")).toBeInTheDocument());
     expect(screen.getByTestId("dialog-confirm")).toBeDisabled();
   });
 
@@ -478,14 +478,10 @@ describe("RecommendationsView create issue", () => {
     vi.spyOn(bridge, "setRecommendationState").mockReturnValue(new Promise(() => {}));
 
     renderView({ projects: [{ name: "Tendril-App", repos: ["/repos/tendril"] }] as never });
-    await waitFor(() =>
-      expect(screen.getByTestId("recommendation-accept")).toBeInTheDocument(),
-    );
+    await waitFor(() => expect(screen.getByTestId("recommendation-accept")).toBeInTheDocument());
 
     fireEvent.click(screen.getByTestId("recommendation-accept"));
 
-    await waitFor(() =>
-      expect(screen.getByTestId("recommendation-create-issue")).toBeDisabled(),
-    );
+    await waitFor(() => expect(screen.getByTestId("recommendation-create-issue")).toBeDisabled());
   });
 });

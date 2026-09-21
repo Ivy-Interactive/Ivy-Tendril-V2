@@ -153,7 +153,9 @@ export function CreateIssueDialog({
     <DialogShell
       isOpen={isOpen}
       onClose={onClose}
-      title={subject ? `Create GitHub Issue from ${subject.kind}` : `Create GitHub Issue #${plan.id}`}
+      title={
+        subject ? `Create GitHub Issue from ${subject.kind}` : `Create GitHub Issue #${plan.id}`
+      }
       width="rem30"
       shortcut="Ctrl+Enter"
       onShortcut={() => void handleSubmit()}
@@ -188,7 +190,10 @@ export function CreateIssueDialog({
       {subject && (
         <>
           <div className="mb-4">
-            <label htmlFor="create-issue-title" className="mb-1 block text-xs text-muted-foreground">
+            <label
+              htmlFor="create-issue-title"
+              className="mb-1 block text-xs text-muted-foreground"
+            >
               Title
             </label>
             <Input
