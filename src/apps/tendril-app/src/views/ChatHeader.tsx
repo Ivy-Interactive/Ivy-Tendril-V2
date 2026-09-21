@@ -68,7 +68,7 @@ export const JobsMenu: React.FC<JobsMenuProps> = ({
           aria-label="View running jobs"
           aria-expanded={open}
           title={runningCount > 0 ? `${runningCount} job(s) running` : "View jobs"}
-          className={`inline-flex h-8 select-none items-center gap-1.5 whitespace-nowrap rounded-selector bg-muted px-3 transition-colors hover:bg-accent ${
+          className={`inline-flex h-8 select-none items-center gap-1.5 whitespace-nowrap rounded-selector bg-muted px-3 transition-colors hover:bg-secondary/60 ${
             failedCount > 0 && runningCount === 0 ? "text-destructive" : "text-foreground"
           }`}
         >
@@ -194,7 +194,7 @@ export const JobsMenu: React.FC<JobsMenuProps> = ({
                     setOpen(false);
                     onOpenPlan?.(planId);
                   }}
-                  className="flex w-full items-start gap-2 px-3 py-1.5 text-left hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex w-full items-start gap-2 px-3 py-1.5 text-left hover:bg-secondary/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {body}
                 </button>
@@ -217,7 +217,7 @@ export const JobsMenu: React.FC<JobsMenuProps> = ({
                 setOpen(false);
                 onReviewJobs();
               }}
-              className="flex w-full items-center justify-center gap-1.5 rounded-selector px-2 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex w-full items-center justify-center gap-1.5 rounded-selector px-2 py-1.5 text-xs hover:bg-secondary/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Sparkles className="size-3.5" aria-hidden="true" />
               <span>Ask agent to review outcomes</span>
@@ -376,7 +376,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
                       setMenuOpen(false);
                       startTitleEdit();
                     }}
-                    className="flex items-center gap-2 whitespace-nowrap rounded-selector px-2.5 py-2 text-left hover:bg-accent hover:text-accent-foreground"
+                    className="flex items-center gap-2 whitespace-nowrap rounded-selector px-2.5 py-2 text-left hover:bg-secondary/60 hover:text-foreground"
                   >
                     <Pencil className="size-3.5" aria-hidden="true" />
                     Edit name
@@ -388,7 +388,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
                       setMenuOpen(false);
                       onDelete?.();
                     }}
-                    className="flex items-center gap-2 whitespace-nowrap rounded-selector px-2.5 py-2 text-left text-destructive hover:bg-accent"
+                    className="flex items-center gap-2 whitespace-nowrap rounded-selector px-2.5 py-2 text-left text-destructive hover:bg-secondary/60"
                   >
                     <Trash2 className="size-3.5" aria-hidden="true" />
                     Delete chat
