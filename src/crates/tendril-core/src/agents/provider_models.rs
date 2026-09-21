@@ -30,6 +30,9 @@ use serde::{Deserialize, Serialize};
 
 use super::catalog::declared_display_name;
 use super::model_specs::normalize_model_id;
+// Full path rather than `agents::*`: `agents/mod.rs` deliberately does not re-export `sort_models`,
+// on the grounds that the name is too generic to sit alongside everything else in that namespace.
+use super::model_sorting::{sort_models, SortableModel};
 
 /// How long the provider gets. V1's `OpenAiProxyModelCatalog` allows 8s for a listing and
 /// `LlmEndpointTester` 15s for a completion, which is the same split.
@@ -83,6 +86,15 @@ impl ModelProviderKind {
 pub struct DiscoveredModel {
     pub id: String,
     pub display_name: String,
+}
+
+impl SortableModel for DiscoveredModel {
+    fn model_id(&self) -> &str {
+        &self.id
+    }
+    fn model_display_name(&self) -> &str {
+        &self.display_name
+    }
 }
 
 /// V1 `Abstractions/AgentTypes.ModelValidationStatus`.
@@ -612,6 +624,28 @@ pub fn parse_models_json(body: &str) -> Vec<DiscoveredModel> {
     // One endpoint can list the same id twice (an alias and its dated form); the picker shows it once.
     let mut seen = std::collections::HashSet::new();
     out.retain(|model| seen.insert(normalize_model_id(&model.id)));
+
+    // A provider's `/models` answers in its own order — creation order for the OpenAI-compatible
+    // endpoints, unspecified for the rest — so without this the picker is ordered when it falls back to
+    // the declared catalogue and arbitrary when a fetch succeeded. V1 sorts the fetched list here too:
+    // `OpenAiProxyModelCatalog.GetModelsAsync` line 59, `ModelCatalogSorter.Sort(models)`.
+    //
+    // Same arguments as the declared path in `catalog::build_agent`: no group order, and no pinned
+    // default, because a discovered list carries no `default` row.
+    //
+    // `&[]` is worth being explicit about. It means provider *groups* keep the order they first appear
+    // in — so a canonical order applies within a brand, while the brands themselves follow the
+    // endpoint. That is not an oversight on either side: V1's `ModelCatalogSorter.Sort` buckets the
+    // same way, under the comment "Group by provider while preserving appearance order of providers",
+    // and it runs that same single-argument overload on this very path. Passing a fixed group order
+    // here would order the brands too, but it would be a deliberate divergence from V1 rather than the
+    // parity fix this is, so it is left to a decision rather than taken quietly.
+    //
+    // Note this also feeds `select_defaults`, whose fallback is positional (`fallback_index`: Deep 0,
+    // Balanced 1, Quick 2) and whose substring match takes the first id that contains the candidate.
+    // Sorting first is what makes those positions mean "the flagship", and is the order V1's
+    // `ModelProfileSelector` has always seen.
+    sort_models(&mut out, &[], false);
     out
 }
 
@@ -1129,6 +1163,57 @@ mod tests {
 
         assert!(parse_models_json("not json").is_empty());
         assert!(parse_models_json(r#"{"data":[]}"#).is_empty());
+    }
+
+    /// A fetched listing is ordered on the way out, so the picker does not change its mind about
+    /// ordering depending on whether a fetch happened to succeed (issue #224).
+    ///
+    /// This pins the half of the behaviour that surprises people: `sort_models` is canonical *within*
+    /// a provider, and keeps providers themselves in the order they first appear. Google leads here
+    /// only because the endpoint mentioned a Gemini model first. V1 is the same — see the note on the
+    /// `sort_models` call, and `ModelCatalogSorter.Sort`'s own "preserving appearance order of
+    /// providers".
+    #[test]
+    fn a_fetched_listing_comes_back_ordered() {
+        let shuffled = parse_models_json(
+            r#"{"data":[
+                {"id":"gemini-3.7-flash"},
+                {"id":"claude-sonnet-5"},
+                {"id":"gemini-3.8-flash"},
+                {"id":"claude-opus-4"},
+                {"id":"claude-opus-5"},
+                {"id":"claude-haiku-5"}
+            ]}"#,
+        );
+
+        assert_eq!(
+            shuffled.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            vec![
+                // Google first: `gemini-3.7-flash` was the first row, and newest wins inside the group.
+                "gemini-3.8-flash",
+                "gemini-3.7-flash",
+                // Then Anthropic, by tier (Opus, Sonnet, Haiku) with version descending inside a tier.
+                "claude-opus-5",
+                "claude-opus-4",
+                "claude-sonnet-5",
+                "claude-haiku-5",
+            ]
+        );
+
+        // The other listing shapes reach the same sort, because they share one exit.
+        let ollama = parse_models_json(
+            r#"{"models":[{"name":"claude-haiku-5"},{"model":"claude-opus-5"}]}"#,
+        );
+        assert_eq!(
+            ollama.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            vec!["claude-opus-5", "claude-haiku-5"]
+        );
+
+        let bare = parse_models_json(r#"[{"id":"claude-haiku-5"},{"id":"claude-opus-5"}]"#);
+        assert_eq!(
+            bare.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            vec!["claude-opus-5", "claude-haiku-5"]
+        );
     }
 
     /// V1 `ExtractErrorMessage` and `CleanNestedErrorMessage`.
