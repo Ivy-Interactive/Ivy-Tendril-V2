@@ -254,6 +254,11 @@ export const StreamingActive: Story = {
     height: "px:500",
     eventHandler: () => {},
   },
+  parameters: {
+    // An incomplete run's metrics footer ticks its elapsed timer off Date.now() every second, which
+    // no CSS freeze or settle delay can pin down.
+    visual: { disable: true },
+  },
 };
 
 export const CompletedSuccess: Story = {

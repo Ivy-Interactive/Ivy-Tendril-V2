@@ -187,8 +187,10 @@ export const Collapsed: StoryObj = {
 };
 
 export const WidthHints: StoryObj = {
+  // Fixed pixel dimensions, not w-full: the "flex" blade resolves its width against the container's
+  // actual size, which a viewport-relative width would make depend on the canvas frame.
   render: () => (
-    <div className="h-[420px] w-full overflow-hidden rounded-box border border-border">
+    <div className="h-[420px] w-[900px] overflow-hidden rounded-box border border-border">
       <BladeContainer
         aria-label="Width hints"
         root={{

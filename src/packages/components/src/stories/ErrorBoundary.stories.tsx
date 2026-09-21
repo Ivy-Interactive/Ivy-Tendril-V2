@@ -22,4 +22,9 @@ export const CatchingError: Story = {
       </ErrorBoundary>
     </div>
   ),
+  parameters: {
+    // ErrorDisplay renders the caught stack trace through a lazily-loaded syntax highlighter, so the
+    // screenshot races between its <pre> fallback and the highlighted result.
+    visual: { disable: true },
+  },
 };
