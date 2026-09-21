@@ -1027,7 +1027,15 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                  selection; V1 lists only the pending ones, and this page keeps the decided rows
                  visible because the accept/decline triage happens here, and a decision that vanishes
                  the row it was made on gives the operator nothing to check it by. */
-              <div key="recommendations" className="space-y-3 p-4">
+              /* Capped at the same reading measure `Review/ContentView.Cap()` gives this tab —
+                 `Width(Size.Full().Max(Size.Units(200)))`, 50rem — so a recommendation card does not
+                 run the full width of a wide window while the plan document beside it stops at the
+                 measure. V1's Summary and Plan tabs are the ones *not* wrapped, because PlanMarkdown
+                 caps itself; Recommendations is wrapped. */
+              <div
+                key="recommendations"
+                className="w-full max-w-[var(--content-measure)] space-y-3 p-4"
+              >
                 {recsError && (
                   <ErrorBanner data-testid="recommendations-error">{recsError}</ErrorBanner>
                 )}

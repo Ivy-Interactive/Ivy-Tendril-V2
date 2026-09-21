@@ -6,6 +6,9 @@ import { dirname, join } from "path";
 const cssPath = join(dirname(fileURLToPath(import.meta.url)), "plan-markdown.css");
 const css = readFileSync(cssPath, "utf-8");
 
+const tokensPath = join(dirname(fileURLToPath(import.meta.url)), "../../styles/tokens.css");
+const tokens = readFileSync(tokensPath, "utf-8");
+
 /**
  * The rendered plan's corner insets.
  *
@@ -106,6 +109,22 @@ describe("plan-markdown.css flow variant", () => {
     const start = css.indexOf(".pmv-markdown {");
     const page = css.slice(start, css.indexOf("}", start) + 1).replace(/\/\*[\s\S]*?\*\//g, "");
     expect(page).toMatch(/padding:\s*1\.5rem 0 1rem 1\.5rem/);
-    expect(page).toMatch(/max-width:\s*50rem/);
+    // The cap moved to `--content-measure` so the tabs that are not markdown can share it; the
+    // number it resolves to is asserted below, on the token.
+    expect(page).toMatch(/max-width:\s*var\(--content-measure\)/);
+  });
+
+  /**
+   * The reading measure, and the reason it is a token rather than a literal.
+   *
+   * V1 caps every plan/review tab through `ContentView.Cap()`'s
+   * `Width(Size.Full().Max(Size.Units(200)))` — 200 Ivy units, 50rem. V2 ported `Cap()`'s scroll
+   * and its 8/6 inset into `planDetail/tabPanes.tsx` but not the cap, so the Plan tab (which
+   * `.pmv-markdown` caps on its own) stopped at the measure while Details, Git and Recommendations
+   * beside it ran the full width of the window. Both now read this one token, which is what keeps
+   * them at the same column.
+   */
+  it("declares the reading measure as V1's 200 Ivy units", () => {
+    expect(tokens).toMatch(/--content-measure:\s*50rem/);
   });
 });

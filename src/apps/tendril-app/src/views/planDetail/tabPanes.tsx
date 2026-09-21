@@ -66,7 +66,7 @@ export const PlanPane: React.FC<PlanPaneProps> = ({
   <div className="flex min-h-0 flex-1 flex-col">
     {/* `PlanTabView.Build`: a failed plan leads with why, above the plan itself. */}
     {effectivePlan.state === "Failed" && (
-      <div className="px-8 pt-6">
+      <div className="w-full max-w-[var(--content-measure)] px-8 pt-6">
         <ExecutionFailedCallout plan={effectivePlan} jobs={jobs} />
       </div>
     )}
@@ -79,7 +79,7 @@ export const PlanPane: React.FC<PlanPaneProps> = ({
           what `Callout`'s variants are for. `Small` density and the icon are `ErrorBanner`'s
           choices, kept so the `unreadable` case renders exactly as it did. */}
     {emptyBodyReason ? (
-      <div className="px-8 py-6">
+      <div className="w-full max-w-[var(--content-measure)] px-8 py-6">
         {emptyBodyReason === "writing" ? (
           <Callout.Info
             data-testid="revision-writing"
@@ -201,161 +201,173 @@ export const OtherTabsPane: React.FC<OtherTabsPaneProps> = ({
   gitError,
   runAction,
 }) => (
-  <div className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
-    {effectiveTab === "diff" && (
-      <PlanRevisionDiff planId={plan.id} revisionCount={plan.revisionCount ?? 0} />
-    )}
+  /* V1 wraps each of these tabs in `ContentView.Cap()`:
+     `Layout.Vertical().Scroll().HideScrollbar().Width(Size.Full()).Height(Size.Full())
+      | (Layout.Vertical().Padding(8, 6, 8, 4).Width(Size.Full().Max(Size.Units(200))) | inner)`.
+     The scroll and the 8/6 inset were ported; `Max(Size.Units(200))` — 50rem, the reading measure
+     `.pmv-markdown` already caps itself at — was not, so on a wide window a Details row or a Git
+     path ran the full width while the Plan tab beside it stopped half way. The cap is on an inner
+     element rather than on the scroller so the scrollbar stays at the pane's right edge, where
+     `HideScrollbar()` puts V1's. */
+  <div className="min-h-0 flex-1 overflow-y-auto">
+    <div className="w-full max-w-[var(--content-measure)] px-8 py-6">
+      {effectiveTab === "diff" && (
+        <PlanRevisionDiff planId={plan.id} revisionCount={plan.revisionCount ?? 0} />
+      )}
 
-    {effectiveTab === "recommendations" && (
-      <div className="space-y-4">
-        <div>
-          <h3 className="text-sm font-semibold text-foreground">Plan Recommendations</h3>
-          <p className="text-xs text-muted-foreground">
-            Out-of-scope follow-ups and improvements discovered during execution.
-          </p>
-        </div>
-
-        {recommendations.length === 0 ? (
-          <p data-testid="no-recommendations" className="text-xs text-muted-foreground/70">
-            ExecutePlan registered no recommendations for this plan.
-          </p>
-        ) : (
-          <div className="space-y-3">
-            {recommendations.map((rec) => (
-              <RecommendationCard
-                key={rec.title}
-                recommendation={rec}
-                onAccept={(title) => handleOpenDialog(title, "Accept")}
-                onDecline={(title) => handleOpenDialog(title, "Decline")}
-              />
-            ))}
+      {effectiveTab === "recommendations" && (
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-sm font-semibold text-foreground">Plan Recommendations</h3>
+            <p className="text-xs text-muted-foreground">
+              Out-of-scope follow-ups and improvements discovered during execution.
+            </p>
           </div>
-        )}
-      </div>
-    )}
 
-    {effectiveTab === "git" && (
-      <>
-        {gitError ? (
-          <p data-testid="git-tab-error" className="text-xs text-destructive">
-            {gitError}
-          </p>
-        ) : gitData ? (
-          <PlanGitView
-            data={gitData}
-            prs={plan.prs ?? []}
-            planState={effectivePlan.state}
-            onOpenUrl={(url) => void openPath(url)}
-          />
-        ) : (
-          <p className="text-sm text-muted-foreground/70">Loading git state…</p>
-        )}
-      </>
-    )}
+          {recommendations.length === 0 ? (
+            <p data-testid="no-recommendations" className="text-xs text-muted-foreground/70">
+              ExecutePlan registered no recommendations for this plan.
+            </p>
+          ) : (
+            <div className="space-y-3">
+              {recommendations.map((rec) => (
+                <RecommendationCard
+                  key={rec.title}
+                  recommendation={rec}
+                  onAccept={(title) => handleOpenDialog(title, "Accept")}
+                  onDecline={(title) => handleOpenDialog(title, "Decline")}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
-    {effectiveTab === "details" && (
-      <div className="space-y-4">
-        {/* `DetailsTabView.Build`'s own field order, and its `RemoveEmpty()`: a row the plan
+      {effectiveTab === "git" && (
+        <>
+          {gitError ? (
+            <p data-testid="git-tab-error" className="text-xs text-destructive">
+              {gitError}
+            </p>
+          ) : gitData ? (
+            <PlanGitView
+              data={gitData}
+              prs={plan.prs ?? []}
+              planState={effectivePlan.state}
+              onOpenUrl={(url) => void openPath(url)}
+            />
+          ) : (
+            <p className="text-sm text-muted-foreground/70">Loading git state…</p>
+          )}
+        </>
+      )}
+
+      {effectiveTab === "details" && (
+        <div className="space-y-4">
+          {/* `DetailsTabView.Build`'s own field order, and its `RemoveEmpty()`: a row the plan
               has no value for is dropped rather than rendered blank. */}
-        <dl>
-          <DetailRow label="Plan ID">
-            <button
-              type="button"
-              onClick={() => void runAction("Copy Plan ID", () => copyToClipboard(plan.id))}
-              title="Copy to clipboard"
-              className="font-mono hover:underline"
+          <dl>
+            <DetailRow label="Plan ID">
+              <button
+                type="button"
+                onClick={() => void runAction("Copy Plan ID", () => copyToClipboard(plan.id))}
+                title="Copy to clipboard"
+                className="font-mono hover:underline"
+              >
+                {plan.id}
+              </button>
+            </DetailRow>
+            <DetailRow label="Folder" empty={!plan.folderPath}>
+              <button
+                type="button"
+                onClick={() =>
+                  void runAction("Copy Folder Path", () => copyToClipboard(plan.folderPath ?? ""))
+                }
+                title="Copy to clipboard"
+                className="break-all font-mono hover:underline"
+              >
+                {plan.folderPath}
+              </button>
+            </DetailRow>
+            <DetailRow label="Initial Prompt" empty={!plan.initialPrompt}>
+              <span className="whitespace-pre-wrap">{plan.initialPrompt}</span>
+            </DetailRow>
+            <DetailRow label="Revision" empty={!plan.revisionCount}>
+              {plan.revisionCount}
+            </DetailRow>
+            <DetailRow label="Profile" empty={!plan.executionProfile}>
+              {plan.executionProfile}
+            </DetailRow>
+            <DetailRow
+              label="Related Plans"
+              empty={!plan.relatedPlans || plan.relatedPlans.length === 0}
             >
-              {plan.id}
-            </button>
-          </DetailRow>
-          <DetailRow label="Folder" empty={!plan.folderPath}>
-            <button
-              type="button"
-              onClick={() =>
-                void runAction("Copy Folder Path", () => copyToClipboard(plan.folderPath ?? ""))
-              }
-              title="Copy to clipboard"
-              className="break-all font-mono hover:underline"
-            >
-              {plan.folderPath}
-            </button>
-          </DetailRow>
-          <DetailRow label="Initial Prompt" empty={!plan.initialPrompt}>
-            <span className="whitespace-pre-wrap">{plan.initialPrompt}</span>
-          </DetailRow>
-          <DetailRow label="Revision" empty={!plan.revisionCount}>
-            {plan.revisionCount}
-          </DetailRow>
-          <DetailRow label="Profile" empty={!plan.executionProfile}>
-            {plan.executionProfile}
-          </DetailRow>
-          <DetailRow
-            label="Related Plans"
-            empty={!plan.relatedPlans || plan.relatedPlans.length === 0}
-          >
-            {(plan.relatedPlans ?? []).map(planLinkLabel).join(", ")}
-          </DetailRow>
-          <DetailRow label="Depends On" empty={!plan.dependsOn || plan.dependsOn.length === 0}>
-            {(plan.dependsOn ?? []).map(planLinkLabel).join(", ")}
-          </DetailRow>
-          <DetailRow label="Issue" empty={!plan.sourceUrl}>
-            <a
-              href={plan.sourceUrl}
-              target="_blank"
-              rel="noreferrer"
-              className="break-all text-primary hover:underline"
-            >
-              {plan.sourceUrl}
-            </a>
-          </DetailRow>
-          <DetailRow label="Created" empty={!plan.created}>
-            {(plan.created ?? "").slice(0, 10)}
-          </DetailRow>
-          <DetailRow label="Level" empty={!plan.level}>
-            {plan.level}
-          </DetailRow>
-          <DetailRow label="Project" empty={!plan.project}>
-            {plan.project}
-          </DetailRow>
-          <DetailRow label="State">{effectivePlan.state}</DetailRow>
-        </dl>
+              {(plan.relatedPlans ?? []).map(planLinkLabel).join(", ")}
+            </DetailRow>
+            <DetailRow label="Depends On" empty={!plan.dependsOn || plan.dependsOn.length === 0}>
+              {(plan.dependsOn ?? []).map(planLinkLabel).join(", ")}
+            </DetailRow>
+            <DetailRow label="Issue" empty={!plan.sourceUrl}>
+              <a
+                href={plan.sourceUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="break-all text-primary hover:underline"
+              >
+                {plan.sourceUrl}
+              </a>
+            </DetailRow>
+            <DetailRow label="Created" empty={!plan.created}>
+              {(plan.created ?? "").slice(0, 10)}
+            </DetailRow>
+            <DetailRow label="Level" empty={!plan.level}>
+              {plan.level}
+            </DetailRow>
+            <DetailRow label="Project" empty={!plan.project}>
+              {plan.project}
+            </DetailRow>
+            <DetailRow label="State">{effectivePlan.state}</DetailRow>
+          </dl>
 
-        {/* Repos and commits have no row of their own in V1's Details tab; they are kept here
+          {/* Repos and commits have no row of their own in V1's Details tab; they are kept here
               because V2's Git tab is the only other place they appear, and that tab now exists only
               for a plan under review. For every Draft — which is most of them — this is the only
               place they are readable at all, so these two panels are load-bearing rather than a
               duplicate of the Git tab. */}
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div>
-            <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-              Repositories
-            </h4>
-            <ul className="mt-2 space-y-1 font-mono text-sm text-muted-foreground">
-              {plan.repos && plan.repos.length > 0 ? (
-                plan.repos.map((r, i) => <li key={i}>{r}</li>)
-              ) : (
-                <li className="font-sans text-muted-foreground/70">No repositories specified</li>
-              )}
-            </ul>
-          </div>
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div>
+              <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                Repositories
+              </h4>
+              <ul className="mt-2 space-y-1 font-mono text-sm text-muted-foreground">
+                {plan.repos && plan.repos.length > 0 ? (
+                  plan.repos.map((r, i) => <li key={i}>{r}</li>)
+                ) : (
+                  <li className="font-sans text-muted-foreground/70">No repositories specified</li>
+                )}
+              </ul>
+            </div>
 
-          <div>
-            <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-              Commits
-            </h4>
-            <ul className="mt-2 space-y-1 font-mono text-sm text-muted-foreground">
-              {plan.commits && plan.commits.length > 0 ? (
-                plan.commits.map((c, i) => <li key={i}>{c}</li>)
-              ) : (
-                <li className="font-sans text-muted-foreground/70">No commits yet</li>
-              )}
-            </ul>
-          </div>
+            <div>
+              <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                Commits
+              </h4>
+              <ul className="mt-2 space-y-1 font-mono text-sm text-muted-foreground">
+                {plan.commits && plan.commits.length > 0 ? (
+                  plan.commits.map((c, i) => <li key={i}>{c}</li>)
+                ) : (
+                  <li className="font-sans text-muted-foreground/70">No commits yet</li>
+                )}
+              </ul>
+            </div>
 
-          {/* `GitTabView`: the PR section exists only when the plan records one. */}
-          {plan.prs && plan.prs.length > 0 && <PlanPullRequests planId={plan.id} prs={plan.prs} />}
+            {/* `GitTabView`: the PR section exists only when the plan records one. */}
+            {plan.prs && plan.prs.length > 0 && (
+              <PlanPullRequests planId={plan.id} prs={plan.prs} />
+            )}
+          </div>
         </div>
-      </div>
-    )}
+      )}
+    </div>
   </div>
 );

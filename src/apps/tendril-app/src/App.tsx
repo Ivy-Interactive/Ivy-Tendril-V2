@@ -941,7 +941,7 @@ export const App: React.FC = () => {
              taking it out of one, so the page stays on the plan and just re-reads it. The store has
              already patched the row to Draft; the detail is what this page renders from. */
           onPlanReset={(id) => {
-            plansStore.fetchPlanDetail(id).catch(() => {});
+            advancePastPlan(id, detail.state);
           }}
           onPlanDeleted={(id) => {
             // A plan is a page, not a tab, so there is nothing to close — and nothing to refetch
