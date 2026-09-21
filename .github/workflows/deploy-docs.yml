@@ -1,0 +1,105 @@
+name: Deploy Docs
+
+on:
+  push:
+    branches:
+      - development
+      - main
+    paths:
+      - 'src/apps/tendril-docs/**'
+      - 'src/packages/components/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/deploy-docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Documentation Site
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          run-install: false
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build components library
+        run: pnpm --filter @ivy-interactive/components build
+
+      - name: Run docs tests
+        run: pnpm --filter @ivy-interactive/tendril-docs test
+
+      - name: Run docs check
+        run: pnpm --filter @ivy-interactive/tendril-docs check
+
+      - name: Build docs static site
+        run: pnpm --filter @ivy-interactive/tendril-docs build
+
+      - name: Prepare Pages directory structure
+        run: |
+          mkdir -p dist-pages/docs
+          cp -r src/apps/tendril-docs/dist/* dist-pages/docs/
+          touch dist-pages/.nojekyll
+          cat << 'EOF' > dist-pages/index.html
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta http-equiv="refresh" content="0; url=/docs/gettingstarted/introduction">
+            <link rel="canonical" href="/docs/gettingstarted/introduction">
+            <title>Tendril Docs</title>
+            <script>
+              window.location.replace("/docs/gettingstarted/introduction");
+            </script>
+          </head>
+          <body>
+            <p>Redirecting to <a href="/docs/gettingstarted/introduction">Tendril Docs</a>...</p>
+          </body>
+          </html>
+          EOF
+          cp dist-pages/index.html dist-pages/404.html
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist-pages
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
