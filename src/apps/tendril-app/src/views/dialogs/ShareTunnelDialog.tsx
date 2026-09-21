@@ -1,7 +1,7 @@
 import * as React from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Button, Callout } from "@ivy-interactive/components/ui";
-import { ClipboardCopy, ExternalLink, Loader2, Share2 } from "lucide-react";
+import { Button, Callout, Spinner } from "@ivy-interactive/components/ui";
+import { ClipboardCopy, ExternalLink, Share2 } from "lucide-react";
 import { describeBridgeError, bridgeErrorCode } from "../../types/api";
 import { notificationsStore } from "../../state/notificationsStore";
 import { tunnelApi, type TunnelSnapshot, type TunnelStatus } from "../../api/tunnelApi";
@@ -240,7 +240,7 @@ export function ShareTunnelDialog({
         {status === "connecting" && (
           <Callout variant="info" title="Tunnel Starting" data-testid="share-tunnel-connecting">
             <div className="flex items-center gap-2">
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              <Spinner size="md" aria-hidden="true" />
               <span>Starting share tunnel... This typically takes 15-30 seconds.</span>
             </div>
           </Callout>

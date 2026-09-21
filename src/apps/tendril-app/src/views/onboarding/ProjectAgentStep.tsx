@@ -1,5 +1,5 @@
 import React from "react";
-import { Loader2 } from "lucide-react";
+import { Spinner } from "@ivy-interactive/components/ui";
 
 /**
  * V1's `ProjectAgentStepView`, the middle of the project section's three sub-steps: the wizard has
@@ -63,7 +63,7 @@ export function ProjectAgentStep({ jobId, onFinished }: ProjectAgentStepProps) {
                 className="flex h-32 items-center justify-center text-muted-foreground"
                 data-testid="onboarding-agent-loading"
               >
-                <Loader2 className="size-5 animate-spin text-success" aria-hidden="true" />
+                <Spinner size="lg" className="text-success" aria-hidden="true" />
               </div>
             }
           >

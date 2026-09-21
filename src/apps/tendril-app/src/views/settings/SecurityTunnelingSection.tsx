@@ -1,7 +1,7 @@
 import React from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Button, Callout, Input, Label, Switch } from "@ivy-interactive/components/ui";
-import { ClipboardCopy, Download, ExternalLink, Loader2 } from "lucide-react";
+import { Button, Callout, Input, Label, Spinner, Switch } from "@ivy-interactive/components/ui";
+import { ClipboardCopy, Download, ExternalLink } from "lucide-react";
 import {
   tunnelApi,
   type CloudflaredInstallState,
@@ -210,7 +210,7 @@ const CloudflaredInstallBlock: React.FC<{ api: TunnelApi }> = ({ api }) => {
             <Callout variant="info" title="Installing" data-testid="cloudflared-installing">
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
-                  <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+                  <Spinner size="md" aria-hidden="true" />
                   <span data-testid="cloudflared-progress">
                     {phase === "downloading"
                       ? percent !== null
@@ -696,7 +696,7 @@ const TunnelBlock: React.FC<{ api: TunnelApi; kind: BlockKind }> = ({ api, kind 
         >
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              <Spinner size="md" aria-hidden="true" />
               <span>{copy.startingBody}</span>
             </div>
             {deactivateButton}

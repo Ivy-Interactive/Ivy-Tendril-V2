@@ -4,6 +4,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
+  Spinner,
 } from "@ivy-interactive/components/ui";
 import {
   Activity,
@@ -14,7 +15,6 @@ import {
   CheckCircle2,
   Cpu,
   Ellipsis,
-  Loader2,
   Pencil,
   Sparkles,
   Trash2,
@@ -74,7 +74,7 @@ export const JobsMenu: React.FC<JobsMenuProps> = ({
         >
           {runningCount > 0 ? (
             <>
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              <Spinner size="md" aria-hidden="true" />
               <span>{runningCount} running</span>
               <span
                 className="inline-block size-1.5 shrink-0 animate-pulse rounded-full bg-current"
@@ -112,7 +112,7 @@ export const JobsMenu: React.FC<JobsMenuProps> = ({
           <div className="flex items-center gap-1.5">
             {runningCount > 0 && (
               <span className="inline-flex items-center gap-1 rounded-selector bg-muted px-1.5 py-0.5 text-2xs text-foreground">
-                <Loader2 className="size-2.5 animate-spin" aria-hidden="true" />
+                <Spinner size={10} aria-hidden="true" />
                 {runningCount} running
               </span>
             )}
@@ -147,7 +147,7 @@ export const JobsMenu: React.FC<JobsMenuProps> = ({
                   }`}
                 >
                   {isRunningJob(job) ? (
-                    <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                    <Spinner size="sm" aria-hidden="true" />
                   ) : isCompletedJob(job) ? (
                     <CheckCircle2 className="size-3.5" aria-hidden="true" />
                   ) : isFailedJob(job) ? (

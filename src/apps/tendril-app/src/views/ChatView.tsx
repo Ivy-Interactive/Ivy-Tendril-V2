@@ -5,7 +5,7 @@ import {
   clipboardFiles,
   type VoiceStatus,
 } from "@ivy-interactive/components/tendril";
-import { IconButton, TooltipScope } from "@ivy-interactive/components/ui";
+import { IconButton, Spinner, TooltipScope } from "@ivy-interactive/components/ui";
 import { usePublishSidebarList } from "../state/sidebarListStore";
 import { chatStore, type ChatState, type ChatStore } from "../state/chatStore";
 import { chatLauncher } from "../state/chatLauncher";
@@ -31,7 +31,6 @@ import {
   ArrowDown,
   HelpCircle,
   ListPlus,
-  Loader2,
   Mic,
   Paperclip,
   SendHorizontal,
@@ -677,6 +676,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         buttonSize: "md" as const,
         buttonRadius: "rounded-field",
         icon: "size-4",
+        iconSpinnerSize: "md" as const,
         attachOffset: "",
         tools: "gap-1.5",
       }
@@ -685,6 +685,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         buttonSize: "lg" as const,
         buttonRadius: "",
         icon: "size-5",
+        iconSpinnerSize: "lg" as const,
         attachOffset: "-ml-1.5",
         tools: "gap-3",
       };
@@ -888,7 +889,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   leading edge where the reply will appear. */}
                 {isGenerating && (
                   <div className="flex min-h-6 w-full items-center gap-2 text-muted-foreground">
-                    <Loader2 className="size-4 animate-spin" />
+                    <Spinner size="md" />
                     <span>Working...</span>
                   </div>
                 )}
@@ -1067,7 +1068,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       }`}
                     >
                       {voiceStatus === "connecting" || voiceStatus === "processing" ? (
-                        <Loader2 className={`${composerStyle.icon} animate-spin`} />
+                        <Spinner size={composerStyle.iconSpinnerSize} />
                       ) : voiceStatus === "recording" ? (
                         <Square className={composerStyle.icon} />
                       ) : (
@@ -1109,9 +1110,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
                           className={composerStyle.buttonRadius}
                         >
                           {isCancelling ? (
-                            <Loader2
+                            <Spinner
                               data-testid="composer-stop-spinner"
-                              className={`${composerStyle.icon} animate-spin`}
+                              size={composerStyle.iconSpinnerSize}
                             />
                           ) : (
                             <Square className="size-3 fill-current" />
