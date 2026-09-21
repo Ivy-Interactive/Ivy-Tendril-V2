@@ -25,6 +25,7 @@ import { ChatHeader, JobsMenu } from "./ChatHeader";
 import { AgentPicker } from "../components/chat/AgentPicker";
 import { ImageLightbox, type LightboxImage } from "../components/chat/ImageLightbox";
 import { ComposerAttachment } from "../components/chat/ComposerAttachment";
+import { ErrorBanner } from "../components/ErrorBanner";
 import { resolveJobState } from "../utils/jobStatus";
 import {
   ArrowDown,
@@ -36,7 +37,6 @@ import {
   SendHorizontal,
   Square,
   Upload,
-  X,
 } from "lucide-react";
 import { usePendingChatQuestions } from "../hooks/usePendingChatQuestions";
 import { useWireframeBaseUrl } from "../api/proxyOrigin";
@@ -768,11 +768,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
             </div>
           )}
           {/* Error Banner */}
-          {error && (
-            <div className="border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-xs text-destructive flex items-center justify-between">
-              <span>{error}</span>
-            </div>
-          )}
+          {error && <ErrorBanner data-testid="chat-error">{error}</ErrorBanner>}
 
           {/*
           Header Toolbar. Embedded there is none: `ChatWidget` renders
@@ -975,23 +971,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 }`}
               >
                 {voiceError && (
-                  <div
-                    role="alert"
-                    className="flex items-center gap-2 rounded-field border border-destructive bg-destructive/10 px-2.5 py-1.5 text-xs font-medium text-destructive"
+                  <ErrorBanner
+                    data-testid="chat-voice-error"
+                    onDismiss={() => setVoiceError(null)}
+                    dismissLabel="Dismiss voice input error"
                   >
-                    <span className="min-w-0 flex-1">{voiceError}</span>
-                    {/* `text-current` so it stays the alert's destructive colour: `.tui-icon-btn`
-                      sets `color` in `@layer components`, which an unlayered utility outranks. */}
-                    <IconButton
-                      label="Dismiss voice input error"
-                      tooltip="Dismiss"
-                      size="xs"
-                      onClick={() => setVoiceError(null)}
-                      className="text-current"
-                    >
-                      <X className="size-3.5" />
-                    </IconButton>
-                  </div>
+                    {voiceError}
+                  </ErrorBanner>
                 )}
 
                 {attachments.length > 0 && (
