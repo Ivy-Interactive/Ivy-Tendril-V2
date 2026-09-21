@@ -6,7 +6,6 @@ import {
   buildJobRows,
   buildStatusSegments,
   formatJobCost,
-  formatTokens,
   truncatePrompt,
   jobStatusMessage,
   agentOutputLabel,
@@ -308,14 +307,6 @@ describe("cost and token cells", () => {
     expect(formatJobCost({ cost: 1.234, costSource: "estimated" })).toBe("~$1.23");
     expect(formatJobCost({ cost: 1.234, costSource: "Estimated" })).toBe("~$1.23");
     expect(formatJobCost({ cost: 1.234, costSource: "agent" })).toBe("$1.23");
-  });
-
-  // `FormatHelper.FormatTokens` keeps scaling past a million rather than saturating.
-  it("formats tokens the way V1 does", () => {
-    expect(formatTokens(450)).toBe("450");
-    expect(formatTokens(45_000)).toBe("45K");
-    expect(formatTokens(1_400_000)).toBe("1.4M");
-    expect(formatTokens(1_400_000_000)).toBe("1400.0M");
   });
 
   it("renders an absent cost as an em dash beside a populated Tokens cell", async () => {

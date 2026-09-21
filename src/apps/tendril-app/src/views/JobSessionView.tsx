@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from "react";
+import { NO_VALUE, formatCost, formatTimeSpan, formatTokens } from "@ivy-interactive/components";
 import { AgentViewer } from "@ivy-interactive/components/tendril";
 import { Badge, Button, Callout, IconButton } from "@ivy-interactive/components/ui";
 import { X } from "lucide-react";
@@ -23,17 +24,6 @@ interface JobSessionViewProps {
    * `"page"` is the older full-view framing, kept for any caller that still mounts this as a view.
    */
   layout?: "page" | "sheet";
-}
-
-/** `JobsApp.Helpers.cs` `FormatTimeSpan`: hours drop the seconds, a sub-minute span is seconds only. */
-function formatTimeSpan(totalSeconds: number): string {
-  const seconds = Math.max(0, Math.floor(totalSeconds));
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
-  if (hours >= 1) return `${hours}h ${String(minutes).padStart(2, "0")}m`;
-  if (minutes === 0) return `${secs}s`;
-  return `${minutes}m ${String(secs).padStart(2, "0")}s`;
 }
 
 /**
@@ -73,13 +63,6 @@ function formatTimestamp(job: Job): string {
 }
 
 /**
- * `JobsApp.Data.cs` and `JobCostSheet.cs` both use this for "nothing recorded here". Keeping V1's
- * em-dash rather than an empty string is what stops a job that reported no cost from reading as one
- * that cost nothing: `Cost —` and `Cost $0.00` are different claims.
- */
-const NO_VALUE = "—";
-
-/**
  * The default for `events`, hoisted so it is the *same* empty array on every render.
  *
  * `events = []` in the signature mints a new one each time, which the line cache below would read as
@@ -87,28 +70,9 @@ const NO_VALUE = "—";
  */
 const NO_EVENTS: StreamEventItem[] = [];
 
-/**
- * `FormatHelper.FormatTokens`: millions to one decimal, thousands to none.
- *
- * A million-plus count keeps scaling rather than saturating, so a 1.4-billion-token run reads
- * "1400.0M" exactly as V1's `(tokens / 1_000_000.0).ToString("F1")` does. A non-finite or negative
- * count is not a token count at all and is reported as absent rather than as "NaN".
- */
-function formatTokens(tokens: number): string {
-  if (!Number.isFinite(tokens) || tokens < 0) return NO_VALUE;
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(0)}K`;
-  return String(tokens);
-}
-
 /** `FormatHelper.FormatCount`: the exact figure, grouped, for the tooltip behind the short form. */
 function formatTokenCount(tokens: number): string {
   return tokens.toLocaleString("en-US");
-}
-
-/** `JobsApp.Data.cs` `FormatJobCost` via `FormatHelper.FormatCost`: two decimals, dollars. */
-function formatCost(cost: number): string {
-  return `$${cost.toFixed(2)}`;
 }
 
 /**
