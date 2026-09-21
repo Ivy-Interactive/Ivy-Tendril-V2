@@ -78,6 +78,7 @@ Report status: `tendril job status TendrilJobId --message="Applying changes..."`
 
 ### Rules
 
+- **Wireframes**: if the update adds or reshapes a screen, page, dialog, panel or tool, the plan needs a wireframe; see **Wireframes** in the Reference Documents. Edit an existing one in place and keep its name - no `-v2` copies - and remove its block when the UX is no longer part of the plan. Record the decision with `tendril job add-log <TendrilJobId> "Wireframe" --summary="..."`.
 - Do NOT modify any source code — only read files and update the plan
 - Do NOT modify the original revision — always create a new revision file
 - Do NOT modify `plan.yaml` — the launcher script handles state and timestamps

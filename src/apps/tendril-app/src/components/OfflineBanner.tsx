@@ -1,4 +1,5 @@
 import React from "react";
+import { Button } from "@ivy-interactive/components/ui";
 
 interface OfflineBannerProps {
   status: "online" | "reconnecting" | "offline";
@@ -17,7 +18,7 @@ export const OfflineBanner: React.FC<OfflineBannerProps> = ({ status, countdown,
       className="flex items-center justify-between border-b border-warning/40 bg-warning/10 px-4 py-2 text-xs text-warning backdrop-blur"
     >
       <div className="flex items-center space-x-2">
-        <span className="inline-block h-2 w-2 rounded-full bg-warning animate-ping" />
+        <span className="inline-block size-2 rounded-full bg-warning animate-ping" />
         <span className="font-semibold">
           {status === "reconnecting"
             ? `Tendril-Service disconnected. Auto-reconnecting in ${countdown}s...`
@@ -25,13 +26,17 @@ export const OfflineBanner: React.FC<OfflineBannerProps> = ({ status, countdown,
         </span>
         <span className="text-warning/80">(Falling back to cached state)</span>
       </div>
-      <button
+      {/* Keeps the banner's warning colour rather than taking `Button`'s solid `warning` fill —
+          see the same note on `UpdateNotice`. */}
+      <Button
         type="button"
+        size="sm"
+        variant="ghost"
         onClick={onReconnect}
-        className="rounded bg-warning/60 px-3 py-1 text-xs font-medium text-warning transition hover:bg-warning/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-warning"
+        className="bg-warning/60 text-xs text-warning hover:bg-warning/90 hover:text-warning"
       >
         Reconnect Now
-      </button>
+      </Button>
     </div>
   );
 };

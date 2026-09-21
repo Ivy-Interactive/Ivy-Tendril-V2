@@ -73,16 +73,6 @@ pub static SPECS: &[ModelSpec] = &[
         cache_write_per_million: 3.75,
     },
     ModelSpec {
-        model_id: Cow::Borrowed("claude-sonnet-5-1"),
-        display_name: Cow::Borrowed("Claude Sonnet 5.1"),
-        context_window: 1_000_000,
-        max_output_tokens: 128_000,
-        input_per_million: 3.0,
-        output_per_million: 15.0,
-        cache_read_per_million: 0.30,
-        cache_write_per_million: 3.75,
-    },
-    ModelSpec {
         model_id: Cow::Borrowed("claude-sonnet-4-6"),
         display_name: Cow::Borrowed("Claude Sonnet 4.6"),
         context_window: 1_000_000,
@@ -105,16 +95,6 @@ pub static SPECS: &[ModelSpec] = &[
     ModelSpec {
         model_id: Cow::Borrowed("claude-opus-5"),
         display_name: Cow::Borrowed("Claude Opus 5"),
-        context_window: 1_000_000,
-        max_output_tokens: 128_000,
-        input_per_million: 5.0,
-        output_per_million: 25.0,
-        cache_read_per_million: 0.50,
-        cache_write_per_million: 6.25,
-    },
-    ModelSpec {
-        model_id: Cow::Borrowed("claude-opus-5-1"),
-        display_name: Cow::Borrowed("Claude Opus 5.1"),
         context_window: 1_000_000,
         max_output_tokens: 128_000,
         input_per_million: 5.0,
@@ -161,16 +141,6 @@ pub static SPECS: &[ModelSpec] = &[
         output_per_million: 75.0,
         cache_read_per_million: 1.50,
         cache_write_per_million: 18.75,
-    },
-    ModelSpec {
-        model_id: Cow::Borrowed("claude-haiku-5-1"),
-        display_name: Cow::Borrowed("Claude Haiku 5.1"),
-        context_window: 200_000,
-        max_output_tokens: 64_000,
-        input_per_million: 1.0,
-        output_per_million: 5.0,
-        cache_read_per_million: 0.10,
-        cache_write_per_million: 1.25,
     },
     ModelSpec {
         model_id: Cow::Borrowed("claude-haiku-4-5"),
@@ -595,11 +565,84 @@ pub static SPECS: &[ModelSpec] = &[
         cache_read_per_million: 0.0,
         cache_write_per_million: 0.0,
     },
+    // Cursor's own four priced house models, rated from cursor.com/docs/models. They are here so a
+    // run on one reports a real cost; they are deliberately NOT in the `cursor` catalog row, because
+    // the picker should keep steering at the vendor models whose ladders Tendril can reason about.
+    //
+    // `context_window: 0` on three of them is the honest value, not a placeholder: Cursor publishes
+    // rates for these but no context size, and zero is already what `model_cache` writes when a
+    // source omits the limits section. Muse Spark is the exception -- the CLI names it "Muse Spark
+    // 1.3 1M", so the window is stated.
+    //
+    // The `-fast` tiers (Grok 4.6 Fast at $4/$12, Composer 2.5 Fast at $3/$15) are separately billed
+    // and deliberately absent, the same reason `format_cursor_model` never composes a `-fast` id.
+    ModelSpec {
+        model_id: Cow::Borrowed("cursor-grok-4.6"),
+        display_name: Cow::Borrowed("Cursor Grok 4.6"),
+        context_window: 0,
+        max_output_tokens: 0,
+        input_per_million: 2.0,
+        output_per_million: 6.0,
+        cache_read_per_million: 0.5,
+        cache_write_per_million: 0.0,
+    },
+    ModelSpec {
+        model_id: Cow::Borrowed("cursor-grok-4.5"),
+        display_name: Cow::Borrowed("Cursor Grok 4.5"),
+        context_window: 0,
+        max_output_tokens: 0,
+        input_per_million: 2.0,
+        output_per_million: 6.0,
+        cache_read_per_million: 0.5,
+        cache_write_per_million: 0.0,
+    },
+    ModelSpec {
+        model_id: Cow::Borrowed("composer-2.5"),
+        display_name: Cow::Borrowed("Composer 2.5"),
+        context_window: 0,
+        max_output_tokens: 0,
+        input_per_million: 0.5,
+        output_per_million: 2.5,
+        cache_read_per_million: 0.2,
+        cache_write_per_million: 0.0,
+    },
+    ModelSpec {
+        model_id: Cow::Borrowed("muse-spark-1.3"),
+        display_name: Cow::Borrowed("Muse Spark 1.3"),
+        context_window: 1_000_000,
+        max_output_tokens: 0,
+        // Cached input bills at the read rate with no separate write charge, so the zero below is
+        // Cursor's own rate rather than a missing one.
+        input_per_million: 1.25,
+        output_per_million: 4.25,
+        cache_read_per_million: 0.15,
+        cache_write_per_million: 0.0,
+    },
     ModelSpec {
         model_id: Cow::Borrowed("qwen2.5-coder-32b-instruct"),
         display_name: Cow::Borrowed("Qwen 2.5 Coder 32B Instruct"),
         context_window: 128_000,
         max_output_tokens: 32_000,
+        input_per_million: 0.0,
+        output_per_million: 0.0,
+        cache_read_per_million: 0.0,
+        cache_write_per_million: 0.0,
+    },
+    // Apple
+    //
+    // Served by `fm serve` from the on-device Foundation Model. It runs locally and bills nothing,
+    // so every rate is zero: this row exists so cost reporting says free rather than falling back
+    // to Sonnet's rates, which is what an unknown id gets. The window is measured, not published.
+    //
+    // The id carries its provider prefix, unlike every other row. It has to: this is the one row
+    // whose model reaches the wire through OpenCode, which addresses models as `provider/model`,
+    // and `providers::APPLE_MODEL_ID` pins exactly this string. Naming the row anything else would
+    // put a second id in circulation and price the launched one at the unknown-model fallback.
+    ModelSpec {
+        model_id: Cow::Borrowed("apple/system"),
+        display_name: Cow::Borrowed("Apple On-Device Foundation"),
+        context_window: 8_192,
+        max_output_tokens: 1_024,
         input_per_million: 0.0,
         output_per_million: 0.0,
         cache_read_per_million: 0.0,
@@ -668,6 +711,46 @@ pub fn strip_provider_prefix(id: &str) -> &str {
     s
 }
 
+/// Whether a spec carries rates worth pricing a run against.
+///
+/// "The catalog knows this model" and "the catalog can price this model" are different questions,
+/// and conflating them is what recorded a $1.26 run as `$0.00`. models.dev lists the same model
+/// under every provider that resells it, and a provider that publishes no `cost` block at all
+/// parses to a rate card of zeros, because [`crate::agents::model_cache::parse_catalog`] defaults
+/// each missing field to `0.0`. The live catalog carries 18 rows for `claude-opus-5`, three of them
+/// such placeholders.
+///
+/// A card of all zeros is therefore read as "no prices here" rather than "free". The one model that
+/// means it — `apple/system`, which bills nothing because it runs on the device — is unaffected:
+/// [`prefer_priced`] only demotes an unpriced row when a priced row matches just as well, and
+/// nothing else in any catalog claims that id.
+pub fn is_priced(spec: &ModelSpec) -> bool {
+    spec.input_per_million > 0.0
+        || spec.output_per_million > 0.0
+        || spec.cache_read_per_million > 0.0
+        || spec.cache_write_per_million > 0.0
+}
+
+/// Picks between specs that all match a lookup *equally well*: the first priced one, or the first
+/// of them if none carries prices.
+///
+/// Order within a tier is still dynamic-before-static and, in tier 3, longest-key-first, so this
+/// only ever chooses among rows that were already interchangeable. Which of 18 duplicate
+/// `claude-opus-5` rows the HashMap iteration order happened to put first is not a decision worth
+/// letting a bill turn on.
+fn prefer_priced<'a>(mut matches: impl Iterator<Item = &'a ModelSpec>) -> Option<ModelSpec> {
+    let first = matches.next()?;
+    if is_priced(first) {
+        return Some(first.clone());
+    }
+    Some(
+        matches
+            .find(|spec| is_priced(spec))
+            .unwrap_or(first)
+            .clone(),
+    )
+}
+
 pub fn find(id: &str) -> Option<ModelSpec> {
     let trimmed = id.trim();
     if trimmed.is_empty() {
@@ -683,29 +766,41 @@ pub fn find(id: &str) -> Option<ModelSpec> {
 
     // 1. Exact declared ID match (case-insensitive and dot-dash normalized),
     //    checking the dynamic registry before the static fallback table.
-    for spec in dynamic_specs.iter().chain(SPECS) {
-        if normalize_model_id(spec.model_id.as_ref()) == normalized {
-            return Some(spec.clone());
-        }
+    let exact = dynamic_specs
+        .iter()
+        .chain(SPECS)
+        .filter(|spec| normalize_model_id(spec.model_id.as_ref()) == normalized);
+    if let Some(spec) = prefer_priced(exact) {
+        return Some(spec);
     }
 
     // 2. Provider-prefix stripped match
-    for spec in dynamic_specs.iter().chain(SPECS) {
-        if normalize_model_id(spec.model_id.as_ref()) == normalized_stripped {
-            return Some(spec.clone());
-        }
+    let stripped_match = dynamic_specs
+        .iter()
+        .chain(SPECS)
+        .filter(|spec| normalize_model_id(spec.model_id.as_ref()) == normalized_stripped);
+    if let Some(spec) = prefer_priced(stripped_match) {
+        return Some(spec);
     }
 
     // 3. Longest-first pattern match across declared model keys
     let mut sorted_specs: Vec<&ModelSpec> = dynamic_specs.iter().chain(SPECS).collect();
     sorted_specs.sort_by_key(|a| std::cmp::Reverse(a.model_id.len()));
 
-    for spec in sorted_specs {
+    // The longest matching key is the most specific model, so specificity still decides *which*
+    // model wins; pricedness only decides which of that model's duplicate rows does. Resolving the
+    // key first is what keeps a short, priced key from outbidding a long, unpriced one and pricing
+    // the run against a different model entirely.
+    let winning_key = sorted_specs.iter().find_map(|spec| {
         let spec_key = normalize_model_id(spec.model_id.as_ref());
-        if normalized_stripped.contains(&spec_key) || normalized.contains(&spec_key) {
-            return Some(spec.clone());
-        }
-    }
+        (normalized_stripped.contains(&spec_key) || normalized.contains(&spec_key))
+            .then_some(spec_key)
+    })?;
 
-    None
+    prefer_priced(
+        sorted_specs
+            .iter()
+            .copied()
+            .filter(|spec| normalize_model_id(spec.model_id.as_ref()) == winning_key),
+    )
 }

@@ -2,6 +2,7 @@
 name = "tendril-core"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 
@@ -33,3 +34,4 @@ libc = { workspace = true }
 [dev-dependencies]
 tokio = { workspace = true, features = ["test-util"] }
 toml = { workspace = true }
+tempfile = "3"

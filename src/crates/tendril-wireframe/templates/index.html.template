@@ -1,0 +1,20 @@
+<!doctype html>
+<!-- @tendril-wireframe plan-only: a throwaway mockup. Never copy it into product code. -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{TITLE}}</title>
+    <!--
+      Stylesheets are injected by the dev server, in this order:
+        1. tendril.css             the library sheet (carries Tailwind's preflight)
+        2. wireframe-utilities.css the Tailwind utility superset
+        3. fonts.css               self-hosted Balsamiq Sans
+      Order matters: the utility sheet must come after the library sheet so its
+      rules win within the shared @layer utilities.
+    -->
+  </head>
+  <body>
+    <div id="root"></div>
+  </body>
+</html>

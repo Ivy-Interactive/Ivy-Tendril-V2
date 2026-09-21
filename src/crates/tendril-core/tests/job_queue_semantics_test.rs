@@ -1425,6 +1425,146 @@ async fn stop_all_stops_the_running_job_and_every_queued_one() {
     }
 }
 
+/// `stop-all` overlaps the kill grace periods instead of summing them.
+///
+/// `cancel_job` pays `DEFAULT_KILL_GRACE` (3s of SIGTERM-then-poll in `kill_tree`) for every agent
+/// that does not die on SIGTERM, and awaiting the cancellations one at a time made that cost
+/// linear: "Stop All" on 15 running jobs took ~45s in the UI. These five agents all ignore SIGTERM,
+/// so each one costs the full grace -- serially that is 15s, concurrently ~3s. The bound below sits
+/// between the two with room on both sides rather than near either, so it fails on a regression to
+/// sequential cancellation and not on a slow machine.
+#[cfg(unix)]
+#[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+async fn stop_all_overlaps_the_kill_grace_periods_instead_of_summing_them() {
+    const JOBS: usize = 5;
+    // Serial would be JOBS * 3s = 15s; concurrent is one grace, ~3s.
+    const BOUND: Duration = Duration::from_secs(9);
+
+    let home = HomeFixture::new("queue-stop-all-concurrent");
+    home.write_promptware("ExecutePlan");
+    let folders: Vec<PathBuf> = (1..=JOBS)
+        .map(|i| {
+            home.write_plan(
+                &format!("{:05}-Job{}", i, i),
+                &plan_with(PlanStatus::Draft, &[]),
+            )
+        })
+        .collect();
+
+    // `trap '' TERM` is the whole point: an agent that ignores SIGTERM is what makes `kill_tree`
+    // spend its full grace before escalating to SIGKILL. The inner sleeps are short so the shell
+    // keeps looping rather than sitting in one uninterruptible wait.
+    let script = write_script(
+        &home,
+        "stubborn.sh",
+        "trap '' TERM\necho working\nwhile true; do sleep 0.2; done\n",
+    );
+
+    // Every job has to be Running: only a live PID reaches `kill_tree` at all.
+    let manager = manager_for(&home, JOBS as i32, Some(script));
+    let mut ids = Vec::new();
+    for folder in &folders {
+        ids.push(manager.start_job(execute(folder)).await.unwrap());
+    }
+    for id in &ids {
+        wait_for_status(&manager, id, JobStatus::Running, Duration::from_secs(30)).await;
+    }
+
+    let started = std::time::Instant::now();
+    let mut stopped = manager.stop_all_jobs().await.unwrap();
+    let elapsed = started.elapsed();
+
+    stopped.sort();
+    let mut expected = ids.clone();
+    expected.sort();
+    assert_eq!(stopped, expected, "every running job must be reported");
+    for id in &ids {
+        assert_eq!(status_of(&manager, id).await, JobStatus::Stopped);
+    }
+
+    assert!(
+        elapsed < BOUND,
+        "stop-all of {} SIGTERM-ignoring jobs took {:?}; the kill graces are being summed rather \
+         than overlapped",
+        JOBS,
+        elapsed
+    );
+}
+
+/// A `CreatePlan` stopped between `plan create` and `plan write-revision` leaves a plan that says so,
+/// and a job that names it.
+///
+/// This is the corruption the stop-all sweep was actually causing, reproduced from the two real cases:
+/// plans 00003 and 00004 sit on the operator's disk as folders whose `Revisions/` is empty, and jobs
+/// 00010 and 00013 -- both `Stopped by stop-all` -- carry an empty `PlanFile` and no `ReportedPlanId`,
+/// so nothing on either side points at the other. A `CreatePlan` builds its deliverable in two steps
+/// and a stop lands between them, and `finish_job`, which is what normally records the folder and
+/// disposes of an empty one, is never reached on a cancellation.
+///
+/// Both halves are asserted because either alone still leaves the operator stuck: a plan marked
+/// `Failed` that no job admits to, or a job pointing at a folder that still reads as a `Draft` waiting
+/// to be executed. Nothing here is timing-dependent -- the fixture is the post-`plan create` state on
+/// disk, written directly -- so this fails on a regression rather than on a slow machine.
+#[tokio::test]
+async fn stopping_a_create_plan_before_its_revision_marks_the_plan_and_names_the_job() {
+    let home = HomeFixture::new("queue-stop-all-plan-husk");
+
+    // Exactly what `tendril plan create` leaves behind: folder, plan.yaml in Draft, empty Revisions/.
+    let folder = home.write_plan("00003-HuskPlan", &plan_with(PlanStatus::Draft, &[]));
+    std::fs::create_dir_all(folder.join("Revisions")).expect("create empty Revisions dir");
+
+    // The only surviving link between job and plan on a cancelled run: the `PlanId:` marker the
+    // `plan create` tool call printed into the run's own log.
+    std::fs::write(
+        home.path.join("Logs").join("Jobs").join("00010.raw.jsonl"),
+        "{\"type\":\"tool_result\",\"content\":\"Created plan. PlanId: 00003\"}\n",
+    )
+    .expect("write raw log");
+
+    // `Running` with no PID and no handle: the job as the daemon sees it when the sweep arrives, and
+    // the shape that takes `cancel_job` straight past the kill to the bookkeeping under test.
+    let mut job = job_in(
+        "00010",
+        std::path::Path::new(""),
+        "CreatePlan",
+        JobStatus::Running,
+    );
+    job.plan_file = String::new();
+    job.completed_at = None;
+    write_job_row(&home, &job);
+
+    let manager = manager_for(&home, 2, None);
+    assert!(manager
+        .cancel_job("00010", Some("Stopped by stop-all"))
+        .await
+        .unwrap());
+
+    let stored = manager.get_job("00010").await.unwrap().expect("job row");
+    assert_eq!(stored.status, JobStatus::Stopped);
+    assert_eq!(
+        std::path::PathBuf::from(&stored.plan_file),
+        folder,
+        "a stopped CreatePlan must record the folder it had already made"
+    );
+    assert_eq!(
+        stored.reported_plan_id.as_deref(),
+        Some("00003"),
+        "the plan id must survive on the job row, not only in the log"
+    );
+
+    assert_eq!(
+        plan_state(&folder),
+        PlanStatus::Failed.to_string(),
+        "a plan whose only writer was killed before it wrote a revision must not sit in Drafts \
+         looking like work that is merely unread"
+    );
+    assert!(
+        folder.is_dir(),
+        "the folder must survive: a stop is not a delete, and attachments or a half-written \
+         plan.yaml may be in there"
+    );
+}
+
 /// Force-starting a blocked job runs it under its original id, gates skipped.
 #[cfg(unix)]
 #[tokio::test]

@@ -1,17 +1,41 @@
-//! Finding `cloudflared` — a port of `Services/Tunnel/CloudflaredInstaller.cs`, minus the download.
+//! Finding and installing `cloudflared` — a port of `Services/Tunnel/CloudflaredInstaller.cs`.
 //!
-//! The original's `EnsureInstalledAsync` silently fetches a ~40 MB binary from GitHub's "latest"
-//! release on first use. That is ported as *detection plus an actionable error*:
+//! Detection is the original's: `$TENDRIL_HOME/tools/cloudflared` first, then `PATH`
+//! ([`find_existing`]), with the platform/asset mapping and release URL ported verbatim so that every
+//! message can name the exact file and where it came from.
 //!
-//! - the search order is the original's (`$TENDRIL_HOME/tools/cloudflared`, then `PATH`),
-//! - the platform/asset mapping and the release URL are ported verbatim, so the error message can
-//!   name the exact file to download and where from,
-//! - nothing is ever downloaded or executed on the operator's behalf.
+//! # Why the download came back
 //!
-//! Auto-downloading an unpinned third-party binary and immediately running it is a supply-chain
-//! decision, not an implementation detail: there is no checksum, no signature and no version pin in
-//! the original, so "latest" is whatever GitHub serves at that moment. Telling the operator to install
-//! it with their package manager keeps that decision — and its update path — where it belongs.
+//! This module shipped as detection *only*, on the grounds that auto-fetching an unpinned third-party
+//! binary and then executing it is a supply-chain decision rather than an implementation detail — the
+//! original has no checksum, no signature and no version pin, so its "latest" is whatever GitHub serves
+//! at that moment. The objection was sound but the conclusion was wrong: it left the feature unusable
+//! on a fresh install, which is a regression against V1, where `EnsureInstalledAsync` just works.
+//!
+//! [`install`] restores V1's behaviour and answers the objection instead of accepting it:
+//!
+//! - **The asset is verified before it is trusted.** The GitHub releases API publishes a SHA-256 for
+//!   every release asset in `assets[].digest` (`sha256:<hex>`). [`install`] resolves the release
+//!   through the API, downloads the asset the API described, and refuses to install anything whose
+//!   bytes do not hash to that digest. Nothing unverified is ever made executable, and nothing
+//!   downloaded is executed here at all. Note that the *release body* also carries a hand-maintained
+//!   "SHA256 Checksums" block; it has been observed to disagree with the real assets, so the API
+//!   digest is the only source used.
+//! - **It is never automatic.** There is no fetch on daemon start and none on a status read. The only
+//!   caller is `POST /api/tunnel/share/install`, which exists because a user pressed a button that says
+//!   what it is about to do. A tunnel start still *fails* on a missing binary rather than installing
+//!   one behind the user's back.
+//! - **The manual instructions stay.** [`TunnelError::NotInstalled`] still names the package-manager
+//!   command and the asset URL, and it is what a failed or refused install falls back to. The download
+//!   is the convenience; the operator's own package manager remains the supported update path, which
+//!   is why an operator-installed copy on `PATH` still wins over anything fetched here.
+//!
+//! # Not ported from the original's download
+//!
+//! `DownloadAsync` shells out to `chmod +x`; [`install`] sets the mode bits directly, which is what the
+//! rest of this workspace does. The original also has no progress reporting and no verification, both
+//! of which are added here — see [`InstallProgress`] for why a multi-second silent hang on a button
+//! press is not an acceptable port of "await DownloadAsync".
 
 use super::TunnelError;
 use std::path::{Path, PathBuf};
@@ -149,9 +173,10 @@ pub fn resolve_binary(
     })
 }
 
-/// What `GET /api/tunnel/share/install` reports: whether a binary was found, and if not, exactly what
-/// to install. Ported from the original's `CheckInstalledAsync` plus the install prompt in
-/// `ShareTunnelModal`, which is the only place the download URL was ever surfaced.
+/// What `GET /api/tunnel/share/install` reports: whether a binary was found, if not exactly what to
+/// install, and how a running install is getting on. Ported from the original's `CheckInstalledAsync`
+/// plus the install prompt in `ShareTunnelModal`, which is the only place the download URL was ever
+/// surfaced.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct InstallState {
     pub installed: bool,
@@ -165,14 +190,41 @@ pub struct InstallState {
     pub asset_name: String,
     #[serde(rename = "downloadUrl")]
     pub download_url: String,
+    /// Whether this platform has an asset Tendril knows how to fetch and verify, i.e. whether offering
+    /// an Install button makes sense at all. The pane falls back to the manual instructions when this
+    /// is false, which is also what it does when an install fails.
+    pub downloadable: bool,
+    /// The live install, if one has been attempted in this daemon's lifetime.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub progress: Option<InstallProgress>,
+    /// Set when `shareTunnel.binaryPath` points at something unusable. Kept apart from `installed:
+    /// false` on purpose: an operator who configured a path needs to hear that *their* path is wrong,
+    /// not that cloudflared is missing, and an Install button would be the wrong offer in that state.
+    #[serde(
+        rename = "configuredPathError",
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub configured_path_error: Option<String>,
 }
 
-/// Port of `CheckInstalledAsync`, widened to also say where to get it.
+/// Port of `CheckInstalledAsync`, widened to say where to get it and how a fetch is progressing.
 pub fn install_state(tendril_home: &Path, configured: Option<&str>) -> InstallState {
+    state_with_progress(tendril_home, configured, None)
+}
+
+/// [`install_state`] plus whatever [`CloudflaredInstall`] has to report.
+pub fn state_with_progress(
+    tendril_home: &Path,
+    configured: Option<&str>,
+    install: Option<&CloudflaredInstall>,
+) -> InstallState {
     let asset = platform_asset_name().to_string();
-    let found = match configured {
-        Some(configured) => resolve_binary(tendril_home, Some(configured)).ok(),
-        None => find_existing(tendril_home),
+    let (found, configured_path_error) = match configured {
+        Some(configured) => match resolve_binary(tendril_home, Some(configured)) {
+            Ok(path) => (Some(path), None),
+            Err(err) => (None, Some(err.to_string())),
+        },
+        None => (find_existing(tendril_home), None),
     };
     InstallState {
         installed: found.is_some(),
@@ -180,7 +232,515 @@ pub fn install_state(tendril_home: &Path, configured: Option<&str>) -> InstallSt
         expected_path: local_binary_path(tendril_home).display().to_string(),
         download_url: download_url(&asset),
         asset_name: asset,
+        // Every platform the asset map covers is fetchable; the flag exists so the pane has one thing
+        // to read rather than re-deriving the platform, and so a future platform with no published
+        // asset can turn the button off without a UI change.
+        downloadable: configured_path_error.is_none(),
+        progress: install.map(CloudflaredInstall::progress),
+        configured_path_error,
     }
+}
+
+/// The GitHub releases API endpoint describing cloudflared's latest release.
+///
+/// The API rather than the plain `releases/latest/download/<asset>` redirect that [`download_url`]
+/// builds, because the API is the only thing that publishes a per-asset SHA-256 (`assets[].digest`).
+/// [`download_url`] is still what a *human* is told to fetch, since it needs no JSON.
+pub const CLOUDFLARED_RELEASE_API: &str =
+    "https://api.github.com/repos/cloudflare/cloudflared/releases/latest";
+
+/// How far along an [`install`] is. Polled by `GET /api/tunnel/share/install`, which is also how the
+/// settings pane renders a progress bar instead of a frozen button.
+///
+/// Progress is reported at all because the asset is ~40 MB: the original simply awaits `DownloadAsync`,
+/// which on a slow link is a multi-second silent hang on a button press. `total_bytes` is an
+/// `Option` because a server is not obliged to send `Content-Length`; the pane shows an indeterminate
+/// bar in that case rather than inventing a denominator.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct InstallProgress {
+    /// One of `idle`, `resolving`, `downloading`, `verifying`, `installing`, `done`, `failed`,
+    /// `cancelled`. A string rather than an enum in the wire format because the pane only ever
+    /// switches on it for display, and a new phase must not break an older client.
+    pub phase: String,
+    pub downloaded_bytes: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub total_bytes: Option<u64>,
+    /// Set only in the `failed` phase. Carries the actionable message, not a debug string.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+impl InstallProgress {
+    fn idle() -> Self {
+        Self {
+            phase: "idle".to_string(),
+            downloaded_bytes: 0,
+            total_bytes: None,
+            error: None,
+        }
+    }
+
+    fn phase(name: &str) -> Self {
+        Self {
+            phase: name.to_string(),
+            ..Self::idle()
+        }
+    }
+
+    /// Whether an install is in flight. Used to make [`CloudflaredInstall::start`] idempotent, so a
+    /// double-click cannot start two downloads writing to the same path.
+    pub fn is_running(&self) -> bool {
+        matches!(
+            self.phase.as_str(),
+            "resolving" | "downloading" | "verifying" | "installing"
+        )
+    }
+}
+
+/// A cancellable, observable install for one `TENDRIL_HOME`.
+///
+/// The shape mirrors [`super::service::TunnelService`]'s supervisor: a shared cell holding the live
+/// state, and a flag the caller can set to unwind a long-running task from outside. A download the
+/// user cannot get out of is as bad as one with no progress, and both of those are why this is a
+/// background task with a handle rather than one long `await` inside the route.
+#[derive(Debug, Default)]
+pub struct CloudflaredInstall {
+    progress: std::sync::Mutex<Option<InstallProgress>>,
+    cancelled: std::sync::atomic::AtomicBool,
+}
+
+impl CloudflaredInstall {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// The live progress, or `idle` if nothing has been attempted.
+    pub fn progress(&self) -> InstallProgress {
+        self.lock().clone().unwrap_or_else(InstallProgress::idle)
+    }
+
+    fn lock(&self) -> std::sync::MutexGuard<'_, Option<InstallProgress>> {
+        self.progress
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+    }
+
+    fn set(&self, progress: InstallProgress) {
+        *self.lock() = Some(progress);
+    }
+
+    fn is_cancelled(&self) -> bool {
+        self.cancelled.load(std::sync::atomic::Ordering::SeqCst)
+    }
+
+    /// Asks a running install to stop. Returns whether one was actually in flight.
+    ///
+    /// The partially written file is a temp file that the task removes on the way out, so a cancel
+    /// can never leave a truncated `cloudflared` sitting where [`find_existing`] would find it.
+    pub fn cancel(&self) -> bool {
+        let running = self.progress().is_running();
+        if running {
+            self.cancelled
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+        }
+        running
+    }
+
+    /// Marks the start of an attempt, refusing if one is already in flight.
+    fn begin(&self) -> bool {
+        let mut guard = self.lock();
+        if guard.as_ref().is_some_and(InstallProgress::is_running) {
+            return false;
+        }
+        self.cancelled
+            .store(false, std::sync::atomic::Ordering::SeqCst);
+        *guard = Some(InstallProgress::phase("resolving"));
+        true
+    }
+
+    /// Runs an install to completion, reporting into `self`. Idempotent while one is in flight: a
+    /// second call is a no-op returning `false`, which is what stops a double-click downloading twice.
+    pub async fn run(&self, tendril_home: &Path, options: &InstallOptions) -> bool {
+        if !self.begin() {
+            return false;
+        }
+        match install(tendril_home, options, self).await {
+            Ok(_) => self.set(InstallProgress {
+                phase: "done".to_string(),
+                ..self.progress()
+            }),
+            Err(err) if self.is_cancelled() => {
+                // A cancel is the user's own decision, not a failure to report back at them.
+                tracing::info!("cloudflared install cancelled: {err}");
+                self.set(InstallProgress::phase("cancelled"));
+            }
+            Err(err) => {
+                tracing::warn!("cloudflared install failed: {err}");
+                self.set(InstallProgress {
+                    phase: "failed".to_string(),
+                    error: Some(err.to_string()),
+                    ..self.progress()
+                });
+            }
+        }
+        true
+    }
+}
+
+/// Where [`install`] fetches from, so a test never touches the network.
+///
+/// The repo's established way to fake HTTP is a loopback `TcpListener` plus an injected base URL (see
+/// `provider_model_discovery_test.rs` and `version_check::check_once`'s injected client); this is that
+/// same idiom. `api_url` is separated from the asset URL because the asset URL is whatever the API
+/// says it is — a stub serves both from the same loopback origin.
+#[derive(Debug, Clone)]
+pub struct InstallOptions {
+    pub api_url: String,
+    pub client: reqwest::Client,
+}
+
+impl Default for InstallOptions {
+    fn default() -> Self {
+        Self {
+            api_url: CLOUDFLARED_RELEASE_API.to_string(),
+            // No overall timeout: this is a ~40 MB download on an arbitrary link, and a deadline that
+            // fires mid-transfer on a slow connection would be indistinguishable from a broken one.
+            // The connect timeout still bounds the "no network at all" case, and cancellation is the
+            // user's way out of a transfer that is merely slow.
+            client: reqwest::Client::builder()
+                .connect_timeout(std::time::Duration::from_secs(15))
+                .build()
+                .unwrap_or_default(),
+        }
+    }
+}
+
+/// One asset as the releases API describes it.
+#[derive(Debug, serde::Deserialize)]
+struct ReleaseAsset {
+    name: String,
+    browser_download_url: String,
+    /// `sha256:<hex>`, published by GitHub for every release asset. Optional in the type because a
+    /// missing digest must be a clear refusal rather than a deserialisation error.
+    #[serde(default)]
+    digest: Option<String>,
+}
+
+#[derive(Debug, serde::Deserialize)]
+struct ReleaseResponse {
+    #[serde(default)]
+    assets: Vec<ReleaseAsset>,
+}
+
+/// Downloads, verifies and installs `cloudflared` into [`local_binary_path`].
+///
+/// Port of the original's `DownloadAsync`, with the two things it does not do: the bytes are checked
+/// against the digest the releases API published before anything is written into place, and the
+/// transfer reports progress and honours a cancel.
+///
+/// Never called except from an explicit user action — see this module's docs.
+async fn install(
+    tendril_home: &Path,
+    options: &InstallOptions,
+    tracker: &CloudflaredInstall,
+) -> Result<PathBuf, TunnelError> {
+    let asset_name = platform_asset_name();
+    let target = local_binary_path(tendril_home);
+    let tools = tools_dir(tendril_home);
+
+    // Checked before the network, so "your tools directory is read-only" is not reported as a download
+    // failure after a 40 MB transfer.
+    std::fs::create_dir_all(&tools).map_err(|source| TunnelError::InstallFailed {
+        reason: format!(
+            "{} could not be created ({source}). Create it, or install cloudflared yourself and set \
+shareTunnel.binaryPath.",
+            tools.display()
+        ),
+    })?;
+
+    let asset = resolve_asset(options, asset_name).await?;
+    let digest = expected_digest(&asset)?;
+
+    tracker.set(InstallProgress::phase("downloading"));
+    let bytes = download_asset(options, &asset.browser_download_url, tracker).await?;
+
+    tracker.set(InstallProgress {
+        phase: "verifying".to_string(),
+        ..tracker.progress()
+    });
+    verify_digest(&bytes, &digest, &asset.name)?;
+
+    tracker.set(InstallProgress {
+        phase: "installing".to_string(),
+        ..tracker.progress()
+    });
+    write_binary(&bytes, asset_name, &tools, &target)?;
+    Ok(target)
+}
+
+/// Finds this platform's asset in the latest release.
+async fn resolve_asset(
+    options: &InstallOptions,
+    asset_name: &str,
+) -> Result<ReleaseAsset, TunnelError> {
+    let response = options
+        .client
+        .get(&options.api_url)
+        // GitHub rejects API requests with no User-Agent outright, which would otherwise read as a
+        // mysterious 403. Same header `version_check` sends.
+        .header("User-Agent", "tendril")
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+        .map_err(|source| TunnelError::InstallFailed {
+            reason: format!(
+                "could not reach GitHub to look up the cloudflared release ({source}). Check your \
+network, or install cloudflared yourself."
+            ),
+        })?;
+
+    let status = response.status();
+    if !status.is_success() {
+        return Err(TunnelError::InstallFailed {
+            reason: format!(
+                "GitHub returned {status} when asked for the latest cloudflared release. Try again \
+later, or install cloudflared yourself."
+            ),
+        });
+    }
+
+    let body = response
+        .text()
+        .await
+        .map_err(|source| TunnelError::InstallFailed {
+            reason: format!("the release listing could not be read ({source})"),
+        })?;
+    let release: ReleaseResponse =
+        serde_json::from_str(&body).map_err(|source| TunnelError::InstallFailed {
+            reason: format!("the release listing could not be understood ({source})"),
+        })?;
+
+    release
+        .assets
+        .into_iter()
+        .find(|asset| asset.name == asset_name)
+        .ok_or_else(|| TunnelError::InstallFailed {
+            reason: format!(
+                "the latest cloudflared release has no {asset_name} for this platform. Install \
+cloudflared yourself — see https://pkg.cloudflare.com."
+            ),
+        })
+}
+
+/// The `sha256:<hex>` the API published for `asset`, as bare hex.
+///
+/// An asset with no digest is refused rather than installed unverified: "we could not check it" and
+/// "it is fine" must not collapse into the same outcome, which is the entire reason the download is
+/// defensible at all.
+fn expected_digest(asset: &ReleaseAsset) -> Result<String, TunnelError> {
+    let raw = asset
+        .digest
+        .as_deref()
+        .and_then(|digest| digest.strip_prefix("sha256:"))
+        .map(str::trim)
+        .filter(|hex| hex.len() == 64 && hex.chars().all(|c| c.is_ascii_hexdigit()));
+
+    raw.map(str::to_ascii_lowercase)
+        .ok_or_else(|| TunnelError::InstallFailed {
+            reason: format!(
+                "GitHub published no SHA-256 for {}, so it cannot be verified. Install cloudflared \
+yourself rather than trusting an unchecked download.",
+                asset.name
+            ),
+        })
+}
+
+/// Streams the asset into memory, updating `tracker` and unwinding on a cancel.
+///
+/// In memory rather than straight to disk because the bytes must be hashed before anything lands
+/// anywhere executable, and ~40 MB is a size this process already handles elsewhere.
+async fn download_asset(
+    options: &InstallOptions,
+    url: &str,
+    tracker: &CloudflaredInstall,
+) -> Result<Vec<u8>, TunnelError> {
+    use futures_util::StreamExt;
+
+    let response = options
+        .client
+        .get(url)
+        .header("User-Agent", "tendril")
+        .send()
+        .await
+        .map_err(|source| TunnelError::InstallFailed {
+            reason: format!(
+                "the cloudflared download could not be started ({source}). Check your network, or \
+install cloudflared yourself."
+            ),
+        })?;
+
+    let status = response.status();
+    if !status.is_success() {
+        return Err(TunnelError::InstallFailed {
+            reason: format!("the cloudflared download returned {status}"),
+        });
+    }
+
+    let total = response.content_length();
+    tracker.set(InstallProgress {
+        phase: "downloading".to_string(),
+        downloaded_bytes: 0,
+        total_bytes: total,
+        error: None,
+    });
+
+    let mut buffer: Vec<u8> = Vec::with_capacity(total.unwrap_or(0) as usize);
+    let mut stream = response.bytes_stream();
+    while let Some(chunk) = stream.next().await {
+        // Checked per chunk rather than per download, so Cancel takes effect within one network read
+        // instead of at the end of a transfer the user has already given up on.
+        if tracker.is_cancelled() {
+            return Err(TunnelError::InstallFailed {
+                reason: "the cloudflared download was cancelled".to_string(),
+            });
+        }
+        let chunk = chunk.map_err(|source| TunnelError::InstallFailed {
+            reason: format!(
+                "the cloudflared download was interrupted ({source}). Try again, or install \
+cloudflared yourself."
+            ),
+        })?;
+        buffer.extend_from_slice(&chunk);
+        tracker.set(InstallProgress {
+            phase: "downloading".to_string(),
+            downloaded_bytes: buffer.len() as u64,
+            total_bytes: total,
+            error: None,
+        });
+    }
+    Ok(buffer)
+}
+
+/// Refuses anything whose bytes do not hash to what the API said they would.
+pub fn verify_digest(bytes: &[u8], expected_hex: &str, asset: &str) -> Result<(), TunnelError> {
+    use sha2::{Digest, Sha256};
+    let actual = format!("{:x}", Sha256::digest(bytes));
+    if actual == expected_hex {
+        return Ok(());
+    }
+    Err(TunnelError::InstallFailed {
+        reason: format!(
+            "the downloaded {asset} does not match the SHA-256 GitHub published for it \
+(expected {expected_hex}, got {actual}). Nothing was installed."
+        ),
+    })
+}
+
+/// Puts the verified bytes at `target`, extracting first when the asset is an archive.
+///
+/// Only macOS ships a `.tgz`; Windows and Linux assets are the bare binary, which is why the original
+/// has one tar reader and one straight copy. The same split is kept here.
+fn write_binary(
+    bytes: &[u8],
+    asset_name: &str,
+    tools: &Path,
+    target: &Path,
+) -> Result<(), TunnelError> {
+    let staged = tools.join(format!("{}.download", local_binary_name()));
+    let cleanup = |path: &Path| {
+        let _ = std::fs::remove_file(path);
+    };
+
+    if asset_name.ends_with(".tgz") {
+        let archive = tools.join("cloudflared-download.tgz");
+        write_file(&archive, bytes)?;
+        let extracted = extract_tgz(&archive, tools);
+        cleanup(&archive);
+        extracted?;
+    } else {
+        write_file(&staged, bytes)?;
+        // Renamed rather than written in place so that a crash mid-write cannot leave a truncated file
+        // where `find_existing` would pick it up and try to run it.
+        std::fs::rename(&staged, target).map_err(|source| {
+            cleanup(&staged);
+            TunnelError::InstallFailed {
+                reason: format!("{} could not be written ({source})", target.display()),
+            }
+        })?;
+    }
+
+    make_executable(target)?;
+    if !is_executable_file(target) {
+        return Err(TunnelError::InstallFailed {
+            reason: format!(
+                "{} was installed but is not executable. Install cloudflared yourself, or set \
+shareTunnel.binaryPath.",
+                target.display()
+            ),
+        });
+    }
+    Ok(())
+}
+
+fn write_file(path: &Path, bytes: &[u8]) -> Result<(), TunnelError> {
+    std::fs::write(path, bytes).map_err(|source| TunnelError::InstallFailed {
+        reason: format!("{} could not be written ({source})", path.display()),
+    })
+}
+
+/// Extracts the single `cloudflared` entry from the macOS archive into `tools`.
+///
+/// Shells out to `tar` rather than decoding in-process, and the reason is a constraint rather than a
+/// preference: `tendril-core` depends on neither `flate2` nor `tar` (the CLI does, for self-update),
+/// and adding a dependency is not this change's to make. Shelling out is sound here specifically
+/// because a `.tgz` asset only ever exists on macOS, where `tar` is part of the base system — the
+/// Windows and Linux assets are bare binaries that never reach this function. It is also the idiom the
+/// module already uses for `which`/`where.exe`, and the original shells out to `chmod` for the same
+/// kind of reason.
+///
+/// The archive holds exactly one root-level entry, `cloudflared`, so a named extract is enough and
+/// there is no wrapping directory to walk.
+fn extract_tgz(archive: &Path, tools: &Path) -> Result<(), TunnelError> {
+    let output = std::process::Command::new("tar")
+        .arg("-xzf")
+        .arg(archive)
+        .arg("-C")
+        .arg(tools)
+        .arg("cloudflared")
+        .output()
+        .map_err(|source| TunnelError::InstallFailed {
+            reason: format!("the downloaded archive could not be extracted ({source})"),
+        })?;
+
+    if !output.status.success() {
+        return Err(TunnelError::InstallFailed {
+            reason: format!(
+                "the downloaded archive could not be extracted ({})",
+                String::from_utf8_lossy(&output.stderr).trim()
+            ),
+        });
+    }
+    Ok(())
+}
+
+/// The original's `chmod +x`, done directly rather than by spawning `chmod`.
+#[cfg(unix)]
+fn make_executable(path: &Path) -> Result<(), TunnelError> {
+    use std::os::unix::fs::PermissionsExt;
+    let metadata = std::fs::metadata(path).map_err(|source| TunnelError::InstallFailed {
+        reason: format!("{} is missing after install ({source})", path.display()),
+    })?;
+    let mut perms = metadata.permissions();
+    perms.set_mode(perms.mode() | 0o755);
+    std::fs::set_permissions(path, perms).map_err(|source| TunnelError::InstallFailed {
+        reason: format!("{} could not be made executable ({source})", path.display()),
+    })
+}
+
+#[cfg(not(unix))]
+fn make_executable(_path: &Path) -> Result<(), TunnelError> {
+    Ok(())
 }
 
 #[cfg(test)]

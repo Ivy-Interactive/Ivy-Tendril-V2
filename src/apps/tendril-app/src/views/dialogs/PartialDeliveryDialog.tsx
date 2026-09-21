@@ -1,6 +1,6 @@
 import * as React from "react";
-import { bridge } from "../../api/bridge";
 import { describeBridgeError, type PlanDetail, type PlanSummary } from "../../types/api";
+import { plansStore } from "../../state/plansStore";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 export interface PartialDeliveryDialogProps {
@@ -18,6 +18,12 @@ export interface PartialDeliveryDialogProps {
  * the completion guard turns into `partial_delivery = true`. Without it the same
  * request is refused with a 409 listing the failures — which is exactly what this
  * dialog exists to acknowledge, by name, before sending the flag.
+ *
+ * `transitionPlanOptimistic` carries that flag through and patches the row to Completed the moment
+ * the daemon agrees, so the plan leaves the Review queue, the sidebar list and the nav badge at
+ * once. Calling `bridge.updatePlanField` directly left the store believing the plan was still in
+ * Review until a list read said otherwise — the "does not get removed instantly" complaint, on the
+ * Complete path.
  */
 export function PartialDeliveryDialog({
   isOpen,
@@ -41,7 +47,7 @@ export function PartialDeliveryDialog({
     setIsBusy(true);
     setError(null);
     try {
-      await bridge.updatePlanField(plan.id, "state", "Completed", true);
+      await plansStore.transitionPlanOptimistic(plan.id, "Completed", true);
       onCompleted?.(plan.id);
       onClose();
     } catch (err) {

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Button } from "@ivy-interactive/components/ui";
+import { Button, Callout, Input } from "@ivy-interactive/components/ui";
 import {
   ShellSidebarSection,
   type ShellBadgeDto,
@@ -8,8 +8,9 @@ import {
 import { bridge } from "../../api/bridge";
 import { describeBridgeError, type PlanSummary } from "../../types/api";
 import { formatPlanId, normalizePlanState, parseProjects, planRowBadges } from "../PlansView";
+import { useLevelColors } from "../../components/LevelBadge";
+import type { LevelColors } from "../../utils/levelColor";
 import { DialogShell } from "./DialogShell";
-import { ALERT_CLASS, FIELD_CLASS } from "./fieldStyles";
 
 /** V1 `PlanSearchDialog.MaxResults`. */
 export const MAX_PLAN_SEARCH_RESULTS = 15;
@@ -50,9 +51,12 @@ const isVerified = (plan: PlanSummary): boolean =>
  * parses the comma-separated field in all of them (`ProjectHelper.ParseProjects`, which V1 itself
  * applies in the Draft arm), so a two-project plan reads the same in every arm.
  */
-export const planSearchRowBadges = (plan: PlanSummary): ShellBadgeDto[] => {
+export const planSearchRowBadges = (
+  plan: PlanSummary,
+  levelColors?: LevelColors,
+): ShellBadgeDto[] => {
   const state = normalizePlanState(plan.state);
-  if (state === "Draft" || state === "Blocked") return planRowBadges(plan);
+  if (state === "Draft" || state === "Blocked") return planRowBadges(plan, levelColors);
 
   const badges: ShellBadgeDto[] = parseProjects(plan.project).map((project) => ({
     label: project,
@@ -76,11 +80,14 @@ export const planSearchRowBadges = (plan: PlanSummary): ShellBadgeDto[] => {
 };
 
 /** V1 builds a result row exactly as the sidebar lists build theirs: title, `#{Id}` tag, badges. */
-export const planSearchRow = (plan: PlanSummary): ShellSectionItemDto => ({
+export const planSearchRow = (
+  plan: PlanSummary,
+  levelColors?: LevelColors,
+): ShellSectionItemDto => ({
   id: plan.id,
   title: plan.title,
   tag: formatPlanId(plan.id),
-  badges: planSearchRowBadges(plan),
+  badges: planSearchRowBadges(plan, levelColors),
 });
 
 export interface PlanSearchDialogProps {
@@ -209,7 +216,10 @@ export function PlanSearchDialog({ isOpen, onClose, onSelectPlan, search }: Plan
     return () => clearTimeout(timer);
   }, [isOpen, trimmed, runSearch]);
 
-  const items = results.map(planSearchRow);
+  /* Draft and Blocked results carry the Plans list's level badge, so the dialog needs the same
+     configured colours the sidebar row it is imitating uses. */
+  const levelColors = useLevelColors();
+  const items = results.map((plan) => planSearchRow(plan, levelColors));
 
   const handlePick = (planId: string) => {
     // V1: `dialogOpen.Set(false)` first, then the navigation.
@@ -233,7 +243,7 @@ export function PlanSearchDialog({ isOpen, onClose, onSelectPlan, search }: Plan
       }
     >
       {/* V1's `query.ToSearchInput().Placeholder("Search plans").Width(Size.Full())`. */}
-      <input
+      <Input
         ref={inputRef}
         type="search"
         aria-label="Search plans"
@@ -241,15 +251,12 @@ export function PlanSearchDialog({ isOpen, onClose, onSelectPlan, search }: Plan
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         placeholder="Search plans"
-        className={FIELD_CLASS}
       />
 
       {trimmed !== "" && (
         <div className="mt-2">
           {error !== null ? (
-            <div role="alert" className={ALERT_CLASS} data-testid="plan-search-error">
-              {error}
-            </div>
+            <Callout.Error data-testid="plan-search-error">{error}</Callout.Error>
           ) : items.length > 0 ? (
             /* The sidebar's own list widget, as V1 renders results: `.Items(items)
                .Collapsible(false).OnSelectItem(...)`. `Collapsible(false)` keeps the rail's

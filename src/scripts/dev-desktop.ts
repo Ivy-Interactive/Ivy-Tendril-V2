@@ -85,6 +85,17 @@ async function freePortIfOccupied(p: number) {
 let serverProcess: ChildProcess | null = null;
 let appProcess: ChildProcess | null = null;
 let shuttingDown = false;
+/**
+ * Set the instant an interrupt arrives, and it outranks whatever exit code the children report.
+ *
+ * Ctrl+C reaches the whole foreground group, not just this process, so the Tauri CLI is interrupted
+ * at the same moment we are and exits 130 — and its `exit` listener below can win the race against
+ * our own signal handler. The old code forwarded that 130 as this script's status, which pnpm reports
+ * as `[ELIFECYCLE] Command failed with exit code 130`: a clean Ctrl+C rendered as a crash. A
+ * user-initiated interrupt is a normal exit however the children happen to phrase it, so the flag is
+ * recorded first and `shutdown` reads it rather than the child's code.
+ */
+let interrupted = false;
 /** Readline interfaces over the service's pipes. They hold the event loop open until closed. */
 const lineReaders: readline.Interface[] = [];
 
@@ -165,12 +176,20 @@ async function reapPort(p: number) {
  * A second Ctrl+C during the grace window skips straight to the forceful pass.
  */
 async function shutdown(exitCode = 0): Promise<void> {
+  // An interrupt is a normal exit, whatever status the interrupted children reported on their way
+  // out. See `interrupted`.
+  const finalCode = interrupted ? 0 : exitCode;
+
   if (shuttingDown) {
-    forceExit(exitCode);
+    forceExit(finalCode);
     return;
   }
   shuttingDown = true;
-  console.log("\n\x1b[33m[dev-desktop] Shutting down...\x1b[0m");
+  // `\r` first, so the terminal's own `^C` echo is overwritten rather than left sitting in front of
+  // this line. That stray `^[`-looking prefix in the shutdown output is the echo, not our escape
+  // codes, and it is what made the last line of a clean run look corrupted.
+  process.stdout.write("\r\x1b[K");
+  console.log("\x1b[33m[dev-desktop] Shutting down...\x1b[0m");
 
   const children: Array<{ label: string; proc: ChildProcess }> = [];
   if (appProcess) children.push({ label: "desktop app", proc: appProcess });
@@ -196,7 +215,7 @@ async function shutdown(exitCode = 0): Promise<void> {
   await reapPort(5173);
 
   for (const reader of lineReaders) reader.close();
-  forceExit(exitCode);
+  forceExit(finalCode);
 }
 
 /**
@@ -207,10 +226,17 @@ function forceExit(code: number): never {
   process.exit(code);
 }
 
-process.on("SIGINT", () => void shutdown(0));
-process.on("SIGTERM", () => void shutdown(0));
-// SIGHUP too: closing the terminal used to orphan the whole tree, daemon and all.
-process.on("SIGHUP", () => void shutdown(0));
+// Registered before anything is spawned, so the flag is already set by the time an interrupted
+// child's `exit` listener runs: the group signal reaches them and us at the same moment, and it is
+// a coin toss which callback the loop picks up first.
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+  // SIGHUP is here for the same reason as the other two: closing the terminal used to orphan the
+  // whole tree, daemon and all.
+  process.on(signal, () => {
+    interrupted = true;
+    void shutdown(0);
+  });
+}
 
 /**
  * Make sure both Tauri sidecars exist before `tauri dev` looks for them.
@@ -281,7 +307,56 @@ function ensureSidecars() {
   }
 }
 
+/**
+ * The two spellings of "turn hot reload off". `--no-hotreload` is an alias rather than a mistake:
+ * the feature is called hot reload throughout, so that is the name a reader reaches for first, and
+ * it cost a full build and a started daemon to find out it was not the one. Accepting both is
+ * cheaper than being right about which one someone will guess.
+ */
+const NO_RELOAD_FLAGS = ["--no-reload", "--no-hotreload"];
+
+/** The flags this runner interprets itself; everything else is the Tauri CLI's to parse. */
+const OWN_FLAGS = ["--no-watch", "--no-hmr", ...NO_RELOAD_FLAGS];
+
+/**
+ * Reject a misspelled runner flag before anything expensive happens.
+ *
+ * Everything this script does not recognise is forwarded to the Tauri CLI, which is what lets
+ * `--config`, `--features` and friends work without being re-declared here. The cost is that a typo
+ * in one of *our* flags reaches a CLI that has never heard of it, and says so in its own vocabulary:
+ * `--no-hotreload` produced Tauri's usage text and exit code 2 — naming neither the flag that was
+ * meant nor this script — and only after the components build, the wireframe payload, both sidecars
+ * and the daemon had already been built and started. A minute of work to reach a spelling mistake.
+ *
+ * So this runs first, before any of that. Only `--no-*` is checked: those are the names this script
+ * owns, a near miss on one of them is the plausible mistake, and anything else really may be a Tauri
+ * flag we have never heard of either.
+ */
+function rejectUnknownFlags(rawArgs: string[]) {
+  const misspelled = rawArgs.find(
+    (arg) =>
+      arg.startsWith("--no-") &&
+      !OWN_FLAGS.includes(arg) &&
+      // Tauri's own `--no-*` flag, which is legitimately ours to forward.
+      arg !== "--no-dev-server-wait",
+  );
+  if (!misspelled) return;
+
+  console.error(
+    `\x1b[31m[dev-desktop] Unknown flag '${misspelled}'.\x1b[0m\n` +
+      `  This runner accepts:\n` +
+      `    --no-watch    Rust file watching off (or NO_WATCH=1)\n` +
+      `    --no-hmr      Frontend HMR off (or NO_HMR=1)\n` +
+      `    --no-reload   Both of the above (--no-hotreload is the same flag)\n` +
+      `  Anything else is forwarded to the Tauri CLI. See src/DEVELOPING.md.`,
+  );
+  process.exit(2);
+}
+
 async function main() {
+  // First, so a spelling mistake costs a second rather than a full build and a started daemon.
+  rejectUnknownFlags(process.argv.slice(2));
+
   console.log(
     "\x1b[36m[dev-desktop] Initializing Tendril desktop development environment...\x1b[0m",
   );
@@ -294,6 +369,23 @@ async function main() {
     execSync(`node "${path.resolve(__dirname, "ensure-components.mjs")}"`, { stdio: "inherit" });
   } catch (err) {
     console.error("\x1b[31m[dev-desktop] Could not build @ivy-interactive/components:\x1b[0m", err);
+  }
+
+  // The wireframe payload, before anything invokes cargo. `tendril-wireframe`'s build.rs panics
+  // when it is missing, so without this both the sidecar build below and `cargo run -p
+  // tendril-server` fail on a fresh clone. Fatal, unlike the components build above: every cargo
+  // invocation that follows is going to fail anyway, and failing here says why once instead of
+  // twice in a build.rs backtrace.
+  try {
+    execSync(`node "${path.resolve(__dirname, "ensure-wireframe-payload.mjs")}"`, {
+      stdio: "inherit",
+    });
+  } catch {
+    console.error(
+      "\x1b[31m[dev-desktop] The wireframe payload is missing and could not be generated; every\n" +
+        "  cargo build would fail. See the message above.\x1b[0m",
+    );
+    process.exit(1);
   }
 
   // Both Tauri sidecars, before the Tauri CLI goes looking for them.
@@ -356,16 +448,16 @@ async function main() {
   }
 
   const rawArgs = process.argv.slice(2);
-  const noWatch =
-    rawArgs.includes("--no-watch") ||
-    rawArgs.includes("--no-reload") ||
-    process.env.NO_WATCH === "1";
-  const noHmr =
-    rawArgs.includes("--no-hmr") || rawArgs.includes("--no-reload") || process.env.NO_HMR === "1";
+  const noReload = rawArgs.some((arg) => NO_RELOAD_FLAGS.includes(arg));
+  const noWatch = rawArgs.includes("--no-watch") || noReload || process.env.NO_WATCH === "1";
+  const noHmr = rawArgs.includes("--no-hmr") || noReload || process.env.NO_HMR === "1";
 
-  // Filter out npm/vp forwarding delimiter "--" and custom flags Tauri CLI doesn't know about
+  // Filter out the npm/vp forwarding delimiter "--" and the flags the Tauri CLI does not know about.
+  // `--no-watch` is deliberately absent: that one is Tauri's own and is re-added below. Both reload
+  // spellings have to be stripped, or the alias reaches Tauri and fails exactly as the unrecognised
+  // flag did before it was an alias.
   const cleanArgs = rawArgs.filter(
-    (arg) => arg !== "--" && arg !== "--no-reload" && arg !== "--no-hmr",
+    (arg) => arg !== "--" && arg !== "--no-hmr" && !NO_RELOAD_FLAGS.includes(arg),
   );
 
   const tauriArgs: string[] = [];

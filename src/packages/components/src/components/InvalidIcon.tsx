@@ -40,5 +40,3 @@ export const InvalidIcon: React.FC<InvalidIconProps> = ({ message, className, ic
     </TooltipProvider>
   );
 };
-
-export default InvalidIcon;

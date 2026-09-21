@@ -90,6 +90,14 @@ afterEach(() => {
 /**
  * One table-driven pass over all six, so a seventh destructive action added without a confirm shows
  * up as an obviously missing row rather than as nothing at all.
+ *
+ * The danger zone's two actions are deliberately not a seventh and eighth. Every row here is a
+ * `useRemovalConfirm` request: synchronous, `PUT /api/config`, and closed before its `onConfirm`
+ * even runs. Removing a project is an awaited `DELETE /api/projects/:name` that can be refused, and
+ * deleting one is an awaited `DELETE /api/projects/:name/data` that is refused outright while a job
+ * still holds it - so both need a busy state and somewhere to put the rejection, neither of which
+ * that hook has. They compose `ConfirmDialog` directly instead, and `settings-project-config.test.tsx`
+ * covers them.
  */
 const CASES: {
   what: string;
@@ -218,10 +226,12 @@ describe("the settings removal confirm follows Framework's shape", () => {
     const confirm = within(dialog).getByTestId("dialog-confirm");
 
     const footer = cancel.parentElement as HTMLElement;
-    expect([...footer.querySelectorAll("button")].map((b) => b.textContent)).toEqual([
-      "Cancel",
-      "Remove",
-    ]);
+    // Accessible names rather than `textContent`: the confirm carries an `aria-hidden`
+    // `DialogShortcutHint` cap, which is exactly what keeps the *name* the bare verb while the
+    // rendered text reads "Remove Ctrl \u21b5". See the same assertion in `DeletePlanDialog.test.tsx`.
+    const buttons = [...footer.querySelectorAll("button")];
+    expect(buttons).toHaveLength(2);
+    ["Cancel", "Remove"].forEach((name, i) => expect(buttons[i]).toHaveAccessibleName(name));
     expect(cancel).toHaveClass("border", "bg-background");
     expect(confirm).toHaveClass("bg-destructive");
     expect(confirm).toBeEnabled();

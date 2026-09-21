@@ -30,6 +30,7 @@ import {
   SiAnthropic,
   SiGooglegemini,
   SiLinear,
+  SiCursor,
 } from "react-icons/si";
 
 export interface IconProps {
@@ -150,6 +151,7 @@ export const Icon: FC<IconProps> = ({ name, color, size, className, style }) => 
     Anthropic: SiAnthropic,
     Gemini: SiGooglegemini,
     Linear: SiLinear,
+    Cursor: SiCursor,
   };
 
   if (name && name in reactIcons) {
@@ -164,5 +166,3 @@ export const Icon: FC<IconProps> = ({ name, color, size, className, style }) => 
   const LucideIcon = icons[name as keyof typeof icons];
   return <LucideIcon style={style} color={color} size={size} className={cn(className)} />;
 };
-
-export default Icon;

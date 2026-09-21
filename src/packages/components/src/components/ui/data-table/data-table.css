@@ -147,6 +147,55 @@
     background: var(--muted);
   }
 
+  /*
+   * The rectangular cell selection.
+   *
+   * `color-mix` against `--primary` rather than a flat `--muted`, because this has to read as a
+   * *selection* over a row that may already be hover-tinted or selected — a second grey on grey is
+   * invisible. The framework's grid paints its selection from `accentColor`, which
+   * `widgets/dataTables/hooks/useTableTheme.ts:63` resolves to the theme's `--primary` precisely
+   * "so selection reads as deliberate" (its words). A light mix of primary is that same intent
+   * expressed in a cascade instead of on a canvas.
+   *
+   * 14% keeps the cell's own text at full contrast. Anything heavier and a selected range stops
+   * being readable, which defeats selecting it to read or copy it.
+   */
+  .ivy-data-table td[data-selected="true"] {
+    background: color-mix(in srgb, var(--primary) 14%, var(--background));
+  }
+
+  /* Over the sticky actions cell too, which is opaque for its own reasons above and would otherwise
+     punch an unselected hole through the right-hand end of a selected row. */
+  .ivy-data-table tbody tr:hover > td[data-selected="true"],
+  .ivy-data-table tbody tr[data-state="selected"] > td[data-selected="true"] {
+    background: color-mix(in srgb, var(--primary) 14%, var(--background));
+  }
+
+  /*
+   * While a range drag is live, nothing else may select.
+   *
+   * Without this the browser's own text selection runs alongside the cell selection: the drag paints
+   * the range *and* highlights the text under it, and the Cmd+C that follows copies the text
+   * selection instead of the range, because a live text selection wins the `copy` event. Applied
+   * from the table element while dragging rather than permanently — a reader who wants to select the
+   * text of one cell with a careful drag inside it can still do so when no range drag is in flight.
+   */
+  .ivy-data-table[data-range-dragging="true"] {
+    user-select: none;
+  }
+
+  /*
+   * The column being dragged to a new position, and where it would land.
+   *
+   * A left border on the drop target rather than a moving ghost column: a DOM table cannot reorder
+   * its columns mid-drag without re-laying out every row, which at any real row count is a
+   * visible stutter. The framework's grid can — it is a canvas and redraws anyway — so this is the
+   * one place the gesture is deliberately not pixel-identical to V1.
+   */
+  .ivy-data-table th[data-drop-target="true"] {
+    box-shadow: inset 2px 0 0 0 var(--primary);
+  }
+
   /* Spacer rows stand in for the unrendered rows above and below the window. */
   .ivy-data-table tr[data-slot="data-table-spacer"] {
     border: 0;

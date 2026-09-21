@@ -26,14 +26,14 @@
 //!
 //! # What is deliberately *not* ported
 //!
+//! (The original's *download* of `cloudflared` **is** ported — see [`installer`] — but only as an
+//! action a user takes deliberately, never as the silent first-use fetch the original performs.)
+//!
 //! - **Auto-start on boot.** The original persists `shareTunnel.enabled = true` into `config.yaml` on
 //!   activation and re-establishes the tunnel on every subsequent start. Publishing a machine to the
 //!   public internet as a side effect of restarting a daemon is not a decision a user made, so a share
 //!   here is session-scoped: it lasts until it is stopped or the daemon exits. `shareTunnel` in
 //!   `config.yaml` is still *read* for `binaryPath`/`maxRestarts` (see [`config::TunnelConfig`]).
-//! - **Downloading `cloudflared`.** [`installer`] keeps the original's detection and its
-//!   platform/asset logic, but a missing binary is a hard, actionable error rather than a silent
-//!   fetch from GitHub.
 //! - **The DNS-over-HTTPS fallback** in the original's `WaitForTunnelHealthyAsync`, which exists only
 //!   to work around a locally poisoned negative-DNS cache. The registered-connection fallback it sits
 //!   next to is ported; the 1.1.1.1 probe is not.
@@ -84,14 +84,28 @@ use std::path::PathBuf;
 ///
 /// Each variant carries what the operator has to *do*, not just what failed: the message is surfaced
 /// verbatim in the share dialog and in Settings, which is the only place most users will ever see it.
+///
+/// **These messages are complete, and a consumer must render them verbatim rather than appending its
+/// own remediation.** Three layers read them — [`crate::tunnel::service`] callers such as the CLI, the
+/// share dialog, and the Settings pane — and only one of the three has anywhere to append. A layer that
+/// adds its own "and here is what to do" produces two instructions for its own users while leaving the
+/// other two readers with none, which is exactly the duplicated-sentence bug the Settings pane had. If a
+/// message is wrong or misplaced, fix it here so every reader gets the fix.
 #[derive(Debug, thiserror::Error)]
 pub enum TunnelError {
     /// A [`TunnelKind::FullAccess`] tunnel with no session password configured. Not an environment
     /// problem and not a bug — a refusal, so the message says what to do about it rather than what
     /// broke. See [`service::TunnelService::start`] for why this is a refusal and not a warning.
+    ///
+    /// The remediation sentence lives here and *only* here. It named "Security & Tunneling" until this
+    /// was fixed, which is the Settings page a user reading this in Settings is already looking at; the
+    /// control they actually need is the "Session Protection" block on it. Naming the control rather
+    /// than the page is also what makes the one string work for all three readers — the Settings pane,
+    /// the share dialog, and a CLI or API caller with no UI at all — which is the whole reason the
+    /// remediation belongs to this layer. See the note on [`TunnelError`] about appending.
     #[error(
         "A full-access tunnel publishes this whole daemon on the public internet, so it needs a \
-password first. Set one under Security & Tunneling, then activate the tunnel."
+password first. Set one under Session Protection, then activate the tunnel."
     )]
     PasswordRequired,
 
@@ -112,6 +126,16 @@ Linux: see https://pkg.cloudflare.com), or download {asset} from {url} and save 
     /// the operator pointed at something, so telling them "not installed" would be misleading.
     #[error("shareTunnel.binaryPath is set to {0}, which is not an executable file")]
     ConfiguredBinaryMissing(PathBuf),
+
+    /// An attempted `cloudflared` install did not finish — no network, no asset for this platform, a
+    /// digest that did not match, or a tools directory that could not be written.
+    ///
+    /// The `reason` is composed at the point of failure and already ends with what to do about it,
+    /// because the fallback for every one of these is the same: install it by hand, exactly as
+    /// [`TunnelError::NotInstalled`] describes. This is never raised by starting a tunnel — only by the
+    /// explicit install action — so it does not need to say "the tunnel did not start".
+    #[error("cloudflared could not be installed: {reason}")]
+    InstallFailed { reason: String },
 
     #[error("could not start {binary}: {source}")]
     Spawn {

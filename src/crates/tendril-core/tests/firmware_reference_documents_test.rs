@@ -16,7 +16,8 @@ use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use tendril_core::promptware::{
-    cites_reference_documents, compile_firmware, compile_firmware_with_skills, PLAN_REFERENCE,
+    cites_reference_documents, cites_wireframes, compile_firmware, compile_firmware_with_skills,
+    PLAN_REFERENCE,
 };
 
 // ---------------------------------------------------------------------------------------------
@@ -581,5 +582,105 @@ fn the_reference_stays_shorter_than_the_v1_original() {
         (200..=479).contains(&lines),
         "the reference is {lines} lines; it must stay between 200 and 479 (V1's Plans.md was 479) \
          — if it has genuinely outgrown that, move detail into the promptware that needs it"
+    );
+}
+
+// ---------------------------------------------------------------------------------------------
+// The wireframe guidance
+// ---------------------------------------------------------------------------------------------
+
+/// The guidance has to reach the agent that acts on it. `f2567a65` put it in `plan_reference.md`,
+/// which pushed that file 99 lines past the ceiling its own size test sets, so it now rides as a
+/// separate document gated on the same principle: cite it and you get it.
+#[test]
+fn a_promptware_that_mentions_wireframes_gets_the_wireframe_guidance() {
+    let fx = Fixture::new(
+        "WireframingPromptware",
+        "Follow the **Reference Documents** section of your firmware. Decide whether this plan \
+         needs a wireframe.\n",
+    );
+
+    let firmware = compile(&fx.folder);
+
+    assert!(
+        firmware.contains("### Wireframes"),
+        "a promptware that mentions wireframes must carry the guidance:\n{firmware}"
+    );
+    // The rules an agent is told elsewhere it will be held to, so they have to be in front of it.
+    for rule in [
+        "at most 2",
+        "`## Wireframe` section",
+        "never product code",
+        "tendril wireframe setup",
+    ] {
+        assert!(
+            firmware.contains(rule),
+            "the wireframe guidance no longer states `{rule}`"
+        );
+    }
+    // It follows the plan reference rather than displacing it.
+    assert!(
+        firmware
+            .find("### Question Blocks")
+            .expect("plan reference")
+            < firmware.find("### Wireframes").expect("wireframe guidance"),
+        "the wireframe guidance must be appended after the plan reference"
+    );
+    assert!(firmware.ends_with('\n') && !firmware.ends_with("\n\n"));
+}
+
+/// The other half of the gate: a plan-authoring promptware with no wireframe in it pays nothing.
+/// This is the whole reason the document is separate rather than folded into the reference.
+#[test]
+fn a_promptware_that_never_mentions_wireframes_does_not_carry_the_guidance() {
+    let fx = Fixture::new(
+        "PlainPlanPromptware",
+        "The plan structure and CLI commands are in the **Reference Documents** section of your \
+         firmware.\n",
+    );
+
+    let firmware = compile(&fx.folder);
+
+    assert!(
+        firmware.contains("### Question Blocks"),
+        "it must still get the plan reference itself"
+    );
+    assert!(
+        !firmware.contains("### Wireframes"),
+        "a promptware that never mentions wireframes must not carry the guidance:\n{firmware}"
+    );
+}
+
+/// Every shipped promptware that tells the agent to make, embed or avoid a wireframe must actually
+/// receive the guidance. Both gates have to open: the wireframe document rides on the plan
+/// reference, so a Program mentioning wireframes without citing **Reference Documents** would be
+/// sent to rules it was never given -- exactly the failure `PLAN_REFERENCE`'s own doc comment
+/// describes.
+#[test]
+fn every_shipped_promptware_that_mentions_wireframes_receives_the_guidance() {
+    let Some(dir) = promptwares_dir() else {
+        eprintln!("skipped: src/promptwares is not reachable from this build");
+        return;
+    };
+
+    let mut mentioning = 0usize;
+    for (name, folder) in shipped_promptwares(&dir) {
+        let program = std::fs::read_to_string(folder.join("Program.md")).expect("readable Program");
+        if !cites_wireframes(&program) {
+            continue;
+        }
+        mentioning += 1;
+
+        let firmware = compile(&folder);
+        assert!(
+            firmware.contains("### Wireframes"),
+            "{name} tells the agent about wireframes but its firmware carries no guidance -- it \
+             most likely does not cite `Reference Documents`"
+        );
+    }
+
+    assert!(
+        mentioning >= 6,
+        "only {mentioning} shipped promptwares mention wireframes; expected the six that do"
     );
 }

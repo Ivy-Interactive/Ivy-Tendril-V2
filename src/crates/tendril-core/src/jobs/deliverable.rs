@@ -13,6 +13,9 @@
 use crate::db::open_database;
 use crate::jobs::failure_analysis::{agent_text, try_read_failure_artifact};
 use crate::models::JobItem;
+use crate::plans::orphans::{
+    classify_husk, find_plan_folder_created_by_job, is_plan_folder_under, HuskVerdict,
+};
 use crate::plans::reader::read_plan_yaml;
 use crate::plans::verification_gate::incomplete_verifications;
 use crate::plans::writer::write_plan_yaml;
@@ -61,7 +64,6 @@ static DUPLICATE_RE: LazyLock<Regex> =
 static PR_URL_RE: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"https?://github\.com/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+/pull/\d+").unwrap()
 });
-static PLAN_FOLDER_RE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\d{5}-").unwrap());
 
 /// The single entry point, called from `finish_job` only when the status is still `Completed` after
 /// the existing guards.
@@ -235,8 +237,24 @@ pub fn revision_count(plan_folder: &Path) -> usize {
     count
 }
 
-/// The plan folder a CreatePlan run produced, in legacy order: the id the agent reported, then the
-/// first `PlanId: <id>` in its output, then a lookup by id under `plans_dir`.
+/// The plan folder a CreatePlan run produced.
+///
+/// Four strategies, in descending order of directness: the folder already on the job, the id the
+/// agent reported, the first `PlanId: <id>` in its output, and finally the `createdByJob` breadcrumb
+/// written into `plan.yaml` by `tendril plan create` itself.
+///
+/// **The breadcrumb is the one that survives a kill.** The first three all depend on the agent having
+/// got far enough to *tell* someone the id: `plan_file` and `reported_plan_id` are written when the
+/// agent runs `tendril job status --plan-id`, and the `PlanId:` marker has to have reached the log and
+/// been flushed. A `CreatePlan` killed between `tendril plan create` and that report — which is what a
+/// stop-all does to every job it catches in that window — satisfies none of them, so this returned
+/// `None`, the caller's cleanup silently no-opped, and the folder stayed on disk as a revision-less
+/// husk. That is the mechanism behind the operator's plans 00003 and 00004: of eighteen `CreatePlan`
+/// jobs stopped at once, the two that had already created their folder left it behind.
+///
+/// The breadcrumb comes last because it costs a `plan.yaml` read per candidate folder, and because
+/// the three cheap strategies are right whenever they resolve at all. It is an exact match on the job
+/// id, not a correlation by time or project, so it cannot select a plan the operator made by hand.
 pub fn resolve_created_plan_folder(
     plans_dir: &Path,
     job: &JobItem,
@@ -266,6 +284,7 @@ pub fn resolve_created_plan_folder(
     candidates
         .into_iter()
         .find_map(|id| find_plan_folder_by_id(plans_dir, &id))
+        .or_else(|| find_plan_folder_created_by_job(plans_dir, &job.id))
 }
 
 /// The folder under `plans_dir` whose 5-digit prefix matches `id`, which may be given unpadded.
@@ -319,17 +338,29 @@ pub fn is_duplicate_plan(plans_dir: &Path, output_lines: &[String]) -> bool {
 
 /// Deletes an orphan plan folder and its database row.
 ///
-/// Refuses any path that is not a direct child of `plans_dir` with a `NNNNN-` name, so a bad resolve
-/// upstream can never delete something else. Returns whether the folder was removed.
+/// Two refusals, both of which have to hold before anything is removed:
+///
+///   * the path must be a direct child of `plans_dir` named `NNNNN-`, so a bad resolve upstream can
+///     never delete something else ([`is_plan_folder_under`]), and
+///   * the folder must hold nothing but the empty scaffold ([`classify_husk`]).
+///
+/// The second refusal became necessary when [`resolve_created_plan_folder`] learned to find a plan by
+/// its `createdByJob` breadcrumb. That closed a real gap — a killed run's folder used to be
+/// unresolvable and so was never cleaned up — but it also means this function is now reached for
+/// folders it previously never saw, and some of them hold work. The operator's own 00003 is the case
+/// in point: no revision, so it looks like an empty husk by revision count alone, but a `Wireframes/`
+/// directory with a built wireframe and a screenshot in it. Deleting that to tidy up a failed job
+/// would destroy the only copy of what the agent did manage to produce.
+///
+/// Returns whether the folder was removed.
 pub fn cleanup_plan_folder_and_database(
     tendril_home: &Path,
     plans_dir: &Path,
     folder: &Path,
 ) -> bool {
-    let Some(name) = folder.file_name().and_then(|n| n.to_str()) else {
-        return false;
-    };
-    if folder.parent() != Some(plans_dir) || !PLAN_FOLDER_RE.is_match(name) {
+    // The shared predicate, so this and the create-time rollback guard authorise deletion by exactly
+    // the same rule rather than by two copies of it.
+    if !is_plan_folder_under(plans_dir, folder) {
         tracing::warn!(
             "Refusing to clean up {}: not a plan folder directly under {}",
             folder.display(),
@@ -337,6 +368,18 @@ pub fn cleanup_plan_folder_and_database(
         );
         return false;
     }
+    if let HuskVerdict::HasContent(what) = classify_husk(folder) {
+        tracing::warn!(
+            "Keeping {}: it has no revision but {} — reporting it instead of deleting it",
+            folder.display(),
+            what
+        );
+        return false;
+    }
+
+    let Some(name) = folder.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
 
     if let Ok(id) = name[..5].parse::<i32>() {
         let db_path = crate::config::get_database_path(tendril_home);

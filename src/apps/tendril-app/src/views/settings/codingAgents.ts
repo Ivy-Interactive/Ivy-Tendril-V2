@@ -34,6 +34,11 @@ export const CODING_AGENTS: { id: string; label: string; icon: string }[] = [
   { id: "gemini", label: "Gemini", icon: "Gemini" },
   { id: "antigravity", label: "Antigravity", icon: "Antigravity" },
   { id: "opencode", label: "OpenCode", icon: "OpenCode" },
+  // Also not one of `CodingAgentSetupView.Agents`: `cursor-agent` postdates V1 too.
+  { id: "cursor", label: "Cursor", icon: "Cursor" },
+  // Not one of `CodingAgentSetupView.Agents`: Apple's on-device models postdate V1, and this row is
+  // the catalog's `apple` agent rather than a port of anything.
+  { id: "apple", label: "Apple", icon: "Apple" },
 ];
 
 /**
@@ -385,8 +390,12 @@ export function withByoCredentials(
 
 /* ------------------------------------------------------------------ tier defaults */
 
-/** `agent_capabilities`: Gemini's CLI has no effort argument, so an effort field there is inert. */
-export const supportsEffort = (agent: string): boolean => normalizeAgentName(agent) !== "gemini";
+/**
+ * `agent_capabilities`: Gemini's CLI has no effort argument and Apple's on-device model has no
+ * reasoning-effort control, so an effort field on either is inert.
+ */
+export const supportsEffort = (agent: string): boolean =>
+  !["gemini", "apple"].includes(normalizeAgentName(agent));
 
 const tiers = (deep: TierValues, balanced: TierValues, quick: TierValues): Profiles => ({
   deep,
@@ -476,6 +485,19 @@ export function tierDefaults(agent: string, baseUrl = ""): Profiles {
       );
     case "ivy":
       return IVY_TIERS;
+    // Cursor has no effort argument -- the level is part of the model id -- but the tiers still set
+    // one, because the launcher is what composes the two into `<model>-<effort>`. `deep` names the
+    // Thinking family because plain Opus 5 stops at `high` on Cursor, so a `max` there would clamp.
+    case "cursor":
+      return tiers(
+        { model: "claude-opus-5-thinking", effort: "max" },
+        { model: "claude-sonnet-5", effort: "high" },
+        { model: "gemini-3.8-flash", effort: "low" },
+      );
+    // `fm serve` serves one model and takes no effort argument, so every tier is the same run, and
+    // the fields show `default` rather than a model this agent would ignore.
+    case "apple":
+      return tiers({ model: "", effort: "" }, { model: "", effort: "" }, { model: "", effort: "" });
     case "openaiproxy":
     case "proxy":
       return openAiProxyTiers(baseUrl);

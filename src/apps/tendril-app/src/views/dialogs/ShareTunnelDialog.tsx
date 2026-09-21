@@ -1,7 +1,8 @@
 import * as React from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Button, Callout } from "@ivy-interactive/components/ui";
-import { ClipboardCopy, ExternalLink, Loader2, Share2 } from "lucide-react";
+import { copyToClipboard } from "@ivy-interactive/components";
+import { Button, Callout, Spinner } from "@ivy-interactive/components/ui";
+import { ClipboardCopy, ExternalLink, Share2 } from "lucide-react";
 import { describeBridgeError, bridgeErrorCode } from "../../types/api";
 import { notificationsStore } from "../../state/notificationsStore";
 import { tunnelApi, type TunnelSnapshot, type TunnelStatus } from "../../api/tunnelApi";
@@ -199,7 +200,7 @@ export function ShareTunnelDialog({
   const handleCopy = async () => {
     if (targetUrl === null) return;
     try {
-      await navigator.clipboard.writeText(targetUrl);
+      await copyToClipboard(targetUrl);
       notificationsStore.notifySuccess("Link Copied", "Share URL copied to clipboard");
     } catch (err) {
       setError(`Could not copy the link: ${describeBridgeError(err)}`);
@@ -215,6 +216,13 @@ export function ShareTunnelDialog({
       testId="share-tunnel-dialog"
       width="rem32"
       initialFocusRef={closeRef}
+      // Deliberately no `shortcut`, unlike the rest of the dialog family. `DialogShellProps`
+      // documents the chord as belonging to "the primary footer button", and this footer holds only
+      // Close — a decline, which Escape already owns. The real actions are in the body and they are
+      // status-dependent: Start Share Tunnel while `disabled`, Stop Sharing while `connected`. One
+      // chord over the pair would mean the same keystroke starts a tunnel in one state and tears it
+      // down in another, which is a worse affordance than none. If a hint is ever wanted here it
+      // belongs on those two body buttons with their own explicit bindings, not on the shell.
       footer={
         <Button ref={closeRef} variant="outline" onClick={onClose} data-testid="dialog-close">
           Close
@@ -240,7 +248,7 @@ export function ShareTunnelDialog({
         {status === "connecting" && (
           <Callout variant="info" title="Tunnel Starting" data-testid="share-tunnel-connecting">
             <div className="flex items-center gap-2">
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              <Spinner size="md" aria-hidden="true" />
               <span>Starting share tunnel... This typically takes 15-30 seconds.</span>
             </div>
           </Callout>

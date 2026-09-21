@@ -4,14 +4,16 @@ packages:
   - "src/extensions/*"
 
 allowBuilds:
+  '@parcel/watcher': false
   "@swc/core": false
   '@vscode/vsce-sign': false
   esbuild: false
   keytar: false
+  unrs-resolver: false
 
 catalog:
-  vite: npm:@voidzero-dev/vite-plus-core@0.3.2
-  vite-plus: 0.3.2
+  vite: npm:@voidzero-dev/vite-plus-core@0.3.3
+  vite-plus: 0.3.3
 
 minimumReleaseAgeExclude:
   - playwright-core@1.63.0
@@ -20,6 +22,13 @@ minimumReleaseAgeExclude:
   - '@tanstack/virtual-core@3.17.11'
 
 overrides:
+  # jest-runtime 30.5.0 started hard-erroring on `module.register()`. Storybook 10's
+  # `serverRequire` - which is how @storybook/test-runner loads `.storybook/test-runner.ts` -
+  # registers its TypeScript loader that way, so every test-storybook suite fails to run on
+  # 30.5.x. 30.4.2 is the last release before that guard. Drop this once test-runner stops
+  # loading its config through Storybook's ESM loader.
+  jest@*: 30.4.2
+  jest-runtime@*: 30.4.2
   playwright@*: 1.63.0
   playwright-core@*: 1.63.0
   vite@*: "catalog:"

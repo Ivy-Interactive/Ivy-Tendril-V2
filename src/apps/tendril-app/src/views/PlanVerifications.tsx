@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
+import { Button } from "@ivy-interactive/components/ui";
 import { bridge } from "../api/bridge";
 import { plansStore } from "../state/plansStore";
 import {
@@ -219,7 +220,7 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
                     onChange={(e) =>
                       void handleStatusChange(v.name, e.target.checked ? "Pending" : "Skipped")
                     }
-                    className="h-4 w-4 accent-primary disabled:cursor-not-allowed disabled:opacity-60"
+                    className="size-4 accent-primary disabled:cursor-not-allowed disabled:opacity-60"
                   />
                   <span className={editable ? undefined : "text-muted-foreground"}>{v.name}</span>
                 </label>
@@ -238,14 +239,16 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
               </div>
 
               {report ? (
-                <button
+                <Button
                   type="button"
+                  size="sm"
+                  variant="secondary"
                   onClick={() => setExpanded(isOpen ? null : v.name)}
                   aria-expanded={isOpen}
-                  className="rounded bg-muted px-2.5 py-1 text-xs font-medium text-muted-foreground hover:bg-accent"
+                  className="h-auto bg-muted px-2.5 py-1 text-xs text-muted-foreground"
                 >
                   {isOpen ? "Hide report" : "View report"}
-                </button>
+                </Button>
               ) : (
                 <span className="text-xs text-muted-foreground/70">No report yet</span>
               )}

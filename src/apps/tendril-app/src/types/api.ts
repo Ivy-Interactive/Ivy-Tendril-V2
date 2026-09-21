@@ -77,6 +77,18 @@ export interface Job {
   type: string;
   planId?: string;
   planTitle?: string;
+  /**
+   * What the operator actually asked for, in their own words, when the daemon could say — a
+   * `CreatePlan`'s description, a `RetryPlan`'s change request, an `ExecutePlan`'s note, and so on.
+   *
+   * The third link in V1's `GetPromptDisplay` chain (`JobsApp.Helpers.cs:139`), which walks the plan's
+   * title, then `ReportedPlanTitle`, then the job's typed args. V2's chain stopped at the second link,
+   * so a `CreatePlan` imported from the Inbox — whose description *is* the whole request and whose
+   * plan does not exist until the agent has run — showed an empty Prompt cell for its entire run.
+   *
+   * Absent for a job type that carries no prose of its own (`ExpandPlan`, `SplitPlan`).
+   */
+  prompt?: string;
   project: string;
   status: JobStatus;
   statusMessage?: string;
@@ -135,6 +147,8 @@ export interface JobDetail extends Job {
   provider?: string;
   /** The command line the agent was launched with. V1's `CliCommand`, labelled `Arguments` there. */
   cliCommand?: string;
+  /** Which execution profile the run used. V1's `Profile` row in the Cost & Tokens sheet. */
+  executionProfile?: string;
   /** The plan folder the job ran against. V1's `PlanFolder`. */
   planFolder?: string;
   /** The artifacts the run left on this machine, each present only when the file exists. */
@@ -324,7 +338,31 @@ export interface DoctorCheck {
 export interface CreateProjectRequest {
   name: string;
   color?: string;
+  /**
+   * Local paths, or remote URLs for the daemon to clone. A URL is never stored: the route clones it
+   * into `<TendrilHome>/Projects/<name>/Repos/<owner>/<repo>` and keeps that path, which is why the
+   * caller has to read {@link CreatedProject.repos} back rather than reuse what it sent.
+   */
   repos?: string[];
+}
+
+/**
+ * What `POST /api/projects` answers with: the project as it was written, whose `repos` are the
+ * resolved paths. Narrowed to the fields the create callers read.
+ */
+export interface CreatedProject {
+  name: string;
+  repos?: { path: string; baseBranch?: string }[];
+}
+
+/**
+ * What `POST /api/projects/:name/repos` answers with: the repository as it was stored. For a remote
+ * that is the clone's directory rather than the URL that was sent - the route clones before it
+ * writes, and the response is the only place the caller can learn where to.
+ */
+export interface AddedProjectRepo {
+  path: string;
+  baseBranch?: string;
 }
 
 export type ModelCatalogSource = "models.dev" | "static";
@@ -415,6 +453,18 @@ export interface CreateIssueFields {
   assignee?: string;
   comment?: string;
   labels?: string[];
+  /**
+   * Title and body to use instead of the plan's. Set when the issue is about something other than
+   * the plan itself — today, a recommendation being filed for later. The job stays plan-scoped
+   * either way: the plan is what resolves the working directory and the Jobs view's plan column.
+   */
+  titleOverride?: string;
+  bodyOverride?: string;
+  /**
+   * What the subject came from, for the issue footer and the job's dedupe key. `planId::title` for
+   * a recommendation, matching `recommendationId()`.
+   */
+  issueSource?: string;
 }
 
 export interface RevisionResult {

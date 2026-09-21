@@ -30,6 +30,9 @@ use serde::{Deserialize, Serialize};
 
 use super::catalog::declared_display_name;
 use super::model_specs::normalize_model_id;
+// Full path rather than `agents::*`: `agents/mod.rs` deliberately does not re-export `sort_models`,
+// on the grounds that the name is too generic to sit alongside everything else in that namespace.
+use super::model_sorting::{sort_models, SortableModel};
 
 /// How long the provider gets. V1's `OpenAiProxyModelCatalog` allows 8s for a listing and
 /// `LlmEndpointTester` 15s for a completion, which is the same split.
@@ -83,6 +86,15 @@ impl ModelProviderKind {
 pub struct DiscoveredModel {
     pub id: String,
     pub display_name: String,
+}
+
+impl SortableModel for DiscoveredModel {
+    fn model_id(&self) -> &str {
+        &self.id
+    }
+    fn model_display_name(&self) -> &str {
+        &self.display_name
+    }
 }
 
 /// V1 `Abstractions/AgentTypes.ModelValidationStatus`.
@@ -188,20 +200,21 @@ const fn priorities(kind: ModelProviderKind, tier: ProfileTier) -> &'static [&'s
             "opus",
             "claude-sonnet-5",
         ],
+        // `claude-sonnet-5-1` and `claude-haiku-5-1` used to head these two lists and neither has
+        // ever existed: the Sonnet line stops at `claude-sonnet-5` and the Haiku line at
+        // `claude-haiku-4-5`. Heading the list is the one position where a phantom id is not merely
+        // inert — `select_model` returns `candidates[0]` verbatim when the endpoint lists nothing,
+        // so an unlaunchable head became the stored default and 404'd at launch. Later entries are
+        // only ever returned after matching something the endpoint offered, so a stale id further
+        // down is harmless; these lists are trimmed to ids that resolve anyway.
         (K::Anthropic, T::Balanced) => &[
-            "claude-sonnet-5-1",
             "claude-sonnet-5",
             "claude-sonnet-4-6",
             "claude-sonnet-4-5",
             "sonnet",
             "claude-haiku-4-5",
         ],
-        (K::Anthropic, T::Quick) => &[
-            "claude-haiku-5-1",
-            "claude-haiku-4-5",
-            "claude-3-5-haiku",
-            "haiku",
-        ],
+        (K::Anthropic, T::Quick) => &["claude-haiku-4-5", "claude-3-5-haiku", "haiku"],
 
         (K::Google, T::Deep) => &[
             "gemini-3.8-flash",
@@ -612,6 +625,28 @@ pub fn parse_models_json(body: &str) -> Vec<DiscoveredModel> {
     // One endpoint can list the same id twice (an alias and its dated form); the picker shows it once.
     let mut seen = std::collections::HashSet::new();
     out.retain(|model| seen.insert(normalize_model_id(&model.id)));
+
+    // A provider's `/models` answers in its own order — creation order for the OpenAI-compatible
+    // endpoints, unspecified for the rest — so without this the picker is ordered when it falls back to
+    // the declared catalogue and arbitrary when a fetch succeeded. V1 sorts the fetched list here too:
+    // `OpenAiProxyModelCatalog.GetModelsAsync` line 59, `ModelCatalogSorter.Sort(models)`.
+    //
+    // Same arguments as the declared path in `catalog::build_agent`: no group order, and no pinned
+    // default, because a discovered list carries no `default` row.
+    //
+    // `&[]` is worth being explicit about. It means provider *groups* keep the order they first appear
+    // in — so a canonical order applies within a brand, while the brands themselves follow the
+    // endpoint. That is not an oversight on either side: V1's `ModelCatalogSorter.Sort` buckets the
+    // same way, under the comment "Group by provider while preserving appearance order of providers",
+    // and it runs that same single-argument overload on this very path. Passing a fixed group order
+    // here would order the brands too, but it would be a deliberate divergence from V1 rather than the
+    // parity fix this is, so it is left to a decision rather than taken quietly.
+    //
+    // Note this also feeds `select_defaults`, whose fallback is positional (`fallback_index`: Deep 0,
+    // Balanced 1, Quick 2) and whose substring match takes the first id that contains the candidate.
+    // Sorting first is what makes those positions mean "the flagship", and is the order V1's
+    // `ModelProfileSelector` has always seen.
+    sort_models(&mut out, &[], false);
     out
 }
 
@@ -940,6 +975,66 @@ mod tests {
         }
     }
 
+    /// Every tier's head candidate has to name a model that can actually be launched.
+    ///
+    /// The head is the one entry in each list that is returned *unverified*: `select_model` hands
+    /// back `candidates[0]` verbatim when the endpoint lists nothing, so whatever sits there becomes
+    /// the stored default without ever having been offered by a provider. Every other entry is only
+    /// reached by matching an id the endpoint really returned, so it cannot invent one.
+    ///
+    /// `claude-sonnet-5-1` and `claude-haiku-5-1` headed the two Anthropic lists and neither is a
+    /// real model — the Sonnet line stops at `claude-sonnet-5`, the Haiku line at
+    /// `claude-haiku-4-5` — so onboarding against an endpoint that listed nothing stored an id that
+    /// 404s at launch.
+    ///
+    /// `SPECS` is the launchable set for this purpose: it is the table the rest of the daemon
+    /// resolves a model through, so an id absent from it has no context window, no pricing and no
+    /// launch path. Matched exactly rather than through `model_specs::find`, whose longest-prefix
+    /// fallback would happily resolve `claude-sonnet-5-1` to `claude-sonnet-5` and hide exactly the
+    /// bug this test exists to catch.
+    #[test]
+    fn every_tier_head_names_a_launchable_model() {
+        use super::super::model_specs::{strip_provider_prefix, SPECS};
+
+        let launchable: Vec<String> = SPECS
+            .iter()
+            .map(|spec| normalize_model_id(spec.model_id.as_ref()))
+            .collect();
+
+        for kind in [
+            ModelProviderKind::Generic,
+            ModelProviderKind::Ivy,
+            ModelProviderKind::Anthropic,
+            ModelProviderKind::OpenAi,
+            ModelProviderKind::Google,
+            ModelProviderKind::Berget,
+            ModelProviderKind::OpenCode,
+        ] {
+            for tier in [ProfileTier::Deep, ProfileTier::Balanced, ProfileTier::Quick] {
+                let head = priorities(kind, tier)[0];
+
+                // What an endpoint that listed nothing would store, which is the head verbatim.
+                assert_eq!(
+                    select_model(kind, tier, &[]),
+                    head,
+                    "{kind:?}/{tier:?}: the empty-listing default is the head candidate"
+                );
+
+                // A vendor-qualified head is still launchable — Berget's real wire id is
+                // `moonshotai/Kimi-K3`, which `SPECS` carries unprefixed as `kimi-k3`. Any single
+                // vendor segment is stripped, not just the handful `strip_provider_prefix` knows,
+                // so the check is about whether the *model* exists rather than who serves it.
+                let bare = head.rsplit('/').next().unwrap_or(head);
+                let normalized = normalize_model_id(strip_provider_prefix(bare));
+                assert!(
+                    launchable.contains(&normalized),
+                    "{kind:?}/{tier:?} heads its priority list with '{head}', which is not a \
+                     launchable model id — it would be stored as the default and 404 at launch"
+                );
+            }
+        }
+    }
+
     /// V1 `ModelProfileSelector.SelectModel`: prioritised match, substring match, positional
     /// fallback, then the provider's own default.
     #[test]
@@ -1129,6 +1224,57 @@ mod tests {
 
         assert!(parse_models_json("not json").is_empty());
         assert!(parse_models_json(r#"{"data":[]}"#).is_empty());
+    }
+
+    /// A fetched listing is ordered on the way out, so the picker does not change its mind about
+    /// ordering depending on whether a fetch happened to succeed (issue #224).
+    ///
+    /// This pins the half of the behaviour that surprises people: `sort_models` is canonical *within*
+    /// a provider, and keeps providers themselves in the order they first appear. Google leads here
+    /// only because the endpoint mentioned a Gemini model first. V1 is the same — see the note on the
+    /// `sort_models` call, and `ModelCatalogSorter.Sort`'s own "preserving appearance order of
+    /// providers".
+    #[test]
+    fn a_fetched_listing_comes_back_ordered() {
+        let shuffled = parse_models_json(
+            r#"{"data":[
+                {"id":"gemini-3.7-flash"},
+                {"id":"claude-sonnet-5"},
+                {"id":"gemini-3.8-flash"},
+                {"id":"claude-opus-4"},
+                {"id":"claude-opus-5"},
+                {"id":"claude-haiku-5"}
+            ]}"#,
+        );
+
+        assert_eq!(
+            shuffled.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            vec![
+                // Google first: `gemini-3.7-flash` was the first row, and newest wins inside the group.
+                "gemini-3.8-flash",
+                "gemini-3.7-flash",
+                // Then Anthropic, by tier (Opus, Sonnet, Haiku) with version descending inside a tier.
+                "claude-opus-5",
+                "claude-opus-4",
+                "claude-sonnet-5",
+                "claude-haiku-5",
+            ]
+        );
+
+        // The other listing shapes reach the same sort, because they share one exit.
+        let ollama = parse_models_json(
+            r#"{"models":[{"name":"claude-haiku-5"},{"model":"claude-opus-5"}]}"#,
+        );
+        assert_eq!(
+            ollama.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            vec!["claude-opus-5", "claude-haiku-5"]
+        );
+
+        let bare = parse_models_json(r#"[{"id":"claude-haiku-5"},{"id":"claude-opus-5"}]"#);
+        assert_eq!(
+            bare.iter().map(|m| m.id.as_str()).collect::<Vec<_>>(),
+            vec!["claude-opus-5", "claude-haiku-5"]
+        );
     }
 
     /// V1 `ExtractErrorMessage` and `CleanNestedErrorMessage`.

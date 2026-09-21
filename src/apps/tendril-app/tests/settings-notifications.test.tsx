@@ -162,4 +162,71 @@ describe("SettingsView notifications card", () => {
     fireEvent.click(toggle());
     expect(saveButton()).toBeEnabled();
   });
+
+  it("re-disables Save when the setting is flipped back to where it started", async () => {
+    await renderWith({ ...baseConfig });
+
+    fireEvent.click(toggle());
+    expect(saveButton()).toBeEnabled();
+
+    // `hasChanges` is a comparison against the *saved* value, not a flag set by the first
+    // interaction. Undoing an edit leaves nothing to write, and offering Save anyway sends a
+    // no-op PUT that the operator has no reason to expect.
+    fireEvent.click(toggle());
+    expect(saveButton()).toBeDisabled();
+  });
+
+  /**
+   * A `getConfig` that reflects what `putConfig` wrote, which the fixed stub above does not.
+   *
+   * `saveSection` ends with `applyConfig(await bridge.getConfig())`: the new baseline is the
+   * daemon's answer, not the value the form just sent. Against a stub that always replays the
+   * original config, a save therefore appears to *revert* — which is a property of the stub, not of
+   * the view. The two tests below are about what happens after a write lands, so they need a
+   * daemon that remembers one.
+   */
+  async function renderWithPersistence(config: TendrilConfig) {
+    const stored: TendrilConfig = { ...config };
+    putConfig.mockImplementation(async (key: string, value: unknown) => {
+      (stored as Record<string, unknown>)[key] = value;
+    });
+    vi.spyOn(bridge, "getConfig").mockImplementation(async () => ({ ...stored }));
+    await act(async () => {
+      render(
+        <SettingsView
+          serviceInfo={serviceInfo}
+          onRefreshHealth={vi.fn()}
+          initialSection="notifications"
+        />,
+      );
+    });
+  }
+
+  it("re-disables Save once the write lands, because the saved baseline advances", async () => {
+    await renderWithPersistence({ ...baseConfig });
+
+    fireEvent.click(toggle());
+    await save();
+
+    expect(putConfig).toHaveBeenCalledWith("desktopNotifications", false);
+    // The form is now level with what the daemon reports. A baseline left at the old value keeps
+    // Save lit forever and invites a second, identical write.
+    expect(saveButton()).toBeDisabled();
+    expect(isOn()).toBe(false);
+  });
+
+  it("sends the new value on a second save rather than replaying the first", async () => {
+    await renderWithPersistence({ ...baseConfig });
+
+    fireEvent.click(toggle());
+    await save();
+    expect(putConfig).toHaveBeenLastCalledWith("desktopNotifications", false);
+
+    // Saving twice is where a stale baseline shows: if the first save did not advance it, the
+    // second sends the first value again and the setting silently sticks.
+    fireEvent.click(toggle());
+    await save();
+    expect(putConfig).toHaveBeenLastCalledWith("desktopNotifications", true);
+    expect(putConfig).toHaveBeenCalledTimes(2);
+  });
 });

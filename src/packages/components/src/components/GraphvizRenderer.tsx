@@ -1,5 +1,5 @@
 import { memo } from "react";
-import CopyToClipboardButton from "./CopyToClipboardButton";
+import { CopyToClipboardButton } from "./CopyToClipboardButton";
 import { Spinner } from "./ui/spinner";
 import { renderGraphviz } from "@/lib/diagram";
 import { useDiagramRender } from "@/hooks/use-diagram-render";
@@ -60,4 +60,3 @@ GraphvizRenderer.displayName = "GraphvizRenderer";
 
 export { GraphvizRenderer };
 export type { GraphvizRendererProps };
-export default GraphvizRenderer;

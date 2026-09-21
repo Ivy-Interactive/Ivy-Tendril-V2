@@ -1,9 +1,16 @@
 import React, { useState, useEffect, useRef } from "react";
+import { NO_VALUE, formatTimeSpan, formatTokens } from "@ivy-interactive/components";
 import { AgentViewer } from "@ivy-interactive/components/tendril";
-import { Badge, Callout } from "@ivy-interactive/components/ui";
+import { Badge, Button, Callout, IconButton } from "@ivy-interactive/components/ui";
+import { X } from "lucide-react";
 import { describeBridgeError, type Job, type JobDetail } from "../types/api";
 import { isActiveStatus, jobsStore, type StreamEventItem } from "../state/jobsStore";
 import { JOB_STATUS_COLOR, UNMAPPED_COLOR, projectColor } from "../utils/jobStatus";
+/* The Cost cell is the Jobs table's, not a second reading of the same field: this view is V1's
+   output *sheet over that table*, so a job's cost has to render identically in the row behind it and
+   in the header here. The two copies had already diverged once over the case of `costSource` and
+   been fixed twice; sharing the one function is what stops the third divergence. */
+import { formatJobCost } from "./jobs/format";
 import { ConfirmDialog } from "./dialogs";
 import { parseProjects } from "./PlansView";
 
@@ -22,17 +29,6 @@ interface JobSessionViewProps {
    * `"page"` is the older full-view framing, kept for any caller that still mounts this as a view.
    */
   layout?: "page" | "sheet";
-}
-
-/** `JobsApp.Helpers.cs` `FormatTimeSpan`: hours drop the seconds, a sub-minute span is seconds only. */
-function formatTimeSpan(totalSeconds: number): string {
-  const seconds = Math.max(0, Math.floor(totalSeconds));
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
-  if (hours >= 1) return `${hours}h ${String(minutes).padStart(2, "0")}m`;
-  if (minutes === 0) return `${secs}s`;
-  return `${minutes}m ${String(secs).padStart(2, "0")}s`;
 }
 
 /**
@@ -72,26 +68,6 @@ function formatTimestamp(job: Job): string {
 }
 
 /**
- * `JobsApp.Data.cs` and `JobCostSheet.cs` both use this for "nothing recorded here". Keeping V1's
- * em-dash rather than an empty string is what stops a job that reported no cost from reading as one
- * that cost nothing: `Cost —` and `Cost $0.00` are different claims.
- */
-const NO_VALUE = "—";
-
-/**
- * How tall the output may get inside the sheet before it scrolls itself.
- *
- * The sheet's `HeaderLayout` scrolls its content, so without a ceiling the viewer grows to the height
- * of the whole log and its windowing goes inert: the virtualizer renders what fits in its scroll
- * element, and an unbounded element "fits" 100k lines. A page framing needs none of this — it hands
- * the viewer a definite height already — which is why this is only passed for the sheet.
- *
- * A viewport fraction rather than a pixel count so it fills a tall window, and paired with the `min-h`
- * floor below so an empty log still shows the viewer rather than collapsing to nothing.
- */
-const SHEET_OUTPUT_MAX_HEIGHT = "70vh";
-
-/**
  * The default for `events`, hoisted so it is the *same* empty array on every render.
  *
  * `events = []` in the signature mints a new one each time, which the line cache below would read as
@@ -99,49 +75,9 @@ const SHEET_OUTPUT_MAX_HEIGHT = "70vh";
  */
 const NO_EVENTS: StreamEventItem[] = [];
 
-/**
- * `FormatHelper.FormatTokens`: millions to one decimal, thousands to none.
- *
- * A million-plus count keeps scaling rather than saturating, so a 1.4-billion-token run reads
- * "1400.0M" exactly as V1's `(tokens / 1_000_000.0).ToString("F1")` does. A non-finite or negative
- * count is not a token count at all and is reported as absent rather than as "NaN".
- */
-function formatTokens(tokens: number): string {
-  if (!Number.isFinite(tokens) || tokens < 0) return NO_VALUE;
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(0)}K`;
-  return String(tokens);
-}
-
 /** `FormatHelper.FormatCount`: the exact figure, grouped, for the tooltip behind the short form. */
 function formatTokenCount(tokens: number): string {
   return tokens.toLocaleString("en-US");
-}
-
-/** `JobsApp.Data.cs` `FormatJobCost` via `FormatHelper.FormatCost`: two decimals, dollars. */
-function formatCost(cost: number): string {
-  return `$${cost.toFixed(2)}`;
-}
-
-/**
- * The Cost cell, `JobsApp.Data.cs` `FormatJobCost`.
- *
- * Returns `null` where V1 returns `""` - the job has no cost figure at all, which is the normal
- * state of a subscription-plan run: the agent reports tokens and no charge. The caller renders
- * {@link NO_VALUE} for that, so it cannot be mistaken for a charge of zero.
- *
- * An estimate derived from tokens times the price list carries V1's `"~"` prefix
- * (`JobCostSources.Estimated`), so a figure nobody was actually billed never presents itself as one.
- *
- * The comparison is case-insensitive because the value on the wire is lower case: V1 writes
- * `"estimated"` (`Services/Jobs/JobUsageSnapshot.cs:22`) and so does the daemon
- * (`jobs/manager.rs:2909`). This matched `"Estimated"` exactly, dating from when `costSource` was not
- * on the DTO at all and its casing was a guess, so the tilde never actually appeared on an estimate.
- */
-function formatJobCost(job: Job): string | null {
-  if (job.cost === undefined || job.cost === null || !Number.isFinite(job.cost)) return null;
-  const formatted = formatCost(job.cost);
-  return job.costSource?.toLowerCase() === "estimated" ? `~${formatted}` : formatted;
 }
 
 /**
@@ -400,12 +336,26 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
   const isSheet = layout === "sheet";
 
   return (
-    <div
-      className={`flex flex-col space-y-4 ${isSheet ? "" : "h-full"}`}
-      data-testid="job-session-view"
-    >
-      {/* Header: the output sheet's title, plus the row the table showed. */}
-      <div className="flex flex-col gap-3 border-b border-border pb-4 sm:flex-row sm:items-start sm:justify-between">
+    // `h-full min-h-0` in both framings now. The sheet used to omit it because its `HeaderLayout`
+    // scrolled the content, and a height against a scrolling parent is a height against nothing; the
+    // sheet hands the log its own definite box instead (see `JobsView`'s `scrollContent={false}`), and
+    // this is the link in that chain — without it the height dies here and the metrics footer goes
+    // back to floating at the end of the log.
+    <div className="flex h-full min-h-0 flex-col space-y-4" data-testid="job-session-view">
+      {/* Header: the output sheet's title, plus the row the table showed.
+
+          The rule under it is drawn for the page only. In the sheet this block is one of three
+          full-width rules stacked within ~50px of each other — under the sheet title, under here, and
+          over the metrics footer — and three parallel lines read as a form, not as a hierarchy. The
+          page has no sheet title above it, so there its rule is the only one and still separates the
+          job's identity from its output. `pb-4` goes with the border: it is the padding that held the
+          meta text off the rule, so left behind it would stack on the root's `space-y-4` for ~35px of
+          gap where the line used to be — a removal that reads as a hole rather than as tightening. */}
+      <div
+        className={`flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between ${
+          isSheet ? "" : "border-b border-border pb-4"
+        }`}
+      >
         <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-mono text-sm font-bold text-muted-foreground">
@@ -470,55 +420,61 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
             and Debug needs `JobDebugSheet`. Both are reported rather than stubbed. */}
         <div className="flex flex-wrap items-center gap-2">
           {canStop && (
-            <button
+            <Button
               type="button"
+              size="sm"
+              variant="destructive"
               disabled={isStopping}
               onClick={handleStop}
               title="Stop this job"
-              className="rounded-selector bg-destructive px-3 py-1.5 text-xs font-medium text-destructive-foreground transition hover:bg-destructive/90 disabled:opacity-50"
+              className="h-auto rounded-selector px-3 py-1.5 text-xs"
             >
               {isStopping ? "Stopping..." : "Stop"}
-            </button>
+            </Button>
           )}
 
           {canForceStart && (
-            <button
+            <Button
               type="button"
+              size="sm"
+              variant="outline"
               data-testid="job-force-start"
               disabled={isForceStarting}
               onClick={handleForceStart}
               title="Force start this blocked job"
-              className="rounded-selector border border-border px-3 py-1.5 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
+              className="h-auto rounded-selector px-3 py-1.5 text-xs"
             >
               {isForceStarting ? "Starting..." : "Force Start"}
-            </button>
+            </Button>
           )}
 
+          {/* Delete is `outline` with the destructive tint it already had rather than the solid
+              `destructive` fill: Stop is the loud one in this row, and two filled reds side by
+              side stop reading as a hierarchy. */}
           {canDelete && (
-            <button
+            <Button
               type="button"
+              size="sm"
+              variant="outline"
               data-testid="job-delete"
               onClick={() => {
                 setDeleteError(null);
                 setIsConfirmDeleteOpen(true);
               }}
               title="Delete this job"
-              className="rounded-selector border border-destructive/40 px-3 py-1.5 text-xs font-medium text-destructive transition hover:bg-destructive/10"
+              className="h-auto rounded-selector border-destructive/40 px-3 py-1.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
             >
               Delete
-            </button>
+            </Button>
           )}
 
-          {/* A sheet has its own close control; a second one beside Delete is noise. */}
+          {/* A sheet has its own close control; a second one beside Delete is noise. An X icon
+              rather than the "✕" glyph this used to draw: every other close in the app is
+              `lucide-react`'s, and a text glyph does not line up with one. */}
           {onCloseTab && !isSheet && (
-            <button
-              type="button"
-              onClick={onCloseTab}
-              aria-label="Close session tab"
-              className="rounded-selector p-1 text-muted-foreground hover:text-foreground"
-            >
-              ✕
-            </button>
+            <IconButton label="Close session tab" size="md" tone="muted" onClick={onCloseTab}>
+              <X className="size-4" />
+            </IconButton>
           )}
         </div>
       </div>
@@ -540,18 +496,24 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
 
       {/* Output. `OutputSheet.cs` decides between three things: a viewer following a live stream, a
           viewer showing a finished one, and a job that produced nothing at all. */}
-      {/* A sheet scrolls, so the viewer gets a floor rather than the remaining height of a page:
-          `flex-1` inside a scrolling container resolves to the content's own height, which for an
-          empty log is zero and hides the viewer entirely. */}
-      <div className={isSheet ? "min-h-96" : "min-h-0 flex-1 overflow-hidden"}>
+      {/* One box for both framings now. The sheet used to take a `min-h-96` floor instead, because a
+          `flex-1` inside `HeaderLayout`'s scroller resolved to the content's own height and an empty
+          log collapsed the viewer to nothing. That reasoning ended when the sheet stopped scrolling
+          its content: `flex-1` against a definite parent is the remaining space, so an empty log is
+          given the rest of the sheet rather than zero. The floor was also the bug the user reported —
+          a `min-height` is not a height, so `AgentViewer`'s `height: 100%` had nothing to resolve
+          against, the shell sized to its content, and the metrics footer pinned to the bottom of a box
+          that stopped short of the sheet. 414.72px of reserved space (`--spacing` is 0.27rem here, not
+          Tailwind's 0.25) sat under it whenever the log was shorter than the floor. */}
+      <div className="min-h-0 flex-1 overflow-hidden">
         {eventLines.length > 0 ? (
           <AgentViewer
             id={viewerId}
             jsonLines={eventLines}
             height="full"
-            // Only while the sheet framing leaves the viewer to size itself; see
-            // {@link SHEET_OUTPUT_MAX_HEIGHT}.
-            maxBodyHeight={isSheet ? SHEET_OUTPUT_MAX_HEIGHT : undefined}
+            // The third of the sheet's stacked rules. The viewer now fills the sheet, so the strip
+            // sits on the sheet's own bottom edge and has nothing left to divide it from.
+            showMetricsDivider={!isSheet}
             // `.AutoScroll(false).ShowStatusLabel(false)` once the job is no longer running: nothing
             // more is coming, so following the bottom would only fight the reader, and an animated
             // "Working..." under a finished log is a lie.
@@ -561,6 +523,11 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
             // killed or timed-out run reports no terminal result, so the stream alone cannot tell that
             // it is over, and the timer would tick on against a start that may be days old.
             live={isRunning}
+            // The job row's own start, not the log's first line. They are the same only while the
+            // log holds one run, and a job id reissued after its row was cleared inherits the kept
+            // log of the job before it - which is how a two-minute-old job came to read
+            // "ELAPSED 20h 25m" under a header that read "1m 55s". Both now count from here.
+            startedAt={currentJob.startedAt}
             eventHandler={noop}
           />
         ) : isRunning ? (
@@ -570,7 +537,7 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
           <AgentViewer
             id={viewerId}
             height="full"
-            maxBodyHeight={isSheet ? SHEET_OUTPUT_MAX_HEIGHT : undefined}
+            showMetricsDivider={!isSheet}
             autoScroll
             showStatusLabel
             eventHandler={noop}

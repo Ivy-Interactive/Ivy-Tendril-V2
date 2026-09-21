@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Button } from "@ivy-interactive/components/ui";
-import { DialogShell } from "./DialogShell";
+import { DialogShell, DialogShortcutHint } from "./DialogShell";
 import type { RepoStatus } from "../../types/api";
 
 export interface DirtyRepoDialogProps {
@@ -48,6 +48,14 @@ export function DirtyRepoDialog({
       } uncommitted changes. They will not be included in the worktree the agent works in.`}
       testId="dirty-repo-dialog"
       initialFocusRef={cancelRef}
+      // The last of the three execute guards to get the chord, and it is the odd one out that made
+      // the chain inconsistent: `UnansweredQuestionsDialog` and `PendingAnnotationsDialog` both bind
+      // Ctrl+Enter to their primary, so a user who learned it on the first guard found it dead on
+      // this one. `onProceed` is V1's primary here too (`new Button(proceedLabel).Primary()`), and
+      // proceeding is reversible in a way the confirms are not — the worktree simply lacks the
+      // uncommitted changes, which are still on disk.
+      shortcut="Ctrl+Enter"
+      onShortcut={onProceed}
       footer={
         <>
           <Button ref={cancelRef} variant="outline" onClick={onClose} data-testid="dialog-cancel">
@@ -55,6 +63,7 @@ export function DirtyRepoDialog({
           </Button>
           <Button onClick={onProceed} data-testid="guard-proceed">
             {proceedLabel}
+            <DialogShortcutHint shortcut="Ctrl+Enter" />
           </Button>
         </>
       }

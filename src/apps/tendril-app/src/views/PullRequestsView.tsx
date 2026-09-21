@@ -3,6 +3,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { ExternalLink, FileText, GitBranch, RefreshCw } from "lucide-react";
 import {
   Badge,
+  Button,
   DataTable,
   Sheet,
   SheetContent,
@@ -21,8 +22,10 @@ import { onPrStatusEvent } from "../api/events";
 import { bridgeErrorCode, describeBridgeError, type PrStatus } from "../types/api";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { NoContentView } from "../components/NoContentView";
+import { useWireframeBaseUrl } from "../api/proxyOrigin";
 import { projectColor } from "../utils/jobStatus";
 import { PR_STATE_COLOR } from "../utils/prStatus";
+import { formatCost, formatTokensCompact } from "../utils/format";
 
 /** The original's `BatchSize` — a cross-plan PR list is long, so the page holds more than the default 10. */
 const DEFAULT_PAGE_SIZE = 50;
@@ -34,16 +37,19 @@ const STATUS_OPTIONS: BadgeSelectOption[] = [
   { value: "Unknown", label: "Unknown" },
 ];
 
-/** The Dashboard's format, so the app has one token format rather than two. */
-function formatTokens(tokens: number): string {
-  if (tokens <= 0) return "";
-  return tokens > 1000 ? `${(tokens / 1000).toFixed(1)}k` : String(tokens);
-}
+/**
+ * Blank rather than a figure for a plan with no priceable cost and no recorded tokens — the
+ * original's `costValue > 0` / `tokenValue > 0` guards. The emptiness is this table's decision and
+ * stays here; how a number that *is* there gets spelled is {@link formatTokensCompact}'s and
+ * {@link formatCost}'s.
+ *
+ * The local token ladder these replace claimed to be "the Dashboard's format, so the app has one
+ * token format rather than two", and was not: it had no millions branch, so a 1.4M-token plan read
+ * `1400.0k` in this column and `1.4M` on the Dashboard card it was copied from.
+ */
+const tokensCell = (tokens: number): string => (tokens > 0 ? formatTokensCompact(tokens) : "");
 
-/** Blank rather than `$0.00` for a plan with no priceable cost — the original's `costValue > 0` guard. */
-function formatCost(cost: number): string {
-  return cost > 0 ? `$${cost.toFixed(2)}` : "";
-}
+const costCell = (cost: number): string => (cost > 0 ? formatCost(cost) : "");
 
 /**
  * What a status cell means, and how old it is.
@@ -99,6 +105,8 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
   const [notice, setNotice] = useState<string | null>(null);
 
   const [sheetRow, setSheetRow] = useState<PrStatus | null>(null);
+  // The daemon's origin, not the app's -- see useWireframeBaseUrl.
+  const wireframeBaseUrl = useWireframeBaseUrl(sheetRow?.planId);
   const [revision, setRevision] = useState<string | null>(null);
   const [revisionError, setRevisionError] = useState<string | null>(null);
 
@@ -294,7 +302,7 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
         width: "80px",
         align: "Right",
         accessor: (row) => row.tokens,
-        cell: (_value, row) => formatTokens(row.tokens),
+        cell: (_value, row) => tokensCell(row.tokens),
       },
       {
         name: "cost",
@@ -302,7 +310,7 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
         width: "80px",
         align: "Right",
         accessor: (row) => row.cost,
-        cell: (_value, row) => formatCost(row.cost),
+        cell: (_value, row) => costCell(row.cost),
       },
       {
         name: "repository",
@@ -442,16 +450,18 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
               </div>
             ),
             right: (
-              <button
+              <Button
                 type="button"
+                size="sm"
+                variant="outline"
                 onClick={() => void handleSync()}
                 disabled={isSyncing}
-                className="rounded-field border border-border px-3 py-1.5 text-xs text-muted-foreground transition hover:bg-muted disabled:opacity-50"
+                className="h-auto px-3 py-1.5 text-xs text-muted-foreground"
               >
                 {/* "All" rather than "Resync": the row action carries that label, and one pass
                     covers every PR, so the toolbar control says which scope it has. */}
                 {isSyncing ? "Resyncing..." : "Resync All"}
-              </button>
+              </Button>
             ),
           }}
         />
@@ -480,6 +490,9 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
               <PlanMarkdown
                 id="pr-plan-revision"
                 content={revision}
+                // The sheet shows a plan's revision, so its wireframes resolve the same way they
+                // do on the plan page itself.
+                wireframeBaseUrl={wireframeBaseUrl}
                 article
                 dangerouslyAllowLocalFiles
               />

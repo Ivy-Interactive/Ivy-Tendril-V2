@@ -16,7 +16,7 @@ export default meta;
 const projects = ["Ivy-Tendril-V2", "Ivy-Framework", "Open-Glass"];
 
 const rowClass =
-  "w-full rounded-field px-2 py-1.5 text-left text-sm hover:bg-accent hover:text-accent-foreground";
+  "w-full rounded-field px-2 py-1.5 text-left text-sm hover:bg-secondary/60 hover:text-foreground";
 
 interface DemoContext {
   /** Records the last action so the drill-down's side effects are visible in the root blade. */
@@ -187,8 +187,9 @@ export const Collapsed: StoryObj = {
 };
 
 export const WidthHints: StoryObj = {
+  // Fixed 900px, not w-full: it fits the visual test runner's 1280x720 viewport, so the capture is not clipped.
   render: () => (
-    <div className="h-[420px] w-full overflow-hidden rounded-box border border-border">
+    <div className="h-[420px] w-[900px] overflow-hidden rounded-box border border-border">
       <BladeContainer
         aria-label="Width hints"
         root={{

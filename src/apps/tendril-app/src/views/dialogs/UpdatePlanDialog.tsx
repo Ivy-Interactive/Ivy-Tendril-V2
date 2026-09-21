@@ -1,6 +1,6 @@
 import * as React from "react";
-import { Button, Callout } from "@ivy-interactive/components/ui";
-import { PlanActionsController } from "../../controllers/plan_actions";
+import { Button, Callout, Textarea } from "@ivy-interactive/components/ui";
+import { PlanActionsController } from "../../controllers/planActions";
 import {
   describeBridgeError,
   type Job,
@@ -9,7 +9,6 @@ import {
   type StartJobResponse,
 } from "../../types/api";
 import { DialogShell } from "./DialogShell";
-import { ALERT_CLASS, FIELD_CLASS } from "./fieldStyles";
 
 export interface UpdatePlanDialogProps {
   isOpen: boolean;
@@ -120,7 +119,7 @@ export function UpdatePlanDialog({
       >
         Instructions
       </label>
-      <textarea
+      <Textarea
         id="update-plan-instructions"
         ref={textareaRef}
         aria-label="Update instructions"
@@ -128,13 +127,9 @@ export function UpdatePlanDialog({
         value={instructions}
         onChange={(event) => setInstructions(event.target.value)}
         placeholder="Fold in the answered questions, then narrow the scope to the guard chain only…"
-        className={FIELD_CLASS}
+        className="text-sm"
       />
-      {error && (
-        <div role="alert" className={ALERT_CLASS}>
-          {error}
-        </div>
-      )}
+      {error && <Callout.Error className="mt-4">{error}</Callout.Error>}
     </DialogShell>
   );
 }

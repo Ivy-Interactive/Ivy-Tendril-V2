@@ -113,7 +113,7 @@ export const ShellSidebarSection: React.FC<ShellSidebarSectionProps> = ({
           </ShellTooltip>
         )}
         {!collapsedMenu && (
-          <div className="tsh-rail-list">
+          <div className="tsh-rail-list hidden-scrollbar">
             {items.map((item) => {
               const RailIcon = (item.icon && sectionItemIcons[item.icon]) || MessageCircle;
               return (

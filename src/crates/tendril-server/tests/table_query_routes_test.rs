@@ -9,7 +9,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use tendril_core::config::{get_database_path, MasterGuard};
 use tendril_core::db::{insert_job, open_database, sync_plan};
-use tendril_core::models::{JobItem, JobStatus, PlanFile, PlanMetadata, PlanStatus};
+use tendril_core::models::{
+    CreatePlanArgs, JobArgs, JobItem, JobStatus, PlanFile, PlanMetadata, PlanStatus,
+};
 use tendril_server::{create_router, AppState};
 
 struct TestServer {
@@ -237,6 +239,9 @@ async fn the_rows_are_the_clients_job_shape_not_the_daemons_job_item() {
         "type",
         "planId",
         "planTitle",
+        // Not a column and not a `JobItem` field: the operator's own words, derived from `Args`, and
+        // the only thing the Prompt cell has to show before the agent has reported a plan.
+        "prompt",
         "project",
         "status",
         "statusMessage",
@@ -291,6 +296,67 @@ async fn the_plan_id_and_title_arrive_under_the_names_the_app_reads() {
     // claims in the cell.
     assert!(row.get("cost").is_none(), "{row}");
     assert!(row.get("planTitle").is_some());
+}
+
+/// A `CreatePlan` imported from the Inbox, over real HTTP.
+///
+/// The reported bug, from the user's own database: ten such rows, `Type` and `Project` filled,
+/// `ReportedPlanId` and `ReportedPlanTitle` both empty — because the plan does not exist until the
+/// agent has reported one — and so a blank Prompt cell for the whole run. The request those jobs were
+/// launched with was in `Args` the entire time, which is where V1's `GetPromptDisplay` reads it from.
+#[tokio::test]
+async fn an_inbox_import_carries_the_words_it_was_launched_with() {
+    let server = start_test_server().await;
+    let conn = open_database(&get_database_path(&server.tendril_home)).expect("open database");
+
+    let description =
+        "Task from GitHub Issue #2752 (https://github.com/Ivy-Interactive/Ivy-Tendril/issues/2752): \
+         the elapsed timer never resets";
+    let args = JobArgs::CreatePlan(CreatePlanArgs {
+        description: description.to_string(),
+        project: "ivy-tendril".to_string(),
+        priority: 0,
+        force: false,
+        source_path: None,
+        upload_session_id: None,
+    });
+
+    let mut job = JobItem::new(
+        "00001".to_string(),
+        "CreatePlan".to_string(),
+        String::new(),
+        "ivy-tendril".to_string(),
+    );
+    job.status = JobStatus::Running;
+    // Exactly the row shape the user's database holds: the args persisted, the plan fields empty.
+    job.args = Some(serde_json::to_string(&args).expect("serialize args"));
+    job.typed_args = Some(args);
+    insert_job(&conn, &job).expect("insert job");
+
+    let (status, body) = post(&server, "/api/jobs/query", serde_json::json!({})).await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{body}");
+    let row = &body["rows"][0];
+
+    assert_eq!(row["prompt"], description, "{row}");
+    // The two the cell used to read, and why it was blank.
+    assert!(row.get("planId").is_none(), "{row}");
+    assert!(row.get("planTitle").is_none(), "{row}");
+
+    // And the Prompt filter reaches it: the cell's text lives in `Args` for this job, so a filter that
+    // named only `ReportedPlanTitle` would match none of the rows it can now display.
+    let (status, filtered) = post(
+        &server,
+        "/api/jobs/query",
+        serde_json::json!({
+            "filter": {
+                "condition": { "column": "args", "function": "contains", "args": ["elapsed timer"] }
+            }
+        }),
+    )
+    .await;
+    assert_eq!(status, reqwest::StatusCode::OK, "{filtered}");
+    assert_eq!(filtered["totalRows"], 1, "{filtered}");
+    assert_eq!(filtered["rows"][0]["id"], "00001", "{filtered}");
 }
 
 /// The Jobs table's Agent Output cell is the time since the agent last wrote a line

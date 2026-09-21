@@ -9,6 +9,7 @@ import {
 } from "@ivy-interactive/components/ui";
 import { notificationsStore } from "../../state/notificationsStore";
 import { describeBridgeError } from "../../types/api";
+import { levelBadgeColor } from "../../utils/levelColor";
 import { SaveError, SettingsSection, TextField } from "./fields";
 import { useRemovalConfirm } from "./useRemovalConfirm";
 import type { LevelEntry } from "./projectConfig";
@@ -21,9 +22,10 @@ import type { LevelEntry } from "./projectConfig";
  * three verbs work: the whole list is sent every time.
  *
  * Two deliberate departures from V1. `EditLevelDialogContent` is a dialog; this edits in place below
- * the table, because this area owns no dialog files. And V1's colour picker is a select over the Ivy
- * `Colors` enum, which V2's generated palette has no equivalent for, so the colour is edited as the
- * name `config.yaml` stores.
+ * the table, because this area owns no dialog files. And V1's colour picker is a select over
+ * `Enum.GetNames<Colors>()` (`LevelsSetupView.cs:110`); this is a text field, because `LevelConfig.color`
+ * is a free `String` in the daemon and a select would silently rewrite a colour V2 does not recognise.
+ * The Color cell is what tells the operator whether what they typed resolved — see {@link levelBadgeColor}.
  *
  * The callout is not cosmetic: `levels` is modelled by the daemon and advertised over MCP, but
  * nothing in V2's UI reads it, so an operator editing these would otherwise expect an effect that
@@ -70,7 +72,27 @@ export const LevelsSection: React.FC<LevelsSectionProps> = ({ levels, onSaveRaw 
       name: "color",
       header: "Color",
       accessor: (row) => row.color,
-      cell: (_value, row) => <Badge variant="secondary">{row.color || "unset"}</Badge>,
+      /**
+       * `.Builder(t => t.Color, ... new Badge(color).Color(Enum.TryParse<Colors>(color, out var c) ? c
+       * : Colors.Gray))` (`LevelsSetupView.cs:31-35`): the cell *is* the colour swatch, so a badge
+       * reading "Red" that renders grey is the column failing to say the one thing it exists to say.
+       *
+       * V1's unparseable-colour fallback is `Colors.Gray`, a tinted grey badge indistinguishable from
+       * a level genuinely coloured Gray. The neutral `secondary` badge here is a different surface
+       * from any tint, so a misspelt colour reads as *uncoloured* at the screen where it is fixed.
+       */
+      cell: (_value, row) => {
+        const color = levelBadgeColor(row.color);
+        return color ? (
+          <Badge color={color} data-testid={`level-color-${row.name}`}>
+            {row.color}
+          </Badge>
+        ) : (
+          <Badge variant="secondary" data-testid={`level-color-${row.name}`}>
+            {row.color || "unset"}
+          </Badge>
+        );
+      },
     },
   ];
 

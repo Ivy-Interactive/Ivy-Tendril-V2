@@ -741,7 +741,14 @@ mod tests {
     #[tokio::test]
     async fn an_agent_with_no_usage_provider_reports_none() {
         // Parity with V1, which has three providers and not six: these publish nothing to read.
-        for agent in ["gemini", "copilot", "opencode", "ivy", "openaiproxy"] {
+        for agent in [
+            "gemini",
+            "copilot",
+            "cursor",
+            "opencode",
+            "ivy",
+            "openaiproxy",
+        ] {
             assert!(agent_usage(agent).await.is_none(), "{agent}");
         }
     }

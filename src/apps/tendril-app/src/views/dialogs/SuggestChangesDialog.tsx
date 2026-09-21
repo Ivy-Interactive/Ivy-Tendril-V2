@@ -1,7 +1,7 @@
 import * as React from "react";
-import { Button, Callout } from "@ivy-interactive/components/ui";
+import { Button, Callout, Textarea } from "@ivy-interactive/components/ui";
 import { bridge } from "../../api/bridge";
-import { PlanActionsController } from "../../controllers/plan_actions";
+import { PlanActionsController } from "../../controllers/planActions";
 import { formatChangeRequest, readSource, type AppComment } from "../../utils/appComments";
 import {
   describeBridgeError,
@@ -12,7 +12,6 @@ import {
   type StartJobResponse,
 } from "../../types/api";
 import { DialogShell } from "./DialogShell";
-import { ALERT_CLASS, FIELD_CLASS } from "./fieldStyles";
 
 export interface SuggestChangesDialogProps {
   isOpen: boolean;
@@ -295,11 +294,7 @@ export function SuggestChangesDialog({
             </div>
           ))}
         </div>
-        {error && (
-          <div role="alert" className={ALERT_CLASS}>
-            {error}
-          </div>
-        )}
+        {error && <Callout.Error className="mt-4">{error}</Callout.Error>}
       </DialogShell>
     );
   }
@@ -344,7 +339,7 @@ export function SuggestChangesDialog({
       <label htmlFor="suggest-changes-request" className="mb-1 block text-xs text-muted-foreground">
         Change request
       </label>
-      <textarea
+      <Textarea
         id="suggest-changes-request"
         ref={textareaRef}
         aria-label="Change request"
@@ -354,13 +349,9 @@ export function SuggestChangesDialog({
         value={changeRequest}
         onChange={(event) => setChangeRequest(event.target.value)}
         placeholder="Describe what needs to be changed, fixed or rewritten in the worktree…"
-        className={FIELD_CLASS}
+        className="text-sm"
       />
-      {error && (
-        <div role="alert" className={ALERT_CLASS}>
-          {error}
-        </div>
-      )}
+      {error && <Callout.Error className="mt-4">{error}</Callout.Error>}
     </DialogShell>
   );
 }

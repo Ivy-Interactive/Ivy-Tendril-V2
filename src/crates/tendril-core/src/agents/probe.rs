@@ -28,7 +28,10 @@ use tokio::io::AsyncReadExt;
 use tokio::process::Command;
 
 use crate::agents::provider_models::{test_model_prompt, ModelValidation, ModelValidationStatus};
-use crate::agents::providers::{resolve_copilot_binary, resolve_opencode_binary};
+use crate::agents::providers::{
+    apple_base_url, format_cursor_model, resolve_copilot_binary, resolve_cursor_binary,
+    resolve_opencode_binary, APPLE_MODEL_ID, APPLE_WIRE_MODEL_ID,
+};
 use crate::agents::resolution::normalize_agent_name;
 use crate::config::dirs_home;
 use crate::jobs::process_tree::{kill_tree, DEFAULT_KILL_GRACE};
@@ -142,6 +145,11 @@ pub const TIMED_OUT: &str = "Timed out";
 
 /// How long output draining is given after a kill, so a wedged pipe cannot hang a probe.
 const POST_KILL_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// What `codex exec … -` says, on stderr and with exit 1, when the stdin `run_probe` closed hands it
+/// EOF instead of a prompt. `classify_codex_model` reads it as the model being accepted; see there
+/// for why. Lowercase because the classifiers match against a lowercased haystack.
+const CODEX_NO_PROMPT: &str = "no prompt provided via stdin";
 
 /// One probe's process outcome. `exit_code` is `-1` for "never ran, or was killed", which is the
 /// convention every classifier below reads together with `stderr`.
@@ -349,10 +357,18 @@ fn probe_binary(agent: &str) -> (String, Vec<String>) {
     match agent {
         "copilot" => resolve_copilot_binary(),
         "opencode" => (resolve_opencode_binary(), vec![]),
+        // Apple is launched through OpenCode, but OpenCode is not what the operator is missing when
+        // this agent does not work. `fm` is the part that is distinctly Apple's, and resolving the
+        // delegate here would report "installed" on a machine with no `fm` at all -- the same
+        // mistake `health::doctor_probe_target` exists to avoid.
+        "apple" => ("fm".to_string(), vec![]),
         // Both proxy entries are driven through OpenCode in this build, where V1 had its own
         // `ivy-agent` CLI. There is no separate binary to find.
         agent if is_proxy_agent(agent) => (resolve_opencode_binary(), vec![]),
         "antigravity" | "agy" => ("agy".to_string(), vec![]),
+        // The binary is `cursor-agent`, not `cursor` -- `cursor` is the editor. Resolved through
+        // `providers` so the probe finds the same copy a launch would.
+        "cursor" => (resolve_cursor_binary(), vec![]),
         other => (other.to_string(), vec![]),
     }
 }
@@ -399,7 +415,9 @@ pub async fn check_install(agent: &str) -> AgentInstallStatus {
             binary_path: None,
             error: Some(match agent.as_str() {
                 "copilot" => "copilot (or gh) not found on PATH".to_string(),
+                "apple" => "fm not found on PATH (Apple Foundation Models CLI)".to_string(),
                 agent if is_proxy_agent(agent) => "opencode not found".to_string(),
+                "cursor" => "cursor-agent not found on PATH".to_string(),
                 other => format!("{other} not found on PATH"),
             }),
         };
@@ -417,15 +435,30 @@ pub async fn check_install(agent: &str) -> AgentInstallStatus {
 static SEMVER: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\d+\.\d+\.\d+").expect("semver pattern is valid"));
 
-/// `<binary> --version`, at V1's ten-second budget.
+/// The argument that makes an agent's binary report its presence.
+///
+/// Almost every CLI answers `--version`. `fm` does not: it exits 64 with "Unknown option
+/// '--version'" and prints nothing on stdout, so probing it the conventional way reads a working
+/// install as absent. `available` is its own presence check -- it answers "System model available"
+/// and exits 0 -- and is the same argument `health::AGENT_PREREQUISITES` probes `fm` with, so
+/// doctor and this probe agree about what installed means.
+fn version_arg_for(agent: &str) -> &'static str {
+    match agent {
+        "apple" => "available",
+        _ => "--version",
+    }
+}
+
+/// `<binary> <version arg>`, at V1's ten-second budget.
 ///
 /// Claude, Codex and Copilot pull a `\d+\.\d+\.\d+` out of the line and fall back to the whole
 /// trimmed stdout; Gemini, OpenCode, Antigravity and the proxies report the whole line as-is,
-/// because their CLIs print a version string a semver pattern would truncate.
+/// because their CLIs print a version string a semver pattern would truncate. Apple reports the
+/// availability line, which is not a version at all but is the only thing `fm` will tell us.
 async fn probe_agent_version(agent: &str, binary: &str, prefix: &[String]) -> Option<String> {
     let out = run_probe(
         binary,
-        &argv(prefix, &["--version"]),
+        &argv(prefix, &[version_arg_for(agent)]),
         Duration::from_secs(10),
     )
     .await;
@@ -458,6 +491,8 @@ pub async fn check_auth(agent: &str, creds: &ProbeCredentials) -> AgentAuthResul
         "copilot" => copilot_auth().await,
         "antigravity" | "agy" => antigravity_auth().await,
         "opencode" => opencode_auth().await,
+        "apple" => apple_auth().await,
+        "cursor" => cursor_auth().await,
         other if is_proxy_agent(other) => proxy_auth(creds).await,
         other => AgentAuthResult::failed(
             AuthStatus::Unknown,
@@ -539,6 +574,29 @@ async fn codex_auth() -> AgentAuthResult {
     AgentAuthResult::failed(AuthStatus::CheckFailed, out.stderr, None)
 }
 
+/// What to tell a user whose Gemini CLI is not signed in.
+///
+/// Not `gemini auth`, which V1 suggested and which has never been a subcommand: the CLI's only
+/// subcommands are `mcp`, `extensions`, `skills`, `hooks` and `gemma`, so `gemini auth` is swallowed
+/// as a prompt query — the CLI answers it as a *question*, telling the user to set GEMINI_API_KEY,
+/// and nobody is signed in. Sign-in is `/auth`, a slash command inside the session (gemini-cli's
+/// `authCommand`, whose subcommands are `signin`/`login` and `signout`/`logout` and which defaults
+/// to sign-in), so the hint has to name the binary and the command to type at it separately.
+const GEMINI_SIGN_IN_HINT: &str =
+    "Run 'gemini' and use the /auth slash command, or set GEMINI_API_KEY";
+
+/// What to tell a user whose Copilot CLI is not signed in.
+///
+/// Not `copilot login`, which V1 suggested and which does not exist: GitHub's install page says an
+/// unauthenticated first launch prompts for the `/login` slash command, so sign-in happens inside
+/// the TUI. V1's `gh auth login` alternative is dropped rather than carried over — it authenticates
+/// the GitHub CLI, which is a separate credential from Copilot's even on a machine where
+/// [`resolve_copilot_binary`] falls back to `gh copilot`, so following it leaves the user just as
+/// unauthenticated. The documented unattended route is a token instead, in GitHub's own precedence
+/// order: COPILOT_GITHUB_TOKEN, then GH_TOKEN, then GITHUB_TOKEN.
+const COPILOT_SIGN_IN_HINT: &str = "Run 'copilot' and use the /login slash command, or set \
+     COPILOT_GITHUB_TOKEN (or GH_TOKEN) to a token with the 'Copilot Requests' permission";
+
 /// V1 `GeminiHealthCheck.CheckAuthAsync`: environment first, then the credential files the CLI
 /// writes, and only then a real prompt.
 ///
@@ -605,7 +663,7 @@ async fn gemini_auth() -> AgentAuthResult {
     AgentAuthResult::failed(
         AuthStatus::NotAuthenticated,
         "OAuth credentials not found and no API key set",
-        Some("Run 'gemini auth' or set GEMINI_API_KEY"),
+        Some(GEMINI_SIGN_IN_HINT),
     )
 }
 
@@ -668,7 +726,7 @@ async fn copilot_auth() -> AgentAuthResult {
         return AgentAuthResult::failed(
             AuthStatus::NotAuthenticated,
             out.stderr,
-            Some("Run 'copilot login' or 'gh auth login' to authenticate"),
+            Some(COPILOT_SIGN_IN_HINT),
         );
     }
 
@@ -711,6 +769,47 @@ async fn antigravity_auth() -> AgentAuthResult {
         },
         Some("Run 'agy' and complete the browser-based auth flow"),
     )
+}
+
+/// Cursor ships the check as a subcommand: `cursor-agent status` prints
+/// "✓ Logged in as <email>" and exits 0, and exits non-zero when it is not.
+///
+/// A subcommand rather than a real one-turn prompt (which is what `claude_auth` has to do) because
+/// Cursor answers the question directly and for free, and rather than a credential file because
+/// there is no documented one -- the token lives under `~/.local/share/cursor-agent`, whose layout
+/// is the CLI's own business.
+async fn cursor_auth() -> AgentAuthResult {
+    let binary = resolve_cursor_binary();
+    let out = run_probe(&binary, &argv(&[], &["status"]), Duration::from_secs(15)).await;
+
+    if out.exit_code == 0 {
+        // The account is on stdout, which is worth keeping: one machine can hold several.
+        let account = out
+            .stdout
+            .lines()
+            .find_map(|line| line.rsplit_once("Logged in as "))
+            .map(|(_, account)| account.trim().to_string())
+            .filter(|account| !account.is_empty());
+        return AgentAuthResult::authenticated()
+            .with_method("oauth")
+            .with_provider(account);
+    }
+
+    let combined = out.combined();
+    let lower = combined.to_ascii_lowercase();
+    if lower.contains("not logged in")
+        || lower.contains("auth")
+        || lower.contains("login")
+        || lower.contains("sign in")
+    {
+        return AgentAuthResult::failed(
+            AuthStatus::NotAuthenticated,
+            combined,
+            Some("Run 'cursor-agent login' to authenticate"),
+        );
+    }
+
+    AgentAuthResult::failed(AuthStatus::CheckFailed, combined, None)
 }
 
 /// V1 `OpenCodeHealthCheck.CheckAuthAsync`: the credential file first, then the CLI's own count.
@@ -802,6 +901,156 @@ fn parse_opencode_auth_list(stdout: &str) -> Option<&'static str> {
     None
 }
 
+/// Apple's on-device model holds no credential at all, so the only question worth asking is whether
+/// `fm serve` is actually listening.
+///
+/// There is nothing here to be signed in to: `fm serve` binds loopback, takes the literal string
+/// `local` as its key and authenticates nobody. The failure this agent really has is the one no
+/// other agent has -- the CLI is installed and the server is not running -- and reporting that as an
+/// auth result is what puts it in front of the operator, because `test_agent_handler` runs this
+/// immediately after the install probe passes and before any model probe.
+///
+/// `GET /v1/models` rather than a prompt: it is the one endpoint that answers instantly, and a real
+/// prompt against a cold on-device model can take seconds to say nothing more than this does.
+async fn apple_auth() -> AgentAuthResult {
+    let base_url = apple_base_url();
+    let url = format!("{}/models", base_url.trim_end_matches('/'));
+
+    let http = reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+        .unwrap_or_default();
+
+    match http.get(&url).send().await {
+        Ok(response) if response.status().is_success() => AgentAuthResult::authenticated()
+            .with_method("on-device")
+            .with_provider(Some("apple".to_string())),
+        Ok(response) => AgentAuthResult::failed(
+            AuthStatus::CheckFailed,
+            format!("{} answered HTTP {}", url, response.status().as_u16()),
+            Some(APPLE_SERVE_HINT),
+        ),
+        Err(_) => AgentAuthResult::failed(
+            AuthStatus::NotAuthenticated,
+            format!("No Apple Foundation Models server is listening at {base_url}"),
+            Some(APPLE_SERVE_HINT),
+        ),
+    }
+}
+
+/// What to do about an `fm serve` that is not answering. One string, because the auth probe and the
+/// model probe reach the same wall and an operator should be told the same thing by both.
+const APPLE_SERVE_HINT: &str = "Start the on-device server with 'fm serve'.";
+
+/// Whether Cursor will serve this model, asked by launching the shortest real run there is.
+///
+/// Cursor validates the id *server-side* and says so unmistakably -- an id the account cannot use
+/// exits 1 with "Cannot use this model: <id>. Available models: …" on stderr -- so a one-word prompt
+/// is a complete answer, and there is no `--list-models`-style check that avoids the round trip
+/// without also missing per-account entitlements.
+///
+/// The id probed is the **composed** one, not the picker's base id: Cursor bakes the effort into the
+/// model id, so `claude-opus-5` and `claude-opus-5-high` are different ids and only one of them may
+/// be accepted. Probing the base id would pass for a launch that is going to fail.
+/// [`format_cursor_model`] with no effort is exactly what a launch with no effort sends.
+async fn cursor_model(model: &str) -> ModelValidation {
+    let binary = resolve_cursor_binary();
+    let mut args = vec![
+        "--print".to_string(),
+        "--output-format".to_string(),
+        "text".to_string(),
+        "--trust".to_string(),
+        "--force".to_string(),
+    ];
+    if let Some(explicit) = explicit_model(model) {
+        let composed = format_cursor_model(Some(explicit), None);
+        if !composed.is_empty() {
+            args.push("--model".to_string());
+            args.push(composed);
+        }
+    }
+    args.push("ping".to_string());
+
+    let out = run_probe(&binary, &args, Duration::from_secs(30)).await;
+
+    if out.exit_code == 0 {
+        return validation(ModelValidationStatus::Ok, model, None);
+    }
+    if out.timed_out() {
+        return validation(ModelValidationStatus::Timeout, model, None);
+    }
+
+    let combined = out.combined();
+    let lower = combined.to_ascii_lowercase();
+
+    // Quota first, as every other arm does: a wall is not a typo in the id.
+    match classify_provider_error(Some(&combined)) {
+        ProviderErrorKind::Quota => {
+            return validation(ModelValidationStatus::RateLimit, model, Some(combined));
+        }
+        ProviderErrorKind::Auth | ProviderErrorKind::None => {}
+    }
+
+    // Cursor's own wording. The `Available models:` list that follows it is several kilobytes long,
+    // so the message is truncated at the sentence that actually says what went wrong.
+    if lower.contains("cannot use this model") {
+        let reason = combined
+            .split(" Available models:")
+            .next()
+            .unwrap_or(&combined)
+            .trim()
+            .to_string();
+        return validation(ModelValidationStatus::InvalidModel, model, Some(reason));
+    }
+
+    if lower.contains("not logged in") || lower.contains("unauthorized") || lower.contains("auth") {
+        return validation(ModelValidationStatus::AuthError, model, Some(combined));
+    }
+
+    validation(
+        ModelValidationStatus::Unknown,
+        model,
+        Some(format!(
+            "exit={}\nstdout: {}\nstderr: {}",
+            out.exit_code, out.stdout, out.stderr
+        )),
+    )
+}
+
+/// Whether `fm serve` will serve this model.
+///
+/// The id sent is pinned, and deliberately not the one the catalog offers: the catalog and the
+/// launch both spell it `apple/system`, because OpenCode addresses models as `provider/model`, but
+/// that is OpenCode's addressing and not the server's. `fm serve` answers `GET /v1/models` with the
+/// bare id `system` and rejects `apple/system` with `HTTP 400 Unknown model 'apple/system'` -- so
+/// forwarding the catalog's own id here would report the one model this agent can run as invalid.
+/// [`crate::agents::providers::APPLE_MODEL_ID`] is the OpenCode-facing string; `APPLE_WIRE_MODEL_ID`
+/// is what goes on the wire.
+async fn apple_model(model: &str) -> ModelValidation {
+    // Any other id is a model this agent cannot launch: `build_apple_spec` overwrites the caller's
+    // model with the pinned one, so validating what was asked for would answer a question about a
+    // request that is never sent.
+    let requested = explicit_model(model).unwrap_or(APPLE_MODEL_ID);
+    if requested != APPLE_MODEL_ID {
+        return validation(
+            ModelValidationStatus::InvalidModel,
+            model,
+            Some(format!(
+                "Apple Foundation Models serves only {APPLE_MODEL_ID}; '{requested}' is not available."
+            )),
+        );
+    }
+
+    let result = test_model_prompt(&apple_base_url(), "local", APPLE_WIRE_MODEL_ID).await;
+    // Reported under the id the operator picked rather than the wire id, so the row in the Test
+    // Agent dialog matches the row in the picker.
+    ModelValidation {
+        status: result.status,
+        model: model.to_string(),
+        error_message: result.error_message,
+    }
+}
+
 /// V1 `OpenAiProxyHealthCheck.CheckAuthAsync`, over onboarding's tester rather than a CLI.
 ///
 /// This is the reuse the Coding Agent pane's "Fetch models" button already relies on: a proxy has no
@@ -877,6 +1126,8 @@ pub async fn validate_model(agent: &str, model: &str, creds: &ProbeCredentials) 
         "copilot" => copilot_model(model).await,
         "antigravity" | "agy" => antigravity_model(model).await,
         "opencode" => opencode_model(model).await,
+        "apple" => apple_model(model).await,
+        "cursor" => cursor_model(model).await,
         other if is_proxy_agent(other) => proxy_model(model, creds).await,
         other => validation(
             ModelValidationStatus::Unknown,
@@ -961,15 +1212,32 @@ fn classify_claude_model(model: &str, out: &ProbeOutput) -> ModelValidation {
     )
 }
 
-/// V1 `CodexHealthCheck.ValidateModelAsync`.
+/// V1 `CodexHealthCheck.ValidateModelAsync`, minus the timeout that V1's design turned on.
 ///
-/// Five seconds, and a timeout means **success**: `codex exec … -` reads the prompt from stdin, so a
-/// valid model leaves it waiting there while an invalid one errors immediately. Getting as far as
-/// the wait is the answer.
+/// V1 waited for `codex exec … -` to block reading the prompt from stdin and read the five-second
+/// kill as proof the model was accepted. `run_probe` closes stdin on every probe, so that wait never
+/// happens: codex reaches the read, gets EOF, prints `No prompt provided via stdin` and exits 1.
+/// That complaint *is* the V1 signal — codex only asks for a prompt once argument parsing and model
+/// resolution are behind it — so `classify_codex_model` treats it as the success case and the
+/// timeout branch survives only for a machine slow enough to be killed before it gets there.
+///
+/// `-s read-only` rather than V1's `--full-auto`, which codex-cli 0.153.0 rejects outright with
+/// `unexpected argument '--full-auto' found`. The successor spellings are `-s <mode>` and
+/// `--dangerously-bypass-approvals-and-sandbox`; a probe that exits before it has a prompt runs no
+/// model-generated command at all, so it takes the most restricted mode on offer and states it
+/// rather than inheriting whatever `--sandbox auto` resolves to from the user's config.
 async fn codex_model(model: &str) -> ModelValidation {
+    let args = codex_probe_args(model);
+    let out = run_probe("codex", &args, Duration::from_secs(5)).await;
+    classify_codex_model(model, &out)
+}
+
+/// Split out from `codex_model` so the flag set can be asserted on without running codex.
+fn codex_probe_args(model: &str) -> Vec<String> {
     let mut args = vec![
         "exec".to_string(),
-        "--full-auto".to_string(),
+        "-s".to_string(),
+        "read-only".to_string(),
         "--json".to_string(),
         "--skip-git-repo-check".to_string(),
     ];
@@ -978,9 +1246,7 @@ async fn codex_model(model: &str) -> ModelValidation {
         args.push(explicit.to_string());
     }
     args.push("-".to_string());
-
-    let out = run_probe("codex", &args, Duration::from_secs(5)).await;
-    classify_codex_model(model, &out)
+    args
 }
 
 fn classify_codex_model(model: &str, out: &ProbeOutput) -> ModelValidation {
@@ -990,6 +1256,15 @@ fn classify_codex_model(model: &str, out: &ProbeOutput) -> ModelValidation {
 
     let combined = out.combined();
     let lower = combined.to_ascii_lowercase();
+
+    // Ahead of the error classification, because this is the probe's ordinary success path and it
+    // arrives as a failure: exit 1 with the prompt complaint on stderr. Codex asks for a prompt only
+    // after it has parsed the arguments and resolved `--model`, so being asked is the furthest a
+    // probe carrying no prompt can get, and reading it as an error fails every model on the list.
+    if lower.contains(CODEX_NO_PROMPT) {
+        return validation(ModelValidationStatus::Ok, model, None);
+    }
+
     let detail = if out.stderr.trim().is_empty() {
         combined.trim().to_string()
     } else {
@@ -1202,6 +1477,102 @@ mod tests {
         }
     }
 
+    /// Neither sign-in hint may name a command its CLI does not have.
+    ///
+    /// Both were carried over from V1 and both were wrong. `gemini auth` is not a subcommand — the
+    /// CLI's subcommands are `mcp`, `extensions`, `skills`, `hooks` and `gemma`, and the bare word
+    /// is swallowed as a prompt, so the user is answered *about* authentication instead of being
+    /// signed in. `copilot login` does not exist at all; GitHub's install page says an
+    /// unauthenticated first launch prompts for the `/login` slash command.
+    ///
+    /// A hint that names a command that does not run is worse than no hint: it sends the user to a
+    /// dead end while the pane insists they are not authenticated.
+    #[test]
+    fn sign_in_hints_name_commands_the_clis_actually_have() {
+        assert!(
+            !GEMINI_SIGN_IN_HINT.contains("gemini auth"),
+            "the Gemini CLI has no 'auth' subcommand: {GEMINI_SIGN_IN_HINT}"
+        );
+        assert!(
+            GEMINI_SIGN_IN_HINT.contains("/auth"),
+            "sign-in is the /auth slash command: {GEMINI_SIGN_IN_HINT}"
+        );
+        assert!(
+            GEMINI_SIGN_IN_HINT.contains("GEMINI_API_KEY"),
+            "the key route stays offered: {GEMINI_SIGN_IN_HINT}"
+        );
+
+        assert!(
+            !COPILOT_SIGN_IN_HINT.contains("copilot login"),
+            "there is no 'copilot login' command: {COPILOT_SIGN_IN_HINT}"
+        );
+        // `gh auth login` authenticates the GitHub CLI, not Copilot -- following it leaves the user
+        // exactly as unauthenticated as before.
+        assert!(
+            !COPILOT_SIGN_IN_HINT.contains("gh auth login"),
+            "gh auth login is a different credential: {COPILOT_SIGN_IN_HINT}"
+        );
+        assert!(
+            COPILOT_SIGN_IN_HINT.contains("/login"),
+            "sign-in is the /login slash command: {COPILOT_SIGN_IN_HINT}"
+        );
+        assert!(
+            COPILOT_SIGN_IN_HINT.contains("COPILOT_GITHUB_TOKEN"),
+            "the unattended route stays offered: {COPILOT_SIGN_IN_HINT}"
+        );
+    }
+
+    /// The probe must ask `fm` a question it answers. `--version` exits 64 with nothing on stdout,
+    /// which reads as an uninstalled CLI, so a machine with a working Apple install would be told
+    /// its install is broken.
+    #[test]
+    fn apple_is_probed_with_the_argument_fm_actually_answers() {
+        assert_eq!(version_arg_for("apple"), "available");
+        assert_eq!(version_arg_for("claude"), "--version");
+    }
+
+    /// Apple's prerequisite is `fm`, not the OpenCode it is launched through. Resolving the
+    /// delegate would report a healthy install on a machine with no `fm` at all -- the same
+    /// confusion `health::doctor_probe_target` exists to prevent, and this is the other half of it.
+    #[test]
+    fn apples_probe_binary_is_fm_not_the_cli_it_delegates_to() {
+        let (binary, prefix) = probe_binary("apple");
+        assert_eq!(binary, "fm");
+        assert!(prefix.is_empty());
+        assert_ne!(binary, resolve_opencode_binary());
+    }
+
+    /// Two ids for one model: OpenCode is addressed as `apple/system`, `fm serve` as `system`.
+    /// Collapsing them in either direction breaks one of the two callers.
+    #[test]
+    fn the_wire_id_and_the_catalog_id_are_not_the_same_string() {
+        assert_eq!(APPLE_MODEL_ID, "apple/system");
+        assert_eq!(APPLE_WIRE_MODEL_ID, "system");
+        assert!(APPLE_MODEL_ID.ends_with(APPLE_WIRE_MODEL_ID));
+    }
+
+    /// A model the launch cannot send is refused without a request. `build_apple_spec` overwrites
+    /// the caller's model with the pinned one, so probing what was asked for would answer a
+    /// question about a request that never goes out -- and it is refused locally, so this needs no
+    /// server and runs in CI.
+    #[tokio::test]
+    async fn a_model_apple_cannot_launch_is_refused_without_asking_the_server() {
+        let result = apple_model("gpt-5.6-sol").await;
+        assert_eq!(result.status, ModelValidationStatus::InvalidModel);
+        assert_eq!(
+            result.model, "gpt-5.6-sol",
+            "reported under the id asked for"
+        );
+        assert!(
+            result
+                .error_message
+                .as_deref()
+                .unwrap_or_default()
+                .contains(APPLE_MODEL_ID),
+            "the message should name the one model that does work: {result:?}"
+        );
+    }
+
     #[test]
     fn quota_is_classified_before_auth() {
         // V1's stated reason for the order: a 429 that also mentions oauth is a quota wall.
@@ -1304,6 +1675,71 @@ mod tests {
             classify_codex_model("nope", &out(1, "", "invalid model 'nope'")).status,
             ModelValidationStatus::InvalidModel
         );
+    }
+
+    /// The other half of that rule, and the one that actually fires: `run_probe` closes stdin, so
+    /// codex never reaches the wait the timeout branch was written for. It asks for the prompt and
+    /// exits 1, and taking that at face value failed every model on the list -- issue #220.
+    #[test]
+    fn a_codex_prompt_complaint_also_means_the_model_was_accepted() {
+        let result =
+            classify_codex_model("gpt-5.6-sol", &out(1, "", "No prompt provided via stdin."));
+        assert_eq!(result.status, ModelValidationStatus::Ok);
+        assert_eq!(result.error_message, None);
+    }
+
+    /// Codex prints it on stderr today, but the classifiers all read both streams, and a `--json`
+    /// run putting it on stdout must not read as a failure either.
+    #[test]
+    fn the_codex_prompt_complaint_is_read_off_either_stream() {
+        assert_eq!(
+            classify_codex_model("gpt-5.6-sol", &out(1, "No prompt provided via stdin.", ""))
+                .status,
+            ModelValidationStatus::Ok
+        );
+        assert_eq!(
+            classify_codex_model("gpt-5.6-sol", &out(1, "", "NO PROMPT PROVIDED VIA STDIN")).status,
+            ModelValidationStatus::Ok
+        );
+    }
+
+    /// The success branch is ahead of the error classification, so it has to be the narrower of the
+    /// two: a run that got far enough to fail for a real reason still reports that reason.
+    #[test]
+    fn a_real_codex_failure_still_beats_the_prompt_complaint() {
+        assert_eq!(
+            classify_codex_model("nope", &out(1, "", "model 'nope' not supported")).status,
+            ModelValidationStatus::InvalidModel
+        );
+        assert_eq!(
+            classify_codex_model("gpt-5.6-sol", &out(1, "", "429 rate limit exceeded")).status,
+            ModelValidationStatus::RateLimit
+        );
+        assert_eq!(
+            classify_codex_model("gpt-5.6-sol", &out(1, "", "unauthorized")).status,
+            ModelValidationStatus::AuthError
+        );
+        // The flag defect itself: a rejected argument is not a verdict on the model.
+        assert_eq!(
+            classify_codex_model(
+                "gpt-5.6-sol",
+                &out(2, "", "error: unexpected argument '--full-auto' found")
+            )
+            .status,
+            ModelValidationStatus::Unknown
+        );
+    }
+
+    /// `--full-auto` is gone from codex-cli 0.153.0, which refuses to parse it at all. The probe
+    /// never runs a model-generated command, so it asks for the sandbox that allows none.
+    #[test]
+    fn the_codex_probe_names_a_sandbox_the_current_cli_accepts() {
+        let args = codex_probe_args("gpt-5.6-sol");
+        assert!(!args.iter().any(|arg| arg == "--full-auto"));
+        let sandbox = args.iter().position(|arg| arg == "-s").expect("-s");
+        assert_eq!(args[sandbox + 1], "read-only");
+        // Still the stdin form the whole classification depends on.
+        assert_eq!(args.last().unwrap(), "-");
     }
 
     #[test]

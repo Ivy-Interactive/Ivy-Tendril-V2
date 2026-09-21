@@ -1,10 +1,9 @@
 import React, { useCallback, useEffect, useState } from "react";
-import { Badge } from "@ivy-interactive/components/ui";
+import { Badge, Button } from "@ivy-interactive/components/ui";
 import { bridge } from "../api/bridge";
 import { onPlanEvent } from "../api/events";
 import { bridgeErrorCode, describeBridgeError, type PrStatus } from "../types/api";
 import { PR_STATE_COLOR } from "../utils/prStatus";
-import { CARD_SURFACE } from "../utils/surfaces";
 
 interface PlanPullRequestsProps {
   planId: string;
@@ -77,7 +76,7 @@ export const PlanPullRequests: React.FC<PlanPullRequestsProps> = ({ planId, prs 
     void load();
   }, [load]);
 
-  // A completed sync arrives on the plan channel, so the card refreshes without polling.
+  // A completed sync arrives on the plan channel, so the list refreshes without polling.
   useEffect(() => {
     let unsubscribe: (() => void) | undefined;
     let cancelled = false;
@@ -95,7 +94,7 @@ export const PlanPullRequests: React.FC<PlanPullRequestsProps> = ({ planId, prs 
         else unsubscribe = un;
       })
       .catch(() => {
-        // Without the event stream the card is merely not live; Refresh still works.
+        // Without the event stream the list is merely not live; Refresh still works.
       });
     return () => {
       cancelled = true;
@@ -130,19 +129,21 @@ export const PlanPullRequests: React.FC<PlanPullRequestsProps> = ({ planId, prs 
   });
 
   return (
-    <div className={`${CARD_SURFACE} p-4`}>
+    <div>
       <div className="flex items-center justify-between gap-2">
         <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
           Pull Requests
         </h4>
-        <button
+        <Button
           type="button"
+          size="sm"
+          variant="outline"
           onClick={handleRefresh}
           disabled={syncing}
-          className="rounded-field border border-border px-2 py-1 text-xs text-muted-foreground hover:bg-muted disabled:opacity-50"
+          className="h-auto px-2 py-1 text-xs text-muted-foreground"
         >
           {syncing ? "Refreshing..." : "Refresh"}
-        </button>
+        </Button>
       </div>
 
       {notice && <p className="mt-2 text-xs text-warning">{notice}</p>}

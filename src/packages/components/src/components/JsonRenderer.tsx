@@ -43,7 +43,7 @@ const JsonNode = ({
             toggleNode(path);
           }
         }}
-        className="flex items-center cursor-pointer hover:bg-accent rounded px-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+        className="flex items-center cursor-pointer hover:bg-secondary/60 rounded px-1 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
       >
         {isExpanded ? <ChevronDown className="size-4" /> : <ChevronRight className="size-4" />}
         <span className="text-muted-foreground">{isArray ? "[" : "{"}</span>
@@ -162,5 +162,3 @@ export const JsonRenderer = ({ data, initialExpanded }: JsonRendererProps) => {
     </div>
   );
 };
-
-export default JsonRenderer;

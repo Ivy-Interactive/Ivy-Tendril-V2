@@ -18,16 +18,12 @@
 import { invoke } from "@tauri-apps/api/core";
 
 import type { ProviderModelsOutcome, ProviderModelsRequest } from "../types/agents";
+import { isTauri } from "../utils/tauri";
 
 /** Performs one discovery request. Swapped in tests. */
 export type ProviderModelsTransport = (
   request: ProviderModelsRequest,
 ) => Promise<ProviderModelsOutcome>;
-
-/** Whether the shell is around us. The same test `bridge.ts` and `tableQuery.ts` use. */
-function isTauri(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-}
 
 const PATH = "/api/agents/models";
 

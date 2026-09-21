@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { Bug, EllipsisVertical, Loader2, Pause, RotateCw, Trash, Zap } from "lucide-react";
+import { EllipsisVertical, Pause, Trash } from "lucide-react";
 import {
-  Badge,
   Button,
   DataTable,
   DropdownMenu,
@@ -14,33 +13,64 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
+  Spinner,
   StackedProgress,
   useRemoteDataTable,
-  type DataTableColumn,
-  type DataTableFilterOption,
-  type DataTableRowAction,
-  type RemoteSortColumn,
   type RemoteTableFetcher,
   type RemoteTableFilter,
-  type StackedProgressSegment,
-  dataTableLinkClass,
   useResponsiveDensity,
-  whereColumn,
   Densities,
 } from "@ivy-interactive/components/ui";
-import { fetchTableColumnValues, queryJobsPage } from "../api/tableQuery";
-import { describeBridgeError, type Job, type JobDetail, type JobStatus } from "../types/api";
+import { queryJobsPage } from "../api/tableQuery";
+import { describeBridgeError, type Job, type JobDetail } from "../types/api";
 import { isActiveStatus, jobsStore } from "../state/jobsStore";
-import {
-  JOB_STATUS_COLOR,
-  JOB_STATUS_SEGMENT_COLOR,
-  JOB_TYPE_COLOR,
-  UNMAPPED_COLOR,
-  projectColor,
-} from "../utils/jobStatus";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { ConfirmDialog } from "./dialogs";
 import { parseProjects } from "./PlansView";
+import {
+  JOB_CLEAR_SCOPES,
+  countJobsByStatus,
+  describeClearPrompt,
+  type JobClearScope,
+} from "./jobs/clear";
+import { JOBS_INITIAL_SORT, SORT_COLUMNS, useColumnValues, useJobColumns } from "./jobs/columns";
+import {
+  buildJobRowActions,
+  buildJobRows,
+  buildStatusSegments,
+  promptSource,
+  type JobRow,
+  type JobRowActionCapabilities,
+} from "./jobs/rows";
+
+export {
+  AGENT_OUTPUT_STARTING,
+  agentOutputLabel,
+  flattenMarkdownLinks,
+  formatJobCost,
+  formatTimeSpan,
+  formatTokens,
+  jobStatusMessage,
+  truncatePrompt,
+  type AgentOutputState,
+} from "./jobs/format";
+export {
+  RERUN_UNAVAILABLE_REASON,
+  buildJobRowActions,
+  buildJobRows,
+  buildStatusSegments,
+  promptDisplay,
+  type BuildJobRowsOptions,
+  type JobRow,
+  type JobRowActionCapabilities,
+} from "./jobs/rows";
+export {
+  JOB_CLEAR_SCOPES,
+  countJobsByStatus,
+  describeClearPrompt,
+  type JobClearPrompt,
+  type JobClearScope,
+} from "./jobs/clear";
 
 /**
  * V1's Jobs table, as a table.
@@ -71,8 +101,19 @@ const JobDebug = React.lazy(() =>
   import("./JobDebugSheet").then((m) => ({ default: m.JobDebugSheet })),
 );
 
-/** Ceiling on the Prompt cell, from `JobsApp.Helpers.cs` `PromptDisplayMaxLength`. */
-const PROMPT_DISPLAY_MAX_LENGTH = 500;
+/** V1's Cost & Tokens sheet, opened by the Cost and Tokens cells. Lazy for the same reason. */
+const JobCost = React.lazy(() =>
+  import("./JobCostSheet").then((m) => ({ default: m.JobCostSheet })),
+);
+
+/**
+ * V1's Full Prompt sheet (`Apps/Jobs/Sheets/PromptSheet.cs`), whose entire body is
+ * `new CodeBlock(promptText, Languages.Text).WrapLines()`. Lazy because `CodeBlock` is the door to
+ * the syntax-highlighter chunk, which has no business loading with a table of jobs.
+ */
+const JobPromptBlock = React.lazy(() =>
+  import("@ivy-interactive/components/tendril").then((m) => ({ default: m.CodeBlock })),
+);
 
 /**
  * `JobsApp.DataTable.cs:93`: `c.BatchSize = 50`. A job list is long and mostly history.
@@ -90,573 +131,6 @@ const JOBS_PAGE_SIZE = 50;
  * before the table refetches.
  */
 const JOBS_REFRESH_WINDOW_MS = 400;
-
-/**
- * `JobsApp.Data.cs` / `JobCostSheet.cs` use this for "nothing recorded here", and `JobSessionView`
- * already does the same. Keeping the em dash rather than an empty cell is what stops a job that
- * reported no cost from reading as one that cost nothing: `—` and `$0.00` are different claims, and
- * a run on a subscription plan reports tokens and no charge at all.
- *
- * V1's cell is literally `""` there. The em dash is a deliberate deviation: V1's table draws a
- * visible grid, so an empty Cost cell under a `Cost` header is unambiguous, whereas V2's rows are
- * separated by whitespace and an empty cell reads as a figure that has not landed yet.
- */
-const NO_VALUE = "—";
-
-/** `FormatTimer` / `FormatTimestamp` both use this placeholder for "not applicable yet". */
-const NO_TIME = "-";
-
-/**
- * The reason V1 gives when Rerun is invoked on a job whose original arguments were not preserved
- * (`JobsApp.DataTable.cs:235`). V1 raises it as a toast after the click because `TypedArgs` is null
- * only occasionally; here it is the permanent state of every job, because `JobDto`/`JobDetailDto`
- * (`src-tauri/src/models.rs`) do not carry `typedArgs` at all, so the entry is disabled and carries
- * the reason instead of pretending to work.
- */
-export const RERUN_UNAVAILABLE_REASON = "Cannot rerun: original args were not preserved.";
-
-/** The four statuses `FormatTimer` reports a duration for. */
-const FINISHED_STATUSES: readonly JobStatus[] = ["Completed", "Failed", "Timeout", "Stopped"];
-
-/** `JobsApp.Helpers.cs` `FormatTimeSpan`: hours drop the seconds, a sub-minute span is seconds only. */
-export function formatTimeSpan(totalSeconds: number): string {
-  const seconds = Math.max(0, Math.floor(totalSeconds));
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
-  if (hours >= 1) return `${hours}h ${String(minutes).padStart(2, "0")}m`;
-  if (minutes === 0) return `${secs}s`;
-  return `${minutes}m ${String(secs).padStart(2, "0")}s`;
-}
-
-/** `FormatHelper.FormatTokens`: millions to one decimal, thousands to none, and it keeps scaling. */
-export function formatTokens(tokens: number): string {
-  if (!Number.isFinite(tokens) || tokens < 0) return NO_VALUE;
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(0)}K`;
-  return String(tokens);
-}
-
-/** `FormatHelper.FormatCost`: two decimals, dollars. */
-function formatCost(cost: number): string {
-  return `$${cost.toFixed(2)}`;
-}
-
-/**
- * The Cost cell, `JobsApp.Data.cs` `FormatJobCost`.
- *
- * `null` where V1 returns `""`: the job has no cost figure at all. An estimate derived from tokens
- * times the price list carries V1's `"~"` prefix (`JobCostSources.Estimated`) so a figure nobody was
- * billed never presents itself as one.
- *
- * The comparison is case-insensitive on purpose. Both V1 (`JobUsageSnapshot.cs:22`) and the daemon
- * (`jobs/manager.rs:2909`) write the lower-case `"estimated"`, so an exact match against
- * `"Estimated"` never fires and silently drops the tilde. `JobSessionView` had exactly that bug and
- * is fixed alongside this.
- */
-export function formatJobCost(job: Pick<Job, "cost" | "costSource">): string | null {
-  if (job.cost === undefined || job.cost === null || !Number.isFinite(job.cost)) return null;
-  const formatted = formatCost(job.cost);
-  return job.costSource?.toLowerCase() === "estimated" ? `~${formatted}` : formatted;
-}
-
-/**
- * The table's initial order, and V1's declared one: `.SortDirection(t => t.Id, SortDirection.Descending)`
- * (`JobsApp.DataTable.cs:85`) — newest job first.
- *
- * Executed by SQLite now rather than in the client. V1 reached the same order through
- * `OrderByDescending(ExtractJobNumber(r.Id))`, a *numeric* extraction, and `ORDER BY Id DESC` is a
- * *lexicographic* one; they agree for every id the daemon issues, because `allocate_job_id`
- * (`jobs/manager.rs:414`) formats them as `{:05}` and equal-width numeric strings sort the same either
- * way. They would diverge past job 99999, where a six-digit id sorts below a five-digit one — a real but
- * distant divergence, and one no client-side sort could fix now that the client holds a window rather
- * than the table.
- */
-const JOBS_INITIAL_SORT = { column: "id", direction: "Descending" } as const;
-
-/**
- * Each column of the table, and the `Jobs` column SQLite must order by when its header is clicked.
- *
- * `JobRow`'s field names are a *rendering*, not a schema, so four of them have to say what they mean to
- * the database. Two are renames the filter already declares (`planId` → `PlanFile`, `prompt` →
- * `ReportedPlanTitle`) and are repeated here only because `resolveRemoteSort` reads a list of names
- * rather than the rendered columns — the fetcher is built before them. Two are genuinely derived:
- *
- * - **Timer** counts up from `StartedAt` for a running job and shows the recorded duration for a
- *   finished one, so `DurationSeconds` is the closest total order the table has. Running rows have no
- *   duration yet, so they group at the `NULL` end rather than interleaving by elapsed time.
- * - **Agent Output** counts up from `LastOutputAt` for a running job, so the column has no total order
- *   of its own: `Status` is what groups the three forms the cell takes (an elapsed silence, `Done`,
- *   `-`). Ordering by `LastOutputAt` instead would be a real order over running rows and meaningless
- *   over every other row, which is the larger part of any job list. V1 cannot express it either — it
- *   sorts the rendered string.
- *
- * Everything else resolves by name: the daemon matches a column case- and underscore-insensitively, so
- * `statusMessage` reaches `StatusMessage`.
- */
-const SORT_COLUMNS: RemoteSortColumn[] = [
-  { name: "id" },
-  { name: "status" },
-  { name: "planId", sortColumn: "planFile" },
-  { name: "prompt", sortColumn: "reportedPlanTitle" },
-  { name: "type" },
-  { name: "project" },
-  { name: "timer", sortColumn: "durationSeconds" },
-  { name: "agentOutput", sortColumn: "status" },
-  { name: "cost" },
-  { name: "tokens" },
-  { name: "timestamp", sortColumn: "completedAt" },
-  { name: "statusMessage" },
-];
-
-/** `JobsApp.Helpers.cs` `CleanPromptText`: newlines become spaces and runs of space collapse. */
-function cleanPromptText(text: string): string {
-  return text
-    .replace(/\r\n|\r|\n/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-/** `JobsApp.Helpers.cs` `FlattenMarkdownLinks`: `[label](href)` keeps the label. */
-export function flattenMarkdownLinks(text: string): string {
-  return text.replace(/\[([^\]]+)\]\((?:[^)]*)\)/g, "$1");
-}
-
-/** `JobsApp.Helpers.cs` `TruncatePrompt`. */
-export function truncatePrompt(text: string | undefined): string {
-  const cleaned = flattenMarkdownLinks(cleanPromptText(text ?? ""));
-  return cleaned.length > PROMPT_DISPLAY_MAX_LENGTH
-    ? `${cleaned.slice(0, PROMPT_DISPLAY_MAX_LENGTH)}...`
-    : cleaned;
-}
-
-/**
- * `JobsApp.Helpers.cs` `GetStatusMessage`: the job's own message where it has one, otherwise V1's
- * per-status default. Running and Completed have none, and neither does **Pending** - V1's table
- * leaves that cell empty. `JobSessionView` does give Pending a line, because the sheet it replaced
- * (`OutputSheet.cs:42-47`) has one; the table is the surface being ported here, so it does not.
- */
-export function jobStatusMessage(job: Pick<Job, "status" | "statusMessage">): string {
-  if (job.statusMessage) return job.statusMessage;
-  switch (job.status) {
-    case "Blocked":
-      return "Waiting for dependency plans to complete.";
-    case "Failed":
-      return "Job encountered an error during execution";
-    case "Timeout":
-      return "Job exceeded the configured timeout";
-    case "Queued":
-      return "Waiting for a job slot to become available";
-    case "Stopped":
-      return "Job was manually stopped";
-    default:
-      return "";
-  }
-}
-
-/**
- * The Agent Output cell's three states, from `JobsApp.Helpers.cs` `FormatAgentOutput`:
- * `AnimatedStatusValue.Running(...)` while running, `Done` on completion and `Idle("-")` otherwise.
- *
- * The state picks the animation and the colour; {@link agentOutputLabel} picks the text. V1 packs both
- * into one string because `AnimatedStatusValue` is a rendered value on a wire; here they are separate
- * because the cell is a component and the column still has to sort by something a database can express.
- */
-export type AgentOutputState = "running" | "done" | "idle";
-
-/**
- * V1's label when a running job has produced no output yet — `FormatAgentOutput`'s own fallback for a
- * null `LastOutputAt`, which is the state a job is in between its launch and its first line.
- */
-export const AGENT_OUTPUT_STARTING = "Starting...";
-
-/**
- * The Agent Output cell's text, `JobsApp.Helpers.cs` `FormatAgentOutput`.
- *
- * This column is a **staleness gauge, not a status message**: a running job shows how long it has been
- * since the agent last wrote a line, so a cell reading `4m 12s` is the signal that something has gone
- * quiet. The job's own status message has its own column (see {@link jobStatusMessage}), exactly as it
- * does in V1 — the two answer different questions and V1 streams both.
- *
- * `lastOutputAt` is stamped by the daemon at most once every five seconds, so the figure can read up to
- * five seconds short of the true silence. That is the whole reason the column is affordable: the
- * alternative is one SQLite write per output line.
- */
-export function agentOutputLabel(job: Pick<Job, "status" | "lastOutputAt">, now: number): string {
-  if (job.status === "Running") {
-    const lastOutput = job.lastOutputAt ? Date.parse(job.lastOutputAt) : NaN;
-    if (Number.isNaN(lastOutput)) return AGENT_OUTPUT_STARTING;
-    return formatTimeSpan((now - lastOutput) / 1000);
-  }
-  if (job.status === "Completed") return "Done";
-  return NO_TIME;
-}
-
-/**
- * One table row, mirroring `JobItemRow` (`Models/JobModels.cs:360`) field for field and in its
- * order, which is the order V1's `ToDataTable` renders the columns in.
- *
- * Two deliberate differences. `JobItemRow` is all strings because Ivy's table sorts and filters what
- * it displays; here Timer, Cost, Tokens and Timestamp keep their raw value so the column sorts
- * numerically (`45K` before `1.2M`, not after it) while the cell still renders V1's text.
- * `ErrorContext` is absent: V1 hides that column *and* disables filtering on it, so it has no
- * visible surface, and the `outputLines` it is built from are not on the DTO anyway.
- */
-export interface JobRow {
-  id: string;
-  status: JobStatus;
-  planId: string;
-  prompt: string;
-  type: string;
-  project: string;
-  /** Seconds, or `null` for V1's `"-"`. */
-  timerSeconds: number | null;
-  agentOutput: AgentOutputState;
-  /**
-   * The Agent Output cell's text: the elapsed silence for a running job, `"Done"`, or `"-"`. Kept
-   * beside the state rather than derived in the cell so it is built from the same `now` the Timer is
-   * and the two never disagree by a second. See {@link agentOutputLabel}.
-   */
-  agentOutputLabel: string;
-  /** Formatted (with V1's `~` where estimated), or `null` where no figure was reported at all. */
-  cost: string | null;
-  /** The raw figure, so the column sorts by money rather than by the string `"$"` starts with. */
-  costValue: number | null;
-  tokens: number | null;
-  /** The per-bucket breakdown for the cell's tooltip; `null` when the DTO carried no buckets. */
-  tokenBreakdown: string | null;
-  /** Epoch ms of `completedAt`, or `null` for V1's `"-"`. */
-  completedAtMs: number | null;
-  statusMessage: string;
-  /** Whether this job's process survived a daemon restart. See {@link buildJobRows}. */
-  detached: boolean;
-  processId?: number;
-}
-
-/** `FormatTimer`: a running job counts up, a finished one shows how long it took. */
-function timerSeconds(job: Job, now: number): number | null {
-  const started = job.startedAt ? Date.parse(job.startedAt) : NaN;
-  if (job.status === "Running" && !Number.isNaN(started)) {
-    return Math.max(0, (now - started) / 1000);
-  }
-  if (!FINISHED_STATUSES.includes(job.status)) return null;
-  // V1 reads `DurationSeconds`, which the daemon stamps on the terminal transition; the
-  // completed-minus-started fallback covers a row restored from SQLite without one.
-  if (job.durationSeconds !== undefined && job.durationSeconds !== null) {
-    return job.durationSeconds;
-  }
-  const finished = job.completedAt ? Date.parse(job.completedAt) : NaN;
-  if (!Number.isNaN(started) && !Number.isNaN(finished))
-    return Math.max(0, (finished - started) / 1000);
-  return null;
-}
-
-function agentOutputState(status: JobStatus): AgentOutputState {
-  if (status === "Running") return "running";
-  if (status === "Completed") return "done";
-  return "idle";
-}
-
-/**
- * `FormatHelper.FormatCount` over the buckets the DTO now carries. `cacheReadTokens` dominates the
- * bill on any long run, so the short `45K` in the cell would understate what was actually spent
- * without this behind it.
- */
-function tokenBreakdown(job: Job): string | null {
-  const parts: string[] = [];
-  const add = (label: string, value: number | undefined) => {
-    if (value === undefined || value === null) return;
-    parts.push(`${label} ${value.toLocaleString("en-US")}`);
-  };
-  add("Input", job.inputTokens);
-  add("Output", job.outputTokens);
-  add("Cache read", job.cacheReadTokens);
-  add("Cache write", job.cacheWriteTokens);
-  add("Reasoning", job.reasoningTokens);
-  return parts.length > 0 ? parts.join(" · ") : null;
-}
-
-export interface BuildJobRowsOptions {
-  /** Wall clock for the Timer column. Injected so a test can pin it. */
-  now?: number;
-  /**
-   * Fetched job details, keyed by id. `detached` is only ever reported by `GET /api/jobs/:id`
-   * (`JobManager::supervise_detached` rehydrates it in memory and the list projection drops it), so
-   * the badge appears for a job whose detail the store happens to hold - which after opening its tab
-   * it does - and not for one seen only in the list. Reported rather than worked around: the list
-   * endpoint needs to carry the flag for this to be reliable.
-   */
-  details?: Record<string, JobDetail>;
-}
-
-/**
- * `JobsApp.Data.cs` `BuildJobRows`, minus its ordering.
- *
- * V1 sorts here (`.OrderByDescending(r => ExtractJobNumber(r.Id))`) because it holds every row. This
- * table holds one window, so the order is the daemon's `ORDER BY` — see {@link JOBS_INITIAL_SORT} — and
- * re-sorting the rows in hand would silently override whichever sort the reader clicked, shuffling one
- * window's fifty rows inside an order the other windows were chosen by.
- *
- * V1's Prompt cell (`GetPromptDisplay`) walks the plan's title, then `ReportedPlanTitle`, then the
- * job's typed args. V2's DTO carries `planTitle` and nothing else of that chain, so the fallback
- * stops at the plan id.
- */
-export function buildJobRows(jobs: readonly Job[], options: BuildJobRowsOptions = {}): JobRow[] {
-  const now = options.now ?? Date.now();
-  const details = options.details ?? {};
-
-  return jobs.map((job) => {
-    const completed = job.completedAt ? Date.parse(job.completedAt) : NaN;
-    return {
-      id: job.id,
-      status: job.status,
-      // V1 derives this from `PlanFile` and falls back to `ReportedPlanId`; the daemon has already
-      // resolved both into `planId` by the time it reaches here.
-      planId: job.planId ?? "",
-      prompt: truncatePrompt(job.planTitle ?? job.planId),
-      type: job.type,
-      // `ProjectHelper.ParseProjects` then `string.Join(", ", ...)`: a job can name several.
-      project: parseProjects(job.project).join(", "),
-      timerSeconds: timerSeconds(job, now),
-      agentOutput: agentOutputState(job.status),
-      agentOutputLabel: agentOutputLabel(job, now),
-      cost: formatJobCost(job),
-      costValue: job.cost ?? null,
-      tokens: job.tokens ?? null,
-      tokenBreakdown: tokenBreakdown(job),
-      completedAtMs: Number.isNaN(completed) ? null : completed,
-      statusMessage: jobStatusMessage(job),
-      detached: Boolean(job.detached ?? details[job.id]?.detached),
-      processId: job.processId ?? details[job.id]?.processId,
-    };
-  });
-}
-
-/** What the row menu is allowed to offer, given what the bridge can actually perform. */
-export interface JobRowActionCapabilities {
-  canDelete: boolean;
-  canForceStart: boolean;
-}
-
-/**
- * `JobsApp.DataTable.cs` `RowActions`, in V1's order and with V1's labels, icons and tooltips:
- * Stop, Rerun, Force Start, Debug, Delete.
- *
- * - **Stop** covers every state a job can still be taken out of, not just the two already moving
- *   (`:183`, and `isActiveStatus` is the same set).
- * - **Rerun** is `CanRerun` (`JobsApp.Helpers.cs:235`): Failed, Timeout and Stopped unconditionally,
- *   and Completed only when the job's args support corrective feedback. `SupportsFeedback` returns
- *   false for a null `TypedArgs`, so with the DTO carrying none a Completed job is offered nothing -
- *   which is exactly what V1 would do with the same data - and the three failure states get the
- *   entry **disabled**, carrying {@link RERUN_UNAVAILABLE_REASON}.
- * - **Force Start** is Blocked-only (`:195`): its whole point is skipping the dependency gate.
- * - **Debug** (`:201`) is unconditional. V1 gates it on being passed a `showDebug`, and `JobsApp.cs:113`
- *   always passes one, so the gate has no false case in practice and there is none here. It opens
- *   {@link JobDebugSheet}, which is V1's own sheet over the fields the DTO carries.
- * - **Delete** is unconditional in V1 (`:207`), including on terminal rows; here it additionally
- *   needs the bridge to be able to perform it.
- */
-export function buildJobRowActions(
-  row: Pick<JobRow, "status">,
-  capabilities: JobRowActionCapabilities,
-): DataTableRowAction<JobRow>[] {
-  const items: DataTableRowAction<JobRow>[] = [];
-
-  if (isActiveStatus(row.status)) {
-    items.push({
-      tag: "stop-job",
-      label: "Stop",
-      icon: <Pause aria-hidden="true" />,
-      tooltip: "Stop this job",
-    });
-  }
-
-  if (row.status === "Failed" || row.status === "Timeout" || row.status === "Stopped") {
-    items.push({
-      tag: "rerun-job",
-      label: "Rerun",
-      icon: <RotateCw aria-hidden="true" />,
-      tooltip: RERUN_UNAVAILABLE_REASON,
-      disabled: true,
-    });
-  }
-
-  if (row.status === "Blocked" && capabilities.canForceStart) {
-    items.push({
-      tag: "force-start-job",
-      label: "Force Start",
-      icon: <Zap aria-hidden="true" />,
-      tooltip: "Force start this blocked job",
-    });
-  }
-
-  // Between Force Start and Delete, which is V1's order, and needing no capability: the sheet reads
-  // the detail the store already fetches for every opened job.
-  items.push({
-    tag: "debug-job",
-    label: "Debug",
-    icon: <Bug aria-hidden="true" />,
-    tooltip: "Show debug details for this job",
-  });
-
-  if (capabilities.canDelete) {
-    items.push({
-      tag: "delete-job",
-      label: "Delete",
-      icon: <Trash aria-hidden="true" />,
-      tooltip: "Delete this job",
-      variant: "destructive",
-    });
-  }
-
-  // V1's `RowActions` can never return an empty array either — its Delete is unconditional — and
-  // neither can this now that Debug is. Kept as a guard rather than deleted because
-  // `DataTable.hasActionsColumn` drops the whole column for an empty result, and that is the behaviour
-  // a caller with a genuinely empty menu should get.
-  if (items.length === 0) return [];
-
-  // V1's `RowActions` produce a `MenuItem[]`, which Ivy renders as one per-row overflow menu. The
-  // shared `DataTableRowActions` renders a flat list as inline buttons and only a parent with
-  // `children` as a dropdown, so the menu is expressed as that parent.
-  return [
-    {
-      tag: "job-menu",
-      label: "Job actions",
-      icon: <EllipsisVertical aria-hidden="true" />,
-      children: items,
-    },
-  ];
-}
-
-/**
- * `JobsApp.Data.cs` `BuildStatusProgress`: one segment per status, largest first, with labels on.
- * V1 renders none at all for an empty list (`JobsApp.cs:110`).
- */
-export function buildStatusSegments(jobs: readonly Job[]): StackedProgressSegment[] {
-  const counts = new Map<JobStatus, number>();
-  for (const job of jobs) counts.set(job.status, (counts.get(job.status) ?? 0) + 1);
-
-  return Array.from(counts.entries())
-    .sort((a, b) => b[1] - a[1])
-    .map(([status, count]) => ({
-      value: count,
-      label: status,
-      color: JOB_STATUS_SEGMENT_COLOR[status] ?? "muted",
-    }));
-}
-
-/** One entry in the header menu's clear list. */
-export interface JobClearScope {
-  /** The `status` value `POST /api/jobs/clear` is sent. */
-  scope: string;
-  /** The menu label, and the dialog's title. */
-  label: string;
-  /** What the sentence in the dialog calls these rows, e.g. "12 **failed** jobs". */
-  noun: string;
-  /** The statuses removed, so the count and the sentence are read from one place. */
-  statuses: JobStatus[];
-}
-
-/**
- * The bulk clears the header menu offers.
- *
- * V1's menu holds two (`JobsApp.DataTable.cs:279-289`: Clear Completed, Clear Failed) — but its service
- * is already a *generic predicate clear* (`JobService.cs:676`, `ClearJobsByStatus`) and simply never
- * wires up the rest. So this is not a new mechanism: it is the remaining uses of V1's own primitive,
- * which is what the user asked for ("clear successful, clear timedout, clear cancelled, clear failed").
- *
- * Their wording maps onto V2's `JobStatus` names, and the **labels use V2's names** so a menu entry and
- * the Status badge it will remove read the same: "successful" is `Completed`, "cancelled" is `Stopped`
- * (V2 has no `Cancelled` — a stopped job is one that was cancelled, and its default status message says
- * so), and "timedout" is `Timeout`.
- *
- * `Running`, `Queued`, `Pending` and `Blocked` are absent and cannot be reached from here — nor from
- * anywhere else, because the daemon refuses them (`CLEARABLE_STATUSES` in `jobs/manager.rs`). A clear
- * only ever removes finished work.
- *
- * `all` is last because it is the widest, and it is `clear_all_jobs`' semantics: every terminal status,
- * which V1's service exposes as `ClearAllJobs` without ever putting it in a menu.
- */
-export const JOB_CLEAR_SCOPES: readonly JobClearScope[] = [
-  { scope: "Completed", label: "Clear Completed", noun: "completed", statuses: ["Completed"] },
-  { scope: "Failed", label: "Clear Failed", noun: "failed", statuses: ["Failed"] },
-  { scope: "Timeout", label: "Clear Timeout", noun: "timed-out", statuses: ["Timeout"] },
-  { scope: "Stopped", label: "Clear Stopped", noun: "stopped", statuses: ["Stopped"] },
-  {
-    scope: "all",
-    label: "Clear All Finished",
-    noun: "finished",
-    statuses: ["Completed", "Failed", "Timeout", "Stopped"],
-  },
-];
-
-/** What the clear confirm says and offers, for one scope and one count. */
-export interface JobClearPrompt {
-  /** The question, naming both what goes and how many. */
-  body: string;
-  /** The destructive button's label. */
-  confirmLabel: string;
-  /** True while there is nothing to confirm — no count yet, or nothing to remove. */
-  confirmDisabled: boolean;
-}
-
-/**
- * The clear confirm's copy.
- *
- * A function rather than JSX in the dialog because the *sentence* is the safety mechanism: "Delete 412
- * completed jobs?" and "Delete completed jobs?" are different decisions, and V1 asks neither — it fires
- * `ClearCompletedJobs()` straight off the menu item. Three states, and each has to be right:
- *
- * - **not counted yet** (`null`): says so, and arms nothing. Offering a confirm a moment before the
- *   figure lands is how someone removes four hundred rows they thought were four.
- * - **nothing to remove**: says that instead of asking, and stays disarmed. A clear that would delete
- *   nothing is not a question worth answering.
- * - **n rows**: the number, the noun, and what goes with them.
- */
-export function describeClearPrompt(scope: JobClearScope, count: number | null): JobClearPrompt {
-  if (count === null) {
-    return {
-      body: `Counting ${scope.noun} jobs…`,
-      confirmLabel: "Clear",
-      confirmDisabled: true,
-    };
-  }
-  if (count === 0) {
-    return {
-      body: `There are no ${scope.noun} jobs to clear.`,
-      confirmLabel: "Clear",
-      confirmDisabled: true,
-    };
-  }
-  return {
-    body:
-      `Delete ${count} ${scope.noun} job${count === 1 ? "" : "s"}? ` +
-      "Their logs and output are removed with them, and this cannot be undone.",
-    confirmLabel: `Clear ${count}`,
-    confirmDisabled: false,
-  };
-}
-
-/**
- * How many rows a clear would remove, counted **over the whole table** rather than over the loaded
- * window.
- *
- * The window is fifty rows of a job history that can run to tens of thousands, so counting the rows in
- * hand would understate a clear by any margin at all — and "Clear 12 failed jobs" is only worth putting
- * in front of someone if the 12 is true. `POST /api/jobs/query` already answers the *filtered* total for
- * any filter, which is exactly this question; `limit: 1` and one column keep the reply to a row nobody
- * reads.
- */
-export async function countJobsByStatus(statuses: readonly JobStatus[]): Promise<number> {
-  const page = await queryJobsPage({
-    offset: 0,
-    limit: 1,
-    sort: [],
-    filter: whereColumn("status", "inSet", [...statuses]),
-    selectColumns: ["Id"],
-  });
-  return page.totalRows;
-}
 
 export interface JobsViewProps {
   jobs: Job[];
@@ -690,6 +164,17 @@ export const JobsView: React.FC<JobsViewProps> = ({
   const [openJobId, setOpenJobId] = useState<string | null>(null);
   /** V1's `showDebug(id)`: the Job Debug sheet, over the table. See {@link JobDebugSheet}. */
   const [debugJobId, setDebugJobId] = useState<string | null>(null);
+  /**
+   * V1's `showCost(id)`: the Cost & Tokens sheet, which **both** the Cost and Tokens cells open
+   * (`JobsApp.DataTable.cs:149-162`). One piece of state for the two columns, because they are two
+   * ways into the same sheet rather than two sheets.
+   */
+  const [costJobId, setCostJobId] = useState<string | null>(null);
+  /**
+   * V1's `showPrompt(text)`: the full, untruncated prompt. Keyed by job id rather than holding the
+   * text, so the sheet re-reads the row it belongs to and cannot go stale against a refetch.
+   */
+  const [promptJobId, setPromptJobId] = useState<string | null>(null);
   /**
    * The toolbar's filter, `c.AllowFiltering = true`: the expression as typed, and the wire filter it
    * parsed to.
@@ -941,271 +426,38 @@ export const JobsView: React.FC<JobsViewProps> = ({
   };
 
   /**
-   * V1's columns, in V1's order, at V1's widths, with the headers Ivy derives from the property
-   * names via `SplitPascalCase` (so `PlanId` reads "Plan Id" and `StatusMessage` "Status Message").
-   * `Id` is present and hidden, as `.Hidden(t => t.Id)` leaves it: reachable from the column options
-   * and absent from the DOM until then.
+   * V1's `showCost(id)`. The detail is fetched for the same reason the output sheet fetches it: the
+   * list projection carries `cost` and `tokens` but not `provider`, and the sheet names the provider.
    */
-  const columns = useMemo<DataTableColumn<JobRow>[]>(
-    () => [
-      // `.Filterable(t => t.Id, false)` (`:83`) as well as `.Hidden(...)`: no filter control.
-      { name: "id", header: "Id", width: "90px", hidden: true },
-      {
-        name: "status",
-        header: "Status",
-        width: "100px",
-        // A closed set, so the editor can offer its values: `[Status] in ("Running", "Queued")` is the
-        // `inSet` condition the framework's editor cannot type but its proto has had all along.
-        filter: { kind: "select", options: statusOptions, placeholder: "All" },
-        accessor: (row) => row.status,
-        cell: (_value, row) => (
-          <div className="flex items-center gap-1">
-            {/* V1's `LabelsDisplayRenderer` over `Constants.JobStatusColors` — the colour *is* the way
-                this column is read at a glance, so it is V1's colour and not an approximation. */}
-            <Badge color={JOB_STATUS_COLOR[row.status] ?? UNMAPPED_COLOR} density="Small">
-              {row.status}
-            </Badge>
-            {/* Not a V1 column: V1 has no notion of a detached job. `JobSessionView` shows the same
-                badge for one, and a row that a previous daemon started is worth flagging where the
-                Stop action is offered. */}
-            {row.detached && (
-              <Badge
-                color="Orange"
-                density="Small"
-                data-testid={`job-detached-${row.id}`}
-                title={`Detached (PID ${row.processId ?? "unknown"}) — monitoring an active process started before the last daemon restart`}
-              >
-                Detached
-              </Badge>
-            )}
-          </div>
-        ),
-      },
-      {
-        name: "planId",
-        header: "Plan Id",
-        width: "80px",
-        // Both columns the cell can be showing, ORed. The value rendered is `reportedPlanId` when the
-        // promptware reported one and the id read off `planFile` otherwise, so filtering either alone
-        // silently missed whichever jobs took the other route — and `[Plan Id] = "00681"` matched
-        // nothing at all, because `planFile` holds a folder path rather than a bare id.
-        filter: {
-          kind: "text",
-          column: "reportedPlanId",
-          alsoColumns: ["planFile"],
-          placeholder: "Id…",
-        },
-        // V1's Plan Id cell action navigates (`JobsApp.DataTable.cs:95-141`), so this is the framework's
-        // *link* cell: `cursor: pointer` on the cell and blue underlined text in it.
-        clickable: Boolean(onSelectPlan),
-        accessor: (row) => row.planId,
-        cell: (_value, row) =>
-          row.planId ? (
-            onSelectPlan ? (
-              <button
-                type="button"
-                className={`font-mono text-xs ${dataTableLinkClass}`}
-                data-testid={`job-plan-${row.id}`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  openPlan(row.planId);
-                }}
-              >
-                {row.planId}
-              </button>
-            ) : (
-              <span className="font-mono text-xs text-muted-foreground">{row.planId}</span>
-            )
-          ) : null,
-      },
-      {
-        name: "prompt",
-        header: "Prompt",
-        width: "250px",
-        // V1's free-text `[Prompt] contains "…"`, as a box. The daemon's column is
-        // `ReportedPlanTitle`, which is where the cell's text comes from.
-        filter: { kind: "text", column: "reportedPlanTitle" },
-        accessor: (row) => row.prompt,
-        // V1's Prompt cell action opens a `PromptSheet` with the untruncated prompt
-        // (`JobsApp.cs:51`), resolved from the job's typed args or the plan's `InitialPrompt`.
-        // Neither is on the DTO, so there is nothing longer to show than the cell already holds;
-        // the title carries it for a truncated one.
-        cell: (_value, row) => (
-          <span className="text-sm text-foreground" title={row.prompt || undefined}>
-            {row.prompt}
-          </span>
-        ),
-      },
-      {
-        name: "type",
-        header: "Type",
-        width: "100px",
-        filter: { kind: "select", options: typeOptions, placeholder: "All" },
-        accessor: (row) => row.type,
-        // `Constants.JobTypeColors`, all eleven hues (`JobsApp.DataTable.cs:68-74`). Reachable because
-        // the design system publishes a token per Ivy colour and `Badge`'s `color` tints from it — so
-        // this is a categorical palette the theme already owns, not a decorative ramp invented here.
-        cell: (_value, row) => (
-          <Badge color={JOB_TYPE_COLOR[row.type] ?? UNMAPPED_COLOR} density="Small">
-            {row.type}
-          </Badge>
-        ),
-      },
-      {
-        name: "project",
-        header: "Project",
-        width: "150px",
-        // `contains`, because a job can name several projects and the cell (and the column) holds them
-        // joined: "web, api" is equal to neither "web" nor "api".
-        filter: {
-          kind: "select",
-          options: projectOptions,
-          placeholder: "All",
-          function: "contains",
-        },
-        accessor: (row) => row.project,
-        cell: (_value, row) => (
-          <div className="flex flex-wrap items-center gap-1">
-            {/* V1 colours each project from configuration; see {@link projectColor} for why this is
-                derived from the name instead. Coloured either way, because that is what makes two
-                projects tellable apart in a list of a hundred rows. */}
-            {parseProjects(row.project).map((project) => (
-              <Badge key={project} color={projectColor(project)} density="Small">
-                {project}
-              </Badge>
-            ))}
-          </div>
-        ),
-      },
-      {
-        name: "timer",
-        header: "Timer",
-        width: "80px",
-        // Derived from `StartedAt` for a running job, so the database's closest total order is the
-        // recorded duration. See {@link SORT_COLUMNS}.
-        sortColumn: "durationSeconds",
-        // Filtered as the recorded duration in seconds, so `> 300` asks for runs over five minutes.
-        // V1 could only match its formatted `1:04` as a string.
-        filter: { kind: "text", column: "durationSeconds", placeholder: "Seconds…" },
-        accessor: (row) => row.timerSeconds,
-        cell: (_value, row) => (
-          <span className="font-mono text-xs text-muted-foreground">
-            {row.timerSeconds === null ? NO_TIME : formatTimeSpan(row.timerSeconds)}
-          </span>
-        ),
-      },
-      {
-        name: "agentOutput",
-        header: "Agent Output",
-        width: "100px",
-        // How long since the agent last wrote a line, not its status message — that has its own column.
-        // `Status` is what groups the three forms this cell takes; see {@link SORT_COLUMNS}.
-        sortColumn: "status",
-        // The cell counts up from `lastOutputAt`, so that is what a filter on it means.
-        filter: { kind: "text", column: "lastOutputAt", placeholder: "Date…" },
-        // V1's cell action here opens the output sheet rather than navigating, which is the framework's
-        // plain clickable cell: the cursor, and no link styling.
-        clickable: true,
-        accessor: (row) => row.agentOutput,
-        // V1's cell action is `showOutput(id)`: the output sheet, over the table.
-        cell: (_value, row) => (
-          <button
-            type="button"
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
-            data-testid={`job-output-${row.id}`}
-            onClick={(event) => {
-              event.stopPropagation();
-              openJobOutput(row.id);
-            }}
-          >
-            {row.agentOutput === "running" ? (
-              <>
-                <Loader2 className="h-3 w-3 animate-spin text-info" aria-hidden="true" />
-                {/* Monospace so a figure that ticks every second does not reflow the cell around it. */}
-                <span className="font-mono">{row.agentOutputLabel}</span>
-              </>
-            ) : row.agentOutput === "done" ? (
-              <span className="text-success">{row.agentOutputLabel}</span>
-            ) : (
-              row.agentOutputLabel
-            )}
-          </button>
-        ),
-      },
-      {
-        name: "cost",
-        header: "Cost",
-        width: "80px",
-        align: "Right",
-        // The real numeric column, so `> 5` means five dollars. V1 filtered its rendered `~$1.23`.
-        filter: { kind: "text", column: "cost", placeholder: "Amount…" },
-        accessor: (row) => row.costValue,
-        cell: (_value, row) => (
-          <span
-            className="font-mono text-xs text-foreground"
-            data-testid={`job-cost-${row.id}`}
-            title={row.cost === null ? "No cost was reported for this job" : undefined}
-          >
-            {row.cost ?? NO_VALUE}
-          </span>
-        ),
-      },
-      {
-        name: "tokens",
-        header: "Tokens",
-        width: "80px",
-        align: "Right",
-        filter: { kind: "text", column: "tokens", placeholder: "Count…" },
-        accessor: (row) => row.tokens,
-        cell: (_value, row) => (
-          <span
-            className="font-mono text-xs text-foreground"
-            data-testid={`job-tokens-${row.id}`}
-            title={
-              row.tokens === null
-                ? undefined
-                : [row.tokens.toLocaleString("en-US"), row.tokenBreakdown]
-                    .filter(Boolean)
-                    .join(" — ")
-            }
-          >
-            {row.tokens === null ? NO_VALUE : formatTokens(row.tokens)}
-          </span>
-        ),
-      },
-      {
-        name: "timestamp",
-        header: "Timestamp",
-        width: "110px",
-        sortColumn: "completedAt",
-        // The stored RFC 3339 stamp, so `starts with "2026-09-17"` asks for a day and `>` for a cutoff.
-        filter: { kind: "text", column: "completedAt", placeholder: "Date…" },
-        accessor: (row) => row.completedAtMs,
-        // `FormatTimestamp`: `MM-dd HH:mm` in the viewer's local time, "-" until the job finishes.
-        cell: (_value, row) => (
-          <span className="font-mono text-xs text-muted-foreground">
-            {row.completedAtMs === null ? NO_TIME : formatMonthDayTime(row.completedAtMs)}
-          </span>
-        ),
-      },
-      {
-        name: "statusMessage",
-        header: "Status Message",
-        width: "auto",
-        filter: { kind: "text" },
-        accessor: (row) => row.statusMessage,
-        cell: (_value, row) => (
-          <span className="text-xs text-muted-foreground" title={row.statusMessage || undefined}>
-            {row.statusMessage}
-          </span>
-        ),
-      },
-    ],
-    // `onSelectPlan` and the sheet opener are the only closures the cells capture; the three option
-    // lists are the only other thing a column declaration reads.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [onSelectPlan, statusOptions, typeOptions, projectOptions],
-  );
+  const openJobCost = (jobId: string) => {
+    setCostJobId(jobId);
+    jobsStore.fetchJobDetail(jobId).catch(() => {
+      // Supplementary: the sheet falls back to the list row, which carries the figures themselves.
+    });
+  };
+
+  /**
+   * V1's `showPrompt(GetFullPrompt(job))`. V1 resolves the text from the job's typed args and falls
+   * back to the plan's `InitialPrompt`; the daemon has already done that resolution and put the
+   * result on the row, so this only has to open the sheet on it.
+   */
+  const openJobPrompt = (jobId: string) => {
+    setPromptJobId(jobId);
+    jobsStore.fetchJobDetail(jobId).catch(() => {
+      // Supplementary: `prompt` is already on the list row.
+    });
+  };
+
+  const columns = useJobColumns({
+    onSelectPlan,
+    openPlan,
+    openJobOutput,
+    openJobCost,
+    openJobPrompt,
+    statusOptions,
+    typeOptions,
+    projectOptions,
+  });
 
   /**
    * A query the daemon refused, or a daemon that is not there.
@@ -1241,6 +493,23 @@ export const JobsView: React.FC<JobsViewProps> = ({
    * be fetched) gets the sheet's own "nothing to show yet" line rather than a half-empty table.
    */
   const debugJob = debugJobId ? jobDetails?.[debugJobId] : undefined;
+
+  /**
+   * The Cost & Tokens and Prompt sheets' subjects. Unlike the debug sheet, the *list row* already
+   * carries what each one shows - the figures and the prompt text - so the fetched detail is
+   * preferred where it has arrived and the row is used until it does. Neither sheet has a loading
+   * state for that reason: there is nothing to wait for.
+   */
+  const costJob = costJobId
+    ? (jobDetails?.[costJobId] ?? jobs.find((job) => job.id === costJobId))
+    : undefined;
+  const promptJob = promptJobId
+    ? (jobDetails?.[promptJobId] ?? jobs.find((job) => job.id === promptJobId))
+    : undefined;
+  /** V1 titles the prompt sheet "Full Prompt" and the cost sheet "Cost & Tokens". */
+  const costJobTitle = costJob?.planId ? `Cost & Tokens — ${costJob.planId}` : "Cost & Tokens";
+  /** The untruncated text behind the Prompt cell - the same walk the cell does, without the cut. */
+  const promptText = promptJob ? promptSource(promptJob) : undefined;
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3" data-testid="jobs-view">
@@ -1323,12 +592,12 @@ export const JobsView: React.FC<JobsViewProps> = ({
           }
           // `rerun-job` is unreachable: the entry is disabled. See `RERUN_UNAVAILABLE_REASON`.
         }}
-        // Not a V1 behaviour - V1's table selects nothing and activates nothing, it hangs four cell
-        // actions off individual cells. Three of those (`showOutput`, and `showCost` from both Cost
-        // and Tokens) open a sheet, and the two sheets V2 has not built (Cost & Tokens, Prompt) show
-        // figures the output sheet's header already carries, so the row opens that one. The Plan Id
-        // cell keeps its own, different destination.
-        onRowClick={(row) => openJobOutput(row.id)}
+        /* No `onRowClick`, which is V1's behaviour: its table selects nothing and activates nothing
+           (`c.SelectionMode = SelectionModes.None`), and hangs *five* separate cell actions off five
+           columns instead - Plan Id navigates, Agent Output opens the output sheet, Cost and Tokens
+           both open Cost & Tokens, and Prompt opens the full prompt. Routing every other cell to the
+           output sheet, as this did while those two sheets were missing, meant a click on Status or
+           Project opened something the reader did not ask for and hid the cell they were pointing at. */
         emptyState={
           /* Which of the two it is turns on whether a filter is narrowing anything, not on the row
              count: a filtered-to-nothing table and an empty one look identical and mean opposite
@@ -1443,8 +712,26 @@ export const JobsView: React.FC<JobsViewProps> = ({
           data-testid="job-output-sheet"
           className="inset-y-0 flex w-full flex-col overflow-hidden p-0 sm:w-3/4 sm:max-w-none lg:w-1/2 xl:w-2/5"
         >
+          {/* `scrollContent={false}` hands the scrolling to the log, and is what puts the metrics
+              footer back in the footer. The scrolling branch wraps its children in Radix's viewport,
+              which injects a `display: table` div of its own (`react-scroll-area/dist/index.mjs:130`) —
+              a definite height dies there, so `AgentViewer`'s `height="full"` resolved against an
+              auto-height ancestor and the viewer sized to its content instead of to the sheet. The
+              footer is `flex: 0 0 auto` against a body that gives up its height, so it was pinned to
+              the bottom of a box that ended wherever the log happened to end: mid-sheet, with dead
+              space under it. `AgentTerminalView` makes the same trade for xterm.js, and for the same
+              reason — the viewer windows its own rows and an outer scroller fights the virtualizer for
+              the scroll position. `contentClassName` re-establishes the flex column the default `p-4`
+              wrapper would otherwise break.
+
+              `showDivider={false}`: the sheet title already reads as chrome against the body, and the
+              rule under it was the first of three stacked down this sheet. Per call site, so the Job
+              Debug sheet below and the other `HeaderLayout` consumers keep theirs. */}
           <HeaderLayout
             className="min-h-0 flex-1"
+            showDivider={false}
+            scrollContent={false}
+            contentClassName="flex h-full min-h-0 flex-col p-4"
             header={
               <SheetHeader className="pr-8">
                 <SheetTitle>{openJobTitle}</SheetTitle>
@@ -1455,7 +742,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
               <React.Suspense
                 fallback={
                   <div className="flex h-32 items-center justify-center text-muted-foreground">
-                    <Loader2 className="h-5 w-5 animate-spin text-success" aria-hidden="true" />
+                    <Spinner size="lg" className="text-success" aria-hidden="true" />
                   </div>
                 }
               >
@@ -1492,7 +779,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
               <React.Suspense
                 fallback={
                   <div className="flex h-32 items-center justify-center text-muted-foreground">
-                    <Loader2 className="h-5 w-5 animate-spin text-success" aria-hidden="true" />
+                    <Spinner size="lg" className="text-success" aria-hidden="true" />
                   </div>
                 }
               >
@@ -1503,6 +790,83 @@ export const JobsView: React.FC<JobsViewProps> = ({
                  daemon could not answer, this is the honest state rather than a table of blanks. */
               <span className="text-xs text-muted-foreground" data-testid="job-debug-pending">
                 Loading job details…
+              </span>
+            )}
+          </HeaderLayout>
+        </SheetContent>
+      </Sheet>
+
+      {/* V1's Cost & Tokens sheet (`JobsApp.cs:51`), opened by the Cost *and* Tokens cells
+          (`JobsApp.DataTable.cs:149-162`) at the same `UxHelper.SheetWidth` as the sheets above. */}
+      <Sheet
+        open={costJobId !== null}
+        onOpenChange={(open) => {
+          if (!open) setCostJobId(null);
+        }}
+      >
+        <SheetContent
+          data-testid="job-cost-sheet-panel"
+          className="inset-y-0 flex w-full flex-col overflow-hidden p-0 sm:w-3/4 sm:max-w-none lg:w-1/2 xl:w-2/5"
+        >
+          <HeaderLayout
+            className="min-h-0 flex-1"
+            header={
+              <SheetHeader className="pr-8">
+                <SheetTitle>{costJobTitle}</SheetTitle>
+              </SheetHeader>
+            }
+          >
+            {costJob ? (
+              <React.Suspense
+                fallback={
+                  <div className="flex h-32 items-center justify-center text-muted-foreground">
+                    <Spinner size="lg" className="text-success" aria-hidden="true" />
+                  </div>
+                }
+              >
+                <JobCost job={costJob} />
+              </React.Suspense>
+            ) : null}
+          </HeaderLayout>
+        </SheetContent>
+      </Sheet>
+
+      {/* V1's Full Prompt sheet (`JobsApp.cs:51`), opened by the Prompt cell. Its whole body is one
+          wrapped code block, which is what `PromptSheet.cs` renders. */}
+      <Sheet
+        open={promptJobId !== null}
+        onOpenChange={(open) => {
+          if (!open) setPromptJobId(null);
+        }}
+      >
+        <SheetContent
+          data-testid="job-prompt-sheet"
+          className="inset-y-0 flex w-full flex-col overflow-hidden p-0 sm:w-3/4 sm:max-w-none lg:w-1/2 xl:w-2/5"
+        >
+          <HeaderLayout
+            className="min-h-0 flex-1"
+            header={
+              <SheetHeader className="pr-8">
+                <SheetTitle>Full Prompt</SheetTitle>
+              </SheetHeader>
+            }
+          >
+            {promptText ? (
+              <React.Suspense
+                fallback={
+                  <div className="flex h-32 items-center justify-center text-muted-foreground">
+                    <Spinner size="lg" className="text-success" aria-hidden="true" />
+                  </div>
+                }
+              >
+                {/* `WrapLines()`: a prompt is prose, so it wraps rather than scrolling sideways. */}
+                <JobPromptBlock content={promptText} wrapLines />
+              </React.Suspense>
+            ) : (
+              /* A job type that carries no prose of its own - `ExpandPlan`, `SplitPlan` - reaches the
+                 sheet with nothing to show. Saying so beats an empty box. */
+              <span className="text-xs text-muted-foreground" data-testid="job-prompt-empty">
+                This job recorded no prompt text.
               </span>
             )}
           </HeaderLayout>
@@ -1581,60 +945,3 @@ export const JobsView: React.FC<JobsViewProps> = ({
     </div>
   );
 };
-
-/**
- * One column's distinct values, from `POST /api/tables/jobs/values`.
- *
- * `SELECT DISTINCT` over the whole `Jobs` table, not over the rows the client happens to hold — which is
- * the only way a filter vocabulary can be right once the table is paged. The daemon caps and can search
- * the list server-side, so it stays one small response on a column with a million distinct values.
- *
- * A failure leaves the list empty rather than surfacing: this is the filter editor's *help*, and a
- * daemon that cannot answer it has already failed the table's own query, which is where the operator is
- * told (see `jobs-table-error`). Fetched once per mount: a job list's statuses, types and projects do
- * not turn over inside a session, and re-reading them on every poll would be three requests a second
- * for a list that never changes.
- *
- * @param split For a column that stores a joined list, how one stored value becomes several offered
- *   ones. `Project` holds "web, api".
- */
-function useColumnValues(
-  column: string,
-  split?: (value: string) => string[],
-): DataTableFilterOption[] {
-  const [options, setOptions] = useState<DataTableFilterOption[]>([]);
-
-  useEffect(() => {
-    let cancelled = false;
-    void fetchTableColumnValues("jobs", column)
-      .then((page) => {
-        if (cancelled) return;
-        const values = page.values.map(String).flatMap((value) => split?.(value) ?? [value]);
-        setOptions(
-          Array.from(new Set(values.filter((value) => value.length > 0)))
-            .sort((a, b) => a.localeCompare(b))
-            .map((value) => ({ value, label: value })),
-        );
-      })
-      .catch(() => {
-        /* See above: the table's own error is the one worth showing. */
-      });
-    return () => {
-      cancelled = true;
-    };
-    // `split` is a module-level function at every call site, so it is stable by construction.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [column]);
-
-  return options;
-}
-
-/** `JobsApp.Helpers.cs` `TimestampFormat`: `"MM-dd HH:mm"`, local time. */
-function formatMonthDayTime(epochMs: number): string {
-  const date = new Date(epochMs);
-  if (Number.isNaN(date.getTime())) return NO_TIME;
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(
-    date.getMinutes(),
-  )}`;
-}

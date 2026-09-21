@@ -24,11 +24,11 @@ use crate::models::{
     UpdatePlanArgs, VerificationStatus,
 };
 use crate::plans::{
-    add_recommendation, check_plan_health, create_plan, get_revision, list_plan_verifications,
-    list_recommendations, read_plan_file, read_plan_yaml, remove_plan_verification,
-    remove_recommendation, resolve_plan_folder, set_plan_verification_status,
-    set_recommendation_state, write_plan_yaml, write_revision, CreatePlanOptions,
-    PlanCompletionGuard,
+    add_recommendation, check_plan_health, create_plan_for_job, get_revision,
+    list_plan_verifications, list_recommendations, read_plan_file, read_plan_yaml,
+    remove_plan_verification, remove_recommendation, resolve_plan_folder,
+    set_plan_verification_status, set_recommendation_state, write_plan_yaml, write_revision,
+    CreatePlanOptions, PlanCompletionGuard,
 };
 use chrono::{DateTime, Utc};
 use serde_json::{json, Map, Value};
@@ -423,7 +423,16 @@ impl McpDispatcher {
             chat_session_id: None,
         };
 
-        let plan_file = create_plan(&self.plans_dir, opts).map_err(|e| e.to_string())?;
+        // Set when this MCP server is being driven by an agent the job runner launched, which is the
+        // case that matters: it is the same association `tendril plan create` records, so a plan made
+        // through either route can be traced back to the run that made it.
+        let created_by_job = std::env::var("TENDRIL_JOB_ID")
+            .ok()
+            .map(|v| v.trim().to_string())
+            .filter(|v| !v.is_empty());
+
+        let plan_file = create_plan_for_job(&self.plans_dir, opts, created_by_job.as_deref())
+            .map_err(|e| e.to_string())?;
         self.sync(Path::new(&plan_file.folder_path));
 
         Ok(ToolOutcome::structured(json!({
@@ -471,6 +480,13 @@ impl McpDispatcher {
         match field.to_ascii_lowercase().as_str() {
             "state" => {
                 let new_state = requested.expect("state parsed above");
+                // A model may not complete a plan whose changes still carry wireframe code, for the
+                // same reason it may not complete one over a failed verification.
+                if let Some(reason) =
+                    PlanCompletionGuard::wireframe_refusal(new_state, &folder, None)
+                {
+                    return Err(reason);
+                }
                 // allow_failed_verifications is hard-coded false: recording a partial delivery is a
                 // human's call, not a model's.
                 warning = PlanCompletionGuard::apply_state(&mut plan, new_state, false, &plan_id)
@@ -1023,6 +1039,12 @@ pub fn build_job_args(
             assignee: request.assignee.clone(),
             comment: request.comment.clone(),
             labels: request.labels.clone(),
+            // No override over MCP: an agent asking for an issue is asking about the plan it named,
+            // and the request shape has nowhere to carry a separate subject. Adding one means
+            // extending the tool schema in `mcp/tools.rs` as well, which is its own decision.
+            title_override: None,
+            body_override: None,
+            issue_source: None,
         }),
         "setupproject" => JobArgs::SetupProject(SetupProjectArgs {
             folder_path: request

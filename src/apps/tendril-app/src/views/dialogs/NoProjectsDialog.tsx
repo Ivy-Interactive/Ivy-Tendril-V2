@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Button } from "@ivy-interactive/components/ui";
-import { DialogShell } from "./DialogShell";
+import { DialogShell, DialogShortcutHint } from "./DialogShell";
 
 export interface NoProjectsDialogProps {
   isOpen: boolean;
@@ -28,6 +28,16 @@ export function NoProjectsDialog({ isOpen, onClose, onOpenSettings }: NoProjects
       description="Every plan belongs to a project, and this Tendril home has none yet."
       testId="no-projects-dialog"
       initialFocusRef={cancelRef}
+      // Navigational rather than a submit, and included anyway: this is the *only* way forward from
+      // the dialog — there is nothing to configure here, so "Go to Projects" is unambiguously the
+      // primary and the chord cannot be mistaken for a second, more destructive answer. Consistency
+      // is the argument. A user who has learned Ctrl+Enter on every other dialog should not have to
+      // find out which ones opted out, and this one costs nothing to include. Contrast
+      // `PlanSearchDialog` and `ShareTunnelDialog`, which are left alone on purpose: the first has
+      // only a Close in its footer, and the second's real actions are status-dependent body buttons
+      // where one chord would start a tunnel in one state and stop it in another.
+      shortcut="Ctrl+Enter"
+      onShortcut={onOpenSettings}
       footer={
         <>
           <Button ref={cancelRef} variant="outline" onClick={onClose} data-testid="dialog-cancel">
@@ -37,6 +47,7 @@ export function NoProjectsDialog({ isOpen, onClose, onOpenSettings }: NoProjects
               which is where `onOpenSettings` lands too, so the label survives the port intact. */}
           <Button onClick={onOpenSettings} data-testid="open-settings">
             Go to Projects
+            <DialogShortcutHint shortcut="Ctrl+Enter" />
           </Button>
         </>
       }

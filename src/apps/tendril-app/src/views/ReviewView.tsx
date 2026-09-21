@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import {
   PlanWorkspace,
   useShortcut,
@@ -6,7 +6,7 @@ import {
   type PlanTabDto,
   type ShellBadgeDto,
 } from "@ivy-interactive/components/tendril";
-import { Callout } from "@ivy-interactive/components/ui";
+import { Button, Callout } from "@ivy-interactive/components/ui";
 import {
   describeBridgeError,
   type DraftComment,
@@ -20,7 +20,7 @@ import {
   type StartJobResponse,
 } from "../types/api";
 import { bridge } from "../api/bridge";
-import { PlanActionsController } from "../controllers/plan_actions";
+import { PlanActionsController } from "../controllers/planActions";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { NoContentView } from "../components/NoContentView";
 import { VERIFICATION_BADGE_CLASS } from "../utils/verificationStatus";
@@ -30,7 +30,8 @@ import { TendrilProcessWallpaper } from "../components/TendrilProcessWallpaper";
 import { RecommendationCard } from "../components/RecommendationCard";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
 import { ReviewActionsBarView } from "../components/ReviewActionsBarView";
-import { formatPlanId, parseProjects, resolvePlanSelection } from "./PlansView";
+import { formatPlanId, parseProjects } from "./PlansView";
+import { isPlanId, nextAfterRemoval, plansStore, resolvePlanSelection } from "../state/plansStore";
 import { reviewQueueFor } from "../utils/planQueues";
 import { usePublishSidebarList, type ShellSidebarList } from "../state/sidebarListStore";
 import type { ReviewActionTarget } from "./ReviewActionView";
@@ -184,6 +185,20 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   onNavigate,
 }) => {
   const reviewPlans = useMemo(() => reviewQueueFor(plans, jobs), [plans, jobs]);
+
+  /**
+   * The queue as it was on the previous render, which is the argument `resolvePlanSelection`'s
+   * keep-the-index branch cannot work without — and which this page used to omit, so the branch was
+   * unreachable and a plan the host's refetch removed sent the selection back to the top of the
+   * queue. `handlePlanLeftReview` hid that by re-pointing the selection itself, but only for the
+   * decisions it is wired to: a plan that left because a job took it, or because another surface
+   * moved it, fell straight through to the fallback.
+   *
+   * V1 needs no such ref because `ReviewApp.Build` holds the previous list in the app's own state;
+   * a function component has to carry it across renders itself. Updated in an effect so the render
+   * that first sees a shortened queue still reads the longer one.
+   */
+  const previousQueue = useRef<PlanSummary[]>(reviewPlans);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [activeDialog, setActiveDialog] = useState<TriageDialog | null>(null);
 
@@ -196,9 +211,25 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
    * a queue that arrives after the first render land on a plan instead of on nothing.
    */
   const selectedPlan =
-    resolvePlanSelection(reviewPlans, selectedPlanId ?? addressedPlanId) ?? undefined;
+    resolvePlanSelection(reviewPlans, selectedPlanId ?? addressedPlanId, previousQueue.current) ??
+    undefined;
   const selectedIndex = selectedPlan ? reviewPlans.indexOf(selectedPlan) : -1;
   const selectedId = selectedPlan?.id;
+
+  /*
+   * Held until the selection is one the queue actually holds, for the reason `PlansView` holds it:
+   * the id this page resolves against can name a plan that has already left, and advancing the ref
+   * while it does throws away the only list that plan's index can be read from — the next render
+   * then finds it in neither list and falls back to the top of the queue.
+   *
+   * This page re-points its own selection through `handlePlanLeftReview`, so the window is one
+   * render rather than a navigation; the guard costs nothing and closes it either way.
+   */
+  useEffect(() => {
+    const resolvedId = selectedPlanId ?? addressedPlanId;
+    if (resolvedId && !reviewPlans.some((plan) => isPlanId(plan, resolvedId))) return;
+    previousQueue.current = reviewPlans;
+  }, [reviewPlans, selectedPlanId, addressedPlanId]);
 
   /**
    * The queue itself goes to the shell sidebar, not into this page: `ReviewApp.Build` renders no
@@ -439,20 +470,18 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   };
 
   /**
-   * A triage decision the service accepted: the plan leaves the queue, so the selection moves to
-   * whatever now sits at the same place in it. `PlanSelectionHelper.ResolveSelection` keeps the
-   * old index (`Math.Min(oldIndex, currentPlans.Count - 1)`) rather than jumping to the top, so
-   * clearing a queue works down it instead of bouncing back to the newest plan every time.
+   * A triage decision the service accepted: the plan leaves the queue, so this page opens the next
+   * thing to review — whatever now sits at the same place in the queue, which is
+   * {@link nextAfterRemoval}, the one shared spelling of `PlanSelectionHelper.ResolveSelection`'s
+   * keep-the-index rule. The arithmetic that used to be inlined here was that rule's only correct
+   * implementation in the app; every other CTA reached for the top of the queue instead.
+   *
+   * The queue is read from `reviewPlans` rather than the store, because it is the *filtered* list
+   * that has indices worth keeping: the store's `plans` holds every plan in every state, so an index
+   * into it names a different plan entirely.
    */
   const handlePlanLeftReview = (planId: string) => {
-    const leavingIndex = reviewPlans.findIndex((p) => p.id === planId);
-    const remaining = reviewPlans.filter((p) => p.id !== planId);
-    if (remaining.length === 0) {
-      setSelectedPlanId(null);
-    } else {
-      const next = Math.min(Math.max(leavingIndex, 0), remaining.length - 1);
-      setSelectedPlanId(remaining[next].id);
-    }
+    setSelectedPlanId(nextAfterRemoval(reviewPlans, planId)?.id ?? null);
     onPlanChanged?.(planId);
   };
 
@@ -555,7 +584,12 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     setActionError(null);
     setPendingAction("complete");
     try {
-      await bridge.updatePlanField(selectedPlan.id, "state", "Completed");
+      // Through the store, not `bridge` directly: the plan has to leave the queue on the click that
+      // completed it, and the store is what takes it out of `plans` without waiting for a refetch —
+      // which is also what empties the row out of the shell's sidebar list and its nav badge. The
+      // store applies nothing until the daemon agrees, so a refusal still lands in the banner below
+      // with the plan where it was.
+      await plansStore.transitionPlanOptimistic(selectedPlan.id, "Completed");
       handlePlanLeftReview(selectedPlan.id);
     } catch (err) {
       setActionError(
@@ -993,7 +1027,15 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                  selection; V1 lists only the pending ones, and this page keeps the decided rows
                  visible because the accept/decline triage happens here, and a decision that vanishes
                  the row it was made on gives the operator nothing to check it by. */
-              <div key="recommendations" className="space-y-3 p-4">
+              /* Capped at the same reading measure `Review/ContentView.Cap()` gives this tab —
+                 `Width(Size.Full().Max(Size.Units(200)))`, 50rem — so a recommendation card does not
+                 run the full width of a wide window while the plan document beside it stops at the
+                 measure. V1's Summary and Plan tabs are the ones *not* wrapped, because PlanMarkdown
+                 caps itself; Recommendations is wrapped. */
+              <div
+                key="recommendations"
+                className="w-full max-w-[var(--content-measure)] space-y-3 p-4"
+              >
                 {recsError && (
                   <ErrorBanner data-testid="recommendations-error">{recsError}</ErrorBanner>
                 )}
@@ -1011,12 +1053,13 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
 
                 {pendingRecs.length > 0 && (
                   <div className="flex flex-wrap items-center gap-2">
-                    <button
+                    <Button
                       type="button"
+                      variant="outline"
                       data-testid="implement-recommendations"
                       disabled={pendingAction !== null}
                       onClick={() => void implementSelectedRecommendations()}
-                      className="inline-flex h-8 items-center gap-1.5 rounded-field border border-border px-3 text-sm font-medium text-foreground transition hover:bg-accent disabled:cursor-not-allowed disabled:opacity-50"
+                      className="h-8"
                     >
                       {pendingAction === "implementRecs" ? "Starting…" : "Implement"}
                       {selectedRecTitles.size > 0 && (
@@ -1024,7 +1067,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                           {selectedRecTitles.size}
                         </span>
                       )}
-                    </button>
+                    </Button>
                     <span className="text-xs text-muted-foreground">
                       Accepts the ticked recommendations and retries the plan with them as the
                       change request.
@@ -1118,6 +1161,9 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
             onSkipped={handlePlanLeftReview}
             onArchived={handlePlanLeftReview}
           />
+          {/* Reset advances here where it does not on a plan's own page: Draft is off this queue, so
+              a reset plan leaves Review exactly as a skip does, and the reviewer's next decision is
+              the next plan. On `plan-<id>` there is no queue to leave and the page stays put. */}
           <ResetToDraftDialog
             isOpen={activeDialog === "reset"}
             onClose={() => setActiveDialog(null)}

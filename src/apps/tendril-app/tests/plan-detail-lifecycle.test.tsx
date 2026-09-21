@@ -3,7 +3,8 @@ import { render, screen, fireEvent, waitFor, within } from "@testing-library/rea
 import { PlanDetailView } from "../src/views/PlanDetailView";
 import { bridge } from "../src/api/bridge";
 import { chatApi } from "../src/api/chatApi";
-import { planDetail, planGit, verification } from "./fixtures/plan.fixture";
+import { plansStore } from "../src/state/plansStore";
+import { planDetail, planGit, planSummary, verification } from "./fixtures/plan.fixture";
 import type { Job, PlanDetail, RepoStatus } from "../src/types/api";
 
 /**
@@ -295,10 +296,30 @@ describe("the failure callout", () => {
   });
 });
 
+/**
+ * These read git state, so they use a plan under **review**.
+ *
+ * The Git tab, and with it this fetch, now exists only for `Review`/`Failed` plans: everything the
+ * tab renders (worktrees, commit reachability, PRs) is state an execution produced, and a Draft
+ * paid for a git shell-out in every repo whose only visible effect was the tab flickering in
+ * unlabelled and then gaining its count. `draft()` no longer fetches at all, which the first case
+ * below pins.
+ */
 describe("git state", () => {
+  const reviewed = (overrides: Partial<PlanDetail> = {}) =>
+    draft({ state: "Review", ...overrides });
+
+  it("does not read git state for a draft, which has no Git tab", async () => {
+    const getPlanGit = vi.spyOn(bridge, "getPlanGit").mockResolvedValue(planGit());
+    render(<PlanDetailView plan={draft({ updated: "2026-09-07T10:41:11Z" })} />);
+
+    await waitFor(() => expect(screen.getByRole("tab", { name: "Details" })).toBeInTheDocument());
+    expect(getPlanGit).not.toHaveBeenCalled();
+  });
+
   it("re-reads the plan's git state when the plan changes underneath", async () => {
     const getPlanGit = vi.spyOn(bridge, "getPlanGit").mockResolvedValue(planGit());
-    const plan = draft({ updated: "2026-09-07T10:41:11Z" });
+    const plan = reviewed({ updated: "2026-09-07T10:41:11Z" });
     const { rerender } = render(<PlanDetailView plan={plan} />);
 
     await waitFor(() => expect(getPlanGit).toHaveBeenCalledTimes(1));
@@ -311,7 +332,7 @@ describe("git state", () => {
 
   it("does not re-read for a refetch that changed nothing", async () => {
     const getPlanGit = vi.spyOn(bridge, "getPlanGit").mockResolvedValue(planGit());
-    const plan = draft({ updated: "2026-09-07T10:41:11Z" });
+    const plan = reviewed({ updated: "2026-09-07T10:41:11Z" });
     const { rerender } = render(<PlanDetailView plan={plan} />);
 
     await waitFor(() => expect(getPlanGit).toHaveBeenCalledTimes(1));
@@ -352,7 +373,11 @@ describe("the discard action is gone", () => {
     const dialog = await screen.findByTestId("delete-plan-dialog");
     fireEvent.click(within(dialog).getByTestId("dialog-skip"));
 
-    await waitFor(() => expect(updateField).toHaveBeenCalledWith("00021", "state", "Skipped"));
+    // Four arguments because the dialog writes through `plansStore.transitionPlanOptimistic`, which
+    // passes `allowFailedVerifications` on for the callers that set it.
+    await waitFor(() =>
+      expect(updateField).toHaveBeenCalledWith("00021", "state", "Skipped", undefined),
+    );
   });
 });
 
@@ -389,5 +414,76 @@ describe("a plan in Review", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: /Reset to Draft/ }));
 
     expect(await screen.findByTestId("reset-to-draft-dialog")).toBeInTheDocument();
+  });
+
+  /**
+   * Reset is an arrival, not a departure, and this page reports it as one.
+   *
+   * Every other lifecycle answer here calls `onPlanChanged`, which the shell answers by opening the
+   * next plan in the queue — right for Skipped, Icebox and a partial delivery, and wrong for Reset,
+   * which puts the plan back at Draft so the operator can start it again. Routed through
+   * `onPlanChanged` it closed the plan the operator had just asked to work on.
+   */
+  it("reports a reset on its own callback rather than as a queue departure", async () => {
+    const resetPlan = vi.spyOn(bridge, "resetPlan").mockResolvedValue(undefined);
+    vi.spyOn(bridge, "listPlans").mockResolvedValue([]);
+    const onPlanReset = vi.fn();
+    const onPlanChanged = vi.fn();
+
+    render(
+      <PlanDetailView
+        plan={draft({ state: "Review" })}
+        onPlanReset={onPlanReset}
+        onPlanChanged={onPlanChanged}
+      />,
+    );
+    openWorkspaceMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: /Reset to Draft/ }));
+    const dialog = await screen.findByTestId("reset-to-draft-dialog");
+    fireEvent.click(within(dialog).getByTestId("dialog-confirm"));
+
+    await waitFor(() => expect(onPlanReset).toHaveBeenCalledWith("00021"));
+    expect(onPlanChanged).not.toHaveBeenCalled();
+    // And through the store, so the row is Draft in `state.plans` before any list read comes back.
+    expect(resetPlan).toHaveBeenCalledWith("00021");
+  });
+
+  /**
+   * The Complete path the user's "does not get removed instantly" report landed on. The dialog used
+   * to call `bridge.updatePlanField` itself, which left the store believing the plan was still in
+   * Review — so the review queue, its sidebar list and the nav badge all went on counting it.
+   */
+  it("completes a partial delivery through the store, so the row leaves the queue at once", async () => {
+    const updateField = vi.spyOn(bridge, "updatePlanField").mockResolvedValue(undefined);
+    // The store's own reconcile fires a list read, and the daemon has not finished committing: it
+    // still calls the plan Review. The pin is what has to outlast that, or the row goes back into the
+    // review queue a moment after leaving it.
+    vi.spyOn(bridge, "listPlans").mockResolvedValue([
+      planSummary({ id: "00021", state: "Review" }),
+    ]);
+    plansStore.setPlans([planSummary({ id: "00021", state: "Review" })]);
+
+    render(
+      <PlanDetailView
+        plan={draft({
+          state: "Review",
+          verifications: [verification("RustBuild", "Fail")],
+        })}
+      />,
+    );
+    // `AddPrimaryAction`'s Review set puts this beside Create PR as a secondary action, not in the
+    // overflow menu, and offers it only for a plan with a failing verification.
+    fireEvent.click(await screen.findByRole("button", { name: /Accept Partial Delivery/ }));
+    const dialog = await screen.findByTestId("partial-delivery-dialog");
+    fireEvent.click(within(dialog).getByTestId("dialog-confirm"));
+
+    // The flag the dialog exists to send still goes with it.
+    await waitFor(() =>
+      expect(updateField).toHaveBeenCalledWith("00021", "state", "Completed", true),
+    );
+    await waitFor(() =>
+      expect(plansStore.getState().plans.find((p) => p.id === "00021")?.state).toBe("Completed"),
+    );
+    plansStore.setPlans([]);
   });
 });

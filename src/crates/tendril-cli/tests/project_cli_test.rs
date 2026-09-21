@@ -2460,3 +2460,125 @@ async fn project_import_resolves_a_configured_repo_by_directory_name() {
     .expect("import by the repo's directory name");
     assert_eq!(project_config(&home.path, "Proj").mcp_servers.len(), 1);
 }
+
+/// `add-repo` with the daemon down used to store the URL verbatim and echo it back, so a remote
+/// carrying `https://user:token@host/...` put the token into `config.yaml`, into terminal
+/// scrollback and into whatever CI log was capturing stdout — and, because nothing cloned,
+/// `resolve_working_directory` then skipped the entry and ran every job in TENDRIL_HOME. The
+/// offline arm now does what the daemon's `materialize_repos` does: clone first, store the
+/// directory.
+#[tokio::test]
+async fn offline_add_repo_clones_a_remote_instead_of_storing_the_url() {
+    let home = FsHome::new("add-repo-offline-clone");
+    let fixture = SyncRepoFixture::new("cloneable");
+    let origin = fixture.root.join("origin.git");
+    add_project(&home.path, "Proj").await;
+
+    handle_project_command(
+        ProjectCommands::AddRepo {
+            name: "Proj".to_string(),
+            path: format!("file://{}", origin.display()),
+        },
+        &home.path,
+    )
+    .await
+    .expect("add a remote with no daemon running");
+
+    let repos = project_config(&home.path, "Proj").repos;
+    assert_eq!(repos.len(), 1);
+
+    let stored = PathBuf::from(&repos[0].path);
+    assert!(
+        stored.starts_with(home.path.join("Projects").join("Proj").join("Repos")),
+        "the clone landed outside the project: {}",
+        stored.display()
+    );
+    assert!(
+        stored.join(".git").is_dir(),
+        "a URL was stored instead of a clone: {}",
+        stored.display()
+    );
+    // The whole point: what is stored is a directory, which is the only thing
+    // `resolve_working_directory` will pick up.
+    assert!(stored.is_dir());
+    assert_eq!(repos[0].base_branch.as_deref(), Some("main"));
+}
+
+/// The credential half of the same defect. `file://` cannot carry userinfo git will accept, so the
+/// assertion is on `config.yaml` — the durable copy, and the one a `report_bug` bundle picks up.
+#[tokio::test]
+async fn offline_add_repo_never_writes_a_credential_into_the_config() {
+    let home = FsHome::new("add-repo-offline-secret");
+    let fixture = SyncRepoFixture::new("secretless");
+    let origin = fixture.root.join("origin.git");
+    add_project(&home.path, "Proj").await;
+
+    handle_project_command(
+        ProjectCommands::AddRepo {
+            name: "Proj".to_string(),
+            path: format!("file://{}", origin.display()),
+        },
+        &home.path,
+    )
+    .await
+    .expect("add a remote with no daemon running");
+
+    let raw = std::fs::read_to_string(get_config_path(&home.path)).expect("read config");
+    assert!(
+        !raw.contains("file://"),
+        "the URL itself was persisted: {raw}"
+    );
+
+    // An unreachable credential-bearing remote is refused, and neither the token nor the username
+    // reaches the error the operator sees.
+    let token = "ghp_averyrealisticlookingtoken0123456789";
+    let err = handle_project_command(
+        ProjectCommands::AddRepo {
+            name: "Proj".to_string(),
+            path: format!(
+                "https://tendril-user:{token}@tendril-nonexistent.invalid/owner/repo.git"
+            ),
+        },
+        &home.path,
+    )
+    .await
+    .expect_err("an unreachable remote must fail rather than store its URL");
+
+    let message = err.to_string();
+    assert!(!message.contains(token), "the token leaked: {message}");
+    assert!(
+        !message.contains("tendril-user"),
+        "the username leaked: {message}"
+    );
+
+    let raw = std::fs::read_to_string(get_config_path(&home.path)).expect("read config");
+    assert!(!raw.contains(token), "the token reached config.yaml: {raw}");
+    assert_eq!(
+        project_config(&home.path, "Proj").repos.len(),
+        1,
+        "the failed remote was stored anyway"
+    );
+}
+
+/// A local path is still stored exactly as typed — the clone path must not have become the only
+/// path. This is the case every existing project is made of.
+#[tokio::test]
+async fn offline_add_repo_leaves_a_local_path_alone() {
+    let home = FsHome::new("add-repo-offline-local");
+    add_project(&home.path, "Proj").await;
+
+    handle_project_command(
+        ProjectCommands::AddRepo {
+            name: "Proj".to_string(),
+            path: "/repos/tendril".to_string(),
+        },
+        &home.path,
+    )
+    .await
+    .expect("add a local path");
+
+    let repos = project_config(&home.path, "Proj").repos;
+    assert_eq!(repos.len(), 1);
+    assert_eq!(repos[0].path, "/repos/tendril");
+    assert_eq!(repos[0].base_branch, None);
+}

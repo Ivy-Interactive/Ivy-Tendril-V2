@@ -1,11 +1,12 @@
 import React, { useMemo, useState } from "react";
 import { Flame, Search, Trash2 } from "lucide-react";
-import { Badge } from "@ivy-interactive/components/ui";
-import { bridge } from "../api/bridge";
+import { Badge, Button } from "@ivy-interactive/components/ui";
+import { plansStore } from "../state/plansStore";
 import { describeBridgeError, type PlanSummary } from "../types/api";
 import { VERIFICATION_DOT_CLASS } from "../utils/verificationStatus";
 import { NoContentView } from "../components/NoContentView";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { LevelBadge } from "../components/LevelBadge";
 import { DeletePlanDialog } from "./dialogs";
 import { formatPlanId, parseProjects, planStateBadgeVariant } from "./PlansView";
 
@@ -54,6 +55,11 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
    * The card has to disappear on the click that thawed it. Waiting for the plan watcher to fire and
    * the store to refetch leaves an Icebox card claiming to be a Draft, and a second Thaw on it would
    * be a second write to a plan that already moved.
+   *
+   * `plansStore` now applies the same removal to its own list the moment the daemon confirms one, so
+   * for a host that feeds `plans` from the store this is belt and braces. It is kept because the prop
+   * is a plain array and this view does not require it to come from there — a caller passing a static
+   * list still gets a card that disappears.
    */
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
 
@@ -122,7 +128,10 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
     setPendingId(plan.id);
     setActionError(null);
     try {
-      await bridge.updatePlanField(plan.id, "state", "Draft");
+      // Through the store for the same reason every other transition is: the thawed plan has to leave
+      // the icebox — and join the Plans queue, and its nav badge — without waiting for a refetch. The
+      // store confirms before it applies, so the failure path below still keeps the card.
+      await plansStore.transitionPlanOptimistic(plan.id, "Draft");
       forget(plan.id);
     } catch (err) {
       setActionError(`Could not thaw plan ${formatPlanId(plan.id)}: ${describeBridgeError(err)}`);
@@ -146,7 +155,7 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
       {/* Filter Bar */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-[220px] flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <input
             type="search"
             value={search}
@@ -255,47 +264,58 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
                         {proj}
                       </Badge>
                     ))}
+
+                    {/* `SidebarView.BuildRowBadges` ends with the level, after the projects, and
+                        colours it from configuration. It used to be an uncoloured line in the card
+                        footer, which is the one thing that badge exists to say. */}
+                    <LevelBadge level={plan.level} density="Small" />
                   </div>
                 </div>
 
-                {/* Footer / Verifications */}
-                <div className="mt-4 flex items-center justify-between border-t border-border/50 pt-3 text-xs text-muted-foreground">
-                  <span>{plan.level || "Feature"}</span>
-                  {plan.verifications && plan.verifications.length > 0 && (
+                {/* Footer / Verifications. The level used to sit here as plain text and is now a
+                    coloured badge above, so with no verification dots there is nothing left to rule
+                    off — the border is drawn only when the row has content. */}
+                {plan.verifications && plan.verifications.length > 0 && (
+                  <div className="mt-4 flex items-center justify-end border-t border-border/50 pt-3 text-xs text-muted-foreground">
                     <div className="flex items-center gap-1">
                       {plan.verifications.map((v, i) => (
                         <span
                           key={i}
                           title={`${v.name}: ${v.status}`}
-                          className={`h-2 w-2 rounded-full ${VERIFICATION_DOT_CLASS[v.status] || "bg-muted-foreground/50"}`}
+                          className={`size-2 rounded-full ${VERIFICATION_DOT_CLASS[v.status] || "bg-muted-foreground/50"}`}
                         />
                       ))}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 {/* V1's action bar order: Delete (outline), then Thaw (primary). */}
                 <div className="mt-3 flex items-center gap-2">
-                  <button
+                  {/* Both keep their per-plan `aria-label`: a page of frozen plans offering a
+                      column of identical "Delete"s cannot be driven by voice or screen reader. */}
+                  <Button
                     type="button"
+                    size="sm"
+                    variant="outline"
                     disabled={isBusy}
                     aria-label={`Delete plan ${formatPlanId(plan.id)}`}
                     onClick={() => setDeleting(plan)}
-                    className="inline-flex items-center gap-1.5 rounded-field border border-border bg-background px-2.5 py-1 text-xs font-medium text-foreground transition hover:bg-muted disabled:opacity-50"
+                    className="h-auto px-2.5 py-1 text-xs"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="size-3.5" />
                     Delete
-                  </button>
-                  <button
+                  </Button>
+                  <Button
                     type="button"
+                    size="sm"
                     disabled={isBusy}
                     aria-label={`Thaw plan ${formatPlanId(plan.id)}`}
                     onClick={() => void thaw(plan)}
-                    className="inline-flex items-center gap-1.5 rounded-field bg-primary px-2.5 py-1 text-xs font-medium text-primary-foreground transition hover:bg-primary/90 disabled:opacity-50"
+                    className="h-auto px-2.5 py-1 text-xs"
                   >
-                    <Flame className="h-3.5 w-3.5" />
+                    <Flame className="size-3.5" />
                     {pendingId === plan.id ? "Thawing..." : "Thaw"}
-                  </button>
+                  </Button>
                 </div>
               </div>
             );

@@ -191,5 +191,3 @@ export const HtmlRenderer: React.FC<HtmlRendererProps> = ({
 
   return <>{renderHtml(sanitizedContent)}</>;
 };
-
-export default HtmlRenderer;

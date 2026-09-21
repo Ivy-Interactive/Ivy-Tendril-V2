@@ -31,6 +31,7 @@ const MODELED_PRIMITIVE_KEYS: &[&str] = &[
     "worktreereaperinterval",
     "worktreereapergrace",
     "worktreebranchdeletemode",
+    "coauthor",
     "enrichmodels",
     "modelenrichmentintervalhours",
     "modelcachewarnagedays",
@@ -89,6 +90,7 @@ pub fn handle_config_command(cmd: ConfigCommands, tendril_home: &Path) -> anyhow
                 "worktreereaperinterval" => settings.worktree_reaper_interval.to_string(),
                 "worktreereapergrace" => settings.worktree_reaper_grace.to_string(),
                 "worktreebranchdeletemode" => settings.worktree_branch_delete_mode,
+                "coauthor" => settings.co_author.unwrap_or_default(),
                 "enrichmodels" => settings.enrich_models.to_string(),
                 "modelenrichmentintervalhours" => {
                     settings.model_enrichment_interval_hours.to_string()
@@ -167,6 +169,16 @@ pub fn handle_config_command(cmd: ConfigCommands, tendril_home: &Path) -> anyhow
                 "worktreereaperinterval" => settings.worktree_reaper_interval = value.parse()?,
                 "worktreereapergrace" => settings.worktree_reaper_grace = value.parse()?,
                 "worktreebranchdeletemode" => settings.worktree_branch_delete_mode = value,
+                // Empty clears the key entirely rather than storing a blank identity: an unset
+                // `coAuthor` is what makes `coauthor_env` return before installing any hook, so
+                // "" and absent have to mean the same thing here as they do there.
+                "coauthor" => {
+                    settings.co_author = if value.trim().is_empty() {
+                        None
+                    } else {
+                        Some(value.trim().to_string())
+                    }
+                }
                 "enrichmodels" => settings.enrich_models = parse_bool(&value)?,
                 "modelenrichmentintervalhours" => {
                     settings.model_enrichment_interval_hours = value.parse()?

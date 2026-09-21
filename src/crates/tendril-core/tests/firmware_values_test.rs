@@ -384,6 +384,9 @@ fn create_issue_emits_only_the_fields_that_are_set() {
             assignee: Some("alice".to_string()),
             comment: Some("Found while porting".to_string()),
             labels: Some("bug,port".to_string()),
+            title_override: Some("Cache the model list".to_string()),
+            body_override: Some("The catalog refetches every render.".to_string()),
+            issue_source: Some("00058::Cache the model list".to_string()),
         }),
         &path,
     );
@@ -392,6 +395,12 @@ fn create_issue_emits_only_the_fields_that_are_set() {
     assert_eq!(v.get("Assignee").unwrap(), "alice");
     assert_eq!(v.get("Comment").unwrap(), "Found while porting");
     assert_eq!(v.get("Labels").unwrap(), "bug,port");
+    assert_eq!(v.get("IssueTitle").unwrap(), "Cache the model list");
+    assert_eq!(
+        v.get("IssueBody").unwrap(),
+        "The catalog refetches every render."
+    );
+    assert_eq!(v.get("IssueSource").unwrap(), "00058::Cache the model list");
     // CreateIssue does not check out code.
     assert!(!v.contains_key("RepoConfigs"));
 
@@ -402,6 +411,9 @@ fn create_issue_emits_only_the_fields_that_are_set() {
             assignee: None,
             comment: None,
             labels: None,
+            title_override: None,
+            body_override: None,
+            issue_source: None,
         }),
         &path,
     );
@@ -410,6 +422,30 @@ fn create_issue_emits_only_the_fields_that_are_set() {
     assert!(!v.contains_key("Assignee"));
     assert!(!v.contains_key("Comment"));
     assert!(!v.contains_key("Labels"));
+    // Absent, not blank: the promptware reads a present `IssueTitle` as "do not read the plan", so
+    // an empty string here would produce a titleless issue about nothing.
+    assert!(!v.contains_key("IssueTitle"));
+    assert!(!v.contains_key("IssueBody"));
+    assert!(!v.contains_key("IssueSource"));
+
+    // A whitespace-only override is the same as none, for the same reason.
+    let blank = job_for(
+        JobArgs::CreateIssue(CreateIssueArgs {
+            folder_path: path.clone(),
+            repo: "acme/widgets".to_string(),
+            assignee: None,
+            comment: None,
+            labels: None,
+            title_override: Some("   ".to_string()),
+            body_override: Some(String::new()),
+            issue_source: Some("  ".to_string()),
+        }),
+        &path,
+    );
+    let v = values(&blank, &home);
+    assert!(!v.contains_key("IssueTitle"));
+    assert!(!v.contains_key("IssueBody"));
+    assert!(!v.contains_key("IssueSource"));
 }
 
 /// `SetupProject` reuses the `folderPath` arg to carry a project name, so it must emit `ProjectName`

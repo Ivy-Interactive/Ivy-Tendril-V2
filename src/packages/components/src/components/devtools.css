@@ -36,7 +36,7 @@
 }
 
 .ivy-devtools-label-type {
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 .ivy-devtools-dialog {

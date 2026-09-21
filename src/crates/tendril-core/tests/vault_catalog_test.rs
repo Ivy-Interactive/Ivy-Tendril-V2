@@ -676,3 +676,146 @@ async fn push_without_a_vault_fails_before_reaching_gh() {
         Some("No vault configured to push updates.")
     );
 }
+
+// -------------------------------------------------------------------------------------------------
+// coAuthor attribution on the vault's own commits
+// -------------------------------------------------------------------------------------------------
+
+/// Runs git in the fixture with an identity pinned and the developer's global config ignored, the
+/// same way the other git-touching tests in this crate do.
+fn fixture_git(cwd: &Path, args: &[&str]) {
+    let out = std::process::Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_SYSTEM", "/dev/null")
+        .env("GIT_AUTHOR_NAME", "Tendril Test")
+        .env("GIT_AUTHOR_EMAIL", "test@tendril.invalid")
+        .env("GIT_COMMITTER_NAME", "Tendril Test")
+        .env("GIT_COMMITTER_EMAIL", "test@tendril.invalid")
+        .output()
+        .unwrap_or_else(|e| panic!("spawn git {args:?}: {e}"));
+    assert!(
+        out.status.success(),
+        "git {args:?} failed: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+}
+
+fn git_stdout(cwd: &Path, args: &[&str]) -> String {
+    let out = std::process::Command::new("git")
+        .args(args)
+        .current_dir(cwd)
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_CONFIG_SYSTEM", "/dev/null")
+        .output()
+        .unwrap_or_else(|e| panic!("spawn git {args:?}: {e}"));
+    String::from_utf8_lossy(&out.stdout).to_string()
+}
+
+/// A vault repository wired to a bare local "origin", so the push path runs for real without a
+/// network or the `gh` CLI.
+fn init_vault_repo(home: &HomeFixture) {
+    let remote = home.path.join("origin.git");
+    fixture_git(
+        &home.path,
+        &["init", "-q", "--bare", &remote.to_string_lossy()],
+    );
+
+    let dir = home.vault_dir();
+    std::fs::create_dir_all(dir.join("projects")).expect("create vault projects dir");
+    fixture_git(&dir, &["init", "-q", "-b", "main", "."]);
+    // Repo-local, not the `GIT_AUTHOR_*` env `fixture_git` sets: the commit under test is made by
+    // `vault::service` inside this process, so it never sees that env. A developer machine has a
+    // global identity and hid this; CI has none, and there `git commit` refused, leaving the branch
+    // still pointing at the seed commit and the assertion reading "seed".
+    fixture_git(&dir, &["config", "user.name", "Tendril Test"]);
+    fixture_git(&dir, &["config", "user.email", "test@tendril.invalid"]);
+    fixture_git(
+        &dir,
+        &["remote", "add", "origin", &remote.to_string_lossy()],
+    );
+    std::fs::write(dir.join("README.md"), "# vault\n").expect("write README");
+    fixture_git(&dir, &["add", "-A"]);
+    fixture_git(&dir, &["commit", "-q", "-m", "seed"]);
+    fixture_git(&dir, &["push", "-q", "-u", "origin", "main"]);
+}
+
+/// The message of the commit the export produced.
+///
+/// Read by subject rather than from `HEAD`: `push_and_create_pr_with` checks the base branch back out
+/// once the push succeeds (`vault/service.rs`), so the commit under test is left on the
+/// `vault/update-*` branch and `HEAD` is back on `main`.
+fn vault_update_commit_message(home: &HomeFixture) -> String {
+    let dir = home.vault_dir();
+    let branch = git_stdout(
+        &dir,
+        &["branch", "--list", "vault/update-*", "--format=%(refname)"],
+    );
+    let branch = branch
+        .lines()
+        .next()
+        .unwrap_or_else(|| panic!("the export must have created a vault/update-* branch"))
+        .trim();
+    git_stdout(&dir, &["log", "-1", "--format=%B", branch])
+}
+
+fn export_request() -> VaultExportRequest {
+    VaultExportRequest {
+        project_names: vec![],
+        version: "2026.09.14.101500".to_string(),
+        changelog: "a changelog line".to_string(),
+        ..Default::default()
+    }
+}
+
+/// The vault's commits are the one place [`tendril_core::git::coauthor_hooks`] cannot reach: they run
+/// in the daemon process through `git_run`, not in an agent Tendril spawned, so no `GIT_CONFIG_*`
+/// override is in effect. They carry the trailer as a `--trailer` argument instead, and this asserts
+/// the wiring rather than just the git behaviour — a `git_commit` helper that quietly stopped reading
+/// the setting would still pass a test that only ran git by hand.
+#[tokio::test]
+async fn a_configured_co_author_reaches_the_vaults_own_commits() {
+    let home = HomeFixture::new("coauthor-on");
+    home.write_config("coAuthor: 'vault-bot <vault@example.invalid>'\n");
+    init_vault_repo(&home);
+
+    let gh = stub_gh(vec![("pr create", 0, "https://github.com/acme/v/pull/1")]);
+    push_and_create_pr_with(&home.path, &export_request(), None, &gh)
+        .await
+        .expect("push must not error");
+
+    let message = vault_update_commit_message(&home);
+    assert!(
+        message.contains("Co-Authored-By: vault-bot <vault@example.invalid>"),
+        "the vault commit must carry the configured trailer, got:\n{message}"
+    );
+    assert!(
+        message.contains("a changelog line"),
+        "and the changelog body must survive the extra argument, got:\n{message}"
+    );
+}
+
+/// The default-behaviour half: an install that has not set `coAuthor` produces exactly the commit it
+/// produces today, with no trailer of any kind.
+#[tokio::test]
+async fn an_unconfigured_vault_commit_is_unchanged() {
+    let home = HomeFixture::new("coauthor-off");
+    home.write_config("");
+    init_vault_repo(&home);
+
+    let gh = stub_gh(vec![("pr create", 0, "https://github.com/acme/v/pull/1")]);
+    push_and_create_pr_with(&home.path, &export_request(), None, &gh)
+        .await
+        .expect("push must not error");
+
+    let message = vault_update_commit_message(&home);
+    assert!(
+        !message.contains("Co-Authored-By"),
+        "an unconfigured vault commit must be byte-identical to today, got:\n{message}"
+    );
+    assert!(
+        message.contains("a changelog line"),
+        "and must still be a real vault commit, got:\n{message}"
+    );
+}

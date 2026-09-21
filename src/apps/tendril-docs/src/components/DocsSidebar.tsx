@@ -37,15 +37,14 @@ function NavLink({
         onNavigate?.();
       }}
       className={cn(
-        "block rounded-field py-1 text-sm transition-colors",
-        "border-l border-border/60",
+        "flex h-7 min-w-0 items-center rounded-md px-2 text-sm transition-colors",
         active
-          ? "border-l-primary bg-accent font-medium text-foreground"
-          : "text-muted-foreground hover:border-l-muted-foreground hover:text-foreground",
+          ? "bg-secondary font-medium text-foreground"
+          : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground",
       )}
-      style={{ paddingInlineStart: `${0.75 + depth * 0.75}rem` }}
+      style={{ paddingInlineStart: `${0.5 + depth * 0.75}rem` }}
     >
-      {label}
+      <span className="truncate">{label}</span>
     </a>
   );
 }
@@ -81,10 +80,10 @@ function Section({
           aria-expanded={open}
           aria-label={`${open ? "Collapse" : "Expand"} ${section.title}`}
           onClick={() => setOpen((value) => !value)}
-          className="inline-flex size-5 shrink-0 items-center justify-center rounded-selector text-muted-foreground hover:text-foreground"
+          className="inline-flex size-5 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
         >
           <ChevronRight
-            className={cn("size-3.5 transition-transform", open && "rotate-90")}
+            className={cn("size-3.5 transition-transform duration-150", open && "rotate-90")}
             aria-hidden="true"
           />
         </button>
@@ -98,10 +97,10 @@ function Section({
             onNavigate?.();
           }}
           className={cn(
-            "flex min-w-0 flex-1 items-center gap-2 rounded-field px-1.5 py-1 text-sm font-medium transition-colors",
+            "flex min-w-0 flex-1 items-center gap-2 rounded-md px-2 py-1 text-sm font-medium transition-colors",
             activeRoute === section.route
-              ? "bg-accent text-foreground"
-              : "text-foreground/90 hover:text-foreground",
+              ? "bg-secondary text-foreground"
+              : "text-foreground/90 hover:bg-secondary/60 hover:text-foreground",
           )}
         >
           <Glyph className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
@@ -110,7 +109,7 @@ function Section({
       </div>
 
       {open && (section.pages.length > 0 || section.sections.length > 0) && (
-        <ul className="mt-0.5 ms-3.5 flex flex-col gap-0.5">
+        <ul className="ms-3.5 my-0.5 flex flex-col gap-0.5 border-l border-border/60 ps-2.5">
           {section.pages.map((page) => (
             <li key={page.route}>
               <NavLink

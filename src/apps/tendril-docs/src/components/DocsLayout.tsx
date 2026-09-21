@@ -55,7 +55,7 @@ function PageLink({ page, direction }: { page: DocPageModel; direction: "previou
         navigate(page.route);
       }}
       className={cn(
-        "flex flex-col gap-0.5 rounded-box border border-border px-4 py-3 transition-colors hover:bg-accent",
+        "flex flex-col gap-0.5 rounded-box border border-border px-4 py-3 transition-colors hover:bg-secondary/60",
         direction === "next" && "items-end text-right",
       )}
     >
@@ -148,7 +148,7 @@ export function DocsLayout({
             aria-label={drawerOpen ? "Close navigation" : "Open navigation"}
             aria-expanded={drawerOpen}
             onClick={() => setDrawerOpen((value) => !value)}
-            className="inline-flex size-8 items-center justify-center rounded-field text-muted-foreground hover:bg-accent hover:text-accent-foreground lg:hidden"
+            className="inline-flex size-8 items-center justify-center rounded-field text-muted-foreground hover:bg-secondary/60 hover:text-foreground lg:hidden"
           >
             {drawerOpen ? (
               <X className="size-4" aria-hidden="true" />
@@ -175,7 +175,7 @@ export function DocsLayout({
           <button
             type="button"
             onClick={() => setSearchOpen(true)}
-            className="inline-flex items-center gap-2 rounded-field border border-border px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+            className="inline-flex items-center gap-2 rounded-field border border-border px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
           >
             <Search className="size-4" aria-hidden="true" />
             <span className="hidden sm:inline">Search</span>

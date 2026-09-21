@@ -90,7 +90,7 @@ describe("SettingsView sidebar", () => {
       "Plans",
       "Appearance",
       "Projects",
-      "Promptwares",
+      "Workflow Agents",
       "Levels",
       "Notifications",
       "Security & Tunneling",
@@ -109,7 +109,7 @@ describe("SettingsView sidebar", () => {
       "Appearance",
       "Projects",
       "Team Vault",
-      "Promptwares",
+      "Workflow Agents",
       "Levels",
       "Notifications",
       "Security & Tunneling",
@@ -190,19 +190,45 @@ describe("SettingsView sidebar", () => {
     expect(screen.getByText("Daemon Diagnostics")).toBeInTheDocument();
   });
 
-  /** `ConfigYamlUiHelper.OpenOrNavigate`: on the desktop shell it opens the file itself. */
-  it("opens config.yaml from the action row without changing the selection", async () => {
+  /**
+   * `ConfigYamlUiHelper.OpenOrNavigate`, taking the *navigate* arm rather than the shell-out.
+   *
+   * V2 used to hand the path to the OS, on the reasoning that V2 is always the desktop shell — which
+   * made the app's own config button open TextEdit. `ConfigEditorView` is V1's `ConfigEditorApp`, so
+   * the row now goes there. `openPath` is still spied on because the point of the assertion is that
+   * nothing leaves the app any more.
+   */
+  it("opens the config editor from the action row without changing the selection", async () => {
     await renderSettings();
 
     await click("settings-row-open-config");
 
-    expect(openPath).toHaveBeenCalledWith("/home/user/.tendril/config.yaml");
-    // The action row never becomes the selection, so Coding Agent is still showing.
-    expect(screen.getByTestId("coding-agent-card")).toBeInTheDocument();
+    expect(await screen.findByTestId("config-editor-view")).toBeInTheDocument();
+    expect(openPath).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("coding-agent-card")).not.toBeInTheDocument();
+    // V1 passes `false` for this row's selected, and the content pane it opens is a branch rather
+    // than a section — so, exactly as while Add Project is open, no section row is highlighted.
+    const selected = Array.from(
+      screen.getByTestId("settings-sidebar").querySelectorAll('[aria-selected="true"]'),
+    );
+    expect(selected).toEqual([]);
     expect(screen.getByTestId("settings-row-open-config")).toHaveAttribute(
       "aria-selected",
       "false",
     );
+  });
+
+  /** And the way back: picking any section leaves the editor, exactly as it leaves Add Project. */
+  it("leaves the config editor when a section is selected", async () => {
+    await renderSettings();
+
+    await click("settings-row-open-config");
+    expect(await screen.findByTestId("config-editor-view")).toBeInTheDocument();
+
+    await click("settings-row-advanced");
+
+    expect(screen.queryByTestId("config-editor-view")).not.toBeInTheDocument();
+    expect(screen.getByTestId("advanced-settings-card")).toBeInTheDocument();
   });
 
   describe("the expandable Projects row", () => {
@@ -216,10 +242,14 @@ describe("SettingsView sidebar", () => {
 
     const mockAddProject = () => {
       order = [];
-      const createProject = vi.spyOn(bridge, "createProject").mockImplementation(async () => {
-        order.push("createProject");
-        return undefined;
-      });
+      const createProject = vi
+        .spyOn(bridge, "createProject")
+        .mockImplementation(async (request) => {
+          order.push("createProject");
+          // The daemon answers with the repositories as stored, which is what the blade hands to
+          // `AddProject`. Nothing here clones, so they come back as sent.
+          return { name: request.name, repos: (request.repos ?? []).map((path) => ({ path })) };
+        });
       const startJob = vi.spyOn(bridge, "startJob").mockImplementation(async () => {
         order.push("startJob");
         return { jobId: "00042", status: "Started" };
@@ -315,6 +345,40 @@ describe("SettingsView sidebar", () => {
      * real job type and `OnboardingWizard` had been starting it all along, so the blade now runs it
      * too, and the exit moved to the Finish button at the end of the harness step.
      */
+    it("refuses an unrecognised repository path and sends a remote URL to be cloned", async () => {
+      const { createProject } = mockAddProject();
+
+      await renderSettings(withProjects(projects));
+      await openAddProject();
+
+      // V1 `ProjectRepoPickerView.AddAsync`'s refusal. Without it a bare word is a repository path.
+      fireEvent.change(screen.getByLabelText("Repository URL or Local Path"), {
+        target: { value: "newthing" },
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /Add Repository/ }));
+      });
+      expect(screen.getByTestId("add-project-repo-error")).toHaveTextContent(
+        "Invalid repository path.",
+      );
+
+      // A remote is accepted and its name seeds the project name, `.git` stripped, the same way a
+      // local path's leaf does. The daemon clones it and stores the clone's path.
+      const url = "https://github.com/Ivy-Interactive/newthing.git";
+      fireEvent.change(screen.getByLabelText("Repository URL or Local Path"), {
+        target: { value: url },
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: /Add Repository/ }));
+      });
+      expect(screen.getByLabelText("Name")).toHaveValue("newthing");
+
+      await act(async () => {
+        fireEvent.click(screen.getByRole("button", { name: "Create Project" }));
+      });
+      expect(createProject).toHaveBeenCalledWith({ name: "newthing", repos: [url] });
+    });
+
     it("creates the project, then hands the setup run to the AddProject job", async () => {
       const { createProject, startJob, getConfig } = mockAddProject();
 
@@ -405,9 +469,10 @@ describe("SettingsView sidebar", () => {
     });
 
     /**
-     * V1 does not roll back a project whose promptware run failed to start, and V2 cannot: the only
-     * project-removing call is `DELETE /api/projects/:name`, which the bridge does not expose. So a
-     * failed hand-off goes forward to the harness step with the project registered, not back.
+     * V1 does not roll back a project whose promptware run failed to start, and V2 does not either:
+     * `DELETE /api/projects/:name` exists and the bridge reaches it, but a failed hand-off is not a
+     * reason to delete a project the operator asked for. So this goes forward to the harness step
+     * with the project registered, not back.
      */
     it("keeps the registered project when the setup job cannot start", async () => {
       const { createProject, getConfig } = mockAddProject();

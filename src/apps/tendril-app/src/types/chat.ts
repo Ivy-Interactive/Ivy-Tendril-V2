@@ -120,6 +120,18 @@ export interface ChatState {
   selectedEffort: string;
   queuedItems: ChatQueuedItem[];
   isGenerating: boolean;
+  /**
+   * Whether a stop has been asked for on the active session and the turn has not ended yet.
+   *
+   * V1 needs no equivalent: `ChatWidget.handleCancelStream` clears its own `optimisticStreaming`
+   * and the stop button disappears on the same tick. Here the stop is a round trip to the daemon
+   * (`cancel_session` only signals the cancellation token, and the agent process keeps writing
+   * until it notices), so without this the button sat there looking unpressed for as long as the
+   * agent took to die - which is what made people press it twice.
+   *
+   * Like {@link isGenerating}, this only ever describes the *active* session.
+   */
+  isCancelling: boolean;
   isLoading: boolean;
   error: string | null;
   inProgressAnswers: Record<string, InProgressQuestionAnswers>; // messageId -> { questionId: answer[] }

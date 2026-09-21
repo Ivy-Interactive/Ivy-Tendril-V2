@@ -1,9 +1,11 @@
 import React from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { Button, Callout, Input, Label, Switch } from "@ivy-interactive/components/ui";
-import { ClipboardCopy, ExternalLink, Loader2 } from "lucide-react";
+import { copyToClipboard } from "@ivy-interactive/components";
+import { Button, Callout, Input, Label, Spinner, Switch } from "@ivy-interactive/components/ui";
+import { ClipboardCopy, Download, ExternalLink } from "lucide-react";
 import {
   tunnelApi,
+  type CloudflaredInstallState,
   type TunnelApi,
   type TunnelSnapshot,
   type TunnelStatus,
@@ -40,9 +42,13 @@ import { SettingsSection } from "./fields";
  *
  * Two other departures from V1, both because V2 is not V1:
  *
- * - **No install prompt.** V1 offers to download `cloudflared` from GitHub and run it. Here a missing
- *   binary is the daemon's `409` and its message — which names the package-manager command and the
- *   release asset — is rendered verbatim. See `tendril_core::tunnel::installer`.
+ * - **The install prompt downloads into the daemon, not into this app.** V1 offers to fetch
+ *   `cloudflared` from GitHub and does it in-process, because there the app *is* the server. Here
+ *   {@link CloudflaredInstallBlock} posts to the daemon, which downloads, checks the bytes against the
+ *   SHA-256 GitHub published for that asset, and installs into its own `tools/` — the daemon is the
+ *   machine that has to run the binary and may not be this one. It only ever happens on a press, and a
+ *   refusal or a failure falls back to the manual instructions the daemon's `409` carries. See
+ *   `tendril_core::tunnel::installer`.
  * - **Polling instead of `StatusChanged`.** V1 subscribes to an in-process event. The daemon is a
  *   separate process (and may be a separate machine), so a `connecting` tunnel is re-read every
  *   {@link TUNNEL_POLL_INTERVAL_MS}ms and the poll stops when the status settles or the section unmounts.
@@ -77,11 +83,210 @@ export const SecurityTunnelingSection: React.FC<SecurityTunnelingSectionProps> =
   >
     <div className="space-y-6">
       <SessionProtectionBlock api={api} />
+      {/* Above both tunnels rather than inside either: they run the same `cloudflared` from the same
+          place, so two install blocks would be two buttons racing for one file. It renders nothing at
+          all once a binary is found, which is the common case. */}
+      <CloudflaredInstallBlock api={api} />
       <TunnelBlock api={api} kind="full" />
       <TunnelBlock api={api} kind="share" />
     </div>
   </SettingsSection>
 );
+
+/* -------------------------------------------------------------------------------------------------
+ * cloudflared — `CloudflaredInstaller`
+ * ------------------------------------------------------------------------------------------------- */
+
+/** How often a running install is re-read. Matches the tunnel poll, so the two feel the same. */
+const INSTALL_POLL_INTERVAL_MS = 700;
+
+/** Phases where the daemon is mid-install and Cancel is the only useful control. */
+const RUNNING_PHASES = ["resolving", "downloading", "verifying", "installing"];
+
+const formatMegabytes = (bytes: number): string => `${(bytes / 1_048_576).toFixed(1)} MB`;
+
+/**
+ * Port of V1's install prompt in `ShareTunnelModal` plus `CloudflaredInstaller.EnsureInstalledAsync`.
+ *
+ * Renders nothing when `cloudflared` is already there, which is why it can sit above both tunnels
+ * without being noise for anyone who has it. When it is missing, the offer to fetch it is the primary
+ * action and the manual instructions are kept underneath as the fallback — they are good instructions,
+ * and they are the only route when the download is refused, fails, or the operator would rather use
+ * their package manager.
+ *
+ * The download runs in the daemon. This component only starts it, polls it and offers a way out.
+ */
+const CloudflaredInstallBlock: React.FC<{ api: TunnelApi }> = ({ api }) => {
+  const [state, setState] = React.useState<CloudflaredInstallState | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [isBusy, setIsBusy] = React.useState(false);
+
+  const phase = state?.progress?.phase ?? "idle";
+  const isRunning = RUNNING_PHASES.includes(phase);
+
+  // Read on mount, then keep reading only while something is running. A machine that already has
+  // cloudflared polls once and stops, which is the state almost every user is in.
+  React.useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+
+    const tick = async () => {
+      try {
+        const next = await api.getCloudflaredInstallState();
+        if (cancelled) return;
+        setState(next);
+        if (RUNNING_PHASES.includes(next.progress?.phase ?? "idle")) {
+          timer = setTimeout(() => void tick(), INSTALL_POLL_INTERVAL_MS);
+        }
+      } catch {
+        // A daemon that is not up yet is not this block's problem to report: the tunnel blocks below
+        // already surface a disconnected daemon, and two copies of that message would be noise.
+        if (!cancelled) setState(null);
+      }
+    };
+
+    void tick();
+    return () => {
+      cancelled = true;
+      if (timer !== undefined) clearTimeout(timer);
+    };
+  }, [api, phase]);
+
+  const handleInstall = async () => {
+    setIsBusy(true);
+    setError(null);
+    try {
+      setState(await api.installCloudflared());
+    } catch (err) {
+      // The daemon's own message: it names what went wrong and ends with "install it yourself", which
+      // is exactly the fallback rendered below.
+      setError(describeBridgeError(err));
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  const handleCancel = async () => {
+    setIsBusy(true);
+    try {
+      setState(await api.cancelCloudflaredInstall());
+    } catch (err) {
+      setError(describeBridgeError(err));
+    } finally {
+      setIsBusy(false);
+    }
+  };
+
+  // Nothing to say while the state is unknown, or once a binary has been found.
+  if (state === null || state.installed) return null;
+
+  const progress = state.progress ?? null;
+  const total = progress?.totalBytes ?? null;
+  const percent =
+    total !== null && total > 0 && progress !== null
+      ? Math.min(100, Math.round((progress.downloadedBytes / total) * 100))
+      : null;
+  const failure = error ?? (phase === "failed" ? (progress?.error ?? null) : null);
+
+  return (
+    <section className="space-y-3" data-testid="cloudflared-install">
+      <div>
+        <h3 className="text-sm font-semibold text-foreground">cloudflared</h3>
+        <p className="text-xs text-muted-foreground">
+          Both tunnels below run Cloudflare&apos;s <code>cloudflared</code>. It is not installed on
+          the machine running Tendril yet.
+        </p>
+      </div>
+
+      {/* A configured `shareTunnel.binaryPath` that does not resolve is not a missing install, so it
+          gets the operator's own message and no Install button: fetching a second copy into `tools/`
+          would not even be used, because the override wins. */}
+      {state.configuredPathError !== null && state.configuredPathError !== undefined ? (
+        <Callout variant="error" title="Configured path" data-testid="cloudflared-configured-error">
+          <p>{state.configuredPathError}</p>
+        </Callout>
+      ) : (
+        <>
+          {isRunning && (
+            <Callout variant="info" title="Installing" data-testid="cloudflared-installing">
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <Spinner size="md" aria-hidden="true" />
+                  <span data-testid="cloudflared-progress">
+                    {phase === "downloading"
+                      ? percent !== null
+                        ? `Downloading ${state.assetName} — ${percent}%`
+                        : `Downloading ${state.assetName} — ${formatMegabytes(
+                            progress?.downloadedBytes ?? 0,
+                          )}`
+                      : phase === "verifying"
+                        ? "Checking the download against Cloudflare's published SHA-256"
+                        : phase === "installing"
+                          ? "Installing"
+                          : "Looking up the latest release"}
+                  </span>
+                </div>
+                {/* Cancellation is a first-class control, not a hidden escape: this is a ~40 MB
+                    transfer and a user who changed their mind should not have to wait it out. */}
+                <Button
+                  variant="outline"
+                  onClick={() => void handleCancel()}
+                  disabled={isBusy}
+                  data-testid="cloudflared-cancel"
+                >
+                  Cancel
+                </Button>
+              </div>
+            </Callout>
+          )}
+
+          {phase === "cancelled" && (
+            <Callout variant="info" title="Cancelled" data-testid="cloudflared-cancelled">
+              <p className="text-xs">
+                The download was cancelled and nothing was installed. You can start it again, or
+                install cloudflared yourself.
+              </p>
+            </Callout>
+          )}
+
+          {failure !== null && (
+            <Callout variant="error" title="Install failed" data-testid="cloudflared-error">
+              <p>{failure}</p>
+            </Callout>
+          )}
+
+          {!isRunning && state.downloadable && (
+            <Button
+              onClick={() => void handleInstall()}
+              disabled={isBusy}
+              data-testid="cloudflared-install-button"
+            >
+              <Download className="size-4" aria-hidden="true" />
+              {phase === "failed" || phase === "cancelled" ? "Try again" : "Install cloudflared"}
+            </Button>
+          )}
+
+          {/* The manual route, kept rather than replaced. It is the fallback for a failed or refused
+              download, and the supported update path for anyone who would rather own the binary
+              themselves — which is also why a copy on PATH still wins over anything fetched here. */}
+          <details className="text-xs text-muted-foreground" data-testid="cloudflared-manual">
+            <summary className="cursor-pointer">Install it yourself instead</summary>
+            <div className="space-y-1 pt-2">
+              <p>
+                macOS: <code>brew install cloudflared</code>. Linux: see{" "}
+                <code>https://pkg.cloudflare.com</code>.
+              </p>
+              <p>
+                Or download <code>{state.assetName}</code> from <code>{state.downloadUrl}</code> and
+                save it as <code>{state.expectedPath}</code>.
+              </p>
+            </div>
+          </details>
+        </>
+      )}
+    </section>
+  );
+};
 
 /* -------------------------------------------------------------------------------------------------
  * Session Protection — `SecuritySetupView`
@@ -345,7 +550,6 @@ const TunnelBlock: React.FC<{ api: TunnelApi; kind: BlockKind }> = ({ api, kind 
   const copy = COPY[kind];
   const [snapshot, setSnapshot] = React.useState<TunnelSnapshot | null>(null);
   const [error, setError] = React.useState<string | null>(null);
-  const [needsPassword, setNeedsPassword] = React.useState(false);
   const [isBusy, setIsBusy] = React.useState(false);
 
   const read = React.useCallback(
@@ -390,7 +594,6 @@ const TunnelBlock: React.FC<{ api: TunnelApi; kind: BlockKind }> = ({ api, kind 
   const handleActivate = async () => {
     setIsBusy(true);
     setError(null);
-    setNeedsPassword(false);
     // V1 sets `Connecting` before it awaits — a tunnel takes long enough that a dead-looking button is
     // worse than an optimistic one.
     setSnapshot((live) => ({ ...(live ?? DISABLED_SNAPSHOT), status: "connecting" }));
@@ -405,9 +608,11 @@ const TunnelBlock: React.FC<{ api: TunnelApi; kind: BlockKind }> = ({ api, kind 
           : { ...live, status: "disabled", url: null, shareToken: null, error: null },
       );
       const code = bridgeErrorCode(err);
-      // The one refusal that is a decision rather than a failure. Its message already says what to do,
-      // so it is shown verbatim and the block adds a pointer to the form above it.
-      setNeedsPassword(code === "TUNNEL_PASSWORD_REQUIRED");
+      // Two of these are decisions or preconditions rather than failures, and the daemon writes both
+      // messages to be read by a human: `TUNNEL_PASSWORD_REQUIRED` already ends with what to do, and
+      // `TUNNEL_PRECONDITION` names the missing binary and how to get it. They are shown verbatim, with
+      // no "Failed to..." prefix and nothing appended — see the note on `tendril_core::tunnel::
+      // TunnelError` for why remediation is the daemon's to word and not this pane's.
       setError(
         code === "TUNNEL_PASSWORD_REQUIRED" || code === "TUNNEL_PRECONDITION"
           ? describeBridgeError(err)
@@ -434,7 +639,7 @@ const TunnelBlock: React.FC<{ api: TunnelApi; kind: BlockKind }> = ({ api, kind 
   const handleCopy = async () => {
     if (url === null) return;
     try {
-      await navigator.clipboard.writeText(url);
+      await copyToClipboard(url);
       notificationsStore.notifySuccess("URL Copied", copy.copiedToast);
     } catch (err) {
       setError(`Could not copy the URL: ${describeBridgeError(err)}`);
@@ -480,14 +685,7 @@ const TunnelBlock: React.FC<{ api: TunnelApi; kind: BlockKind }> = ({ api, kind 
           warning variants, so it is both the shared component and the accessible one. */}
       {shownError !== null && (
         <Callout variant="error" title="Error" data-testid={`${copy.testId}-error`}>
-          <div className="space-y-1">
-            <p>{shownError}</p>
-            {needsPassword && (
-              <p className="text-xs">
-                Set one under <strong>Session Protection</strong> above, then activate the tunnel.
-              </p>
-            )}
-          </div>
+          <p>{shownError}</p>
         </Callout>
       )}
 
@@ -499,7 +697,7 @@ const TunnelBlock: React.FC<{ api: TunnelApi; kind: BlockKind }> = ({ api, kind 
         >
           <div className="space-y-3">
             <div className="flex items-center gap-2">
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              <Spinner size="md" aria-hidden="true" />
               <span>{copy.startingBody}</span>
             </div>
             {deactivateButton}

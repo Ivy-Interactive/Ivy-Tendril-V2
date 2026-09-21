@@ -55,6 +55,9 @@ fn error_response(err: TunnelError) -> (StatusCode, Json<serde_json::Value>) {
             StatusCode::CONFLICT
         }
         TunnelError::PasswordRequired => StatusCode::PRECONDITION_REQUIRED,
+        // Same family as a missing binary: the request was fine and the daemon is healthy, but the
+        // caller's environment (network, platform, a read-only tools directory) did not cooperate.
+        TunnelError::InstallFailed { .. } => StatusCode::CONFLICT,
         TunnelError::NoOrigin(_) => StatusCode::SERVICE_UNAVAILABLE,
         _ => StatusCode::INTERNAL_SERVER_ERROR,
     };
@@ -93,19 +96,80 @@ pub async fn stop_share_tunnel(State(state): State<Arc<AppState>>) -> impl IntoR
     Json(service(&state).stop().await)
 }
 
-/// `GET /api/tunnel/share/install` — port of `CheckInstalledAsync`, widened to say what to install.
+/// `GET /api/tunnel/share/install` — port of `CheckInstalledAsync`, widened to say what to install and
+/// how a running install is getting on.
 ///
 /// Serves both tunnels: they run the same `cloudflared` from the same place, so a second route would be
 /// the same answer under a different name.
 ///
-/// There is deliberately no `POST` counterpart: the original's `InstallAsync` downloads an unpinned
-/// binary from GitHub and runs it. See [`tendril_core::tunnel::installer`].
+/// This is also the progress endpoint for [`install_cloudflared`]. Polling an existing read rather than
+/// adding a stream keeps the client shape the tunnel status already uses, and the pane is polling the
+/// tunnel anyway.
 pub async fn get_cloudflared_install_state(
     State(state): State<Arc<AppState>>,
 ) -> impl IntoResponse {
-    Json(installer::install_state(
+    Json(installer::state_with_progress(
         &state.tendril_home,
         configured_binary(&state).as_deref(),
+        Some(registry::install_for_home(&state.tendril_home).as_ref()),
+    ))
+}
+
+/// `POST /api/tunnel/share/install` — port of the original's `EnsureInstalledAsync`/`InstallAsync`.
+///
+/// Downloads the release asset the GitHub API describes, checks it against the SHA-256 that API
+/// published, and installs it into `$TENDRIL_HOME/tools`. See [`tendril_core::tunnel::installer`] for
+/// why the download exists at all and what makes it defensible.
+///
+/// **Only ever reached because a user pressed Install.** Nothing in the daemon calls this on start, on a
+/// status read or as a side effect of starting a tunnel — a tunnel with no binary still fails with
+/// [`TunnelError::NotInstalled`] and its manual instructions.
+///
+/// Returns `202 Accepted` with the current state: the download is a background task, and the caller
+/// watches it through the `GET`. A second `POST` while one is in flight is a no-op rather than a second
+/// download, so a double-click is harmless.
+pub async fn install_cloudflared(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    // An operator-configured `binaryPath` is a statement about which binary to use. Fetching a
+    // different one into `tools/` would not even be picked up — `resolve_binary` honours the override —
+    // so this is refused rather than silently doing nothing useful.
+    if let Some(configured) = configured_binary(&state) {
+        if let Err(err) = installer::resolve_binary(&state.tendril_home, Some(&configured)) {
+            return error_response(err).into_response();
+        }
+    }
+
+    let install = registry::install_for_home(&state.tendril_home);
+    let home = state.tendril_home.clone();
+    let spawned = Arc::clone(&install);
+    tokio::spawn(async move {
+        spawned
+            .run(&home, &installer::InstallOptions::default())
+            .await;
+    });
+
+    (
+        StatusCode::ACCEPTED,
+        Json(installer::state_with_progress(
+            &state.tendril_home,
+            configured_binary(&state).as_deref(),
+            Some(install.as_ref()),
+        )),
+    )
+        .into_response()
+}
+
+/// `DELETE /api/tunnel/share/install` — cancels a running install.
+///
+/// A ~40 MB download with no way out is as bad as one with no progress bar. Cancelling removes the
+/// partial file, so it can never leave a truncated binary where the resolver would find it. Cancelling
+/// when nothing is running is not an error: the caller wanted no install running, and there is none.
+pub async fn cancel_cloudflared_install(State(state): State<Arc<AppState>>) -> impl IntoResponse {
+    let install = registry::install_for_home(&state.tendril_home);
+    install.cancel();
+    Json(installer::state_with_progress(
+        &state.tendril_home,
+        configured_binary(&state).as_deref(),
+        Some(install.as_ref()),
     ))
 }
 

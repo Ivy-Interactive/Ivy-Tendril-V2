@@ -1,6 +1,6 @@
 import * as React from "react";
-import { bridge } from "../../api/bridge";
 import { describeBridgeError, type PlanDetail, type PlanSummary } from "../../types/api";
+import { plansStore } from "../../state/plansStore";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 export interface ResetToDraftDialogProps {
@@ -18,6 +18,12 @@ export interface ResetToDraftDialogProps {
  * State change and cleanup happen in one request, so the UI cannot leave a
  * half-reset plan behind. A Completed or Skipped plan — or one a job still holds
  * — is refused with a 409, whose message this dialog renders in place.
+ *
+ * The write goes through `plansStore`, as `DeletePlanDialog`'s four answers do, so the row is back
+ * at Draft in `state.plans` the moment the daemon agrees: that is what takes the plan out of the
+ * Review queue, the sidebar list and the nav badge without waiting for a list round trip. Calling
+ * `bridge.resetPlan` directly left the store believing the plan was still in Review, which is the
+ * "does not get removed instantly" complaint on this path.
  */
 export function ResetToDraftDialog({ isOpen, onClose, plan, onReset }: ResetToDraftDialogProps) {
   const [isBusy, setIsBusy] = React.useState(false);
@@ -34,7 +40,7 @@ export function ResetToDraftDialog({ isOpen, onClose, plan, onReset }: ResetToDr
     setIsBusy(true);
     setError(null);
     try {
-      await bridge.resetPlan(plan.id);
+      await plansStore.resetPlanOptimistic(plan.id);
       onReset?.(plan.id);
       onClose();
     } catch (err) {

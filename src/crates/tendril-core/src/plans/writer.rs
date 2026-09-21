@@ -2,6 +2,7 @@ use crate::error::{Result, TendrilError};
 use crate::fs_lock::{write_atomic, FileLock};
 use crate::models::{PlanFile, PlanStatus, PlanVerificationEntry, PlanYaml, VerificationStatus};
 use crate::plans::helpers::{allocate_plan_id, to_safe_title};
+use crate::plans::orphans::{PlanFolderGuard, CREATED_BY_JOB_KEY};
 use crate::plans::reader::read_plan_file;
 use chrono::Utc;
 use std::path::Path;
@@ -83,7 +84,65 @@ pub struct CreatePlanOptions {
     pub chat_session_id: Option<String>,
 }
 
+impl CreatePlanOptions {
+    /// The options for a plan with nothing but a title and a project, for a caller that fills the
+    /// rest in by field.
+    ///
+    /// Exists so that adding an option does not mean editing every construction site: there are four
+    /// production callers and dozens in tests, and each new field was previously a mechanical edit to
+    /// all of them.
+    pub fn new(title: impl Into<String>, project: impl Into<String>) -> Self {
+        Self {
+            title: title.into(),
+            project: project.into(),
+            level: None,
+            initial_prompt: None,
+            source_url: None,
+            execution_profile: None,
+            priority: None,
+            repos: Vec::new(),
+            verifications: Vec::new(),
+            depends_on: Vec::new(),
+            related_plans: Vec::new(),
+            chat_session_id: None,
+        }
+    }
+}
+
+/// Creates a plan folder, its scaffold and its `plan.yaml`, and returns the plan as read back.
+///
+/// **All or nothing.** Everything after the folder is created is covered by a [`PlanFolderGuard`], so
+/// a failure to serialise, lock, write or read back removes the folder before returning `Err` rather
+/// than leaving a folder with no plan in it. Before this, a `?` on the write left a bare directory
+/// and a `?` on the read-back left a directory plus a `plan.yaml` that nothing had validated — both
+/// of which the plan list renders as a real plan.
+///
+/// The id is allocated by scanning `plans_dir` for the highest existing prefix, so a create that
+/// rolls back leaves no gap: the next call allocates the same id again. That also means two
+/// concurrent creates can race for one id — the loser fails on the `already exists` check below and
+/// its guard is never armed, so it leaves nothing behind. Serialising them properly would need a lock
+/// over the whole directory; the honest failure is the cheaper correct answer.
 pub fn create_plan(plans_dir: &Path, opts: CreatePlanOptions) -> Result<PlanFile> {
+    create_plan_for_job(plans_dir, opts, None)
+}
+
+/// [`create_plan`], recording in `plan.yaml` which job's run is making this plan.
+///
+/// A separate entry point rather than another field on [`CreatePlanOptions`], because the breadcrumb
+/// concerns one caller in three — the agent-facing CLI, MCP and server creates — and threading it
+/// through the options struct would have meant a mechanical edit at every construction site in the
+/// workspace for a value all but three of them pass as `None`.
+///
+/// The point of writing it here is timing. A `CreatePlan` run makes its plan in two steps, and the
+/// job only learns which plan is its own when the agent reports the id back in between; an agent
+/// killed inside that window leaves a folder nothing can attribute, which is exactly how the
+/// operator's plans 00003 and 00004 survived a stop-all that was meant to clean up after itself. The
+/// association has to be written by the command that makes the folder. See [`crate::plans::orphans`].
+pub fn create_plan_for_job(
+    plans_dir: &Path,
+    opts: CreatePlanOptions,
+    created_by_job: Option<&str>,
+) -> Result<PlanFile> {
     std::fs::create_dir_all(plans_dir)?;
 
     let id = allocate_plan_id(plans_dir)?;
@@ -99,9 +158,22 @@ pub fn create_plan(plans_dir: &Path, opts: CreatePlanOptions) -> Result<PlanFile
     }
 
     std::fs::create_dir_all(&plan_folder)?;
+    // Armed the instant the folder exists and disarmed only on the last line, so every `?` between
+    // here and the return rolls the folder back -- including any added later.
+    let mut rollback = PlanFolderGuard::arm(plans_dir, &plan_folder);
     std::fs::create_dir_all(plan_folder.join("Revisions"))?;
     std::fs::create_dir_all(plan_folder.join("Worktrees"))?;
     std::fs::create_dir_all(plan_folder.join("Artifacts"))?;
+
+    let mut extra = std::collections::BTreeMap::new();
+    if let Some(job_id) = created_by_job.map(str::trim) {
+        if !job_id.is_empty() {
+            extra.insert(
+                CREATED_BY_JOB_KEY.to_string(),
+                serde_yaml::Value::String(job_id.to_string()),
+            );
+        }
+    }
 
     let plan_yaml = PlanYaml {
         schema_version: crate::models::CURRENT_SCHEMA_VERSION,
@@ -126,9 +198,11 @@ pub fn create_plan(plans_dir: &Path, opts: CreatePlanOptions) -> Result<PlanFile
         recommendations: None,
         chat_session_id: opts.chat_session_id,
         allocated_ports: None,
-        extra: std::collections::BTreeMap::new(),
+        extra,
     };
 
     write_plan_yaml(&plan_folder, &plan_yaml)?;
-    read_plan_file(&plan_folder)
+    let plan_file = read_plan_file(&plan_folder)?;
+    rollback.disarm();
+    Ok(plan_file)
 }

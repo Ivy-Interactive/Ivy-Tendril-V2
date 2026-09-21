@@ -49,3 +49,9 @@ Thumbs.db
 
 # Local scratch plans
 .plan/
+/.agents/
+
+# Throwaway probe scripts. These land inside a package root, so an uncommitted one
+# fails `pnpm check` on formatting for everyone until it is cleaned up -- which is a
+# confusing way to learn that somebody left a scratch file behind.
+.tmp-*/

@@ -3,8 +3,8 @@ import { RefreshCw } from "lucide-react";
 import { Button, Callout, Switch } from "@ivy-interactive/components/ui";
 import { bridge } from "../../api/bridge";
 import { describeBridgeError } from "../../types/api";
-import { DialogShell } from "./DialogShell";
-import { ALERT_CLASS, SELECT_FIELD_CLASS } from "./fieldStyles";
+import { DialogShell, DialogShortcutHint } from "./DialogShell";
+import { SELECT_FIELD_CLASS } from "./selectField";
 
 export interface AutoAcceptSettingsDialogProps {
   isOpen: boolean;
@@ -114,6 +114,12 @@ export function AutoAcceptSettingsDialog({
     }
   };
 
+  // `ConfirmDialog`'s arming discipline, for the same reason it has one: the chord and its key cap
+  // must agree with the button. Here the gate is not merely cosmetic — while the config read is
+  // still in flight the two controls hold their defaults rather than the saved settings, so a
+  // chord that fired through `isLoading` would write `false`/15 over whatever the operator had.
+  const saveArmed = !isSaving && !isLoading;
+
   return (
     <DialogShell
       isOpen={isOpen}
@@ -121,6 +127,11 @@ export function AutoAcceptSettingsDialog({
       title="Auto-Accept Settings"
       testId="auto-accept-settings-dialog"
       initialFocusRef={switchRef}
+      // The dialog's one mutation, so it is the primary the chord names. `Check Now` in the body is
+      // a read that imports issues and is deliberately left on the mouse: it is not this dialog's
+      // answer, and V1 does not treat it as one either.
+      shortcut="Ctrl+Enter"
+      onShortcut={saveArmed ? () => void handleSave() : undefined}
       footer={
         <>
           <Button
@@ -137,6 +148,7 @@ export function AutoAcceptSettingsDialog({
             disabled={isSaving || isLoading}
           >
             {isSaving ? "Saving…" : "Save"}
+            {saveArmed && <DialogShortcutHint shortcut="Ctrl+Enter" />}
           </Button>
         </>
       }
@@ -201,11 +213,7 @@ export function AutoAcceptSettingsDialog({
         </Callout.Success>
       )}
 
-      {error && (
-        <div role="alert" className={ALERT_CLASS}>
-          {error}
-        </div>
-      )}
+      {error && <Callout.Error className="mt-4">{error}</Callout.Error>}
     </DialogShell>
   );
 }

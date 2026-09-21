@@ -1,10 +1,16 @@
 import React from "react";
-import { ArrowLeft, ArrowRight, Loader2, Plus, X } from "lucide-react";
-import { Button, Callout, Input } from "@ivy-interactive/components/ui";
+import { ArrowLeft, ArrowRight, Plus, X } from "lucide-react";
+import { Button, Callout, Input, Spinner } from "@ivy-interactive/components/ui";
 import { jobsStore } from "../../state/jobsStore";
 import { describeBridgeError } from "../../types/api";
 import type { ProjectEntry } from "./projectConfig";
 import { SaveError, SettingsSection, SubSection, TextField } from "./fields";
+import {
+  classifyRepoPath,
+  extractRepoName,
+  isValidRepoPath,
+  normalizeRepoPath,
+} from "../onboarding/validation";
 
 /**
  * `Apps/Settings/Blades/AddProjectBladeView.cs`, which is what the "Add Project" sub-item under the
@@ -26,10 +32,12 @@ import { SaveError, SettingsSection, SubSection, TextField } from "./fields";
  *   into "Create Project" (watch it here) and "Create in Background" (hand it over and close), which
  *   is what V1's two buttons amount to.
  * - **Cancelling after the agent step does not un-create the project.** V1's `RemoveCommittedProject`
- *   edits `config.Settings.Projects` in memory and saves; V2's only project-removing call is
- *   `DELETE /api/projects/:name`, which the Tauri bridge does not expose (see the note in
- *   `ProjectSettingsView`). So the step-1 Back button is gone once the project is registered, and the
- *   copy says the project exists rather than pretending it can be rolled back.
+ *   edits `config.Settings.Projects` in memory and saves, silently. V2's removal is
+ *   `DELETE /api/projects/:name`, and it is deliberately not run from here: a Cancel that deleted a
+ *   project the setup agent may already have cloned repositories into is a destructive act behind a
+ *   non-destructive word. So the step-1 Back button is gone once the project is registered, the copy
+ *   says the project exists rather than pretending it can be rolled back, and Remove Project on the
+ *   project's own screen - with its confirm - is where a removal goes.
  *
  * The name check is `InputSanitizer.DescribeProjectNameError`'s two refusals plus V1's
  * case-insensitive duplicate check.
@@ -45,7 +53,8 @@ export interface AddProjectViewProps {
    * precondition `AddProject`'s promptware opens with ("Run `tendril project list` to confirm the
    * project exists"), so the job is only started after this settles.
    */
-  onCreate: (name: string, repos: string[]) => Promise<void>;
+  /** Writes the project row and answers with the repository paths that were actually stored. */
+  onCreate: (name: string, repos: string[]) => Promise<string[]>;
   /** The freshly written project, once the config has been re-read. Drives the harness step. */
   createdProject?: ProjectEntry | null;
   /**
@@ -98,6 +107,7 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
   const [name, setName] = React.useState("");
   const [repos, setRepos] = React.useState<string[]>([]);
   const [repoDraft, setRepoDraft] = React.useState("");
+  const [repoError, setRepoError] = React.useState<string | null>(null);
   const [isCreating, setIsCreating] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [jobId, setJobId] = React.useState<string | null>(null);
@@ -111,20 +121,28 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
       ? `A project named '${trimmed}' already exists.`
       : null);
 
+  /**
+   * V1 `ProjectRepoPickerView.AddAsync`, in its order: normalize, refuse what `RepoPathValidator`
+   * does not recognise, dedupe case-insensitively, then seed the name. Without the refusal a typo
+   * like `tendril` reaches `POST /api/projects` as a repository path and is stored as one.
+   */
   const addRepo = () => {
-    const path = repoDraft.trim();
+    const path = normalizeRepoPath(repoDraft);
     if (path === "") return;
+    setRepoError(null);
+
+    if (!isValidRepoPath(path)) {
+      setRepoError("Invalid repository path.");
+      return;
+    }
+
     setRepos((prev) =>
       prev.some((p) => p.toLowerCase() === path.toLowerCase()) ? prev : [...prev, path],
     );
     // V1 seeds a blank project name from the repository name on the first add.
     if (trimmed === "") {
-      const leaf =
-        path
-          .replace(/[/\\]+$/, "")
-          .split(/[/\\]/)
-          .pop() ?? "";
-      if (leaf !== "") setName(leaf.replace(/\.git$/i, ""));
+      const leaf = extractRepoName(path) ?? "";
+      if (leaf !== "") setName(leaf);
     }
     setRepoDraft("");
   };
@@ -141,8 +159,11 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
     if (nameError || repos.length === 0) return;
     setIsCreating(true);
     setError(null);
+    let resolved = repos;
     try {
-      await onCreate(trimmed, repos);
+      // A remote among `repos` is cloned by the create, and the paths it answers with are the only
+      // record of where. `AddProject` inspects them on disk, so it gets those, not the URLs.
+      resolved = await onCreate(trimmed, repos);
     } catch (err) {
       setError(`Failed to create project: ${describeBridgeError(err)}`);
       setIsCreating(false);
@@ -153,7 +174,7 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
       const started = await jobsStore.startJob({
         type: "AddProject",
         projectName: trimmed,
-        repos: repos.map((path) => ({ path })),
+        repos: resolved.map((path) => ({ path })),
       });
       setJobId(started.jobId);
       if (background) {
@@ -200,6 +221,11 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
               <div key={path} className="flex items-center gap-2 rounded-selector bg-muted/50 p-2">
                 <span className="min-w-0 flex-1 truncate font-mono text-xs text-primary">
                   {path}
+                  {classifyRepoPath(path) !== "local" && (
+                    <span className="ml-2 font-sans text-muted-foreground">
+                      will be cloned on Create Project
+                    </span>
+                  )}
                 </span>
                 <Button
                   type="button"
@@ -230,6 +256,11 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
                 Add Repository
               </Button>
             </div>
+            {repoError && (
+              <p className="text-xs text-destructive" data-testid="add-project-repo-error">
+                {repoError}
+              </p>
+            )}
           </div>
 
           <TextField
@@ -281,7 +312,7 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
                 className="flex h-32 items-center justify-center text-muted-foreground"
                 data-testid="add-project-agent-loading"
               >
-                <Loader2 className="size-5 animate-spin text-success" aria-hidden />
+                <Spinner size="lg" className="text-success" aria-hidden />
               </div>
             }
           >

@@ -1,17 +1,14 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
+import { copyToClipboard } from "@ivy-interactive/components";
 import { Badge } from "@ivy-interactive/components/ui";
 import {
-  PlanGitView,
-  PlanMarkdown,
   PlanWorkspace,
-  type PlanActionDto,
   type PlanQuestion,
   type PlanTabDto,
 } from "@ivy-interactive/components/tendril";
 import {
   describeBridgeError,
-  type Annotation,
   type Job,
   type PlanDetail,
   type PlanGitData,
@@ -21,23 +18,17 @@ import {
   type RepoStatus,
   type StartJobResponse,
 } from "../types/api";
-import type { ChatSession } from "../types/chat";
 import { bridge } from "../api/bridge";
-import { onPlanEvent } from "../api/events";
-import { sessionBelongsToPlan } from "../state/chatStore";
-import { PlanChatPanel, planFolderName } from "../components/chat/PlanChatPanel";
+import { PlanChatPanel } from "../components/chat/PlanChatPanel";
 import { extractPlanQuestions, patchQuestionsMarkdown } from "../utils/questionMarkdown";
-import { CARD_SURFACE } from "../utils/surfaces";
-import { PlanActionsController } from "../controllers/plan_actions";
-import { PlanPullRequests } from "./PlanPullRequests";
-import { draftActions, type DraftAction } from "../controllers/draft_actions";
-import { buildUpdatePrompt } from "../controllers/update_prompt";
+import { PlanActionsController } from "../controllers/planActions";
+import { type DraftAction } from "../controllers/draftActions";
+import { buildUpdatePrompt } from "../controllers/updatePrompt";
 import {
   collectExecuteGuards,
   unfoldedAnswerCount,
   type ExecuteGuard,
-} from "../controllers/execute_guards";
-import { PlanRevisionDiff } from "./PlanRevisionDiff";
+} from "../controllers/executeGuards";
 import { PlanVerifications } from "./PlanVerifications";
 import {
   formatPlanId,
@@ -47,7 +38,7 @@ import {
 } from "./PlansView";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { ProjectBadges } from "../components/ProjectBadges";
-import { RecommendationCard } from "../components/RecommendationCard";
+import { LevelBadge } from "../components/LevelBadge";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
 import { CreateIssueDialog } from "./dialogs/CreateIssueDialog";
 import { CreatePrDialog } from "./dialogs/CreatePrDialog";
@@ -59,208 +50,22 @@ import { ResetToDraftDialog } from "./dialogs/ResetToDraftDialog";
 import { SuggestChangesDialog } from "./dialogs/SuggestChangesDialog";
 import { UnansweredQuestionsDialog } from "./dialogs/UnansweredQuestionsDialog";
 import { UpdatePlanDialog } from "./dialogs/UpdatePlanDialog";
+import { useWireframeBaseUrl } from "../api/proxyOrigin";
+import {
+  buildMeta,
+  findPlanChatSession,
+  IN_FLIGHT_JOB_STATUSES,
+  IN_FLIGHT_PLAN_STATES,
+  PlanQuestionsPanel,
+  sourceLabel,
+  type LifecycleDialog,
+  type PlanDetailTab,
+} from "./planDetail/helpers";
+import { usePlanAnnotations } from "./planDetail/usePlanAnnotations";
+import { buildPlanActions } from "./planDetail/actions";
+import { OtherTabsPane, PlanPane } from "./planDetail/tabPanes";
 
-type PlanDetailTab = "plan" | "details" | "diff" | "recommendations" | "git";
-
-/**
- * The job statuses V1 counts as "a job already holds this plan"
- * (`ContentView.HasActiveJob<TArgs>`: `Running or Queued or Pending`). `Blocked` is deliberately not
- * one of them there, so it is not one here either: a blocked job is waiting on another job and V1
- * lets the second dispatch queue behind it.
- */
-const IN_FLIGHT_JOB_STATUSES: ReadonlyArray<Job["status"]> = ["Running", "Queued", "Pending"];
-
-/**
- * The plan states in which a job owns the plan folder.
- *
- * V1 never has to name these on the Drafts page because `PlansApp.Build` only ever hands it plans
- * that are `Draft` or `Blocked` **and** have no active job, so no mid-flight plan reaches the action
- * bar at all. V2's detail view is reachable for every plan, so the same exclusion has to be stated
- * here or the page offers Execute on a plan that is already executing.
- */
-const IN_FLIGHT_PLAN_STATES: ReadonlyArray<string> = ["Creating", "Updating", "Executing"];
-
-/**
- * `PlanModels.cs`: `IsPullRequestSource => SourceUrl?.Contains("/pull/") == true`. The workspace
- * labels the source link "PR" or "Issue" from exactly this test
- * (`ContentView.Build`: `.Source(..., selectedPlan.IsPullRequestSource ? "PR" : "Issue")`).
- */
-const sourceLabel = (sourceUrl: string | undefined): string =>
-  sourceUrl?.includes("/pull/") ? "PR" : "Issue";
-
-/** `#21` from a `00021-SomeFolderName` plan folder, as `DetailsTabView.ParsePlanLinks` does. */
-const planLinkLabel = (folder: string): string => {
-  const name = folder.split(/[/\\]/).pop() ?? folder;
-  const dashIdx = name.indexOf("-");
-  const idPart = dashIdx > 0 ? name.slice(0, dashIdx) : name;
-  return formatPlanId(idPart);
-};
-
-/**
- * The workspace's meta line, from `ContentView.BuildMeta`: the plan's position in the list, and
- * the plans it waits on. Position is computed over the same newest-first ordering the list uses.
- */
-const buildMeta = (plan: PlanDetail, allPlans: PlanSummary[]): string | null => {
-  const ordered = [...allPlans].sort(
-    (a, b) => (Number.parseInt(b.id, 10) || 0) - (Number.parseInt(a.id, 10) || 0),
-  );
-  const index = ordered.findIndex((p) => p.id === plan.id);
-  const parts: string[] = [];
-  if (index >= 0 && ordered.length > 0) parts.push(`${index + 1}/${ordered.length} plans`);
-  if (plan.dependsOn && plan.dependsOn.length > 0)
-    parts.push(`Depends on ${plan.dependsOn.map(planLinkLabel).join(", ")}`);
-  return parts.length > 0 ? parts.join(" \u00b7 ") : null;
-};
-
-/**
- * `ContentView.BuildFailureCallout`: a failed plan says why at the top of its Plan tab, and a
- * failed verification is the better answer than the job log. The report bodies V1 quotes live in
- * `<planFolder>/Verification/<name>.md`, which this page reads only inside the Verifications tab,
- * so the callout names the verifications and points at their reports rather than inventing a
- * summary. With no failed verification at all it falls back to V1's log wording.
- */
-const ExecutionFailedCallout: React.FC<{ plan: PlanDetail; jobs: Job[] }> = ({ plan, jobs }) => {
-  const failed = (plan.verifications ?? []).filter(
-    (v) => v.status === "Fail" || v.status === "Pending",
-  );
-  // V1's second branch, `BuildLogFailureCallout`, reads the plan's last job log and quotes its
-  // "Final Output" section. V2 has no log reader here, but the daemon already reports the same thing
-  // on the job row, so the last failed job for this plan is the nearest equivalent — and it is a far
-  // better answer than "check the logs".
-  const lastFailure = [...jobs]
-    .filter((j) => j.planId === plan.id && (j.status === "Failed" || j.status === "Timeout"))
-    .sort((a, b) =>
-      (a.completedAt ?? a.startedAt ?? "").localeCompare(b.completedAt ?? b.startedAt ?? ""),
-    )
-    .pop();
-  const reason = lastFailure?.statusMessage?.trim();
-  return (
-    <ErrorBanner data-testid="plan-failure-callout" className="mb-4">
-      <p className="font-semibold">Execution Failed</p>
-      {failed.length > 0 ? (
-        <ul className="mt-1 space-y-0.5">
-          {failed.map((v) => (
-            <li key={v.name}>
-              <span className="font-semibold">{v.name}</span> {v.status}, see verification report
-              for details
-            </li>
-          ))}
-        </ul>
-      ) : (
-        <p className="mt-1" data-testid="plan-failure-reason">
-          {reason || "No details available. Check the job logs."}
-        </p>
-      )}
-    </ErrorBanner>
-  );
-};
-
-/** One label/value row of the Details tab, dropped entirely when the value is empty. */
-const DetailRow: React.FC<{ label: string; children?: React.ReactNode; empty?: boolean }> = ({
-  label,
-  children,
-  empty,
-}) =>
-  empty ? null : (
-    <div className="flex flex-col gap-0.5 border-b border-border py-2 last:border-b-0 sm:flex-row sm:gap-4">
-      <dt className="w-40 shrink-0 text-xs font-medium text-muted-foreground">{label}</dt>
-      <dd className="min-w-0 text-sm text-foreground">{children}</dd>
-    </div>
-  );
-
-/**
- * The plan's own chat session, mirroring `PlanChatSessions.BelongsTo`: "A session belongs to exactly
- * one plan, recorded on the session itself". Matched case-insensitively as V1 does.
- *
- * V1 also consults `plan.ChatSessionId` first and then falls back to this scan; `PlanDetail` carries
- * no such field, and V1 calls it "a hint whose target must be checked before use" anyway, so the scan
- * is the whole of it here.
- *
- * The rule itself now lives in `chatStore` as `sessionBelongsToPlan`, because that is what narrows a
- * plan-scoped store's session list; this stays as the plan-shaped way in.
- */
-export function findPlanChatSession(
-  sessions: ChatSession[],
-  plan: PlanDetail,
-): ChatSession | undefined {
-  const scope = {
-    planId: plan.id,
-    folderName: planFolderName(plan),
-    sessionTitle: plan.title,
-  };
-  return sessions.find((session) => sessionBelongsToPlan(session, scope));
-}
-
-/**
- * The plan document has no table of contents, and that is deliberate.
- *
- * `PlanMarkdown`'s `StickyContent` slot is left empty here exactly as V1 leaves it: V1's plan page
- * never fills it. A contents panel was added into that slot earlier at the user's request and then
- * removed at theirs — it competed with the chat beside it for the width that matters more, and dropping
- * it returns the page to V1's own layout rather than diverging from it.
- *
- * The slot itself stays in the components package. It is V1's own slot, and V1 simply passes nothing.
- */
-
-/**
- * The Questions dropdown, a port of `QuestionsPanelView`: "an index of every question in the plan,
- * so a long revision stays navigable. Clicking an entry scrolls its block into view."
- *
- * V1's presentation rules, kept exactly: the count line reads `{answered} of {total} answered`; an
- * entry carrying an answer is struck through and muted, "what stays live is what still wants a
- * human"; and an `optional: true` question says so beside its title but stays live until answered,
- * because "optional means the plan does not wait on it, not that anybody has dealt with it". The
- * label falls back title → header → id.
- *
- * `savingIds` is V2's own: V1's write is synchronous, so its panel never renders an answer that is
- * still on its way to disk. Here `bridge.updateLatestRevision` is awaited, so the in-flight moment
- * exists and is said out loud rather than looking already settled.
- */
-const PlanQuestionsPanel: React.FC<{
-  questions: PlanQuestion[];
-  savingIds: ReadonlySet<string>;
-  onSelect: (questionId: string) => void;
-}> = ({ questions, savingIds, onSelect }) => {
-  const answered = questions.filter((q) => q.answerPresent).length;
-  const label = (question: PlanQuestion) => question.title || question.header || question.id;
-
-  return (
-    <div className="space-y-2" data-testid="plan-questions-panel">
-      <p className="text-xs text-muted-foreground">
-        {answered} of {questions.length} answered
-      </p>
-      <ul className="space-y-1">
-        {questions.map((question, index) => (
-          <li key={`${index}:${question.id}`}>
-            <button
-              type="button"
-              onClick={() => onSelect(question.id)}
-              data-testid={`plan-question-${question.id}`}
-              className={`block w-full text-left text-xs transition hover:text-foreground ${
-                question.answerPresent ? "text-muted-foreground line-through" : "text-foreground"
-              }`}
-            >
-              {question.optional ? `${label(question)} (Optional)` : label(question)}
-            </button>
-            {savingIds.has(question.id) && (
-              <span className="text-2xs text-muted-foreground">saving…</span>
-            )}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
-};
-
-/** The lifecycle dialogs this view owns, at most one open at a time. */
-type LifecycleDialog =
-  | "update"
-  | "createIssue"
-  | "delete"
-  | "reset"
-  | "partialDelivery"
-  | "suggestChanges"
-  | "createPr";
+export { findPlanChatSession };
 
 interface PlanDetailViewProps {
   plan: PlanDetail;
@@ -278,8 +83,14 @@ interface PlanDetailViewProps {
   onExecute?: (planId: string) => void | Promise<void>;
   /** A job one of the dialogs started, so the shell can open its session tab. */
   onJobStarted?: (response: StartJobResponse) => void;
-  /** The plan's state changed on the service; the caller should re-fetch it. */
+  /** The plan left the queue this page was opened from — Skipped, Icebox or a partial delivery. */
   onPlanChanged?: (planId: string) => void;
+  /**
+   * The plan went back to Draft, which is an arrival rather than a departure: it stays on screen and
+   * only its detail needs re-reading. Separate from {@link onPlanChanged} because that one advances
+   * past the plan, and Reset is the CTA that keeps the operator on it.
+   */
+  onPlanReset?: (planId: string) => void;
   onPlanDeleted?: (planId: string) => void;
 }
 
@@ -291,6 +102,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   onExecute,
   onJobStarted,
   onPlanChanged,
+  onPlanReset,
   onPlanDeleted,
 }) => {
   // V1's tab ids (`ContentView.PlanTab` / `DetailsTab` / `GitTab`), plus the three tabs V2
@@ -441,7 +253,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
    * `planService.UpdateLatestRevision(...)` — `bridge.updateLatestRevision`, which overwrites the
    * newest revision **in place**. Not `writeRevision`: that appends, which would claim the agent
    * produced a new plan and would inflate `revisionCount`, the term
-   * `execute_guards.unfoldedAnswerCount` reads as `revisionCount === 1`.
+   * `executeGuards.unfoldedAnswerCount` reads as `revisionCount === 1`.
    *
    * A refused write is rolled back rather than left on screen. V1 can leave the question of what a
    * failure looks like alone because its write is synchronous and in-process; here the daemon can say
@@ -533,116 +345,35 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
     };
   }, [plan.id, plan.recommendations]);
 
-  /**
-   * The plan's inline annotations, which is what `PlanMarkdown` needs to render its highlights and
-   * what the PendingAnnotations execute guard counts.
-   *
-   * Reloaded when the revision text changes, because V1 does exactly that and says why:
-   * "Annotation offsets anchor to the plan text; drop them if the content changed underneath (plan
-   * updated, edited, or revised)" (`ContentView.Build`).
-   */
-  const [annotations, setAnnotations] = useState<Annotation[]>([]);
+  // Names the daemon origin, not the app origin: under Tauri a relative path resolves to the
+  // webview, which serves the bundle and nothing else.
+  const wireframeBaseUrl = useWireframeBaseUrl(plan.id);
 
-  const loadAnnotations = useCallback(() => {
-    let cancelled = false;
-    bridge
-      .listAnnotations(plan.id)
-      .then((list) => {
-        if (!cancelled) setAnnotations(list);
-      })
-      .catch(() => {
-        // An unreadable list is an empty one: the guard degrades to "nothing known", never to a
-        // page that will not render.
-        if (!cancelled) setAnnotations([]);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [plan.id]);
-
-  useEffect(
-    () => loadAnnotations(),
-    // `latestRevisionContent` is in here on purpose: see the note above.
-    [loadAnnotations, plan.latestRevisionContent],
+  const { annotations, setAnnotations, handleAnnotationsChange } = usePlanAnnotations(
+    plan,
+    setActionError,
   );
 
   /**
-   * Another window, or a job, can rewrite this plan's annotations. V1 subscribes to
-   * `IPlanAnnotationService.AnnotationsChanged` for the same reason and filters on the folder path
-   * (`ContentView.Build`); the daemon's equivalent is the `plan.annotations_changed` broadcast.
-   */
-  useEffect(() => {
-    const signal = { cancelled: false };
-    let unlisten: (() => void) | undefined;
-
-    void onPlanEvent((payload) => {
-      const event = payload as { type?: string; planId?: string } | null;
-      if (event?.type !== "plan.annotations_changed") return;
-      // Every plan shares the one channel, so another plan's change is not ours.
-      if (event.planId !== plan.id) return;
-      loadAnnotations();
-    })
-      .then((fn) => {
-        if (signal.cancelled) {
-          fn();
-          return;
-        }
-        unlisten = fn;
-      })
-      .catch(() => {
-        // Without the stream the highlights are merely not live; every write still replaces the list
-        // from what the service persisted.
-      });
-
-    return () => {
-      signal.cancelled = true;
-      unlisten?.();
-    };
-  }, [plan.id, loadAnnotations]);
-
-  /**
-   * Persist an annotation edit.
+   * Whether this plan gets the surfaces V1 keeps on its **Review** page.
    *
-   * `PlanMarkdown` reports the whole array rather than the one thing that changed, exactly as V1's
-   * `OnAnnotationsChange` does — V1 can hand that straight to
-   * `IPlanAnnotationService.SaveAnnotationsAsync`, which takes a list. The bridge here is
-   * per-annotation, so the array is diffed against what we had: anything new or changed is upserted,
-   * anything gone is deleted. The persisted list is what lands in state, so a rejected write leaves
-   * the highlights showing what is actually on disk.
+   * V1 has two plan pages, not one, and the diff and the recommendations belong to only one of them.
+   * `Apps/Plans/ContentView.Build` — the page a Draft or Blocked plan opens on — builds exactly
+   * `var tabs = new List<PlanTabDto> { new(PlanTab, "Plan"), new(DetailsTab, "Details") };`.
+   * `Apps/Review/ContentView.BuildPage` is where Changes and Recommendations exist at all, and
+   * `ReviewApp.Build` only ever hands it plans that are `Review` or `Failed`.
+   *
+   * So the gate is the plan's state, not a preference: a draft has no execution to diff and nothing
+   * has recommended anything about it yet.
+   *
+   * Read off the optimistic state for the same reason every other gate below reads `effectivePlan`
+   * (which is assembled further down, after the tab strip): a plan that has just been sent to execute
+   * must stop offering the review surfaces at once.
+   *
+   * Declared up here, above the git hooks, because Git is now one of these surfaces and its fetch
+   * keys off it — see the note on that effect.
    */
-  const handleAnnotationsChange = (next: Annotation[]) => {
-    const previous = annotations;
-    setAnnotations(next);
-
-    const byId = new Map(previous.map((a) => [a.id, a]));
-    const writes: (() => Promise<Annotation[]>)[] = [];
-    for (const annotation of next) {
-      const before = byId.get(annotation.id);
-      if (!before || JSON.stringify(before) !== JSON.stringify(annotation)) {
-        writes.push(() => bridge.upsertAnnotation(plan.id, annotation));
-      }
-    }
-    const keptIds = new Set(next.map((a) => a.id));
-    for (const annotation of previous) {
-      if (!keptIds.has(annotation.id)) {
-        writes.push(() => bridge.deleteAnnotation(plan.id, annotation.id));
-      }
-    }
-    if (writes.length === 0) return;
-
-    // Sequenced as thunks, not fired off together: each call answers with the plan's whole list, so
-    // overlapping writes would race to be the one whose snapshot sticks.
-    void writes
-      .reduce<Promise<Annotation[]>>(
-        (chain, write) => chain.then(() => write()),
-        Promise.resolve(next),
-      )
-      .then(setAnnotations)
-      .catch((err: unknown) => {
-        setAnnotations(previous);
-        setActionError(`Failed to save annotation: ${describeBridgeError(err)}`);
-      });
-  };
+  const showsReviewSurfaces = isReviewState(optimisticState ?? plan.state);
 
   // Fetched on mount rather than when the Git tab is opened: the at-risk badge on
   // the tab button is the whole point of the feature, and a warning you only see
@@ -669,6 +400,10 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   }|${plan.prs?.length ?? 0}`;
 
   useEffect(() => {
+    // Only a plan under review has a Git tab to feed, so a draft does not pay for this read. The
+    // fetch shells out to git in every repo of the plan's project; running it for a plan that can
+    // never show the result is work whose only visible effect was the tab flicker below.
+    if (!showsReviewSurfaces) return;
     // The last-known-good data stays on screen across a revalidation. V1 makes the same call for the
     // same reason (`ContentView.ShouldShowLoadingPlaceholder`: "a revalidation keeps the
     // last-known-good content"), and only a plan switch is allowed to blank it.
@@ -689,7 +424,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
     return () => {
       cancelled = true;
     };
-  }, [plan.id, gitQueryKey]);
+  }, [plan.id, gitQueryKey, showsReviewSurfaces]);
 
   // A plan switch, on the other hand, must not show the previous plan's git state while the new
   // one loads.
@@ -728,24 +463,6 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   ];
 
   /**
-   * Whether this plan gets the surfaces V1 keeps on its **Review** page.
-   *
-   * V1 has two plan pages, not one, and the diff and the recommendations belong to only one of them.
-   * `Apps/Plans/ContentView.Build` — the page a Draft or Blocked plan opens on — builds exactly
-   * `var tabs = new List<PlanTabDto> { new(PlanTab, "Plan"), new(DetailsTab, "Details") };` and adds
-   * only Git to it. `Apps/Review/ContentView.BuildPage` is where Changes and Recommendations exist at
-   * all, and `ReviewApp.Build` only ever hands it plans that are `Review` or `Failed`.
-   *
-   * So the gate is the plan's state, not a preference: a draft has no execution to diff and nothing
-   * has recommended anything about it yet.
-   *
-   * Read off the optimistic state for the same reason every other gate below reads `effectivePlan`
-   * (which is assembled further down, after the tab strip): a plan that has just been sent to execute
-   * must stop offering the review surfaces at once.
-   */
-  const showsReviewSurfaces = isReviewState(optimisticState ?? plan.state);
-
-  /**
    * `BuildPage`'s own gate on the diff, with V1's reason quoted: "Only surface the Changes tab once
    * there are actual file changes — no point showing an empty 'No commits yet.' tab before any work
    * has landed" (`var changesCount = planData.AllChanges?.Files.Count ?? 0; if (changesCount > 0)`).
@@ -772,7 +489,29 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   if (showsReviewSurfaces)
     tabs.push({ id: "recommendations", label: `Recommendations (${recommendations.length})` });
 
-  if (gitItemCount === null || gitItemCount > 0) {
+  /**
+   * Git is a review surface, and it appears only once its count is known.
+   *
+   * Two changes here, both asked for after the tab was seen flickering on every plan that opened.
+   *
+   * **It is gated on `showsReviewSurfaces`.** Worktrees, commit reachability and PRs are all things
+   * an *execution* produced; a Draft has none of them, so the tab could only ever say so. V1 agrees
+   * in shape if not in placement — its Draft page (`Apps/Plans/ContentView.Build`) is where Git lived,
+   * but everything that tab renders in V2 is post-execution state, and the operator's instruction is
+   * that Git belongs to a review. The Details tab already carries this plan's repos and commits
+   * (see its own note), so a draft loses no information by not having the tab.
+   *
+   * **`gitItemCount === null` no longer shows it.** That clause was the flicker: it put an unlabelled
+   * "Git" on screen the moment the page mounted and relabelled it to "Git (4)" when the fetch landed,
+   * a tab appearing then changing under the pointer. Unknown is now treated as V1 treats it
+   * (`if (gitItemCount > 0)`) — nothing to show a tab for yet — so the tab appears once, already
+   * carrying its count.
+   *
+   * A *failed* read is not "unknown" and still gets the tab, without a count: the tab body is the
+   * only place that failure is reported, and dropping the tab would turn an unreachable daemon into
+   * a silently missing feature.
+   */
+  if (showsReviewSurfaces && ((gitItemCount ?? 0) > 0 || gitError)) {
     // The at-risk warning used to be a bare dot with an `aria-label`; a `PlanTabDto` carries only a
     // label and a badge, so the count becomes the badge (`new PlanTabDto(GitTab, "Git", count)` is how
     // V1 badges this tab) and the label says what it counts, which no dot could.
@@ -841,14 +580,6 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
     IN_FLIGHT_PLAN_STATES.includes(effectivePlan.state) ||
     hasActiveJob("ExecutePlan") ||
     hasActiveJob("RetryPlan");
-
-  // Gating checks
-  const canExec = PlanActionsController.canExecute(effectivePlan, allPlans);
-  const canPr = PlanActionsController.canCreatePr(effectivePlan);
-  const canRetryPlan = PlanActionsController.canRetry(effectivePlan);
-  const canDeletePlan = PlanActionsController.canDelete(effectivePlan);
-  const canResetPlan = PlanActionsController.canReset(effectivePlan);
-  const canPartial = PlanActionsController.canCompletePartial(effectivePlan);
 
   /**
    * Run a lifecycle action, reporting any rejection in the banner. Every one of
@@ -1125,12 +856,10 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         setActiveDialog("delete");
         return;
       case "copyId":
-        await runAction("Copy Plan ID", () => navigator.clipboard.writeText(plan.id));
+        await runAction("Copy Plan ID", () => copyToClipboard(plan.id));
         return;
       case "copyPath":
-        await runAction("Copy Folder Path", () =>
-          navigator.clipboard.writeText(plan.folderPath ?? ""),
-        );
+        await runAction("Copy Folder Path", () => copyToClipboard(plan.folderPath ?? ""));
         return;
       case "openFolder":
         await runAction("Open Folder", () => openPath(plan.folderPath ?? ""));
@@ -1179,171 +908,23 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
     }
   };
 
-  /**
-   * The workspace's action row, assembled the way `DraftActions.Build` assembles it: "Update and
-   * Share as icons, everything else in the overflow menu", the primary CTA on its own, and the
-   * annotations/answers roll-up as a badged secondary button.
-   *
-   * Every entry is a `PlanActionDto` and reports back through one `OnAction` event, exactly as
-   * `PlanWorkspaceActions.ApplyTo` wires it: "Tags are unique across icon actions, menu items and the
-   * labeled buttons, so one event serves them all."
-   */
-  const iconActions: PlanActionDto[] = [];
-  const workspaceMenu: PlanActionDto[] = [];
-  const secondaryActions: PlanActionDto[] = [];
-  let primaryAction: PlanActionDto | null = null;
-
-  const draftSet = draftActions().filter((action) => action.isAvailable(effectivePlan));
-  const availableDraft = new Set(draftSet.map((action) => action.id));
-  const draftLabel = (id: DraftAction["id"]) =>
-    draftSet.find((action) => action.id === id)?.label ?? id;
-
-  if (!isPlanInFlight && effectivePlan.state !== "Review" && effectivePlan.state !== "Completed") {
-    // `actions.Action("Update", "Update", Icons.WandSparkles, ctx.ShowUpdateDialog, "U")`.
-    if (availableDraft.has("update")) {
-      iconActions.push({
-        tag: "update",
-        label: draftLabel("update"),
-        icon: "WandSparkles",
-        shortcut: "U",
-        disabled: pendingAction !== null || hasActiveJob("UpdatePlan"),
-      });
-    }
-
-    // The overflow menu, in `DraftActions`' own order.
-    if (availableDraft.has("expand"))
-      workspaceMenu.push({
-        tag: "expand",
-        label: draftLabel("expand"),
-        icon: "Expand",
-        shortcut: "P",
-        disabled: pendingAction !== null || hasActiveJob("ExpandPlan"),
-      });
-    if (availableDraft.has("split"))
-      workspaceMenu.push({
-        tag: "split",
-        label: draftLabel("split"),
-        icon: "Scissors",
-        disabled: pendingAction !== null || hasActiveJob("SplitPlan"),
-      });
-    if (availableDraft.has("delete"))
-      workspaceMenu.push({
-        tag: "delete",
-        label: draftLabel("delete"),
-        icon: "Trash",
-        shortcut: "Backspace",
-        danger: true,
-        disabled: pendingAction !== null,
-      });
-    if (availableDraft.has("createIssue"))
-      workspaceMenu.push({ tag: "createIssue", label: draftLabel("createIssue"), icon: "Github" });
-
-    // `actions.Menu("DiscussWithAgent", $"Discuss with {agentLabel}", agentIcon, ..., focusChat: true)`.
-    workspaceMenu.push({
-      tag: "DiscussWithAgent",
-      label: "Discuss with agent",
-      icon: "MessageSquare",
-      focusChat: true,
-    });
-
-    if (availableDraft.has("openFolder"))
-      workspaceMenu.push({
-        tag: "openFolder",
-        label: draftLabel("openFolder"),
-        icon: "FolderOpen",
-      });
-    if (availableDraft.has("copyPath"))
-      workspaceMenu.push({
-        tag: "copyPath",
-        label: draftLabel("copyPath"),
-        icon: "ClipboardCopy",
-      });
-    if (availableDraft.has("copyId"))
-      workspaceMenu.push({ tag: "copyId", label: draftLabel("copyId"), icon: "ClipboardCopy" });
-
-    /**
-     * `AddSecondary("UpdatePlan", "Update Plan", Icons.WandSparkles, ..., badge: (activeAnnotationCount
-     * + answeredQuestions))`, with V1's reason: "Both kinds of pending work go through one button,
-     * because one job answers both: an UpdatePlan that folds them into the plan. The badge counts them
-     * together."
-     */
-    const pendingWork = annotations.filter((a) => !a.isResolved).length + answeredQuestionCount;
-    if (pendingWork > 0) {
-      secondaryActions.push({
-        tag: "UpdatePlan",
-        label: "Update Plan",
-        icon: "WandSparkles",
-        badge: String(pendingWork),
-        disabled: pendingAction !== null || hasActiveJob("UpdatePlan"),
-      });
-    }
-
-    // `actions.SetPrimary("Execute", "Execute", Icons.Rocket, ..., "x", disabled: isCheckingPreflight,
-    // loading: isCheckingPreflight)`.
-    if (availableDraft.has("execute")) {
-      primaryAction = {
-        tag: "execute",
-        label: isCheckingPreflight
-          ? "Checking..."
-          : pendingAction === "Execute Plan"
-            ? "Starting..."
-            : draftLabel("execute"),
-        icon: "Rocket",
-        shortcut: "x",
-        disabled: pendingAction !== null || isCheckingPreflight || !canExec.allowed,
-        loading: isCheckingPreflight,
-      };
-    }
-  }
-
-  // The Review page's own set. V1 keeps these in `ReviewActions`, on the same workspace.
-  if (!isPlanInFlight && effectivePlan.state === "Review") {
-    primaryAction = {
-      tag: "CreatePr",
-      label: "Create PR",
-      icon: "GitPullRequest",
-      disabled: !canPr.allowed || pendingAction !== null,
-    };
-    secondaryActions.push({
-      tag: "RetryPlan",
-      label: "Retry Plan",
-      icon: "RotateCcw",
-      disabled: !canRetryPlan.allowed || pendingAction !== null,
-    });
-    if (canPartial.allowed)
-      secondaryActions.push({
-        tag: "AcceptPartialDelivery",
-        label: "Accept Partial Delivery",
-        icon: "CircleCheck",
-      });
-  }
-
-  // `ReviewActions.Build`: `.Menu("ResetToDraft", "Reset to Draft", Icons.RotateCcw, ..., "r")`,
-  // followed by the danger item. V1's Review puts Discard in that second slot; the app offers Delete
-  // there instead — see `handleWorkspaceAction`.
-  if (!isPlanInFlight && canResetPlan.allowed)
-    workspaceMenu.push({
-      tag: "ResetToDraft",
-      label: "Reset to Draft…",
-      icon: "RotateCcw",
-      shortcut: "r",
-    });
-  // The draft block above already carries Delete for every state it covers. Review and Completed are
-  // the two it does not, and both need it: a plan that will never ship is removed from here, and
-  // Discard — which only ever moved it to Skipped — is gone.
-  if (
-    !isPlanInFlight &&
-    canDeletePlan.allowed &&
-    !workspaceMenu.some((item) => item.tag === "delete")
-  )
-    workspaceMenu.push({
-      tag: "delete",
-      label: draftLabel("delete"),
-      icon: "Trash",
-      shortcut: "Backspace",
-      danger: true,
-      disabled: pendingAction !== null,
-    });
+  const {
+    iconActions,
+    workspaceMenu,
+    secondaryActions,
+    primaryAction,
+    draftSet,
+    canOpenUpdateDialog,
+  } = buildPlanActions({
+    effectivePlan,
+    allPlans,
+    isPlanInFlight,
+    pendingAction,
+    isCheckingPreflight,
+    annotations,
+    answeredQuestionCount,
+    hasActiveJob,
+  });
 
   const handleWorkspaceAction = async (tag: string) => {
     const draft = draftSet.find((action) => action.id === tag);
@@ -1389,219 +970,35 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   };
 
   /**
-   * The plan document pane.
+   * Why the plan body is blank, when it is.
    *
-   * Not wrapped in a scroll container of its own: `PlanTabView.Build` notes "PlanMarkdown owns its own
-   * scroll, so the Plan tab is not wrapped in Cap()".
+   * This used to be one string — `revisionContent || "# No revision content available"` — fed
+   * straight into `PlanMarkdown`, which is wrong twice over. It rendered a *fake `# ` heading*, so a
+   * plan whose body genuinely was that sentence looked identical to a plan that had none; and it
+   * gave one answer to three different questions, which is how plans 00003 and 00004 came to sit
+   * there looking merely empty.
+   *
+   * Those two are the concrete evidence. Their folders have a `Revisions/` directory with nothing in
+   * it, `revisionCount: 0`, and a `plan.yaml` whose `updated` still equals its `created` — their
+   * CreatePlan jobs (00010 and 00013) were killed by stop-all between `tendril plan create`, which
+   * makes the folder, and `tendril plan write-revision`, which writes `001.md`. Nothing was ever
+   * written, nothing failed to load, and the page said neither.
+   *
+   * So the three cases are named apart:
+   *  - `writing`  — a job holds the plan right now, so the body is expected to be absent.
+   *  - `never`    — no revision file exists (`revisionCount === 0`). The creating job did not finish.
+   *  - `unreadable` — the count says a revision is on disk but its text came back empty, which is a
+   *    read fault rather than a plan that was never drafted, and must not be reported as the latter.
    */
-  const planPane = (
-    <div key="plan-pane" className="flex min-h-0 flex-1 flex-col">
-      {/* `PlanTabView.Build`: a failed plan leads with why, above the plan itself. */}
-      {effectivePlan.state === "Failed" && (
-        <div className="px-8 pt-6">
-          <ExecutionFailedCallout plan={effectivePlan} jobs={jobs} />
-        </div>
-      )}
-      {/* `PlanTabView.Build` composes this as
-          `new PlanMarkdown(annotatedContent).Article().DangerouslyAllowLocalFiles()
-           .Annotations(...).OnAnnotationsChange(...).OnAnswersChange(onAnswerChanged)
-           .ScrollTo(scrollTo)`. `OnAnswersChange` is what makes the questions in the document
-          answerable at all; without it `PlanMarkdown` passes `undefined` as its answer callback and
-          "undefined puts every callout in read-only mode". */}
-      <PlanMarkdown
-        id="plan-markdown"
-        content={revisionContent || "# No revision content available"}
-        article
-        dangerouslyAllowLocalFiles
-        annotations={annotations}
-        scrollTo={scrollTo}
-        events={["OnAnnotationsChange", "OnAnswersChange"]}
-        eventHandler={(evt: string, _id: string, args?: unknown[]) => {
-          if (evt === "OnAnnotationsChange") {
-            const next = args?.[0];
-            if (Array.isArray(next)) handleAnnotationsChange(next as Annotation[]);
-            return;
-          }
-          if (evt !== "OnAnswersChange") return;
-          const payload = args?.[0] as { questionId?: string; answer?: unknown } | undefined;
-          if (!payload?.questionId) return;
-          // `null` on the wire means the key goes; a list is the answer. Either way the merge takes a
-          // list, and an empty one removes the `answer` key.
-          const value = Array.isArray(payload.answer)
-            ? (payload.answer as unknown[]).map((entry) => String(entry))
-            : [];
-          void applyAnswer(payload.questionId, value);
-        }}
-      />
-    </div>
-  );
-
-  /** Every tab body but the Plan tab's, which owns its own scroll. */
-  const otherTabsPane = (
-    <div key="tab-pane" className="min-h-0 flex-1 overflow-y-auto px-8 py-6">
-      {effectiveTab === "diff" && (
-        <div className={`${CARD_SURFACE} p-6`}>
-          <PlanRevisionDiff planId={plan.id} revisionCount={plan.revisionCount ?? 0} />
-        </div>
-      )}
-
-      {effectiveTab === "recommendations" && (
-        <div className={`space-y-4 ${CARD_SURFACE} p-6`}>
-          <div>
-            <h3 className="text-sm font-semibold text-foreground">Plan Recommendations</h3>
-            <p className="text-xs text-muted-foreground">
-              Out-of-scope follow-ups and improvements discovered during execution.
-            </p>
-          </div>
-
-          {recommendations.length === 0 ? (
-            <p data-testid="no-recommendations" className="text-xs text-muted-foreground/70">
-              ExecutePlan registered no recommendations for this plan.
-            </p>
-          ) : (
-            <div className="space-y-3">
-              {recommendations.map((rec) => (
-                <RecommendationCard
-                  key={rec.title}
-                  recommendation={rec}
-                  onAccept={(title) => handleOpenDialog(title, "Accept")}
-                  onDecline={(title) => handleOpenDialog(title, "Decline")}
-                />
-              ))}
-            </div>
-          )}
-        </div>
-      )}
-
-      {effectiveTab === "git" && (
-        <div className={`${CARD_SURFACE} p-6`}>
-          {gitError ? (
-            <p data-testid="git-tab-error" className="text-xs text-destructive">
-              {gitError}
-            </p>
-          ) : gitData ? (
-            <PlanGitView
-              data={gitData}
-              prs={plan.prs ?? []}
-              planState={effectivePlan.state}
-              onOpenUrl={(url) => void openPath(url)}
-            />
-          ) : (
-            <p className="text-sm text-muted-foreground/70">Loading git state…</p>
-          )}
-        </div>
-      )}
-
-      {effectiveTab === "details" && (
-        <div className="space-y-4">
-          {/* `DetailsTabView.Build`'s own field order, and its `RemoveEmpty()`: a row the plan
-              has no value for is dropped rather than rendered blank. */}
-          <dl className={`${CARD_SURFACE} p-4`}>
-            <DetailRow label="Plan ID">
-              <button
-                type="button"
-                onClick={() =>
-                  void runAction("Copy Plan ID", () => navigator.clipboard.writeText(plan.id))
-                }
-                title="Copy to clipboard"
-                className="font-mono hover:underline"
-              >
-                {plan.id}
-              </button>
-            </DetailRow>
-            <DetailRow label="Folder" empty={!plan.folderPath}>
-              <button
-                type="button"
-                onClick={() =>
-                  void runAction("Copy Folder Path", () =>
-                    navigator.clipboard.writeText(plan.folderPath ?? ""),
-                  )
-                }
-                title="Copy to clipboard"
-                className="break-all font-mono hover:underline"
-              >
-                {plan.folderPath}
-              </button>
-            </DetailRow>
-            <DetailRow label="Initial Prompt" empty={!plan.initialPrompt}>
-              <span className="whitespace-pre-wrap">{plan.initialPrompt}</span>
-            </DetailRow>
-            <DetailRow label="Revision" empty={!plan.revisionCount}>
-              {plan.revisionCount}
-            </DetailRow>
-            <DetailRow label="Profile" empty={!plan.executionProfile}>
-              {plan.executionProfile}
-            </DetailRow>
-            <DetailRow
-              label="Related Plans"
-              empty={!plan.relatedPlans || plan.relatedPlans.length === 0}
-            >
-              {(plan.relatedPlans ?? []).map(planLinkLabel).join(", ")}
-            </DetailRow>
-            <DetailRow label="Depends On" empty={!plan.dependsOn || plan.dependsOn.length === 0}>
-              {(plan.dependsOn ?? []).map(planLinkLabel).join(", ")}
-            </DetailRow>
-            <DetailRow label="Issue" empty={!plan.sourceUrl}>
-              <a
-                href={plan.sourceUrl}
-                target="_blank"
-                rel="noreferrer"
-                className="break-all text-primary hover:underline"
-              >
-                {plan.sourceUrl}
-              </a>
-            </DetailRow>
-            <DetailRow label="Created" empty={!plan.created}>
-              {(plan.created ?? "").slice(0, 10)}
-            </DetailRow>
-            <DetailRow label="Level" empty={!plan.level}>
-              {plan.level}
-            </DetailRow>
-            <DetailRow label="Project" empty={!plan.project}>
-              {plan.project}
-            </DetailRow>
-            <DetailRow label="State">{effectivePlan.state}</DetailRow>
-          </dl>
-
-          {/* Repos and commits have no row of their own in V1's Details tab; they are kept here
-              because V2's Git tab is the only other place they appear and it is hidden while a
-              plan has nothing in git yet. */}
-          <div className="grid gap-4 sm:grid-cols-2">
-            <div className={`${CARD_SURFACE} p-4`}>
-              <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-                Repositories
-              </h4>
-              <ul className="mt-2 space-y-1 font-mono text-sm text-muted-foreground">
-                {plan.repos && plan.repos.length > 0 ? (
-                  plan.repos.map((r, i) => <li key={i}>{r}</li>)
-                ) : (
-                  <li className="font-sans text-muted-foreground/70">No repositories specified</li>
-                )}
-              </ul>
-            </div>
-
-            <div className={`${CARD_SURFACE} p-4`}>
-              <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-                Commits
-              </h4>
-              <ul className="mt-2 space-y-1 font-mono text-sm text-muted-foreground">
-                {plan.commits && plan.commits.length > 0 ? (
-                  plan.commits.map((c, i) => <li key={i}>{c}</li>)
-                ) : (
-                  <li className="font-sans text-muted-foreground/70">No commits yet</li>
-                )}
-              </ul>
-            </div>
-
-            {/* `GitTabView`: the PR section exists only when the plan records one. */}
-            {plan.prs && plan.prs.length > 0 && (
-              <PlanPullRequests planId={plan.id} prs={plan.prs} />
-            )}
-          </div>
-        </div>
-      )}
-    </div>
-  );
+  const emptyBodyReason: "writing" | "never" | "unreadable" | null = revisionContent
+    ? null
+    : IN_FLIGHT_PLAN_STATES.includes(effectivePlan.state) ||
+        hasActiveJob("CreatePlan") ||
+        hasActiveJob("UpdatePlan")
+      ? "writing"
+      : (plan.revisionCount ?? 0) === 0
+        ? "never"
+        : "unreadable";
 
   return (
     <div className="h-full min-h-0" data-testid="plan-detail-view">
@@ -1661,13 +1058,10 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
               {effectivePlan.state}
             </Badge>,
             <ProjectBadges key="projects" project={plan.project} />,
-            ...(plan.level
-              ? [
-                  <Badge key="level" variant="outline">
-                    {plan.level}
-                  </Badge>,
-                ]
-              : []),
+            /* The level, coloured from `config.yaml`'s `levels` the way V1's Icebox row colours it
+               (`SidebarView.cs:25`). `LevelBadge` renders nothing without a level, so the guard the
+               outline badge needed is inside it now. */
+            <LevelBadge key="level" level={plan.level} />,
           ],
           /**
            * V1 leaves the `Toolbar` slot empty and reports refusals through toasts, which V2's shell
@@ -1735,7 +1129,37 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
              hosted by the same view the Chat app is. V2 has no share mode, so there is no null arm
              yet. */
           Chat: [<PlanChatPanel key="chat" plan={plan} draft={chatDraft} />],
-          Content: [effectiveTab === "plan" ? planPane : otherTabsPane],
+          Content: [
+            effectiveTab === "plan" ? (
+              <PlanPane
+                key="plan-pane"
+                plan={plan}
+                effectivePlan={effectivePlan}
+                jobs={jobs}
+                emptyBodyReason={emptyBodyReason}
+                canOpenUpdateDialog={canOpenUpdateDialog}
+                setActiveDialog={setActiveDialog}
+                revisionContent={revisionContent}
+                wireframeBaseUrl={wireframeBaseUrl}
+                annotations={annotations}
+                scrollTo={scrollTo}
+                handleAnnotationsChange={handleAnnotationsChange}
+                applyAnswer={applyAnswer}
+              />
+            ) : (
+              <OtherTabsPane
+                key="tab-pane"
+                plan={plan}
+                effectivePlan={effectivePlan}
+                effectiveTab={effectiveTab}
+                recommendations={recommendations}
+                handleOpenDialog={handleOpenDialog}
+                gitData={gitData}
+                gitError={gitError}
+                runAction={runAction}
+              />
+            ),
+          ],
         }}
       />
 
@@ -1795,11 +1219,15 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         onArchived={(planId) => onPlanChanged?.(planId)}
         onSkipped={(planId) => onPlanChanged?.(planId)}
       />
+      {/* Reset is the one dialog here that is not a queue departure: it puts the plan back at Draft,
+          which is where the operator works on it next, so the page stays on it and reloads it rather
+          than advancing past it. `onPlanChanged` moves on to the next plan in the queue, which for a
+          reset would close the plan the operator just asked to start over. */}
       <ResetToDraftDialog
         isOpen={activeDialog === "reset"}
         onClose={() => setActiveDialog(null)}
         plan={plan}
-        onReset={(planId) => onPlanChanged?.(planId)}
+        onReset={(planId) => onPlanReset?.(planId)}
       />
       <PartialDeliveryDialog
         isOpen={activeDialog === "partialDelivery"}

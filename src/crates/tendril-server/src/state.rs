@@ -283,6 +283,9 @@ pub struct AppState {
     pub plans_dir: PathBuf,
     pub db_path: PathBuf,
     pub job_manager: Arc<JobManager>,
+    /// Serves plan wireframe previews. Holds esbuild watchers for the plan currently being viewed
+    /// and stops them when another plan is opened, so browsing plans does not accumulate builds.
+    pub wireframe_host: Arc<tendril_wireframe::hosting::WireframeHost>,
     pub chat_manager: Arc<ChatExecutionManager>,
     pub ws_tx: broadcast::Sender<String>,
     /// Recent events dispatched over `ws_tx`, kept so a reconnecting client can resume via
@@ -317,6 +320,23 @@ pub struct AppState {
     /// `spawn_version_check`/`POST /api/version/check`. `consecutive_failures` lives only here —
     /// the disk cache is never written on a failed check.
     pub version_info: Arc<RwLock<VersionInfo>>,
+    /// Latched the moment the daemon is asked to stop, so the endless streams can end themselves.
+    ///
+    /// `/api/changes/events` and the job log streams have no terminal event by design — they live as
+    /// long as their client does — and axum's graceful shutdown waits for every connection to close.
+    /// A client that is *still attached* when the signal arrives therefore holds the whole process on
+    /// the [`crate::SHUTDOWN_GRACE`] deadline: the desktop app's change bridge does exactly this, and
+    /// it cost every `dev:desktop` run a ten-second wait and then a SIGKILL. Handing each stream this
+    /// receiver turns "wait for the client to hang up" into "stop when the daemon does", so the
+    /// deadline goes back to being the safety net it was meant to be rather than the normal path.
+    ///
+    /// `watch`, not `oneshot`: every stream needs its own view of the same edge, and `watch` latches
+    /// so a request that arrives *after* the signal sees it immediately instead of hanging.
+    pub shutdown_rx: tokio::sync::watch::Receiver<bool>,
+    /// The sending half, kept so [`AppState::begin_shutdown`] can fire it and so the channel stays
+    /// open for the lifetime of the state — a dropped sender would make every `wait_for` below
+    /// resolve at once and end the streams while the daemon is still serving.
+    shutdown_tx: tokio::sync::watch::Sender<bool>,
 }
 
 impl AppState {
@@ -386,6 +406,18 @@ impl AppState {
         // `share` rather than `Arc::new`: a finished job needs a handle back to the manager to start
         // the jobs that were waiting on it.
         let job_manager = JobManager::new(tendril_home.clone(), settings).share();
+
+        // The host resolves a (plan id, wireframe name) pair against the plans directory. A closure
+        // rather than a dependency, because tendril-wireframe has no idea what a plan is.
+        let wireframe_plans_dir = plans_dir.clone();
+        let wireframe_host = Arc::new(
+            tendril_wireframe::hosting::WireframeHost::new(Arc::new(
+                move |scope: &str, name: &str| {
+                    tendril_core::wireframes::resolve_root(Some(&wireframe_plans_dir), scope, name)
+                },
+            ))
+            .expect("the wireframe payload is embedded at build time"),
+        );
         let chat_manager = Arc::new(ChatExecutionManager::new(tendril_home.clone()));
         let (ws_tx, _) = broadcast::channel(500);
         let ring_buffer = Arc::new(EventRingBuffer::default());
@@ -446,12 +478,15 @@ impl AppState {
         }
         let version_info = Arc::new(RwLock::new(seeded_version_info));
 
+        let (shutdown_tx, shutdown_rx) = tokio::sync::watch::channel(false);
+
         Self {
             tendril_home,
             config_path,
             plans_dir,
             db_path,
             job_manager,
+            wireframe_host,
             chat_manager,
             ws_tx,
             ring_buffer,
@@ -463,7 +498,28 @@ impl AppState {
             basic_auth,
             pr_sync_running,
             version_info,
+            shutdown_rx,
+            shutdown_tx,
         }
+    }
+
+    /// Tells every endless stream to finish. Idempotent, and safe to call from a signal handler.
+    ///
+    /// Called by `run_server` the instant the shutdown signal lands, *before* the server future is
+    /// asked to wind down, so the streams are already closing while graceful shutdown drains the
+    /// rest. A daemon with no streams attached is unaffected; one with the desktop app attached
+    /// stops in milliseconds instead of riding [`crate::SHUTDOWN_GRACE`] out to the end.
+    pub fn begin_shutdown(&self) {
+        let _ = self.shutdown_tx.send(true);
+    }
+
+    /// Resolves when [`Self::begin_shutdown`] has been called — immediately if it already has.
+    ///
+    /// The `Err` arm is the sender having been dropped, which only happens once the `AppState`
+    /// itself is gone; treating that as "shutting down" is right, since nothing is left to stream to.
+    pub async fn shutdown_requested(&self) {
+        let mut rx = self.shutdown_rx.clone();
+        let _ = rx.wait_for(|signalled| *signalled).await;
     }
 
     /// The current settings and local-file roots, reparsing `config.yaml` only when its mtime moved.

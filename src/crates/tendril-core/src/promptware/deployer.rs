@@ -273,6 +273,85 @@ pub fn read_provenance(target_dir: &Path) -> Option<DeployReport> {
     serde_json::from_str(&raw).ok()
 }
 
+/// The file inside a promptware directory holding its prompt.
+pub const PROGRAM_FILE: &str = "Program.md";
+
+/// One deployed promptware's prompt, as the settings pane shows it.
+///
+/// `program` is the deployed `Program.md` verbatim — the same bytes
+/// [`crate::promptware::compile_firmware`] inlines under the firmware's `## Program` heading, so
+/// what the pane renders is what the agent is actually given rather than a second copy that can
+/// drift from it. `layer` names which layer last wrote that file, taken from the deploy manifest,
+/// so an operator can tell a team override apart from the shipped program without leaving Settings.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PromptwareProgram {
+    pub name: String,
+    pub program: String,
+    /// `shipped`, `overlay`, or `None` when the manifest predates layering or never recorded this
+    /// promptware. Presentational only: the program above is served whatever this says.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layer: Option<Layer>,
+    /// `<Name>/.version`, when either layer stamped one.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+}
+
+/// Rejects a promptware name that is not a single plain path segment.
+///
+/// The name arrives from an HTTP caller and is joined onto the Promptwares root, so one carrying a
+/// separator or a `..` would read a file outside the deployed tree. The CLI validates the same way
+/// before touching `Memory/` or `Tools/`; this is the equivalent guard on the read path.
+fn is_plain_segment(value: &str) -> bool {
+    !value.is_empty()
+        && !value.contains('/')
+        && !value.contains('\\')
+        && !value.contains('\0')
+        && matches!(
+            Path::new(value).components().next(),
+            Some(std::path::Component::Normal(_))
+        )
+        && Path::new(value).components().count() == 1
+}
+
+/// Reads one deployed promptware's `Program.md` out of `promptwares_dir`.
+///
+/// Errors rather than returning an empty program when the promptware is not deployed: "no program"
+/// and "no such promptware" are different things to an operator, and a blank pane cannot say which
+/// happened. The deployed tree is read rather than the shipped source because the deployed copy is
+/// what a job actually compiles — an overlay that replaces `Program.md` has to be what the pane
+/// shows, or the screen contradicts the run.
+pub fn read_promptware_program(promptwares_dir: &Path, name: &str) -> Result<PromptwareProgram> {
+    if !is_plain_segment(name) {
+        return Err(crate::error::TendrilError::Validation(format!(
+            "Invalid agent name '{name}': must be a single folder name with no path separators"
+        )));
+    }
+
+    let program_path = promptwares_dir.join(name).join(PROGRAM_FILE);
+    // Reaches the Settings pane verbatim, so it is operator-facing copy rather than a log line -
+    // which is why it says "agent", the name the UI now uses for a promptware.
+    let program = std::fs::read_to_string(&program_path).map_err(|_| {
+        crate::error::TendrilError::Promptware(format!("No prompt deployed for agent '{name}'"))
+    })?;
+
+    // The manifest is deploy output, so its absence is "deployed before layering landed" rather than
+    // an error — the program above is still the right answer, just without provenance to label it.
+    let provenance = read_provenance(promptwares_dir).and_then(|report| {
+        report
+            .promptwares
+            .into_iter()
+            .find(|entry| entry.name == name)
+    });
+
+    Ok(PromptwareProgram {
+        name: name.to_string(),
+        program,
+        layer: provenance.as_ref().and_then(|entry| entry.program),
+        version: provenance.and_then(|entry| entry.version),
+    })
+}
+
 fn write_provenance(target_dir: &Path, report: &DeployReport) -> Result<()> {
     let json = serde_json::to_string_pretty(report)
         .map_err(|e| crate::error::TendrilError::Config(format!("{}", e)))?;
@@ -572,6 +651,94 @@ mod tests {
         );
 
         let _ = std::fs::remove_dir_all(&temp_target);
+    }
+}
+
+/// `read_promptware_program`, which is what backs the prompt pane in Settings.
+#[cfg(test)]
+mod program_tests {
+    use super::*;
+
+    fn temp_root() -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("tendril_program_{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn reads_the_deployed_program_and_its_layer() {
+        let root = temp_root();
+        std::fs::create_dir_all(root.join("CreatePlan")).unwrap();
+        std::fs::write(root.join("CreatePlan").join("Program.md"), "# CreatePlan\n").unwrap();
+        let report = DeployReport {
+            shipped_root: None,
+            overlay_root: None,
+            overlay_version: Some("3".to_string()),
+            shipped_version: "0.1.0".to_string(),
+            promptwares: vec![PromptwareProvenance {
+                name: "CreatePlan".to_string(),
+                program: Some(Layer::Overlay),
+                overlay_only: false,
+                files: BTreeMap::new(),
+                version: Some("3".to_string()),
+            }],
+        };
+        std::fs::write(
+            root.join(PROVENANCE_FILE),
+            serde_json::to_string(&report).unwrap(),
+        )
+        .unwrap();
+
+        let read = read_promptware_program(&root, "CreatePlan").unwrap();
+        assert_eq!(read.name, "CreatePlan");
+        assert_eq!(read.program, "# CreatePlan\n");
+        // The overlay's copy is the one a job compiles, so it is the one the pane must label.
+        assert_eq!(read.layer, Some(Layer::Overlay));
+        assert_eq!(read.version.as_deref(), Some("3"));
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// A tree deployed before the manifest existed still has a program; only its provenance is gone.
+    #[test]
+    fn reads_a_program_with_no_manifest() {
+        let root = temp_root();
+        std::fs::create_dir_all(root.join("ExecutePlan")).unwrap();
+        std::fs::write(root.join("ExecutePlan").join("Program.md"), "go").unwrap();
+
+        let read = read_promptware_program(&root, "ExecutePlan").unwrap();
+        assert_eq!(read.program, "go");
+        assert_eq!(read.layer, None);
+
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn errors_rather_than_returning_an_empty_program_when_nothing_is_deployed() {
+        let root = temp_root();
+        let err = read_promptware_program(&root, "Missing").unwrap_err();
+        assert!(
+            err.to_string().contains("No prompt deployed"),
+            "unexpected error: {err}"
+        );
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    /// The name reaches this from an HTTP path segment, so it must not be able to leave the tree.
+    #[test]
+    fn rejects_a_name_that_is_not_one_plain_segment() {
+        let root = temp_root();
+        std::fs::write(root.join("Secret.md"), "secret").unwrap();
+
+        for name in ["..", "../..", "a/b", "a\\b", ""] {
+            let err = read_promptware_program(&root, name).unwrap_err();
+            assert!(
+                matches!(err, crate::error::TendrilError::Validation(_)),
+                "{name:?} should be rejected as invalid, got {err}"
+            );
+        }
+
+        let _ = std::fs::remove_dir_all(&root);
     }
 }
 

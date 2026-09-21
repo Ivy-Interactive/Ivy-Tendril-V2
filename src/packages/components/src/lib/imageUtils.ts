@@ -13,7 +13,11 @@ export function isImageFile(nameOrType: string): boolean {
   const lower = nameOrType.toLowerCase();
   if (lower.startsWith("image/")) return true;
   const ext = lower.split(".").pop() || "";
-  return ["png", "jpg", "jpeg", "webp", "bmp", "gif", "svg"].includes(ext);
+  // `avif` is here because every browser this ships in decodes it natively, so an `<img>` renders it
+  // like any other raster format; omitting it only meant an AVIF attachment was silently demoted to
+  // "cannot be previewed". It is deliberately absent from `isCompressibleImage` below -- re-encoding
+  // AVIF through a canvas to WebP is usually a size regression, not a saving.
+  return ["png", "jpg", "jpeg", "webp", "avif", "bmp", "gif", "svg"].includes(ext);
 }
 
 export function isCompressibleImage(file: File): boolean {

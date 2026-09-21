@@ -132,7 +132,7 @@ describe("Chat attachment staging", () => {
     });
     await act(async () => {
       fireEvent.change(textarea, { target: { value: "Look at this" } });
-      fireEvent.click(screen.getByTitle("Send message"));
+      fireEvent.click(screen.getByRole("button", { name: "Send message" }));
     });
 
     // The agent process can only read a path, and this is the path that exists on disk *and* inside a
@@ -156,7 +156,7 @@ describe("Chat attachment staging", () => {
     vi.mocked(open).mockResolvedValue(PICKED as never);
     await renderChatView();
 
-    fireEvent.click(screen.getByTitle("Attach file"));
+    fireEvent.click(screen.getByRole("button", { name: "Attach file" }));
 
     await waitFor(() => expect(upload).toHaveBeenCalledWith(PICKED, "session-staging"));
     await waitFor(() => expect(chip()).toHaveAttribute("title", STAGED));
@@ -173,7 +173,7 @@ describe("Chat attachment staging", () => {
     fireEvent.change(screen.getByPlaceholderText(/Ask Tendril anything/i), {
       target: { value: "Look at this" },
     });
-    fireEvent.click(screen.getByTitle("Send message"));
+    fireEvent.click(screen.getByRole("button", { name: "Send message" }));
 
     // Degraded, not broken: the thumbnail falls back to a chip, which is what a file outside every root
     // rendered as before staging existed at all.
@@ -199,5 +199,100 @@ describe("Chat attachment staging", () => {
     await waitFor(() => expect(screen.getAllByText("shot.png")).toHaveLength(1));
     expect(chip()).toHaveAttribute("title", STAGED);
     expect(upload).toHaveBeenCalledTimes(1);
+  });
+});
+
+/**
+ * Pasting a screenshot into the composer.
+ *
+ * THE BUG: `handleComposerPaste` read `e.clipboardData.files` alone. HTML derives `files` from the drag
+ * data store item list, so an image put on the clipboard by a capture tool -- rather than copied from a
+ * file in a file manager -- arrives as an item of kind `"file"` that `files` need not expose, and the
+ * paste was dropped with no chip and no error. Reading `items` first is a superset of `files`, never a
+ * disagreement with it.
+ *
+ * Nothing is staged for these: a `File` from a paste is bytes with no path in a Tauri webview, which is
+ * the same reason `processFiles` filters on `isAbsolutePath` for the `<input>` case.
+ */
+describe("Chat composer paste", () => {
+  beforeEach(() => {
+    chatStore.resetForTesting();
+    vi.restoreAllMocks();
+    scrollIntoViewMock.mockClear();
+    dragHandler = null;
+    window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  async function renderChatView() {
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([newSession()]);
+    vi.spyOn(chatApi, "getSession").mockResolvedValue(newSession());
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+    render(<ChatView />);
+    await waitFor(() => {
+      expect(screen.getAllByText("Staging Session").length).toBeGreaterThan(0);
+    });
+  }
+
+  const pasteInto = (clipboardData: unknown) => {
+    fireEvent.paste(screen.getByPlaceholderText(/Ask Tendril anything/i), { clipboardData });
+  };
+
+  const imageItem = (file: File | null) => ({
+    kind: "file",
+    type: file?.type ?? "image/png",
+    getAsFile: () => file,
+  });
+
+  // The regression: `files` is empty, and the image is only reachable through `items`.
+  it("attaches a screenshot offered only through clipboardData.items", async () => {
+    const upload = vi.spyOn(bridge, "uploadChatAttachment");
+    await renderChatView();
+
+    pasteInto({
+      items: [imageItem(new File(["bytes"], "image.png", { type: "image/png" }))],
+      files: [],
+    });
+
+    // Renamed off the `image.png` placeholder so two pasted screenshots cannot collide on one chip.
+    await waitFor(() =>
+      expect(screen.getByTestId("composer-attachment-chips").textContent).toMatch(
+        /screenshot_\d+_0\.png/,
+      ),
+    );
+    // Bytes with no path: there is nothing on disk to copy, so staging is never attempted.
+    expect(upload).not.toHaveBeenCalled();
+  });
+
+  it("still attaches an image that only populated clipboardData.files", async () => {
+    await renderChatView();
+
+    pasteInto({ items: [], files: [new File(["bytes"], "copied.png", { type: "image/png" })] });
+
+    await waitFor(() => expect(screen.getByText("copied.png")).toBeInTheDocument());
+  });
+
+  it("attaches one chip when the image appears in both items and files", async () => {
+    await renderChatView();
+    const shot = new File(["bytes"], "shot.png", { type: "image/png" });
+
+    pasteInto({ items: [imageItem(shot)], files: [shot] });
+
+    await waitFor(() => expect(screen.getAllByText("shot.png")).toHaveLength(1));
+  });
+
+  // A text paste has to reach the textarea, so the handler must not claim it.
+  it("leaves a text-only paste alone", async () => {
+    await renderChatView();
+
+    pasteInto({
+      items: [{ kind: "string", type: "text/plain", getAsFile: () => null }],
+      files: [],
+    });
+
+    expect(screen.queryByTestId("composer-attachment-chips")).not.toBeInTheDocument();
   });
 });

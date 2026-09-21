@@ -260,4 +260,107 @@ describe("the agent viewer's metrics footer", () => {
     expect(footer!.closest(".aov-virtual-node")).toBeNull();
     expect(footer!.parentElement).toHaveClass("aov-shell");
   });
+
+  /**
+   * The rule over the strip is the boundary between scrolling log and fixed chrome, which is worth
+   * drawing wherever the viewer is one element among others — and is not worth drawing where the
+   * framing already rules off the viewer's edge. The job output sheet was stacking this rule under two
+   * others within the first 50px of itself. Per instance rather than per stylesheet: the onboarding
+   * project-agent run draws the viewer inside a card and still wants it.
+   */
+  it("draws its rule by default and drops it for a framing that already has one", () => {
+    const line = [textLine(START, "hi")];
+
+    const { container: withRule } = render(
+      <AgentViewer id="ruled" jsonLines={line} eventHandler={() => {}} autoScroll={false} />,
+    );
+    expect(withRule.querySelector(".aov-metrics")).not.toHaveClass("aov-metrics-flush");
+
+    const { container: flush } = render(
+      <AgentViewer
+        id="flush"
+        jsonLines={line}
+        showMetricsDivider={false}
+        eventHandler={() => {}}
+        autoScroll={false}
+      />,
+    );
+    const footer = flush.querySelector(".aov-metrics");
+    expect(footer).toHaveClass("aov-metrics-flush");
+    // Only the border goes. The figures still render, and the strip is still the shell's own child
+    // rather than a line of the log — dropping the rule must not become dropping the footer.
+    expect(footer!.parentElement).toHaveClass("aov-shell");
+    expect(footer!.closest(".aov-body")).toBeNull();
+    expect(flush.querySelector('[data-testid="agent-metrics-elapsed"]')).toBeInTheDocument();
+  });
+
+  describe("the run's start", () => {
+    /**
+     * `metrics.startedAt` is the first line the stream folded, which is the run's start only while
+     * the log holds exactly one run. A job id reissued after its row was cleared inherits the kept
+     * log of the job before it, and both runs' lines then arrive down one stream: the footer
+     * anchored on the older run's first line and showed a two-minute-old job as "20h 25m" under a
+     * header reading "1m 55s". A caller that owns the run passes its own start, which outranks the
+     * stream's guess.
+     */
+    const STALE = "2026-09-15T15:35:00.000Z"; // 20h 25m before START
+    const staleThenFresh = [
+      textLine(STALE, "yesterday's run, still in the file"),
+      textLine(START, "the run the user just launched"),
+    ];
+
+    it("anchors on the log's first line when the caller offers nothing", () => {
+      render(
+        <AgentViewer
+          id="stream-anchor"
+          jsonLines={staleThenFresh}
+          eventHandler={() => {}}
+          autoScroll={false}
+        />,
+      );
+
+      act(() => {
+        vi.advanceTimersByTime(120_000);
+      });
+
+      // The bug, reproduced: 20h 25m of yesterday's run plus the two minutes of this one.
+      expect(screen.getByTestId("agent-metrics-elapsed")).toHaveTextContent("20h 27m");
+    });
+
+    it("prefers the start the caller gives it over the log's first line", () => {
+      render(
+        <AgentViewer
+          id="job-anchor"
+          jsonLines={staleThenFresh}
+          startedAt={START}
+          eventHandler={() => {}}
+          autoScroll={false}
+        />,
+      );
+
+      act(() => {
+        vi.advanceTimersByTime(120_000);
+      });
+
+      expect(screen.getByTestId("agent-metrics-elapsed")).toHaveTextContent("2m 0s");
+    });
+
+    it("falls back to the stream when the caller has no start to offer", () => {
+      render(
+        <AgentViewer
+          id="null-anchor"
+          jsonLines={[textLine(START, "one run, one log")]}
+          startedAt={null}
+          eventHandler={() => {}}
+          autoScroll={false}
+        />,
+      );
+
+      act(() => {
+        vi.advanceTimersByTime(120_000);
+      });
+
+      expect(screen.getByTestId("agent-metrics-elapsed")).toHaveTextContent("2m 0s");
+    });
+  });
 });

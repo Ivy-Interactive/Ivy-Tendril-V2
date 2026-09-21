@@ -38,7 +38,7 @@
 .pmv-markdown {
   min-width: 0;
   width: 100%;
-  max-width: 50rem; /* 200 units * 0.25rem */
+  max-width: var(--content-measure); /* 50rem == 200 Ivy units * 0.25rem */
   /* Top matches left. A deliberate divergence from V1, which has `padding: 0 0 1rem 1.5rem` here
      and leaves the first heading's own `margin-top: 2rem` to stand in for a top inset - so V1's
      content sits 32px from the top against 24px from the left, and the corner reads lopsided.
@@ -51,6 +51,42 @@
    is the vertical rhythm that separates sections inside the document. */
 .pmv-markdown > :first-child {
   margin-top: 0;
+}
+
+/* ─── Flow variant ───────────────────────────────────────────────────────
+   The same markdown body with the plan *page* taken off it, for a surface that
+   renders markdown inline in a stream rather than as a tab that fills the window.
+
+   V1 draws this line in the component graph instead: `ChatWidget` and `AssistantTurn`
+   render `BlockMarkdown` (react-markdown + `BlockHandler`, nothing else) inside a plain
+   `.chat-markdown-body`, and only the plan page ever gets `.pmv-root`'s shell. V2 has one
+   component for both, so without this a chat turn inherits the page — a 1.5rem top/left
+   inset on every message, a 50rem cap inside a column that is already capped, and an
+   `overflow-y: auto` scroller nested in the thread's own scroller.
+
+   The inset is what the "broken code blocks" report is about: a code block is full-bleed,
+   bordered and the widest thing in a turn, so it is where a gutter the prose does not
+   share becomes obvious. Everything the block itself needs — the border, the 1rem padding,
+   the 3rem copy gutter, `overflow-x: auto` — is already correct and is deliberately left
+   alone here. */
+.pmv-root--flow {
+  height: auto;
+  min-height: 0;
+}
+
+.pmv-root--flow .pmv-shell {
+  /* The thread scrolls; a turn must not. `overflow: hidden` would clip a code block's own
+     horizontal scroll, so this has to be `visible` rather than merely not `auto`. */
+  display: block;
+  height: auto;
+  min-height: 0;
+  overflow: visible;
+}
+
+.pmv-root--flow .pmv-markdown {
+  /* No gutter and no cap: in a thread the column supplies both. */
+  padding: 0;
+  max-width: 100%;
 }
 
 /* Fixed slot: sticky top-right, stays pinned while the shell scrolls.
@@ -103,38 +139,38 @@
 .pmv-markdown h1 {
   font-size: 2.25rem;
   line-height: 2.5rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   margin: 2rem 0 0.75rem; /* bottom margin 0.75rem matches mb-3 */
 }
 .pmv-markdown h2 {
   font-size: 1.875rem;
   line-height: 2.25rem;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   margin: 0;
 }
 .pmv-markdown h3 {
   font-size: 1.5rem;
   line-height: 2rem;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   margin: 0;
   padding-bottom: 0.25rem;
 }
 .pmv-markdown h4 {
   font-size: 1.25rem;
   line-height: 1.75rem;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   margin: 0;
 }
 .pmv-markdown h5 {
   font-size: 1.125rem;
   line-height: 1.75rem;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   margin: 0;
 }
 .pmv-markdown h6 {
   font-size: var(--text-base);
   line-height: 1.5rem;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   margin: 0;
 }
 
@@ -181,7 +217,7 @@
   font-size: var(--text-base);
 }
 .pmv-markdown strong {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 .pmv-markdown em {
   font-style: italic;
@@ -260,7 +296,7 @@
     "Geist Mono Variable", "Geist Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
     Consolas, monospace;
   font-size: 0.9em;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   white-space: normal;
   word-break: break-word;
 }
@@ -275,7 +311,7 @@
   min-width: 20px;
   padding: 0 5px;
   font-size: var(--text-xs);
-  font-weight: 400;
+  font-weight: var(--font-weight-normal);
   font-family: inherit;
   line-height: 1;
   border: var(--border-width) solid color-mix(in srgb, currentColor 30%, transparent);
@@ -325,7 +361,7 @@
 .pmv-markdown pre code {
   background: none;
   padding: 0;
-  font-weight: 400;
+  font-weight: var(--font-weight-normal);
   border-radius: 0;
   font-size: inherit;
   display: block;
@@ -374,7 +410,7 @@
   border: var(--border-width) solid var(--border);
   padding: 0.5rem 1rem;
   text-align: left;
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
   font-size: 0.875em;
 }
 .pmv-markdown td {
@@ -420,7 +456,7 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.75rem 1rem;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
   user-select: none;
   list-style: none;
@@ -535,13 +571,13 @@
   background: var(--primary);
   color: var(--primary-foreground);
   font-size: var(--text-2xs);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   flex-shrink: 0;
 }
 
 .pmv-popover-author-name {
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--foreground);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -555,23 +591,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.pmv-popover-textarea {
-  width: 100%;
-  border-radius: var(--radius-sm);
-  border: var(--border-width) solid var(--input);
-  background: var(--background);
-  padding: 0.375rem 0.5rem;
-  font-size: var(--text-sm);
-  resize: none;
-  outline: none;
-  font-family: inherit;
-  color: inherit;
-}
-
-.pmv-popover-textarea:focus {
-  box-shadow: 0 0 0 1px var(--ring);
 }
 
 .pmv-popover-actions {
@@ -697,7 +716,7 @@
   padding: 0.75rem;
   color: var(--destructive);
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 /* ─── GitHub-style alerts/callouts ────────────────────────────────────── */
@@ -713,7 +732,7 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   margin-bottom: 0.25rem;
 }
 
@@ -984,4 +1003,173 @@
   color: white;
   border-radius: var(--radius-xs);
   padding: 0 0.1rem;
+}
+
+/* ---------------------------------------------------------------------------------------------
+   Wireframe fences. Ported with WireframeBlock.tsx; the overlay in particular is inert without
+   these rules, which is what made "Open Full Size" look like a dead button.
+   --------------------------------------------------------------------------------------------- */
+
+.pmv-markdown > * + :is(.pmv-wireframe, .pmv-wireframe-placeholder),
+.pmv-markdown > :is(.pmv-wireframe, .pmv-wireframe-placeholder) + * {
+  margin-top: 1rem;
+}
+
+.pmv-wireframe {
+  position: relative;
+  margin: 0;
+  border-radius: 0.375rem;
+  border: 1px solid var(--border);
+  background: var(--background);
+  overflow: hidden;
+}
+
+.pmv-wireframe-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.375rem 0.75rem;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.8125rem;
+  color: var(--muted-foreground);
+}
+
+/* Floats over the frame's top-right corner: there is no title bar.
+   Inset further than V1's 0.375rem. The frame now carries a border of its own and a tall wireframe
+   shows a scrollbar, and at 6px the button sat on top of both. */
+.pmv-wireframe-actions {
+  position: absolute;
+  top: 0.75rem;
+  right: 0.75rem;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.125rem 0.125rem 0.125rem 0.5rem;
+  border-radius: 0.375rem;
+  background: color-mix(in srgb, var(--background) 88%, transparent);
+  color: var(--muted-foreground);
+  font-size: 0.8125rem;
+}
+
+.pmv-wireframe-overlay-bar {
+  justify-content: flex-end;
+}
+
+.pmv-wireframe-note {
+  font-size: 0.75rem;
+}
+
+.pmv-wireframe-button {
+  display: inline-block;
+  text-decoration: none;
+  font: inherit;
+  font-size: 0.75rem;
+  color: var(--foreground);
+  background: transparent;
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  padding: 0.125rem 0.5rem;
+  cursor: pointer;
+}
+.pmv-wireframe-button:hover {
+  background: var(--muted);
+}
+.pmv-wireframe-button:focus-visible {
+  outline: 2px solid var(--ring, var(--border));
+  outline-offset: 1px;
+}
+
+/* The outer box takes the column's width; the scaled box is the frame's scaled footprint; the
+   iframe keeps its real size and is shrunk from its top-left corner. */
+.pmv-wireframe-frame-box {
+  position: relative;
+  width: 100%;
+  /* The preview surface gets its own edge, which V1 does not give it. A wireframe paints on
+     --color-paper (#FDFCF7) and a plan renders on --background, so without this the sketch bleeds
+     into the page and a reviewer cannot see where the screen being proposed ends. The container's
+     border wraps the toolbar too, which is a different line. */
+  border: 1px solid var(--border);
+  border-radius: 0.25rem;
+  overflow: hidden;
+}
+.pmv-wireframe-frame-scaled {
+  overflow: hidden;
+}
+.pmv-wireframe-frame-scaled iframe {
+  display: block;
+  border: 0;
+  transform-origin: top left;
+}
+
+.pmv-wireframe-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 2rem 1rem;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+  text-align: center;
+}
+
+.pmv-wireframe-detail {
+  font-size: 0.8125rem;
+}
+
+.pmv-wireframe-invalid {
+  border-color: var(--destructive);
+}
+
+.pmv-wireframe-placeholder {
+  border: 1px dashed var(--border);
+  border-radius: 0.375rem;
+  padding: 0.5rem 0.75rem;
+  color: var(--muted-foreground);
+  font-size: 0.875rem;
+}
+
+/* Open Full Size: an in-page overlay, portalled to <body> like .pmv-img-overlay. */
+.pmv-wireframe-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  display: flex;
+  padding: 2rem;
+  background: rgba(0, 0, 0, 0.6);
+}
+
+.pmv-wireframe-overlay-panel {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: var(--background);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+/* Zoomed on width like the inline frame; the frame fills the height and the page scrolls inside it. */
+.pmv-wireframe-overlay-body {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pmv-wireframe-frame-fill {
+  flex: 1;
+  min-height: 0;
+}
+
+@media (max-width: 640px) {
+  .pmv-wireframe-overlay {
+    padding: 0;
+  }
 }

@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use tendril_core::db::get_plans_limited;
 use tendril_core::models::{
     PlanStatus, PlanVerificationEntry, PlanYaml, RecommendationStatus, VerificationStatus,
@@ -764,11 +764,111 @@ fn test_rename_project_in_plans() {
     let plan = create_plan(&test_dir, opts).unwrap();
     let plan_folder = Path::new(&plan.folder_path);
 
-    let count = rename_project_in_plans(&test_dir, "OldProject", "NewProject").unwrap();
-    assert_eq!(count, 1);
+    let outcome = rename_project_in_plans(&test_dir, "OldProject", "NewProject").unwrap();
+    assert_eq!(outcome.renamed, 1);
+    assert!(
+        !outcome.is_partial(),
+        "a clean sweep reports no failures, got {:?}",
+        outcome.failed
+    );
 
     let plan_file = read_plan_file(plan_folder).unwrap();
     assert_eq!(plan_file.metadata.project, "NewProject");
+
+    let _ = std::fs::remove_dir_all(test_dir);
+}
+
+/// One unwritable plan must not decide the fate of the others.
+///
+/// The sweep used to `?` on the first failed write, so which plans got renamed depended on
+/// `read_dir` order — and the caller has already saved the rename, so the plans left behind name a
+/// project `config.yaml` no longer has and no retry will ever revisit them.
+///
+/// Unix-only: the failure is injected by making one plan folder read-only, and Windows ignores the
+/// read-only bit for a directory the way this test needs it honoured.
+#[cfg(unix)]
+#[test]
+fn rename_project_in_plans_keeps_going_past_a_plan_it_cannot_write() {
+    use std::os::unix::fs::PermissionsExt;
+
+    let test_dir = std::env::temp_dir().join(format!(
+        "tendril-rename-proj-partial-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&test_dir).unwrap();
+
+    let make_plan = |title: &str| {
+        create_plan(
+            &test_dir,
+            CreatePlanOptions {
+                title: title.to_string(),
+                project: "OldProject".to_string(),
+                level: None,
+                initial_prompt: None,
+                source_url: None,
+                execution_profile: None,
+                priority: None,
+                repos: vec![],
+                verifications: vec![],
+                depends_on: vec![],
+                related_plans: vec![],
+                chat_session_id: None,
+            },
+        )
+        .unwrap()
+    };
+
+    // Three plans, so whichever one is blocked there is at least one after it in directory order.
+    let first = make_plan("Alpha Plan");
+    let blocked = make_plan("Beta Plan");
+    let last = make_plan("Gamma Plan");
+
+    let blocked_folder = PathBuf::from(&blocked.folder_path);
+    let original_mode = std::fs::metadata(&blocked_folder)
+        .unwrap()
+        .permissions()
+        .mode();
+    // r-x: the plan.yaml inside still reads, so the sweep identifies the plan and then cannot
+    // replace it — write_atomic's temp file cannot be created in a directory it may not write.
+    std::fs::set_permissions(&blocked_folder, std::fs::Permissions::from_mode(0o500)).unwrap();
+
+    // Unwrapped only after the permissions are put back, so a regression that returns `Err` here
+    // does not leave an unwritable directory behind in the temp dir.
+    let result = rename_project_in_plans(&test_dir, "OldProject", "NewProject");
+    std::fs::set_permissions(
+        &blocked_folder,
+        std::fs::Permissions::from_mode(original_mode),
+    )
+    .unwrap();
+    let outcome = result.unwrap();
+
+    assert_eq!(
+        outcome.renamed, 2,
+        "both writable plans should be renamed, got {:?}",
+        outcome
+    );
+    assert!(outcome.is_partial(), "the blocked plan should be reported");
+    assert_eq!(outcome.failed.len(), 1);
+
+    let blocked_name = blocked_folder.file_name().unwrap().to_string_lossy();
+    assert_eq!(outcome.failed[0].0, blocked_name);
+    assert!(
+        outcome.failure_summary().contains(blocked_name.as_ref()),
+        "the summary should name the folder, got {:?}",
+        outcome.failure_summary()
+    );
+
+    // The two writable plans really were rewritten on disk — this is what the old `?` gave up.
+    for plan in [&first, &last] {
+        let file = read_plan_file(Path::new(&plan.folder_path)).unwrap();
+        assert_eq!(
+            file.metadata.project, "NewProject",
+            "plan {} should have been renamed despite the blocked one",
+            plan.folder_path
+        );
+    }
+    let still_old = read_plan_file(&blocked_folder).unwrap();
+    assert_eq!(still_old.metadata.project, "OldProject");
 
     let _ = std::fs::remove_dir_all(test_dir);
 }
@@ -1324,4 +1424,161 @@ fn doctor_resolves_nothing_when_no_plan_records_a_pr() {
         check_pr_health_with(&home.plans_dir(), &never_called_head_resolver).expect("check");
 
     assert!(issues.is_empty());
+}
+
+/// `plan_reference.md` promises the agent that "`write-revision` rejects a block naming a wireframe
+/// that does not exist yet", and `wireframes::fence` documents itself as the thing that rejects it.
+/// Nothing called the validator, so every rule it states was advisory: this is the wiring, checked
+/// through the same door an agent comes in by.
+#[test]
+fn write_revision_refuses_a_wireframe_block_naming_a_wireframe_the_plan_does_not_have() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let plan_folder = dir.path();
+    std::fs::create_dir_all(plan_folder.join("Revisions")).expect("revisions dir");
+
+    let content =
+        "# Add Checkout\n\n## Wireframe\n\n```wireframe\nname: checkout\n```\n\n## Problem\n\nText.\n";
+
+    let refused = write_revision(plan_folder, content, true);
+    let message = refused.expect_err("a block naming a missing wireframe must not be written");
+    let message = message.to_string();
+    assert!(
+        message.contains("no wireframe named 'checkout'"),
+        "the refusal must name the wireframe and how to create it: {message}"
+    );
+
+    // Refused means nothing was written, not written-and-complained-about.
+    assert!(!plan_folder.join("Revisions").join("001.md").exists());
+
+    // The same revision passes once the wireframe it names exists.
+    let src = plan_folder.join("Wireframes").join("checkout").join("src");
+    std::fs::create_dir_all(&src).expect("wireframe src");
+    std::fs::write(src.join("main.tsx"), "// entry").expect("entry");
+
+    assert_eq!(
+        write_revision(plan_folder, content, true).expect("write once the wireframe exists"),
+        1
+    );
+}
+
+/// The escape hatch is the one that already exists. `--no-question-check` turns off the checks that
+/// read a revision's blocks, and a wireframe fence is one of those blocks.
+#[test]
+fn write_revision_skips_the_wireframe_check_with_no_question_check() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let plan_folder = dir.path();
+    std::fs::create_dir_all(plan_folder.join("Revisions")).expect("revisions dir");
+
+    let content =
+        "# Add Checkout\n\n## Wireframe\n\n```wireframe\nname: checkout\n```\n\n## Problem\n\nText.\n";
+
+    assert_eq!(
+        write_revision(plan_folder, content, false).expect("bypassed"),
+        1
+    );
+}
+
+/// A plan without wireframes must not pay for the check, in correctness or in surprise: the
+/// validator returns early on a revision with no `wireframe` fence, and this is what holds it to
+/// that. Every other test in this file writes revisions with no fences, so a regression here would
+/// break all of them -- this one says so on purpose.
+#[test]
+fn write_revision_leaves_a_revision_with_no_wireframe_block_alone() {
+    let dir = tempfile::tempdir().expect("temp dir");
+    let plan_folder = dir.path();
+    std::fs::create_dir_all(plan_folder.join("Revisions")).expect("revisions dir");
+
+    // No `## Wireframe` section, and a fenced block that is not a wireframe: neither is examined.
+    let content = "# Plain Plan\n\n## Problem\n\n```rust\nfn main() {}\n```\n";
+
+    assert_eq!(
+        write_revision(plan_folder, content, true).expect("written"),
+        1
+    );
+}
+
+// ---------------------------------------------------------------------------
+// (b) `create_plan` is all-or-nothing -- a latent bug, NOT the cause of the husks
+// ---------------------------------------------------------------------------
+//
+// Separate from the orphan-resolution fix and covering a different failure. A plan folder is built in
+// several steps -- mkdir, three scaffold directories, `plan.yaml`, then a read-back to validate it --
+// and each is a `?`. A failure at any of them returned the error to the caller and left the folder
+// standing, so the CLI printed a failure and a plan with no body appeared in the list anyway.
+//
+// This is not what produced the operator's husks: those have complete, valid `plan.yaml` files, so
+// `create_plan` ran to completion for both. It is a real hole in its own right, and the rollback
+// guard closes it.
+
+/// The rollback path itself, driven directly. There is no injection seam in `create_plan` to force a
+/// mid-write failure through, and manufacturing a filesystem-level one is not worth the fragility --
+/// so this tests the mechanism that runs on every one of those `?` instead.
+#[test]
+fn the_rollback_guard_removes_a_folder_that_was_created_and_not_finished() {
+    use tendril_core::plans::orphans::PlanFolderGuard;
+    let dir = temp_plans_dir("atomic-rollback");
+    let folder = dir.join("00001-Doomed");
+    std::fs::create_dir_all(folder.join("Revisions")).unwrap();
+    std::fs::write(folder.join("plan.yaml"), b"state: Draft\n").unwrap();
+
+    {
+        // Armed, then dropped without `disarm` -- what happens on every `?` in `create_plan`.
+        let _guard = PlanFolderGuard::arm(&dir, &folder);
+    }
+
+    assert!(
+        !folder.exists(),
+        "an unfinished create must leave no folder behind"
+    );
+    // And the id it took is free again: ids come from scanning for the highest prefix, so rolling the
+    // folder back hands the number straight back and the plan list has no gap in it.
+    let next = create_plan(&dir, bare_create_plan_options("Survivor")).expect("second create");
+    assert!(
+        next.folder_path.ends_with("00001-Survivor"),
+        "the rolled-back id must be reusable, got {}",
+        next.folder_path
+    );
+
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// A successful create disarms, so the guard cannot delete a plan that was finished properly.
+#[test]
+fn a_successful_create_keeps_its_folder() {
+    let dir = temp_plans_dir("atomic-success");
+    let plan = create_plan(&dir, bare_create_plan_options("Kept")).expect("create");
+    let folder = Path::new(&plan.folder_path);
+    assert!(folder.is_dir() && folder.join("plan.yaml").is_file());
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+/// The guard refuses anything that is not a `NNNNN-` child of the plans directory, so a bug that
+/// armed it on the wrong path deletes nothing. Same predicate the job-side cleanup uses.
+#[test]
+fn the_rollback_guard_only_ever_deletes_a_plan_folder() {
+    use tendril_core::plans::orphans::is_plan_folder_under;
+    let dir = temp_plans_dir("atomic-guard-predicate");
+
+    assert!(is_plan_folder_under(&dir, &dir.join("00001-Real")));
+    assert!(!is_plan_folder_under(&dir, &dir.join("NotAPlan")));
+    assert!(!is_plan_folder_under(&dir, &dir.join("0001-TooShort")));
+    assert!(
+        !is_plan_folder_under(&dir, &dir.join("00001-Real").join("Revisions")),
+        "a nested path is not a direct child"
+    );
+    assert!(
+        !is_plan_folder_under(&dir, Path::new("/tmp/00001-Elsewhere")),
+        "a plan-shaped name outside the plans dir is still out of bounds"
+    );
+    std::fs::remove_dir_all(&dir).ok();
+}
+
+fn temp_plans_dir(label: &str) -> PathBuf {
+    let dir = std::env::temp_dir().join(format!(
+        "tendril-{}-{}",
+        label,
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+    dir
 }

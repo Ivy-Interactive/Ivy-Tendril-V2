@@ -1,12 +1,21 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ChatBubble, ChatBubbleMessage } from "@ivy-interactive/components/renderers";
-import { PlanMarkdown } from "@ivy-interactive/components/tendril";
-import { CheckCheck, Loader2, Paperclip, Sparkles, XCircle } from "lucide-react";
-import { bridge } from "../api/bridge";
+import {
+  PlanMarkdown,
+  QuestionsDraftContext,
+  QuestionsSubmitContext,
+} from "@ivy-interactive/components/tendril";
+import { Spinner } from "@ivy-interactive/components/ui";
+import { CheckCheck, Paperclip, Sparkles, XCircle } from "lucide-react";
+import {
+  isImageAttachment,
+  resetAttachmentPreviewsForTesting,
+  useAttachmentPreview,
+} from "../hooks/useAttachmentPreview";
 import { chatStore } from "../state/chatStore";
 import type { ChatAttachment, ChatMessage, InProgressQuestionAnswers } from "../types/chat";
 import type { Job } from "../types/api";
-import { isWriteInAnswer, patchQuestionsMarkdown } from "../utils/questionMarkdown";
+import { patchQuestionsMarkdown } from "../utils/questionMarkdown";
 import { formatSystemEvent } from "../utils/systemEvents";
 import { resolveJobState, type JobDisplayState } from "../utils/jobStatus";
 import type { LightboxImage } from "../components/chat/ImageLightbox";
@@ -18,6 +27,12 @@ export interface ChatMessageRowProps {
   isSubmittingAnswer?: boolean;
   /** Opens the plan a system event refers to. */
   onOpenPlan?: (planId: string) => void;
+  /**
+   * Where this conversation's plan serves its wireframes. Set for the chat beside a plan; undefined
+   * on the general chat page, where a `wireframe` fence has no plan to resolve a name against and
+   * renders a placeholder instead.
+   */
+  wireframeBaseUrl?: string;
   /** Opens an image attachment in the lightbox. */
   onOpenImage?: (image: LightboxImage) => void;
   /**
@@ -28,7 +43,11 @@ export interface ChatMessageRowProps {
   threadMessages?: ChatMessage[];
 }
 
-const IMAGE_EXTENSIONS = /\.(png|jpe?g|gif|webp|svg)$/i;
+/**
+ * Re-exported because the preview machinery moved to `hooks/useAttachmentPreview` when the composer
+ * came to need it too; the thread's own callers still reach it through this module.
+ */
+export { isImageAttachment, resetAttachmentPreviewsForTesting };
 
 const ATTACHED_FILES_HEADING = "[Attached Files]:";
 
@@ -55,71 +74,6 @@ export function parseUserMessageContent(content: string): {
     .filter((path) => path.length > 0)
     .map((path) => ({ name: path.split(/[/\\]/).pop() || path, path }));
   return { prompt, attachments };
-}
-
-/** An attachment worth showing as a thumbnail rather than as a paperclip chip. */
-export const isImageAttachment = (attachment: ChatAttachment): boolean =>
-  attachment.mimeType?.startsWith("image/") === true || IMAGE_EXTENSIONS.test(attachment.path);
-
-/**
- * Previews already resolved, keyed by path, so a thumbnail survives the re-render a streaming turn
- * causes and two rows showing the same file read it once.
- *
- * A rejection is remembered as well: the daemon's answer for a given path — outside the local-file
- * roots, or not an allow-listed image — does not change while the app is running, and retrying it on
- * every re-render would be a request per frame for a file that is never coming.
- */
-const previewCache = new Map<string, Promise<string>>();
-
-const loadPreview = (path: string): Promise<string> => {
-  const cached = previewCache.get(path);
-  if (cached) return cached;
-  const pending = bridge.getLocalFilePreview(path);
-  previewCache.set(path, pending);
-  return pending;
-};
-
-/** Forgets the resolved previews. Tests use it so one case's stub cannot answer the next one's. */
-export function resetAttachmentPreviewsForTesting(): void {
-  previewCache.clear();
-}
-
-/**
- * The `data:` URL for an image attachment, or `failed` when the daemon will not serve it.
- *
- * The webview cannot load a bare filesystem path — `file://` is blocked from the app's own origin — so
- * the bytes come from the daemon's guarded `GET /ivy/local-file`, which is the endpoint V1 points its
- * attachment `<img>` tags at. It is fetched natively rather than linked because that route takes its
- * credential in the query string and the app's only credential is the bearer secret the webview never
- * holds; see `src-tauri/src/commands/local_file.rs`.
- */
-function useAttachmentPreview(
-  path: string,
-  enabled: boolean,
-): { url: string | null; failed: boolean } {
-  const [state, setState] = useState<{ url: string | null; failed: boolean }>({
-    url: null,
-    failed: false,
-  });
-
-  useEffect(() => {
-    if (!enabled) return;
-    let active = true;
-    setState({ url: null, failed: false });
-    loadPreview(path).then(
-      (url) => {
-        if (active) setState({ url, failed: false });
-      },
-      () => {
-        if (active) setState({ url: null, failed: true });
-      },
-    );
-    return () => {
-      active = false;
-    };
-  }, [path, enabled]);
-
-  return state;
 }
 
 /** The paperclip form: a document, or an image the daemon would not serve. */
@@ -203,6 +157,7 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
   isSubmittingAnswer: propIsSubmittingAnswer,
   onOpenPlan,
   onOpenImage,
+  wireframeBaseUrl,
   jobs = [],
   threadMessages = [],
 }) {
@@ -219,59 +174,18 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
     }
   }, [propInProgressAnswers, propIsSubmittingAnswer, message.id]);
 
-  const pendingDebounceTimersRef = useRef<
-    Map<string, { timer: ReturnType<typeof setTimeout>; commit: () => void }>
-  >(new Map());
-
-  // Flush all pending debounced commits immediately before unmounting so typed text is never lost
-  useEffect(() => {
-    return () => {
-      const pending = Array.from(pendingDebounceTimersRef.current.values());
-      pendingDebounceTimersRef.current.clear();
-      for (const { timer, commit } of pending) {
-        clearTimeout(timer);
-        commit();
-      }
-    };
-  }, []);
-
-  const handleAnswersChange = useCallback(
-    (eventName: string, _widgetId: string, args: unknown[]) => {
-      if (eventName !== "OnAnswersChange") return;
-      const payload = args[0] as
-        | Array<{ questionId: string; answer: string[] | null }>
-        | { questionId: string; answer: string[] | null };
-      const items = Array.isArray(payload) ? payload : [payload];
-      for (const item of items) {
-        const hasPending = pendingDebounceTimersRef.current.has(item.questionId);
-        const writeIn = isWriteInAnswer(message.content, item.questionId, item.answer, hasPending);
-
-        if (writeIn) {
-          const existing = pendingDebounceTimersRef.current.get(item.questionId);
-          if (existing) {
-            clearTimeout(existing.timer);
-          }
-
-          const commit = () => {
-            pendingDebounceTimersRef.current.delete(item.questionId);
-            chatStore.setInProgressAnswer(message.id, item.questionId, item.answer);
-            void chatStore.submitAnswer(message.id, item.questionId, item.answer);
-          };
-
-          const timer = setTimeout(commit, 300);
-          pendingDebounceTimersRef.current.set(item.questionId, { timer, commit });
-        } else {
-          const existing = pendingDebounceTimersRef.current.get(item.questionId);
-          if (existing) {
-            clearTimeout(existing.timer);
-            pendingDebounceTimersRef.current.delete(item.questionId);
-          }
-          chatStore.setInProgressAnswer(message.id, item.questionId, item.answer);
-          void chatStore.submitAnswer(message.id, item.questionId, item.answer);
-        }
-      }
+  /**
+   * A block's answers, applied in one go and followed by the summary as the next user turn. This
+   * is V1's `OnAnswerQuestion`, and the reason chat has no live answer callback: `ChatWidget`
+   * supplies only `QuestionsSubmitContext`, so `QuestionsCallout` takes its `!onAnswer && onSubmit`
+   * branch and drafts locally until Submit. Reporting every keystroke instead means a round trip
+   * per character, which is what the debounce this replaced existed to paper over.
+   */
+  const handleQuestionSubmit = useCallback(
+    (answers: Record<string, string[]>, summaryText: string) => {
+      void chatStore.submitAnswers(message.id, answers, summaryText);
     },
-    [message.id, message.content],
+    [message.id],
   );
 
   const currentMessage =
@@ -318,7 +232,7 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
         ) : jobState === "failed" ? (
           <XCircle className={`size-4 shrink-0 ${tone}`} aria-hidden="true" />
         ) : jobState === "running" ? (
-          <Loader2 className={`size-4 shrink-0 animate-spin ${tone}`} aria-hidden="true" />
+          <Spinner size="md" className={`shrink-0 ${tone}`} aria-hidden="true" />
         ) : (
           <span
             className="mt-1.5 inline-block size-1.5 shrink-0 rounded-full bg-muted-foreground"
@@ -391,18 +305,34 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
             <div>
               {/* What the turn did, ahead of what it said, as `AssistantTurn` orders it. */}
               <TurnActivity rawStream={currentMessage.rawStream} />
-              <PlanMarkdown
-                id={`chat-msg-${message.id}`}
-                content={content}
-                events={["OnAnswersChange"]}
-                eventHandler={handleAnswersChange}
-              />
+              {/* `flow` drops the plan *page* off the renderer. V1 renders `BlockMarkdown` here
+                  (react-markdown, no shell) inside a plain `.chat-markdown-body`; only V1's plan
+                  tab gets `PlanMarkdown`'s `Cap()`, gutter and own scroll. Sharing one component
+                  between the two surfaces means the thread inherits all three unless it says
+                  otherwise - a 1.5rem inset on every turn, a second width cap inside the column's
+                  own, and a scroller nested in the thread's. A code block is where that reads as
+                  broken, being bordered, full-bleed and the widest thing in a turn. */}
+              {/* Draft outside, submit inside, as `ChatWidget` nests them. No `events` and no
+                  `eventHandler`: `PlanMarkdown` passes `undefined` as its answer callback unless
+                  it sees `OnAnswersChange`, and that `undefined` alongside a submit callback is
+                  exactly what selects the batched chat block. The plan surface keeps the live
+                  path — see `PlanDetailView`. */}
+              <QuestionsDraftContext.Provider value={chatStore.questionDraftStore(message.id)}>
+                <QuestionsSubmitContext.Provider value={handleQuestionSubmit}>
+                  <PlanMarkdown
+                    id={`chat-msg-${message.id}`}
+                    content={content}
+                    wireframeBaseUrl={wireframeBaseUrl}
+                    flow
+                  />
+                </QuestionsSubmitContext.Provider>
+              </QuestionsDraftContext.Provider>
               {isSubmitting && (
                 <div
                   data-testid="submitting-answer-indicator"
                   className="mt-2 flex min-h-6 items-center gap-1.5 text-xs text-muted-foreground"
                 >
-                  <Loader2 className="size-3.5 animate-spin" />
+                  <Spinner size="sm" />
                   <span>Submitting answer...</span>
                 </div>
               )}
@@ -431,5 +361,3 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
     </ChatBubble>
   );
 });
-
-export default ChatMessageRow;

@@ -10,8 +10,8 @@ use crate::agents::model_specs;
 use crate::agents::providers::agent_command;
 use crate::agents::resolution::{default_profiles, normalize_agent_name};
 use crate::config::{
-    expand_variables, get_config_path, get_database_path, get_plans_dir, load_config,
-    MasterFileKind, TendrilSettings,
+    expand_config_path, expand_variables, get_config_path, get_database_path, get_plans_dir,
+    load_config, MasterFileKind, TendrilSettings,
 };
 use crate::db::{check_plan_search, get_last_sync_time, open_database, PlanSearchHealth};
 use crate::git::{
@@ -122,6 +122,7 @@ pub fn run_checks(tendril_home: &Path) -> Vec<CheckResult> {
     checks.extend(installation_checks());
 
     checks.push(git_check());
+    checks.extend(co_author_check(&settings));
     checks.extend(github_cli_checks());
 
     let (mut catalog_checks, catalog_is_static) = model_catalog_checks(tendril_home, &settings);
@@ -170,34 +171,48 @@ pub fn run_prerequisite_checks() -> Vec<CheckResult> {
 pub fn agent_checks() -> Vec<CheckResult> {
     AGENT_PREREQUISITES
         .iter()
-        .map(|agent| match probe_version(agent.command) {
-            Some(version) => CheckResult::prerequisite(
-                agent.label,
-                CheckStatus::Ok,
-                format!("{} installed: {}", agent.label, version),
-                false,
-                agent.install_url,
-            ),
-            None => CheckResult::prerequisite(
-                agent.label,
-                CheckStatus::Warn,
-                format!(
-                    "{} CLI ('{}') not found on PATH",
-                    agent.label, agent.command
+        .map(
+            |agent| match probe_version_with_arg(agent.command, agent.version_arg) {
+                Some(version) => CheckResult::prerequisite(
+                    agent.label,
+                    CheckStatus::Ok,
+                    format!("{} installed: {}", agent.label, version),
+                    false,
+                    agent.install_url,
                 ),
-                false,
-                agent.install_url,
-            ),
-        })
+                None => CheckResult::prerequisite(
+                    agent.label,
+                    CheckStatus::Warn,
+                    format!(
+                        "{} CLI ('{}') not found on PATH",
+                        agent.label, agent.command
+                    ),
+                    false,
+                    agent.install_url,
+                ),
+            },
+        )
         .collect()
+}
+
+/// The prerequisite row for a catalog agent id, matched the way the wizard matches one: by
+/// lowercasing the label. `None` for an agent that has no row, such as the bundled `ivy`.
+fn prerequisite_for(agent: &str) -> Option<&'static AgentPrerequisite> {
+    AGENT_PREREQUISITES
+        .iter()
+        .find(|p| p.label.to_lowercase() == agent)
 }
 
 /// A coding-agent CLI the wizard can offer to install.
 struct AgentPrerequisite {
     /// The catalog id from `crate::agents::catalog`, lowercased form of `label`.
     label: &'static str,
-    /// The binary `crate::agents::providers::build_agent_spec` launches for this agent.
+    /// The binary `crate::agents::providers::build_agent_spec` launches for this agent, or, for an
+    /// agent launched through another CLI, the one that is distinctively its own prerequisite.
     command: &'static str,
+    /// The argument that makes `command` report its presence. Almost every CLI answers
+    /// `--version`; one that does not names the subcommand that stands in for it.
+    version_arg: &'static str,
     install_url: &'static str,
 }
 
@@ -208,32 +223,53 @@ const AGENT_PREREQUISITES: &[AgentPrerequisite] = &[
     AgentPrerequisite {
         label: "Claude",
         command: "claude",
+        version_arg: "--version",
         install_url: "https://claude.com/claude-code",
     },
     AgentPrerequisite {
         label: "Codex",
         command: "codex",
+        version_arg: "--version",
         install_url: "https://github.com/openai/codex",
     },
     AgentPrerequisite {
         label: "Gemini",
         command: "gemini",
+        version_arg: "--version",
         install_url: "https://github.com/google-gemini/gemini-cli",
     },
     AgentPrerequisite {
         label: "OpenCode",
         command: "opencode",
+        version_arg: "--version",
         install_url: "https://opencode.ai",
     },
     AgentPrerequisite {
         label: "Copilot",
         command: "copilot",
+        version_arg: "--version",
         install_url: "https://github.com/github/copilot-cli",
+    },
+    AgentPrerequisite {
+        label: "Cursor",
+        command: "cursor-agent",
+        version_arg: "--version",
+        install_url: "https://cursor.com/cli",
     },
     AgentPrerequisite {
         label: "Antigravity",
         command: "agy",
+        version_arg: "--version",
         install_url: "https://antigravity.google",
+    },
+    // Apple runs through the OpenCode CLI, which is probed on its own row above. What is distinctly
+    // Apple's is `fm`, and it rejects `--version` outright, so presence is probed with `available` —
+    // the subcommand that reports whether the on-device model can be used on this machine.
+    AgentPrerequisite {
+        label: "Apple",
+        command: "fm",
+        version_arg: "available",
+        install_url: "https://developer.apple.com/documentation/foundationmodels",
     },
 ];
 
@@ -254,6 +290,67 @@ fn git_check() -> CheckResult {
             "https://git-scm.com/downloads",
         ),
     }
+}
+
+/// The one version floor this codebase asserts, and it only applies to an install that has opted in.
+///
+/// `coAuthor` attribution works by handing a spawned agent `GIT_CONFIG_COUNT` / `GIT_CONFIG_KEY_n` /
+/// `GIT_CONFIG_VALUE_n`, which git only honours from 2.31 (2021). An older git ignores them silently:
+/// commits would simply come out unattributed, with nothing anywhere saying why. Reported here rather
+/// than failing a job, because a missing trailer must never be the reason a plan does not run.
+///
+/// Nothing is reported when the feature is off, which is why this returns a `Vec` — `doctor` should
+/// not grow a line for a setting the operator has not touched.
+fn co_author_check(settings: &TendrilSettings) -> Vec<CheckResult> {
+    co_author_check_with(settings, || probe_full_version("git"))
+}
+
+/// Split from [`co_author_check`] so the version arm can be tested without an old git on the box —
+/// there is no way to install git 2.30 in CI to prove the warning fires.
+fn co_author_check_with(
+    settings: &TendrilSettings,
+    probe: impl FnOnce() -> Option<String>,
+) -> Vec<CheckResult> {
+    if settings.co_author_identity().is_none() {
+        return Vec::new();
+    }
+
+    // `git version 2.54.0 (Apple Git-157)` — the third whitespace-separated token, then major.minor.
+    let parsed = probe()
+        .and_then(|v| v.split_whitespace().nth(2).map(str::to_string))
+        .and_then(|v| {
+            let mut parts = v.split('.');
+            let major: u32 = parts.next()?.parse().ok()?;
+            let minor: u32 = parts.next()?.parse().ok()?;
+            Some((major, minor))
+        });
+
+    let check = match parsed {
+        Some((major, minor)) if (major, minor) >= (2, 31) => CheckResult::prerequisite(
+            "Git (coAuthor)",
+            CheckStatus::Ok,
+            format!(
+                "Git {major}.{minor} supports GIT_CONFIG_COUNT; coAuthor attribution is active"
+            ),
+            false,
+            "https://git-scm.com/downloads",
+        ),
+        Some((major, minor)) => CheckResult::prerequisite(
+            "Git (coAuthor)",
+            CheckStatus::Warn,
+            format!(
+                "coAuthor is configured but Git {major}.{minor} predates GIT_CONFIG_COUNT (2.31); \
+                 commits will not carry the Co-Authored-By trailer"
+            ),
+            false,
+            "https://git-scm.com/downloads",
+        ),
+        // An unparseable `git --version` is not evidence of an old git, and `git_check` above already
+        // reports a git that is missing outright.
+        None => return Vec::new(),
+    };
+
+    vec![check]
 }
 
 fn github_cli_check() -> CheckResult {
@@ -309,10 +406,16 @@ fn github_cli_checks() -> Vec<CheckResult> {
 
 /// First line of `<command> --version`, or `None` when the binary is not on PATH.
 fn probe_version(command: &str) -> Option<String> {
-    let out = std::process::Command::new(command)
-        .arg("--version")
-        .output()
-        .ok()?;
+    probe_version_with_arg(command, "--version")
+}
+
+/// First line of `<command> <arg>`, or `None` when the binary is not on PATH.
+///
+/// A non-zero exit is still a present binary, so only a failure to spawn reports absent. A CLI that
+/// rejects the argument prints nothing to stdout, which reads as present with an unknown version --
+/// hence `version_arg`, so each agent is asked in a way it answers.
+fn probe_version_with_arg(command: &str, arg: &str) -> Option<String> {
+    let out = std::process::Command::new(command).arg(arg).output().ok()?;
     Some(
         String::from_utf8_lossy(&out.stdout)
             .lines()
@@ -536,7 +639,11 @@ fn config_checks(tendril_home: &Path) -> Vec<CheckResult> {
 
         let mut expanded_repo_paths: HashSet<String> = HashSet::new();
         for r in &project.repos {
-            expanded_repo_paths.insert(expand_variables(&r.path, &tendril_home.to_string_lossy()));
+            expanded_repo_paths.insert(
+                expand_config_path(&r.path, tendril_home)
+                    .to_string_lossy()
+                    .to_string(),
+            );
             if let Some(message) =
                 repo_path_message(&project.name, "repository path", &r.path, tendril_home)
             {
@@ -549,7 +656,9 @@ fn config_checks(tendril_home: &Path) -> Vec<CheckResult> {
         }
 
         for dep_path in &project.build_dependencies {
-            let expanded_dep = expand_variables(dep_path, &tendril_home.to_string_lossy());
+            let expanded_dep = expand_config_path(dep_path, tendril_home)
+                .to_string_lossy()
+                .to_string();
             if expanded_repo_paths.contains(&expanded_dep) {
                 continue;
             }
@@ -915,10 +1024,49 @@ fn configured_or_default_models(settings: &TendrilSettings, agent: &str) -> Vec<
         .collect()
 }
 
+/// The binary doctor probes for an agent, and the argument that binary answers.
+///
+/// Not `agent_command` alone: that reports the binary the launch execs, which for an agent that
+/// wraps another CLI is the wrapper. Apple runs through OpenCode, so `agent_command` returns the
+/// OpenCode binary -- which answers `--version` happily on a machine with no `fm` installed at
+/// all, and doctor would call the install healthy at exactly the moment it is not. The
+/// prerequisite row names the binary that is distinctly this agent's, and the argument that
+/// binary actually answers, so the wizard and doctor probe the same thing.
+///
+/// Agents with no row, such as the bundled `ivy`, keep the launch binary and the conventional
+/// `--version`.
+fn doctor_probe_target(agent: &str) -> (String, &'static str) {
+    match prerequisite_for(agent) {
+        Some(prereq) => (prereq.command.to_string(), prereq.version_arg),
+        None => (agent_command(agent), "--version"),
+    }
+}
+
 /// One probe per configured coding agent: whether its CLI is installed, and whether every model it
 /// is configured (or defaulted) to use resolves in the model catalog. Model resolution is a pure
 /// catalog lookup, never a shell-out to the agent, so this stays synchronous and offline.
 fn agent_model_checks(settings: &TendrilSettings, catalog_is_static: bool) -> Vec<CheckResult> {
+    agent_model_checks_with(settings, catalog_is_static, |command, version_arg| {
+        probe_version_with_arg(command, version_arg).is_some()
+    })
+}
+
+/// [`agent_model_checks`] with the "is this CLI installed" probe supplied by the caller.
+///
+/// Split out for the tests. The model-catalog half of this function is pure, but it is only reached
+/// for an agent whose CLI is on PATH — so asserting on it through the real probe asserts that the
+/// machine running the suite happens to have `claude` installed, which CI does not. The tests pass a
+/// fixed answer and get to exercise the logic they are actually about.
+///
+/// The probe takes the version argument as well as the command, because [`doctor_probe_target`]
+/// picks both per agent: a CLI that rejects the argument prints nothing and reads as an unknown
+/// version, so asking `fm` for `--version` when it answers `--help` would report a working install
+/// as broken.
+fn agent_model_checks_with(
+    settings: &TendrilSettings,
+    catalog_is_static: bool,
+    is_installed: impl Fn(&str, &str) -> bool,
+) -> Vec<CheckResult> {
     let active = normalize_agent_name(&settings.coding_agent);
     let mut agents: Vec<(String, bool)> = vec![(active, true)];
     for a in &settings.coding_agents {
@@ -936,9 +1084,9 @@ fn agent_model_checks(settings: &TendrilSettings, catalog_is_static: bool) -> Ve
         } else {
             agent.clone()
         };
-        let command = agent_command(agent);
+        let (command, version_arg) = doctor_probe_target(agent);
 
-        if probe_version(&command).is_none() {
+        if !is_installed(&command, version_arg) {
             checks.push(CheckResult::environment(
                 "Agent models",
                 if *is_active {
@@ -995,12 +1143,18 @@ fn plan_folder_names(plans_root: &Path) -> Vec<String> {
         return Vec::new();
     };
 
-    entries
+    let mut names: Vec<String> = entries
         .filter_map(|e| e.ok())
         .filter(|e| e.path().is_dir())
         .filter_map(|e| e.file_name().to_str().map(|s| s.to_string()))
         .filter(|name| name.len() >= 5 && name.as_bytes()[..5].iter().all(|b| b.is_ascii_digit()))
-        .collect()
+        .collect();
+    // `read_dir` yields whatever order the filesystem happens to hand back - APFS returns these
+    // sorted, ext4 does not - and `path_budget_checks` names the longest folder via `max_by_key`,
+    // which keeps the *last* of equally long names. Without an order that tie would resolve
+    // differently per machine and the doctor output would not reproduce.
+    names.sort();
+    names
 }
 
 /// The relative path segment a worktree would use for every repo and build-dependency path
@@ -1012,8 +1166,8 @@ fn configured_repo_rel_paths(settings: &TendrilSettings, tendril_home: &Path) ->
     let mut names = Vec::new();
 
     let push_unique = |raw_path: &str, seen: &mut HashSet<String>, names: &mut Vec<String>| {
-        let expanded = expand_variables(raw_path, &tendril_home.to_string_lossy());
-        let name = derive_worktree_relative_path(Path::new(&expanded));
+        let expanded = expand_config_path(raw_path, tendril_home);
+        let name = derive_worktree_relative_path(&expanded);
         if seen.insert(name.clone()) {
             names.push(name);
         }
@@ -1189,13 +1343,29 @@ fn repo_path_message(
     raw_path: &str,
     tendril_home: &Path,
 ) -> Option<String> {
-    let expanded = expand_variables(raw_path, &tendril_home.to_string_lossy());
+    // Anchored the same way every consumer anchors it, so the diagnostic describes the directory
+    // that will actually be used. Reporting against the process cwd would make this check pass in
+    // the shell the user ran it from and fail in the daemon, which is the opposite of useful.
+    let resolved = expand_config_path(raw_path, tendril_home);
+    let expanded = resolved.to_string_lossy().to_string();
     let resolved_suffix = if expanded != raw_path {
         format!(" (resolved: {})", expanded)
     } else {
         String::new()
     };
-    match classify_repo_path(Path::new(&expanded)) {
+
+    // A relative path is worth its own message even when it happens to resolve: it resolves to a
+    // different directory on every surface, so "it works in the CLI" says nothing about the app.
+    if !raw_path.trim().is_empty()
+        && !Path::new(&expand_variables(raw_path, &tendril_home.to_string_lossy())).is_absolute()
+    {
+        return Some(format!(
+            "Project '{}' {} is relative: {}. It has been anchored to {}, but a relative path means something different in every process that reads this config -- write it absolute, or with %TENDRIL_HOME%.",
+            project_name, kind, raw_path, expanded
+        ));
+    }
+
+    match classify_repo_path(&resolved) {
         RepoPathStatus::Missing => Some(format!(
             "Project '{}' {} does not exist: {}{}",
             project_name, kind, raw_path, resolved_suffix
@@ -1340,8 +1510,110 @@ mod tests {
             "opencode",
             "copilot",
             "antigravity",
+            "apple",
         ] {
             assert!(names.contains(&id.to_string()), "{} is not probed", id);
+        }
+    }
+
+    /// A CLI that rejects its probe argument prints nothing to stdout, so the probe reads as
+    /// "present, version unknown" and the check still passes -- which means reverting an agent's
+    /// `version_arg` to `--version` would not fail any assertion about statuses or row counts. It
+    /// would just quietly stop reporting a version. Asserting the text each agent actually answers
+    /// with is what makes that regression visible, so the probe argument is only exercised on a
+    /// machine where the binary is installed; elsewhere there is nothing to assert and it skips.
+    #[test]
+    fn each_agent_is_probed_with_an_argument_it_answers() {
+        for agent in AGENT_PREREQUISITES {
+            let Some(version) = probe_version_with_arg(agent.command, agent.version_arg) else {
+                continue; // Not installed on this machine: the absent case is covered above.
+            };
+
+            assert!(
+                !version.trim().is_empty(),
+                "'{} {}' printed nothing to stdout, so {} reports as installed with no version -- \
+                 the probe argument is one this CLI does not answer",
+                agent.command,
+                agent.version_arg,
+                agent.label
+            );
+        }
+    }
+
+    /// `build_agent_spec` matches on a `&str` with a catch-all arm, so an agent added to the catalog
+    /// but forgotten here would not fail to compile: it would quietly report no install status at
+    /// all, and its onboarding card would sit blank. Deriving the expectation from the catalog is
+    /// what turns that into a test failure the moment the next agent is added.
+    /// An agent that wraps another CLI launches the wrapper, so `agent_command` reports the
+    /// wrapper and a probe built on it passes on a machine that is missing the agent's own
+    /// prerequisite entirely. Apple is the case in hand: it execs OpenCode, so probing the launch
+    /// binary answers `1.17.x` whether or not `fm` exists, and doctor would call a broken install
+    /// healthy. Asserting that doctor probes the prerequisite binary, rather than the launch one,
+    /// is what keeps that hole closed; the second half pins the argument too, since probing the
+    /// right binary with an argument it rejects reads as "present, version unknown" and passes
+    /// just as wrongly.
+    #[test]
+    fn doctor_probes_each_agents_own_prerequisite_not_the_binary_it_launches() {
+        for prereq in AGENT_PREREQUISITES {
+            let agent = prereq.label.to_lowercase();
+            let (command, version_arg) = doctor_probe_target(&agent);
+
+            assert_eq!(
+                command, prereq.command,
+                "doctor probes '{}' for {}, but its prerequisite is '{}' -- on a machine without \
+                 that binary the check would pass anyway",
+                command, prereq.label, prereq.command
+            );
+            assert_eq!(
+                version_arg, prereq.version_arg,
+                "doctor probes '{}' with '{}' while the wizard uses '{}' -- an argument the CLI \
+                 rejects prints nothing and reads as installed",
+                command, version_arg, prereq.version_arg
+            );
+        }
+    }
+
+    /// The wrapper case is only a hole when the two binaries actually differ, so this pins that
+    /// apple is still that case. If OpenCode ever stops being apple's launch binary this test
+    /// fails and the guard above becomes a tautology worth revisiting rather than silently
+    /// asserting nothing.
+    #[test]
+    fn apples_launch_binary_is_not_its_prerequisite_binary() {
+        let launched = agent_command("apple");
+        let (probed, _) = doctor_probe_target("apple");
+
+        assert_ne!(
+            std::path::Path::new(&launched).file_name(),
+            std::path::Path::new(&probed).file_name(),
+            "apple's launch binary and prerequisite binary are now the same, so doctor can no \
+             longer confuse them"
+        );
+        assert_eq!(probed, "fm");
+    }
+
+    #[test]
+    fn every_catalog_agent_has_a_prerequisite_row() {
+        // Two deliberate omissions, both for the same reason: they are the bundled OpenCode under
+        // a different base URL rather than a third-party CLI, so there is nothing for the user to
+        // install and the wizard offers no card. `ivy` no longer launches its own `ivy-agent`
+        // binary, and `openaiproxy` never did. Anything else reaching this list is an agent whose
+        // install status silently went missing.
+        const NO_PREREQUISITE: &[&str] = &["ivy", "openaiproxy"];
+
+        let probed: Vec<String> = AGENT_PREREQUISITES
+            .iter()
+            .map(|a| a.label.to_lowercase())
+            .collect();
+
+        for agent in crate::agents::catalog::all_agents() {
+            if NO_PREREQUISITE.contains(&agent.id.as_str()) {
+                continue;
+            }
+            assert!(
+                probed.contains(&agent.id.to_lowercase()),
+                "catalog agent '{}' has no AGENT_PREREQUISITES row, so it reports no install status",
+                agent.id
+            );
         }
     }
 
@@ -1808,7 +2080,10 @@ mod tests {
             ..Default::default()
         };
 
-        let checks = agent_model_checks(&settings, false);
+        // Installed, always: the subject is whether the built-in default models resolve in the
+        // catalog, and running the real probe would instead assert that whoever runs the suite has
+        // `claude` on PATH. CI does not, and used to fail here with a single "not found" line.
+        let checks = agent_model_checks_with(&settings, false, |_, _| true);
         let lines = render(&checks);
 
         assert!(
@@ -1824,7 +2099,7 @@ mod tests {
     fn agent_model_lines_flags_unknown_model() {
         let settings = agent_settings("claude", "not-a-real-model-id");
 
-        let checks = agent_model_checks(&settings, false);
+        let checks = agent_model_checks_with(&settings, false, |_, _| true);
         let lines = render(&checks);
 
         assert!(
@@ -1840,10 +2115,36 @@ mod tests {
     fn agent_model_lines_marks_active_agent() {
         let settings = agent_settings("claude", "opus");
 
-        let checks = agent_model_checks(&settings, false);
+        let checks = agent_model_checks_with(&settings, false, |_, _| true);
         let lines = render(&checks);
 
         assert!(lines.iter().any(|l| l.contains("claude (active)")));
+    }
+
+    /// The other side of the probe, which CI was exercising by accident.
+    ///
+    /// A machine without the agent installed gets one line per agent and no model lines at all —
+    /// `FAIL` for the active agent, `WARN` for the rest, because an unresolvable model on an agent
+    /// you are not using is noise. This is pinned so the fixed-`true` probe in the tests above
+    /// cannot quietly become the only behaviour under test.
+    #[test]
+    fn agent_model_lines_stop_at_the_cli_when_it_is_not_installed() {
+        let mut settings = agent_settings("claude", "not-a-real-model-id");
+        settings.coding_agents.push(crate::config::AgentConfig {
+            name: "codex".to_string(),
+            ..Default::default()
+        });
+
+        let checks = agent_model_checks_with(&settings, false, |_, _| false);
+        let lines = render(&checks);
+
+        assert_eq!(
+            lines,
+            vec![
+                "[FAIL] claude (active): CLI 'claude' not found on PATH".to_string(),
+                "[WARN] codex: CLI 'codex' not found on PATH".to_string(),
+            ]
+        );
     }
 
     #[test]
@@ -1881,5 +2182,83 @@ mod tests {
         assert!(lines.iter().any(|l| l.starts_with("[WARN]")
             && l.contains("Legacy .NET tool")
             && l.contains("1.0.99")));
+    }
+
+    fn settings_with_co_author(value: Option<&str>) -> TendrilSettings {
+        TendrilSettings {
+            co_author: value.map(str::to_string),
+            ..Default::default()
+        }
+    }
+
+    /// An operator who has not touched `coAuthor` must not gain a doctor line about it. This is the
+    /// same "unconfigured is byte-identical to today" rule the feature is built on, applied to output.
+    #[test]
+    fn co_author_check_is_silent_when_the_feature_is_off() {
+        assert!(co_author_check_with(&settings_with_co_author(None), || {
+            panic!("git must not even be probed when coAuthor is unset")
+        })
+        .is_empty());
+
+        // Blank is "off" too, per `co_author_identity`.
+        assert!(
+            co_author_check_with(&settings_with_co_author(Some("   ")), || {
+                panic!("git must not even be probed when coAuthor is blank")
+            })
+            .is_empty()
+        );
+    }
+
+    /// The whole reason this check exists: on git < 2.31 the `GIT_CONFIG_COUNT` handoff is ignored
+    /// silently, so the only symptom is commits that quietly lack the trailer.
+    #[test]
+    fn co_author_check_warns_on_a_git_older_than_the_env_config_floor() {
+        let checks = co_author_check_with(
+            &settings_with_co_author(Some("bot <bot@example.com>")),
+            || Some("git version 2.30.2".to_string()),
+        );
+
+        assert_eq!(checks.len(), 1);
+        assert_eq!(checks[0].status, CheckStatus::Warn);
+        assert!(
+            checks[0].message.contains("2.30"),
+            "got: {}",
+            checks[0].message
+        );
+        assert!(checks[0].message.contains("Co-Authored-By"));
+        // A missing trailer is cosmetic; it must never gate a job or a daemon start.
+        assert!(!checks[0].required);
+    }
+
+    #[test]
+    fn co_author_check_passes_on_the_floor_and_above() {
+        for version in ["git version 2.31.0", "git version 2.54.0 (Apple Git-157)"] {
+            let checks = co_author_check_with(
+                &settings_with_co_author(Some("bot <bot@example.com>")),
+                || Some(version.to_string()),
+            );
+            assert_eq!(checks.len(), 1, "{version}");
+            assert_eq!(checks[0].status, CheckStatus::Ok, "{version}");
+        }
+    }
+
+    /// `git_check` already reports a git that is missing or unreadable; a second red line saying the
+    /// same thing in different words is noise, so an unparseable probe reports nothing here.
+    #[test]
+    fn co_author_check_defers_to_git_check_when_the_version_is_unreadable() {
+        for probe in [
+            None,
+            Some("nonsense".to_string()),
+            Some("git version x.y".to_string()),
+        ] {
+            assert!(
+                co_author_check_with(
+                    &settings_with_co_author(Some("bot <bot@example.com>")),
+                    || probe.clone()
+                )
+                .is_empty(),
+                "{probe:?}"
+            );
+        }
     }
 }

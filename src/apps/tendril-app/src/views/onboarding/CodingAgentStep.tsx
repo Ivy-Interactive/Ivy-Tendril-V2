@@ -15,6 +15,14 @@ export const ONBOARDING_AGENTS: { id: string; label: string; checkName: string }
   { id: "gemini", label: "Gemini", checkName: "Gemini" },
   { id: "antigravity", label: "Antigravity", checkName: "Antigravity" },
   { id: "opencode", label: "OpenCode", checkName: "OpenCode" },
+  // No V1 counterpart either: `cursor-agent` postdates it. `checkName` is the label
+  // `health::AGENT_PREREQUISITES` gives the `cursor-agent` probe.
+  { id: "cursor", label: "Cursor", checkName: "Cursor" },
+  // No V1 counterpart: Apple's on-device models postdate it. `checkName` is the label
+  // `health::AGENT_PREREQUISITES` reports, which probes `fm` rather than the OpenCode this agent is
+  // launched through -- so the card reads "not installed" on a machine without `fm`, which is the
+  // thing the operator would actually have to install.
+  { id: "apple", label: "Apple", checkName: "Apple" },
 ];
 
 /** Registry rows that belong to an agent card rather than to the prerequisite list below it. */
@@ -113,10 +121,10 @@ export function CodingAgentStep({
               disabled={busy}
               onClick={() => onSelectAgent(agent.id)}
               data-testid={`onboarding-agent-${agent.id}`}
-              className={`flex flex-col items-start gap-2 rounded-field border p-3 text-left transition-colors disabled:opacity-50 ${
+              className={`flex flex-col items-start gap-2 rounded-field border p-3 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
                 selected
                   ? "border-primary bg-primary/10"
-                  : "border-border bg-card hover:bg-muted/50"
+                  : "border-border bg-card hover:bg-secondary/60"
               }`}
             >
               <div className="flex w-full items-center gap-2">

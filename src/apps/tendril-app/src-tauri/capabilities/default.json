@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Default permissions for Tendril Desktop main window",
   "windows": ["main"],
-  "permissions": ["core:default", "dialog:default", "notification:default"]
+  "permissions": ["core:default", "dialog:default", "notification:default", "opener:default"]
 }

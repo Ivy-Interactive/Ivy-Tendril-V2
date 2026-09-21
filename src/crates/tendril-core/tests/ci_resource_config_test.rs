@@ -188,3 +188,100 @@ fn ci_frees_disk_before_first_cargo_step() {
          steps still need"
     );
 }
+
+/// The pinned toolchain in `rust-toolchain.toml` and the `toolchain:` every workflow passes to
+/// `dtolnay/rust-toolchain` must be the same version.
+///
+/// The action installs whatever its `toolchain:` input says — defaulting to `stable` — sets that as
+/// the rustup default, and installs any `targets:` into it. It never exports `RUSTUP_TOOLCHAIN`. A
+/// `rust-toolchain.toml` override beats `rustup default`, so a workflow that omits the input builds
+/// under the pinned version while the target std it just installed sits in a different toolchain,
+/// and pays for a second uncached download in every job to get there. Passing the input explicitly
+/// is the fix; this test is what keeps the two from drifting after the next bump.
+#[test]
+fn every_workflow_installs_the_toolchain_this_repo_is_pinned_to() {
+    let root = repo_root();
+
+    let pinned = {
+        let path = root.join("rust-toolchain.toml");
+        let content = std::fs::read_to_string(&path)
+            .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+        content
+            .parse::<toml::Table>()
+            .unwrap_or_else(|e| panic!("failed to parse {}: {e}", path.display()))
+            .get("toolchain")
+            .and_then(|t| t.get("channel"))
+            .and_then(|c| c.as_str())
+            .unwrap_or_else(|| panic!("{}: [toolchain].channel is missing", path.display()))
+            .to_string()
+    };
+    assert_ne!(
+        pinned, "stable",
+        "rust-toolchain.toml is pinned to an exact version on purpose; a floating channel puts \
+         every machine and every CI run on whatever stable happened to be that day"
+    );
+
+    // Sorted: `read_dir` order is filesystem-dependent, and an assertion that names files should
+    // fail the same way on APFS and ext4.
+    let workflows_dir = root.join(".github/workflows");
+    let mut workflows: Vec<std::path::PathBuf> = std::fs::read_dir(&workflows_dir)
+        .unwrap_or_else(|e| panic!("failed to read {}: {e}", workflows_dir.display()))
+        .filter_map(|e| e.ok())
+        .map(|e| e.path())
+        .filter(|p| p.extension().is_some_and(|x| x == "yml" || x == "yaml"))
+        .collect();
+    workflows.sort();
+
+    let mut checked = 0usize;
+    for path in &workflows {
+        let content = std::fs::read_to_string(path)
+            .unwrap_or_else(|e| panic!("failed to read {}: {e}", path.display()));
+        let doc: serde_yaml::Value = serde_yaml::from_str(&content)
+            .unwrap_or_else(|e| panic!("failed to parse {}: {e}", path.display()));
+
+        let name = path.file_name().unwrap_or_default().to_string_lossy();
+        for step in toolchain_steps(&doc) {
+            let declared = step
+                .get("with")
+                .and_then(|w| w.get("toolchain"))
+                .and_then(|t| t.as_str());
+            assert_eq!(
+                declared,
+                Some(pinned.as_str()),
+                "{name}: a dtolnay/rust-toolchain step must pass `toolchain: {pinned}` to match \
+                 rust-toolchain.toml — without it the action installs `stable`, and any `targets:` \
+                 land in a toolchain that the rust-toolchain.toml override stops cargo from using"
+            );
+            checked += 1;
+        }
+    }
+
+    assert!(
+        checked >= 7,
+        "expected to find the rust-toolchain steps across the ci and release workflows, \
+         found {checked} — has a workflow been renamed or removed?"
+    );
+}
+
+/// Every `uses: dtolnay/rust-toolchain@...` step anywhere in a workflow document.
+fn toolchain_steps(doc: &serde_yaml::Value) -> Vec<&serde_yaml::Value> {
+    fn walk<'a>(node: &'a serde_yaml::Value, out: &mut Vec<&'a serde_yaml::Value>) {
+        match node {
+            serde_yaml::Value::Sequence(items) => items.iter().for_each(|i| walk(i, out)),
+            serde_yaml::Value::Mapping(map) => {
+                if map
+                    .get(serde_yaml::Value::from("uses"))
+                    .and_then(|u| u.as_str())
+                    .is_some_and(|u| u.starts_with("dtolnay/rust-toolchain"))
+                {
+                    out.push(node);
+                }
+                map.values().for_each(|v| walk(v, out));
+            }
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    walk(doc, &mut out);
+    out
+}

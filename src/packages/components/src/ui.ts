@@ -19,6 +19,10 @@ export * from "./components/ui/badge";
 export * from "./components/ui/blades";
 export * from "./components/ui/button";
 export * from "./components/ui/calendar";
+/* Not under components/ui/: CodeEditor owns a directory because it ships a stylesheet and a
+   lazy CodeMirror loader alongside the component. Exported here because it is a form control a
+   host reaches for like any other primitive. */
+export * from "./components/CodeEditor/index.ts";
 export * from "./components/ui/callout";
 export * from "./components/ui/callout-variant";
 export * from "./components/ui/card";
@@ -81,3 +85,19 @@ export {
   type TooltipSide as TuiTooltipSide,
   type TooltipProps as TuiTooltipProps,
 } from "./components/ui/TuiTooltip";
+export * from "./components/SidebarListRow/index.ts";
+
+// Appended: the bare `inputVariant`, so a consumer styling a native control to match `Input`
+// can import the one `cva` rather than the `InputVariants` namespace, which retains all ten
+// variant modules and cannot be tree-shaken.
+export { inputVariant } from "./components/ui/input/variant";
+
+// Appended for the same reason as `inputVariant` above, and with the same shape: `ivyColorVar` was
+// only reachable from the *root* barrel, and the root barrel statically reaches `MarkdownRenderer`,
+// which imports `katex/dist/katex.min.css`. So a settings field wanting one string transform pulled
+// all of KaTeX into the app's eager graph: measured at 1,865,861 bytes against a 1,591,760 baseline,
+// +274,101, which took `code-splitting.test.tsx`'s budget from 94.9% to 111.2% and failed it. From
+// `/ui` the same field measures 1,594,236 - +2,476, the swatch grid itself. `/ui` already retains
+// the module (`badge.tsx` calls it), so exporting it here costs nothing and lets a consumer colour a
+// swatch without reaching the markdown pipeline.
+export { ivyColorVar } from "./lib/ivy-color";

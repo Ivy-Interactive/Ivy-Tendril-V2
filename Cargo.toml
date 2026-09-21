@@ -7,6 +7,13 @@ resolver = "2"
 
 [workspace.package]
 version = "0.1.0"
+# Introduced, not raised - this workspace previously declared no MSRV at all, which left Cargo's
+# MSRV-aware resolver with no floor to honour: a dependency quietly raising its own minimum was
+# caught only by whichever rustc CI happened to install. 1.88 is the binding constraint among the
+# library and CLI crates' dependencies (rcgen 0.14 and zip 8 both declare it, as does the icu chain
+# under url/idna). Distinct from rust-toolchain.toml, which pins what we *build* with; this is the
+# oldest compiler we claim to support. tendril-app overrides it - see the note in its manifest.
+rust-version = "1.88"
 edition = "2021"
 authors = ["Ivy Interactive"]
 license = "FSL-1.1-ALv2"
@@ -30,20 +37,30 @@ notify = "8.2"
 uuid = { version = "1.11", features = ["v4", "serde"] }
 futures-util = "0.3"
 axum = { version = "0.7", features = ["ws"] }
-tower-http = { version = "0.5", features = ["cors", "trace"] }
+tower-http = { version = "0.7", features = ["cors", "trace"] }
 clap = { version = "4.5", features = ["derive", "env"] }
 # The WebViewer proxy re-emits a rewritten body instead of relaying the original bytes, so
 # responses have to arrive decompressed; `stream` lets non-text bodies pass straight through.
 reqwest = { version = "0.12", features = ["json", "gzip", "brotli", "deflate", "stream"] }
-rand = "0.8"
+# 0.9 rather than 0.10: 0.10 requires edition 2024 and renames `RngCore` to `Rng` and `OsRng` to
+# `SysRng`, which is a second, different port for no benefit. Note this does not evict rand 0.8 from
+# the lockfile — tungstenite 0.24 (via axum 0.7) still holds it until axum 0.8 lands.
+rand = "0.9"
 libc = "0.2"
 tokio-tungstenite = "0.24"
 lol_html = "3.0"
 base64 = "0.22"
 flate2 = "1.0"
 tar = "0.4"
-zip = { version = "2.2", default-features = false, features = ["deflate"] }
+# `deflate-flate2` rather than the umbrella `deflate` feature. As of zip 8 `deflate` expands to
+# `deflate-zopfli` + `deflate-flate2-zlib-rs`, which pins flate2 onto the zlib-rs backend for the
+# whole workspace — and flate2 is used well outside zip, notably the gzip/tar path in `update`'s
+# non-Windows self-update. Naming the flate2 backend directly keeps that on miniz_oxide and drops
+# the zopfli dependency the umbrella pulls in. Verify with `cargo tree -p flate2 -e features`.
+zip = { version = "8.6", default-features = false, features = ["deflate-flate2"] }
 sha2 = "0.10"
+# npm publishes some registry integrity hashes as sha1; the wireframe payload verifier accepts them.
+sha1 = "0.10"
 # A review action is hosted in a real pseudo-terminal rather than on two pipes: dev servers disable
 # colour and buffer differently when stdout is not a TTY, and one that prompts on first run cannot be
 # answered through a pipe at all.
@@ -55,7 +72,7 @@ argon2 = "0.5"
 # HS256 session tokens minted by POST /api/auth/login, signed with the decoded `auth.hashSecret`.
 jsonwebtoken = "9"
 # Self-signed localhost certificates for `tendril generate-certs`.
-rcgen = "0.13"
+rcgen = "0.14"
 # TLS listener for `tendril serve --tls-cert/--tls-key`. Plain `axum::serve` has no TLS.
 #
 # `tls-rustls-no-provider` rather than `tls-rustls`: the latter turns on `rustls/aws-lc-rs`, which
@@ -63,7 +80,7 @@ rcgen = "0.13"
 # no unambiguous default — `RustlsConfig::from_pem_file` then panics at runtime. `ring` is already
 # enabled workspace-wide (reqwest's `rustls-tls` in tendril-app), so the server installs the ring
 # provider explicitly instead.
-axum-server = { version = "0.7", default-features = false, features = [
+axum-server = { version = "0.8", default-features = false, features = [
     "tls-rustls-no-provider",
 ] }
 rustls = { version = "0.23", default-features = false, features = [
@@ -72,7 +89,7 @@ rustls = { version = "0.23", default-features = false, features = [
     "tls12",
     "logging",
 ] }
-toml = "0.9"
+toml = "1"
 
 # CI runs `cargo test --workspace` on a ubuntu-latest runner with ~14 GB of free disk, and a full
 # debug build of this workspace is ~14 GB on its own — debug info is the bulk of it. Without this,

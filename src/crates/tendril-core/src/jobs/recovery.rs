@@ -207,7 +207,7 @@ pub(crate) fn resolve_interrupted_job(
             let Ok((plan, _)) = read_plan_yaml(&plan_folder) else {
                 return InterruptedOutcome::Incomplete;
             };
-            if resolve_post_execution_state(&plan, &plan_folder) == PlanStatus::Review {
+            if resolve_post_execution_state(&plan, &plan_folder, None) == PlanStatus::Review {
                 InterruptedOutcome::WorkIntact
             } else {
                 InterruptedOutcome::Incomplete

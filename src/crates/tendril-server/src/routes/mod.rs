@@ -16,12 +16,14 @@ pub mod onboarding;
 pub mod ping;
 pub mod plans;
 pub mod projects;
+pub mod promptwares;
 pub mod pull_requests;
 pub mod recommendations;
 pub mod tables;
 pub mod tunnel;
 pub mod vault;
 pub mod verifications;
+pub mod wireframes;
 pub mod ws;
 
 use crate::state::AppState;
@@ -215,6 +217,13 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                 .put(projects::update_project)
                 .delete(projects::delete_project),
         )
+        // The destructive sibling of `DELETE /api/projects/:name`, as its own route rather than a
+        // flag on that one: they remove different things, and a boolean would put the irreversible
+        // one a character away from the reversible one.
+        .route(
+            "/api/projects/:name/data",
+            axum::routing::delete(projects::purge_project),
+        )
         .route(
             "/api/projects/:name/issues",
             get(projects::get_project_issues),
@@ -326,10 +335,25 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/agents/:agent/usage",
             get(agents::get_agent_usage_handler),
         )
+        // The prompt a promptware runs, for the Settings pane that configures it. Read-only: editing a
+        // program is `promptwareOverlay`'s job, a directory the team owns and version-controls.
+        .route(
+            "/api/promptwares/:name/program",
+            get(promptwares::get_promptware_program_handler),
+        )
         // Config
         .route(
             "/api/config",
             get(config::get_config_handler).put(config::put_config_handler),
+        )
+        // The raw file behind the in-app editor, V2's replacement for V1 shelling out to the OS editor
+        // (`RawConfigEditorView.cs`). Separate from `/api/config` because the structured route round-trips
+        // through `serde` and loses comments, key order and blank lines - preserving those is the entire
+        // point of the editor. Secrets are masked daemon-side on the way out and resolved back on the way
+        // in, and this path is deliberately NOT in the share allowlist (`share::policy`).
+        .route(
+            "/api/config/text",
+            get(config::get_config_text_handler).put(config::put_config_text_handler),
         )
         // Version check
         .route("/api/version", get(health::get_version_handler))
@@ -379,9 +403,14 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                 .post(tunnel::start_share_tunnel)
                 .delete(tunnel::stop_share_tunnel),
         )
+        // The install check, the install itself, and the way out of one. `POST` is only ever reached
+        // from an explicit Install press — nothing downloads on start or on a status read — and
+        // `DELETE` cancels a transfer in flight rather than deleting an installed binary.
         .route(
             "/api/tunnel/share/install",
-            get(tunnel::get_cloudflared_install_state),
+            get(tunnel::get_cloudflared_install_state)
+                .post(tunnel::install_cloudflared)
+                .delete(tunnel::cancel_cloudflared_install),
         )
         // Models
         .route("/api/models", get(models::list_models))
@@ -548,6 +577,21 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         // bound to the daemon host's localhost. See `crate::share_exposure`.
         .merge(
             crate::webviewer::routes().layer(axum::middleware::from_fn_with_state(
+                state.clone(),
+                crate::share_exposure::refuse_on_any_tunnel_host,
+            )),
+        )
+        // Plan wireframe previews, for the same reason and with the same caveat as the WebViewer
+        // above: an <iframe src> navigation carries no Authorization header, so these cannot sit
+        // behind auth_middleware, and the daemon is loopback-only by default.
+        //
+        // Refused over a tunnel, deliberately and unlike V1. V1 serves previews on its own origin
+        // partly so share links show them; here that would publish every plan's wireframes to anyone
+        // holding a tunnel URL, with none of the per-plan scoping share tokens give the API. Making
+        // them shareable is a decision about the share-token policy, not a side effect of mounting a
+        // route, so it is left off until someone asks for it.
+        .merge(
+            wireframes::routes().layer(axum::middleware::from_fn_with_state(
                 state.clone(),
                 crate::share_exposure::refuse_on_any_tunnel_host,
             )),

@@ -114,5 +114,3 @@ export function ChatBubbleActionWrapper({ className, children }: ChatBubbleActio
     </div>
   );
 }
-
-export default ChatBubble;

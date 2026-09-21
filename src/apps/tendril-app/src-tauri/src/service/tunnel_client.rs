@@ -86,6 +86,40 @@ pub struct CloudflaredInstallDto {
     pub asset_name: String,
     #[serde(rename = "downloadUrl", default)]
     pub download_url: String,
+    /// Whether the daemon can fetch and verify this platform's asset, i.e. whether offering Install
+    /// makes sense. False also when `shareTunnel.binaryPath` is set to something unusable, where the
+    /// fix is the operator's config and not a download.
+    #[serde(default)]
+    pub downloadable: bool,
+    /// The live install, when one has been attempted. Absent means nothing has run.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub progress: Option<CloudflaredInstallProgressDto>,
+    #[serde(
+        rename = "configuredPathError",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub configured_path_error: Option<String>,
+}
+
+/// Progress for a running install, mirroring `tendril_core::tunnel::installer::InstallProgress`.
+///
+/// `phase` is a plain string on both sides of the wire deliberately: the pane only switches on it to
+/// pick what to render, and a daemon that grows a new phase must not break an older app.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct CloudflaredInstallProgressDto {
+    #[serde(default)]
+    pub phase: String,
+    #[serde(rename = "downloadedBytes", default)]
+    pub downloaded_bytes: u64,
+    #[serde(
+        rename = "totalBytes",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub total_bytes: Option<u64>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
 }
 
 #[derive(Debug, Clone)]
@@ -156,6 +190,23 @@ impl TunnelClient {
 
     pub async fn install_state(&self) -> Result<CloudflaredInstallDto, BridgeError> {
         self.send(reqwest::Method::GET, "/api/tunnel/share/install")
+            .await
+    }
+
+    /// `POST /api/tunnel/share/install`. Starts the daemon's download of `cloudflared`.
+    ///
+    /// Returns as soon as the download is running, the same shape as starting a tunnel: the caller
+    /// polls [`TunnelClient::install_state`] for progress. Only ever called from an explicit Install
+    /// press — see `tendril_core::tunnel::installer`.
+    pub async fn install(&self) -> Result<CloudflaredInstallDto, BridgeError> {
+        self.send(reqwest::Method::POST, "/api/tunnel/share/install")
+            .await
+    }
+
+    /// `DELETE /api/tunnel/share/install`. Cancels a running download; installs nothing and removes
+    /// nothing already installed.
+    pub async fn cancel_install(&self) -> Result<CloudflaredInstallDto, BridgeError> {
+        self.send(reqwest::Method::DELETE, "/api/tunnel/share/install")
             .await
     }
 

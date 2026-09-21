@@ -27,12 +27,43 @@ function footerButtons(): HTMLButtonElement[] {
   return [...footer.querySelectorAll("button")] as HTMLButtonElement[];
 }
 
+/**
+ * The footer's buttons by the names a screen reader announces, which is what the order-and-labels
+ * assertions below have always meant.
+ *
+ * They read `textContent` until the confirm grew its `Ctrl+Enter` key cap. The cap is `aria-hidden`
+ * and so absent from the accessible name, but `textContent` sees straight through `aria-hidden` and
+ * reported "DeleteCtrl↵" — a change in decoration failing an assertion about labelling. Reading the
+ * computed name instead asserts the thing the contract actually cares about (point 3: "the label is
+ * the verb") and stays true whatever hint rides along with it.
+ */
+function footerButtonNames(): (string | null)[] {
+  return footerButtons().map((button) => button.getAttribute("aria-label") ?? computeName(button));
+}
+
+/**
+ * The accessible name of a button whose only contributors are text nodes and `aria-hidden`
+ * subtrees, which is every footer button here. `getByRole(..., { name })` is the usual way to ask,
+ * but these tests assert the *order* of the whole row, so the name has to be read off each element.
+ */
+function computeName(button: HTMLElement): string {
+  return [...button.childNodes]
+    .filter((node) => !(node instanceof HTMLElement && node.getAttribute("aria-hidden") === "true"))
+    .map((node) => node.textContent ?? "")
+    .join("")
+    .trim();
+}
+
 function Harness({
   onConfirm = vi.fn(),
   onClose,
+  confirmDisabled,
+  isBusy,
 }: {
   onConfirm?: () => void;
   onClose?: () => void;
+  confirmDisabled?: boolean;
+  isBusy?: boolean;
 }) {
   const [isOpen, setIsOpen] = React.useState(true);
   return (
@@ -47,6 +78,8 @@ function Harness({
       confirmLabel="Delete"
       confirmVariant="destructive"
       onConfirm={onConfirm}
+      confirmDisabled={confirmDisabled}
+      isBusy={isBusy}
     />
   );
 }
@@ -64,7 +97,7 @@ describe("Framework's confirmation contract", () => {
   it("puts exactly Cancel then the confirm in the footer, in that order", () => {
     render(<Harness />);
 
-    expect(footerButtons().map((b) => b.textContent)).toEqual(["Cancel", "Delete"]);
+    expect(footerButtonNames()).toEqual(["Cancel", "Delete"]);
   });
 
   it("styles Cancel as the outline decline and the confirm as destructive", () => {
@@ -149,13 +182,148 @@ describe("the plan delete keeps Framework's shape with V1's alternatives", () =>
     render(<DeletePlanDialog isOpen onClose={vi.fn()} plan={planDetail({ id: "00021" })} />);
 
     const buttons = footerButtons();
-    expect(buttons.map((b) => b.textContent)).toEqual([
-      "Cancel",
-      "Move to Skipped",
-      "Move to Icebox",
-      "Delete",
-    ]);
+    expect(footerButtonNames()).toEqual(["Cancel", "Move to Skipped", "Move to Icebox", "Delete"]);
     expect(buttons.filter((b) => b.className.includes("bg-destructive"))).toHaveLength(1);
     expect(buttons[3]).toHaveClass("bg-destructive");
+  });
+});
+
+/**
+ * Point 7 of the contract, asserted on `ConfirmDialog` itself because that is where it is bound: the
+ * chord belongs to every confirm dialog in the app, not to the plan delete that prompted it.
+ *
+ * `DialogShell` reads `event.ctrlKey || event.metaKey`, so Cmd and Ctrl are both the chord on both
+ * platforms; the tests fire each one rather than stubbing `navigator` per platform. The keydown goes
+ * to the dialog element because that is where `onKeyDown` lives and where a real press inside the
+ * focus trap bubbles from.
+ */
+describe("Ctrl/Cmd+Enter confirms", () => {
+  it("fires the primary action on Cmd+Enter", () => {
+    const onConfirm = vi.fn();
+    render(<Harness onConfirm={onConfirm} />);
+
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Enter", metaKey: true });
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  it("fires the primary action on Ctrl+Enter", () => {
+    const onConfirm = vi.fn();
+    render(<Harness onConfirm={onConfirm} />);
+
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Enter", ctrlKey: true });
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * Point 6's hazard is a bare Enter reaching the destructive button, and the modifier is what keeps
+   * the two apart: with focus parked on Cancel, an unmodified Enter is a decline.
+   */
+  it("ignores a bare Enter, so the chord and a stray keystroke stay different things", () => {
+    const onConfirm = vi.fn();
+    render(<Harness onConfirm={onConfirm} />);
+
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Enter" });
+
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  /**
+   * `JobsView`'s clear-jobs confirm renders disabled while its scope is empty. A shortcut that
+   * bypassed `confirmDisabled` would submit exactly what the button is refusing.
+   */
+  it("is inert while the primary action is disabled", () => {
+    const onConfirm = vi.fn();
+    render(<Harness onConfirm={onConfirm} confirmDisabled />);
+
+    const dialog = screen.getByRole("dialog");
+    fireEvent.keyDown(dialog, { key: "Enter", metaKey: true });
+    fireEvent.keyDown(dialog, { key: "Enter", ctrlKey: true });
+
+    expect(screen.getByTestId("dialog-confirm")).toBeDisabled();
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  /** The in-flight case: the button reads "Working…" and is disabled, so the chord must be too. */
+  it("is inert while the dialog is busy, so a second press cannot double-submit", () => {
+    const onConfirm = vi.fn();
+    render(<Harness onConfirm={onConfirm} isBusy />);
+
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Enter", metaKey: true });
+
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  /** An auto-repeat from a held chord is one press, not a stream of confirmations. */
+  it("ignores auto-repeat", () => {
+    const onConfirm = vi.fn();
+    render(<Harness onConfirm={onConfirm} />);
+
+    const dialog = screen.getByRole("dialog");
+    fireEvent.keyDown(dialog, { key: "Enter", metaKey: true });
+    fireEvent.keyDown(dialog, { key: "Enter", metaKey: true, repeat: true });
+
+    expect(onConfirm).toHaveBeenCalledTimes(1);
+  });
+
+  /** Point 5 is unchanged: adding a confirm chord must not turn Escape into anything but a cancel. */
+  it("leaves Escape as the cancel", async () => {
+    const onConfirm = vi.fn();
+    const onClose = vi.fn();
+    render(<Harness onConfirm={onConfirm} onClose={onClose} />);
+
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+
+    await waitFor(() => expect(onClose).toHaveBeenCalled());
+    expect(onConfirm).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * Point 8: the chord is *visible*. Point 7 bound the key and rendered nothing, which made the whole
+ * affordance discoverable only by reading `ConfirmDialog.tsx` — the complaint that prompted this.
+ *
+ * The cap must track `confirmArmed` exactly, in both directions. Rendered while the chord is
+ * withheld it advertises a dead key; withheld while the chord is live it is the bug these tests
+ * exist to prevent coming back.
+ */
+function confirmHint(): HTMLElement | null {
+  return screen.getByTestId("dialog-confirm").querySelector(".tui-kbd");
+}
+
+describe("the Ctrl/Cmd+Enter chord is advertised on the confirm", () => {
+  it("renders a key cap inside the confirm button", () => {
+    render(<Harness />);
+
+    expect(confirmHint()).not.toBeNull();
+  });
+
+  /**
+   * The reason `TuiKbd` is the primitive here and `ShortcutKeys`/`Kbd` is not: the cap decorates the
+   * button without joining its name, so point 3's "the label is the verb" survives and every
+   * `getByRole("button", { name })` in the suite keeps resolving.
+   */
+  it("keeps the cap out of the button's accessible name", () => {
+    render(<Harness />);
+
+    expect(confirmHint()).toHaveAttribute("aria-hidden", "true");
+    expect(screen.getByRole("button", { name: "Delete" })).toBe(
+      screen.getByTestId("dialog-confirm"),
+    );
+  });
+
+  /** `JobsView`'s clear-jobs confirm renders disabled with an empty scope; the cap must go with it. */
+  it("shows no cap while the primary action is disabled", () => {
+    render(<Harness confirmDisabled />);
+
+    expect(screen.getByTestId("dialog-confirm")).toBeDisabled();
+    expect(confirmHint()).toBeNull();
+  });
+
+  it("shows no cap while the dialog is busy", () => {
+    render(<Harness isBusy />);
+
+    expect(confirmHint()).toBeNull();
   });
 });

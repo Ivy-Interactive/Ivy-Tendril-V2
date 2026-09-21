@@ -255,7 +255,7 @@ impl EventWireNormalizer {
             return;
         }
         if let Some(model) = model.map(str::trim).filter(|m| !m.is_empty()) {
-            self.model = Some(model.to_string());
+            self.model = Some(priceable_model_name(model));
         }
     }
 
@@ -409,6 +409,15 @@ impl EventWireNormalizer {
                     None => Vec::new(),
                 },
             },
+
+            // Cursor. `{"type":"thinking","subtype":"delta"|"completed","text":…}` -- the deltas
+            // carry the reasoning a token at a time and the `completed` line carries no text at
+            // all, so it closes the block rather than adding to it.
+            "thinking" => match value.get("text").and_then(|t| t.as_str()) {
+                Some(text) if !text.is_empty() => vec![thinking_event(text)],
+                _ => Vec::new(),
+            },
+            "tool_call" => cursor_tool_call(value),
 
             // Not a shape any provider Tendril launches is known to emit. Kept verbatim.
             _ => vec![raw.to_string()],
@@ -816,7 +825,15 @@ fn usage_value(facts: &UsageFacts, fallback_model: Option<&str>) -> Option<Value
         map.insert("cost_usd".into(), json!(cost));
         map.insert("cost_source".into(), json!("agent"));
     } else if facts.billable_tokens() > 0 {
-        if let Some(spec) = model.and_then(model_specs::find) {
+        // `is_priced` rather than a bare `find`: models.dev lists a model under every provider that
+        // resells it, and one that publishes no `cost` block parses to a rate card of zeros. Pricing
+        // against that emits `cost_usd: 0.0` stamped `estimated`, which the viewer renders as
+        // "$0.00" — "this run was free" — for a run that cost real money. Omitting the key leaves it
+        // at "—", the honest claim, and matches what `cost_backfill` refuses to guess at.
+        if let Some(spec) = model
+            .and_then(model_specs::find)
+            .filter(model_specs::is_priced)
+        {
             map.insert(
                 "cost_usd".into(),
                 json!(spec.calculate_cost(
@@ -835,6 +852,151 @@ fn usage_value(facts: &UsageFacts, fallback_model: Option<&str>) -> Option<Value
     }
 
     Some(Value::Object(map))
+}
+
+// ── Cursor (`cursor-agent`) ─────────────────────────────────────────────────────────────────────
+
+/// The model name a `session_init` should carry, resolved onto something the price list can match
+/// when the provider announced a human-readable name instead of an id.
+///
+/// Every other provider names its model the way it was launched: Claude says `claude-opus-5`, Codex
+/// says `gpt-5.6-terra`. Cursor says **"Claude Opus 5 300K Low No Thinking"** -- a display name
+/// carrying the context window and the reasoning rung. `model_specs::find` is id-shaped, so that
+/// string resolves to nothing and a run that cost real money reports no cost at all.
+///
+/// Lowercasing and replacing spaces with dashes is enough to reach `find`'s longest-substring tier:
+/// `claude-opus-5-300k-low-no-thinking` contains `claude-opus-5`, and `gpt-5.6-terra-272k-medium`
+/// contains `gpt-5.6-terra`. Matching the *longest* key is `find`'s own rule, so "Claude Opus 4.8 …"
+/// cannot be mistaken for Opus 5.
+///
+/// A name is only rewritten when it contains a space, because no model id does -- an id-shaped name
+/// is already what every other provider sends and is left exactly alone. That test matters more
+/// than it looks: the raw `"Claude Opus 5 300K Low No Thinking"` *does* resolve, onto the bare
+/// `opus` alias, at Sonnet-ish rates. Resolving to the wrong row is worse than resolving to none,
+/// so the spaced form is never the one that gets priced. And when the dashed form resolves to
+/// nothing -- Composer, Muse Spark, anything Cursor ships that has no published rate -- the display
+/// name is kept verbatim and the run reports no cost at all, which is the honest answer.
+fn priceable_model_name(model: &str) -> String {
+    if !model.contains(' ') {
+        return model.to_string();
+    }
+    let dashed = model.trim().to_ascii_lowercase().replace(' ', "-");
+    if model_specs::find(&dashed).is_some() {
+        return dashed;
+    }
+    model.to_string()
+}
+
+/// A Cursor `tool_call` line, which carries both halves of a tool's life under one `type`.
+///
+/// `{"type":"tool_call","subtype":"started"|"completed","tool_call":{"<name>ToolCall":{…},
+/// "toolCallId":…}}`. The tool's name is the *key*, not a value: `readToolCall`, `editToolCall`,
+/// `shellToolCall`, and whichever of Cursor's sixty-odd tools a future run reaches for. So the key
+/// is discovered by its `ToolCall` suffix rather than matched against a list that would go stale --
+/// an unknown tool still opens and closes a card, named after itself.
+///
+/// `toolCallId` rather than the line's own `call_id`: on some models the latter is two ids joined by
+/// a **newline** (`call_311mRT…\nfc_0a3dd82c…`), which is not something to put in a `tool_use_id`
+/// that has to match across two events. `toolCallId` is clean on the runs where `call_id` is not,
+/// and it is sanitised anyway, because a provider that did it once can do it again.
+fn cursor_tool_call(value: &Value) -> Vec<String> {
+    let Some(call) = value.get("tool_call").and_then(|c| c.as_object()) else {
+        return Vec::new();
+    };
+
+    // The one key naming the tool. `hookAdditionalContexts`, `toolCallId`, `startedAtMs` and
+    // `completedAtMs` are the fixed siblings; anything ending `ToolCall` is the payload.
+    let Some((key, payload)) = call.iter().find(|(key, _)| key.ends_with("ToolCall")) else {
+        return Vec::new();
+    };
+    // `readToolCall` → `read`, which is the name the card shows. A tool whose key is exactly
+    // `ToolCall` keeps the key, rather than being named the empty string.
+    let name = key
+        .strip_suffix("ToolCall")
+        .filter(|n| !n.is_empty())
+        .unwrap_or(key);
+
+    let id = call
+        .get("toolCallId")
+        .and_then(|i| i.as_str())
+        .or_else(|| value.get("call_id").and_then(|i| i.as_str()))
+        .map(sanitize_tool_use_id)
+        .unwrap_or_default();
+    if id.is_empty() {
+        return Vec::new();
+    }
+
+    let args = payload.get("args");
+    // Cursor puts the human-readable summary beside `args` on some tools and inside it on others.
+    let description = payload
+        .get("description")
+        .and_then(|d| d.as_str())
+        .or_else(|| {
+            args.and_then(|a| a.get("description"))
+                .and_then(|d| d.as_str())
+        });
+
+    match value.get("subtype").and_then(|s| s.as_str()) {
+        Some("completed") => {
+            let (output, is_error) = cursor_tool_result(payload.get("result"));
+            vec![
+                // `completed` repeats the arguments, so a run whose `started` line was lost still
+                // opens a card with them rather than an empty one.
+                tool_call_event(&id, name, args, description),
+                tool_result_event(&id, Some(name), &output, is_error),
+            ]
+        }
+        // `started`, and any subtype Cursor adds later: opening the card is the safe reading.
+        _ => vec![tool_call_event(&id, name, args, description)],
+    }
+}
+
+/// A Cursor tool's `result`, as the output text and whether it failed.
+///
+/// `{"success":{…}}` or `{"error":{"errorMessage":"File not found"}}`. The success payload differs
+/// per tool -- a read carries `content`, a shell carries `stdout`, an edit carries `message` -- so
+/// the text is taken from whichever of those the tool actually filled in, and falls back to the
+/// whole object rather than showing an empty card.
+fn cursor_tool_result(result: Option<&Value>) -> (String, bool) {
+    let Some(result) = result else {
+        return (String::new(), false);
+    };
+
+    if let Some(error) = result.get("error") {
+        let message = error
+            .get("errorMessage")
+            .and_then(|m| m.as_str())
+            .map(str::to_string)
+            .unwrap_or_else(|| value_to_text(error));
+        return (message, true);
+    }
+
+    let Some(success) = result.get("success") else {
+        return (value_to_text(result), false);
+    };
+
+    for key in ["content", "stdout", "message", "diffString", "output"] {
+        if let Some(text) = success.get(key).and_then(|t| t.as_str()) {
+            if !text.is_empty() {
+                return (text.to_string(), false);
+            }
+        }
+    }
+    (value_to_text(success), false)
+}
+
+/// A `tool_use_id` with anything that would break a single-line id taken out.
+///
+/// Cursor's ids are sometimes two ids joined by a newline. The id is what pairs a `tool_call` with
+/// its `tool_result`, and it is written into a newline-delimited stream, so an embedded newline
+/// would split one event into two unparseable halves. Trimmed at the first line break rather than
+/// having the break stripped, because the first id is the stable one -- the suffix varies per model.
+fn sanitize_tool_use_id(id: &str) -> String {
+    id.split(['\n', '\r'])
+        .next()
+        .unwrap_or(id)
+        .trim()
+        .to_string()
 }
 
 // ── Event builders ──────────────────────────────────────────────────────────────────────────────
@@ -1460,5 +1622,216 @@ mod tests {
             Some("agent")
         );
         assert_eq!(field(&done[0], "duration_ms"), "2500");
+    }
+
+    /// Captured from a real `cursor-agent 2026.09.18` run: `cursor-agent --print --output-format
+    /// stream-json --trust --force --model claude-opus-5-low`, asked to run a shell command and
+    /// then read a file that does not exist. Trimmed to the fields the normaliser reads.
+    #[test]
+    fn test_cursor_live_stream() {
+        let mut n = EventWireNormalizer::new();
+
+        // Cursor names the model the way a *person* reads it, not the way it is launched. The
+        // session card should still show that name, and the cost path should still find a price.
+        let init = n.normalize(
+            r#"{"type":"system","subtype":"init","apiKeySource":"login","cwd":"/tmp","session_id":"e07e1fbb","model":"Claude Opus 5 300K Low No Thinking","permissionMode":"default"}"#,
+            false,
+        );
+        assert_eq!(kinds(&init), vec!["session_init"]);
+        assert_eq!(field(&init[0], "session_id"), "e07e1fbb");
+
+        // Reasoning arrives a delta at a time, and the `completed` line closes it with no text.
+        let thinking = n.normalize(
+            r#"{"type":"thinking","subtype":"delta","text":"Let me run that."}"#,
+            false,
+        );
+        assert_eq!(kinds(&thinking), vec!["thinking"]);
+        assert_eq!(field(&thinking[0], "content"), "Let me run that.");
+        assert!(n
+            .normalize(r#"{"type":"thinking","subtype":"completed"}"#, false)
+            .is_empty());
+
+        // A tool opens on `started`. The tool's *name* is the key -- `shellToolCall` -- and the id
+        // that pairs the two halves is `toolCallId`.
+        let started = n.normalize(
+            r#"{"type":"tool_call","subtype":"started","call_id":"toolu_vrtx_01WL","tool_call":{"shellToolCall":{"args":{"command":"echo hi","toolCallId":"toolu_vrtx_01WL"},"description":"Echo hi"},"toolCallId":"toolu_vrtx_01WL","startedAtMs":"1789943048258"}}"#,
+            false,
+        );
+        assert_eq!(kinds(&started), vec!["tool_call"]);
+        assert_eq!(field(&started[0], "tool_use_id"), "toolu_vrtx_01WL");
+        assert_eq!(field(&started[0], "tool_name"), "shell");
+        assert_eq!(field(&started[0], "description"), "Echo hi");
+
+        // ...and closes on `completed`, which carries both halves so a dropped `started` still
+        // produces a whole card.
+        let completed = n.normalize(
+            r#"{"type":"tool_call","subtype":"completed","call_id":"toolu_vrtx_01WL","tool_call":{"shellToolCall":{"args":{"command":"echo hi"},"result":{"success":{"command":"echo hi","exitCode":0,"stdout":"hi\n","stderr":""},"isBackground":false},"description":"Echo hi"},"toolCallId":"toolu_vrtx_01WL","completedAtMs":"1789943049133"}}"#,
+            false,
+        );
+        assert_eq!(kinds(&completed), vec!["tool_call", "tool_result"]);
+        assert_eq!(field(&completed[1], "tool_use_id"), "toolu_vrtx_01WL");
+        assert_eq!(field(&completed[1], "output"), "hi\n");
+        assert_eq!(field(&completed[1], "is_error"), "false");
+
+        // A failed read carries *only* a result -- no `args` at all -- and the message is the card.
+        let failed = n.normalize(
+            r#"{"type":"tool_call","subtype":"completed","call_id":"toolu_vrtx_01Mj","tool_call":{"readToolCall":{"result":{"error":{"errorMessage":"File not found"}}},"toolCallId":"toolu_vrtx_01Mj","completedAtMs":"1789943050762"}}"#,
+            false,
+        );
+        assert_eq!(kinds(&failed), vec!["tool_call", "tool_result"]);
+        assert_eq!(field(&failed[1], "tool_name"), "read");
+        assert_eq!(field(&failed[1], "output"), "File not found");
+        assert_eq!(field(&failed[1], "is_error"), "true");
+
+        // Cursor's assistant and result lines are Claude's shapes, so they need no arm of their own.
+        let assistant = n.normalize(
+            r#"{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Done."}]},"session_id":"e07e1fbb"}"#,
+            false,
+        );
+        assert_eq!(kinds(&assistant), vec!["text"]);
+
+        let result = n.normalize(
+            r#"{"type":"result","subtype":"success","duration_ms":8262,"is_error":false,"result":"Done.","session_id":"e07e1fbb","usage":{"inputTokens":6,"outputTokens":190,"cacheReadTokens":0,"cacheWriteTokens":68868}}"#,
+            false,
+        );
+        let usage = usage_of(&result[0]).expect("cursor usage");
+        assert_eq!(num(&usage, "input_tokens"), 6);
+        assert_eq!(num(&usage, "output_tokens"), 190);
+        assert_eq!(num(&usage, "cache_write_tokens"), 68868);
+        // Cursor reports no cost of its own, so the cost is the one Tendril prices -- which it can
+        // only do because the display name from `init` was resolved onto a real id.
+        assert_eq!(
+            usage.get("model").and_then(|m| m.as_str()),
+            Some("claude-opus-5-300k-low-no-thinking")
+        );
+        assert!(
+            usage
+                .get("cost_usd")
+                .and_then(|c| c.as_f64())
+                .unwrap_or(0.0)
+                > 0.0,
+            "a priced Cursor run should carry a cost: {usage:?}"
+        );
+    }
+
+    /// The display name `init` reports is not a model id, and a run whose model cannot be priced
+    /// must report *no* cost rather than a confident zero.
+    #[test]
+    fn test_cursor_model_names_are_resolved_or_left_unpriced() {
+        // The names really seen on the wire, and the ids they have to reach.
+        for (display, resolved) in [
+            ("GPT-5.6 Terra 272K Medium", "gpt-5.6-terra"),
+            ("Claude Opus 5 300K Low No Thinking", "claude-opus-5"),
+            ("Claude Opus 4.8 Thinking Max", "claude-opus-4-8"),
+            ("Gemini 3.8 Flash High", "gemini-3.8-flash"),
+            ("GPT-5.5 272K Extra High", "gpt-5.5"),
+        ] {
+            let name = priceable_model_name(display);
+            let spec = model_specs::find(&name)
+                .unwrap_or_else(|| panic!("{display} should resolve to a priced row"));
+            assert_eq!(spec.model_id, resolved, "{display}");
+            assert!(model_specs::is_priced(&spec), "{display} should be priced");
+        }
+
+        // An id-shaped name is never rewritten...
+        assert_eq!(priceable_model_name("claude-opus-5"), "claude-opus-5");
+        // ...and a model with no rate card keeps its name and prices nothing, which is what makes
+        // the missing cost read as "unknown" instead of "free".
+        for unpriced in ["Auto", "Some Model Cursor Has Not Shipped Yet"] {
+            let name = priceable_model_name(unpriced);
+            assert!(
+                model_specs::find(&name)
+                    .filter(model_specs::is_priced)
+                    .is_none(),
+                "{unpriced} has no rate card, so it must not resolve to a priced row"
+            );
+        }
+
+        // Cursor's own house models are not in the `cursor` catalog -- the picker does not offer
+        // them -- but a run can still arrive on one, from a `config.yaml` naming it or from Auto
+        // routing there. They carry rates, so they price rather than reporting a silent zero, and
+        // the display name has to survive the rewrite to reach them.
+        for (display, resolved, input_rate) in [
+            ("Composer 2.5", "composer-2.5", 0.5),
+            ("Muse Spark 1.3 1M High", "muse-spark-1.3", 1.25),
+            ("Cursor Grok 4.6 Medium", "cursor-grok-4.6", 2.0),
+            ("Cursor Grok 4.5", "cursor-grok-4.5", 2.0),
+        ] {
+            let spec = model_specs::find(&priceable_model_name(display))
+                .unwrap_or_else(|| panic!("{display} should resolve"));
+            assert_eq!(spec.model_id, resolved, "{display}");
+            assert!(model_specs::is_priced(&spec), "{display} should be priced");
+            assert_eq!(spec.input_per_million, input_rate, "{display}");
+        }
+
+        // Grok 4.6 and 4.5 are rated identically, so the only thing keeping them apart is the
+        // longest-key rule. A run on 4.5 must not be priced as 4.6 even though the rates agree
+        // today -- if Cursor ever repriced one, that would become a silent mischarge.
+        assert_eq!(
+            model_specs::find(&priceable_model_name("Cursor Grok 4.5 Low"))
+                .map(|s| s.model_id.to_string()),
+            Some("cursor-grok-4.5".to_string())
+        );
+
+        // `kimi-k3` is the interesting middle case: the row exists, the rates are all zero, and
+        // `is_priced` is what stops a real run being reported as free.
+        let mut n = EventWireNormalizer::new();
+        n.normalize(
+            r#"{"type":"system","subtype":"init","session_id":"s","model":"Kimi K3 Low"}"#,
+            false,
+        );
+        let result = n.normalize(
+            r#"{"type":"result","subtype":"success","duration_ms":10,"result":"ok","usage":{"inputTokens":1000,"outputTokens":1000,"cacheReadTokens":0,"cacheWriteTokens":0}}"#,
+            false,
+        );
+        let usage = usage_of(&result[0]).expect("kimi usage");
+        assert_eq!(num(&usage, "input_tokens"), 1000);
+        assert!(
+            !usage
+                .as_object()
+                .is_some_and(|u| u.contains_key("cost_usd")),
+            "an unpriced model must omit the cost rather than report zero: {usage:?}"
+        );
+    }
+
+    /// The parser must not depend on a list of Cursor's sixty-odd tool names, and must not break on
+    /// the ids Cursor sometimes malforms.
+    #[test]
+    fn test_cursor_tool_calls_are_parsed_structurally() {
+        let mut n = EventWireNormalizer::new();
+
+        // A tool nobody has heard of still opens a card, named after itself.
+        let unknown = n.normalize(
+            r#"{"type":"tool_call","subtype":"started","tool_call":{"somethingBrandNewToolCall":{"args":{"x":1}},"toolCallId":"tc-1"}}"#,
+            false,
+        );
+        assert_eq!(kinds(&unknown), vec!["tool_call"]);
+        assert_eq!(field(&unknown[0], "tool_name"), "somethingBrandNew");
+
+        // **`call_id` is sometimes two ids joined by a newline**, which would split one event into
+        // two unparseable lines. `toolCallId` is preferred, and both are sanitised.
+        let dirty = n.normalize(
+            "{\"type\":\"tool_call\",\"subtype\":\"started\",\"call_id\":\"call_311mRT\\nfc_0a3dd8\",\"tool_call\":{\"shellToolCall\":{\"args\":{}},\"toolCallId\":\"call_311mRT\\nfc_0a3dd8\"}}",
+            false,
+        );
+        assert_eq!(field(&dirty[0], "tool_use_id"), "call_311mRT");
+        for line in &dirty {
+            assert!(!line.trim_end().contains('\n'), "an event must be one line");
+        }
+
+        // A `tool_call` with no id at all, or no tool key, is dropped rather than emitting a card
+        // that can never be closed.
+        assert!(n
+            .normalize(
+                r#"{"type":"tool_call","subtype":"started","tool_call":{"shellToolCall":{"args":{}}}}"#,
+                false
+            )
+            .is_empty());
+        assert!(n
+            .normalize(
+                r#"{"type":"tool_call","subtype":"started","tool_call":{"toolCallId":"tc-2"}}"#,
+                false
+            )
+            .is_empty());
     }
 }

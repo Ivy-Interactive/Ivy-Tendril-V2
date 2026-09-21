@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from "react";
-import { openPath } from "@tauri-apps/plugin-opener";
 import {
   Button,
   Input,
@@ -14,8 +13,10 @@ import {
   Callout,
 } from "@ivy-interactive/components/ui";
 import { Plus } from "lucide-react";
+import { PlanMarkdown } from "@ivy-interactive/components/tendril";
 import { bridge } from "../api/bridge";
 import { notificationsStore } from "../state/notificationsStore";
+import { uiStore } from "../state/uiStore";
 import { readAppearance } from "../state/appearance";
 import { describeBridgeError, type ServiceInfo, type TendrilConfig } from "../types/api";
 import { ModelCatalogCard } from "../components/ModelCatalogCard";
@@ -37,14 +38,24 @@ import {
   NumberField,
   SaveError,
   SettingsSection,
+  SubSection,
   SelectField,
   asOptions,
 } from "./settings/fields";
 import { asRecord, asString, parseLines } from "./settings/configValues";
 import { readLevels, readProjectEntries, readVerificationDefs } from "./settings/projectConfig";
 import { PROFILE_TIERS, readAgentEntries } from "./settings/codingAgents";
+import { promptwaresApi, type PromptwareProgram } from "../api/promptwaresApi";
 import { ProjectSettingsView } from "./settings/ProjectSettingsView";
 import { AddProjectView } from "./settings/AddProjectView";
+/**
+ * `React.lazy` rather than a plain import, for the reason `App.tsx` lazies every view: this one
+ * reaches CodeMirror and the whole embedded chat, and Settings is opened far more often than
+ * `config.yaml` is hand-edited. Bundling it in would make every visit to Settings pay for both.
+ */
+const ConfigEditorView = React.lazy(() =>
+  import("./settings/ConfigEditorView").then((m) => ({ default: m.ConfigEditorView })),
+);
 import { AppearanceSection } from "./settings/AppearanceSection";
 import { CodingAgentSection } from "./settings/CodingAgentSection";
 import { LevelsSection } from "./settings/LevelsSection";
@@ -183,6 +194,83 @@ const formOf = (cfg: TendrilConfig | null): SettingsForm => {
 };
 
 /**
+ * The prompt the selected agent runs, read from the deployed `Promptwares/<Name>/Program.md`.
+ *
+ * The deployed copy rather than `src/promptwares/<Name>/Program.md`: a `promptwareOverlay` can
+ * replace `Program.md`, and the overlay's copy is what a job actually compiles into its firmware, so
+ * the shipped source would show a prompt that is not the one running.
+ *
+ * `PlanMarkdown` renders it, not a `<pre>`: a program is markdown - headings, fenced code, tables -
+ * and that component is already how this app renders every other body of agent-authored markdown
+ * (`ChatMessageRow`, `InboxView`, the plan tabs). `flow` drops the plan-page shell, which is what
+ * leaves it laid out as a block inside the settings column instead of a page inside a page.
+ */
+const PromptwareProgramPane: React.FC<{ name: string }> = ({ name }) => {
+  const [program, setProgram] = React.useState<PromptwareProgram | null>(null);
+  const [error, setError] = React.useState<string | null>(null);
+  const [isLoading, setIsLoading] = React.useState(false);
+
+  // `_default` is the reserved fallback key rather than an agent, so there is no directory to read
+  // and no request to make - the effect below never fires for it.
+  const isDefaultKey = name === DEFAULT_PROMPTWARE_KEY;
+
+  React.useEffect(() => {
+    if (isDefaultKey) {
+      setProgram(null);
+      setError(null);
+      return;
+    }
+    // Guards a selection changed while an earlier read was still in flight: without it the slower
+    // response wins and the pane shows the previous agent's prompt under the new agent's name.
+    let active = true;
+    setIsLoading(true);
+    setProgram(null);
+    setError(null);
+    promptwaresApi
+      .readProgram(name)
+      .then((next) => {
+        if (active) setProgram(next);
+      })
+      .catch((err: unknown) => {
+        if (active) setError(describeBridgeError(err));
+      })
+      .finally(() => {
+        if (active) setIsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [name, isDefaultKey]);
+
+  return (
+    <SubSection
+      title="Prompt"
+      hint={
+        program?.layer === "overlay"
+          ? "From your overlay directory, which replaces the shipped prompt."
+          : "The deployed prompt this agent runs. Read-only: change it from your overlay directory."
+      }
+      testId="promptware-program"
+    >
+      {isDefaultKey ? (
+        <p className="text-sm text-muted-foreground">
+          _default is the fallback applied to every agent rather than an agent of its own, so it has
+          no prompt. Select an agent to read one.
+        </p>
+      ) : isLoading ? (
+        <p className="text-sm text-muted-foreground">Loading prompt...</p>
+      ) : error ? (
+        <p className="text-sm text-muted-foreground">{error}</p>
+      ) : program ? (
+        <div className="rounded-box border border-border bg-card/40 p-4">
+          <PlanMarkdown id={`promptware-program-${name}`} content={program.program} article flow />
+        </div>
+      ) : null}
+    </SubSection>
+  );
+};
+
+/**
  * `PromptwaresSetupView` plus its `EditPromptwareDialogContent`, as one inline editor.
  *
  * Two deliberate departures from the original, both forced by how V2 writes config: the entries are
@@ -235,9 +323,9 @@ const PromptwaresCard: React.FC<{
     setError(null);
     try {
       await onSave("promptwares", { [key]: value });
-      notificationsStore.notifySuccess("Saved", "Promptware saved");
+      notificationsStore.notifySuccess("Saved", "Agent saved");
     } catch (err) {
-      setError(`Failed to save promptware: ${describeBridgeError(err)}`);
+      setError(`Failed to save agent: ${describeBridgeError(err)}`);
     } finally {
       setIsSaving(false);
     }
@@ -245,18 +333,18 @@ const PromptwaresCard: React.FC<{
 
   return (
     <SettingsSection
-      title="Promptware Configuration"
-      hint="Configure agent profile and tool permissions for each promptware."
+      title="Workflow Agents"
+      hint="Read each agent's prompt, and configure the coding-agent profile and tool permissions it runs with."
       testId="promptwares-card"
     >
       <div className="max-w-170 space-y-4">
         <SelectField
           id="promptware-select"
-          label="Promptware"
+          label="Agent"
           value={selected}
           options={known.map((key) => ({
             value: key,
-            label: key === DEFAULT_PROMPTWARE_KEY ? "_default (every promptware)" : key,
+            label: key === DEFAULT_PROMPTWARE_KEY ? "_default (every agent)" : key,
           }))}
           hint={
             entries.some((entry) => entry.key === selected)
@@ -266,12 +354,14 @@ const PromptwaresCard: React.FC<{
           onChange={setSelected}
         />
 
+        <PromptwareProgramPane name={selected} />
+
         <SelectField
           id="promptware-profile-select"
           label="Profile"
           value={draft.profile === "" ? "default" : draft.profile}
           options={[{ value: "default", label: "Default (unset)" }, ...asOptions(profileOptions)]}
-          hint="Last writer wins: _default, then this promptware, then a per-plan or CLI override."
+          hint="Last writer wins: _default, then this agent, then a per-plan or CLI override."
           onChange={(value) =>
             setDraft((prev) => ({ ...prev, profile: value === "default" ? "" : value }))
           }
@@ -335,12 +425,12 @@ const PromptwaresCard: React.FC<{
               htmlFor="promptware-new-name"
               className="text-xs font-medium text-muted-foreground"
             >
-              Add Promptware
+              Add Agent
             </Label>
             <Input
               id="promptware-new-name"
               value={newName}
-              placeholder="Promptware name (e.g. CreatePlan)..."
+              placeholder="Agent name (e.g. CreatePlan)..."
               onChange={(e) => setNewName(e.target.value)}
             />
           </div>
@@ -376,6 +466,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   );
   /** The "Add Project" sub-item. V1 opens `AddProjectDialog`; this area owns no dialog files. */
   const [isAddingProject, setIsAddingProject] = useState(false);
+  /**
+   * The "Open config.yaml" action row, which is a branch of the content pane and not a section — the
+   * same shape as {@link isAddingProject}, and for the same reason: V1 reaches both from the sidebar
+   * without either becoming the selection.
+   */
+  const [isEditingConfig, setIsEditingConfig] = useState(false);
   /** The project the Add Project blade wrote, so its harness step can read it back off the config. */
   const [createdProjectName, setCreatedProjectName] = useState<string | null>(null);
   // `saved` is what config.yaml last said; `form` is what the operator has typed. Every section's
@@ -522,6 +618,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
   const selectSection = (tag: string) => {
     setIsAddingProject(false);
+    setIsEditingConfig(false);
     setSelected(tag);
   };
 
@@ -546,10 +643,12 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
    * agent has written to it.
    */
   const createProject = async (name: string, repos: string[]) => {
-    await bridge.createProject({ name, repos });
+    const created = await bridge.createProject({ name, repos });
     applyConfig(await bridge.getConfig());
     setCreatedProjectName(name);
     setIsProjectsExpanded(true);
+    // A remote was cloned into TENDRIL_HOME; the response is where the caller learns the path.
+    return created?.repos?.map((repo) => repo.path) ?? repos;
   };
 
   /** Re-reads config.yaml. The setup agent edits it through the `tendril` CLI, behind the app's back. */
@@ -592,16 +691,55 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   /**
-   * `ConfigYamlUiHelper.OpenOrNavigate`. On a desktop shell V1 opens `config.yaml` in the configured
-   * editor; V2 is always the desktop shell, so it hands the path to the OS. V1's web fallback
-   * (`ConfigEditorApp`) has no V2 counterpart, so there is nothing to navigate to instead.
+   * `SettingsApp`'s `onDeleteProject`, minus the write: the dialog has already called the route.
+   * What is left is V1's two lines - re-read, then fall back to the first remaining project, or to
+   * Coding Agent when that was the last one - and a toast.
+   *
+   * The config is re-read here rather than trusted from local state, because the daemon is the only
+   * thing that knows what the file holds now: the `tendril` CLI writes to it too.
+   *
+   * `title`/`message` are the caller's because the two Danger Zone actions end here identically -
+   * the selection has to move off the project either way - but must not *read* identically. A
+   * "Deleted" toast after Remove Project is the same false promise the button's old label made.
+   */
+  const selectAfterGone = (name: string, title: string, message: string) => {
+    void (async () => {
+      let remaining = projects.filter((project) => project.name !== name);
+      try {
+        const cfg = await bridge.getConfig();
+        applyConfig(cfg);
+        remaining = readProjectEntries(cfg);
+      } catch {
+        // A failed re-read leaves the last good config in place; the selection below still moves,
+        // because the entry this handler was called for is gone whatever the refresh did.
+      }
+      setSelected(remaining.length > 0 ? projectTag(0) : SettingsTag.CodingAgent);
+      notificationsStore.notifySuccess(title, message);
+    })();
+  };
+
+  const selectAfterRemove = (name: string) =>
+    selectAfterGone(name, "Removed", `Removed project '${name}'. Its files are still on disk.`);
+
+  const selectAfterDelete = (name: string) =>
+    selectAfterGone(name, "Deleted", `Deleted project '${name}' and its data`);
+
+  /**
+   * `ConfigYamlUiHelper.OpenOrNavigate`, now taking its *navigate* arm.
+   *
+   * V1's helper has two: hand the file to the operator's editor, or navigate to `ConfigEditorApp`.
+   * V2 took only the first, on the reasoning that V2 is always the desktop shell — which is true and
+   * still gave the wrong answer, because it made "Open config.yaml" leave the app for TextEdit. The
+   * second arm now exists ({@link ConfigEditorView}), so this navigates to it, and the daemon is
+   * edited through the daemon rather than behind its back: the editor writes over the config route,
+   * which validates the document before it lands and masks every secret on the way out.
+   *
+   * Like Add Project this is a branch of the content pane rather than a section, so the row it is
+   * fired from never becomes the selection.
    */
   const openConfigYaml = () => {
-    const home = serviceInfo?.tendrilHome;
-    if (!home) return;
-    void openPath(`${home.replace(/[/\\]+$/, "")}/config.yaml`).catch((err) => {
-      notificationsStore.notifyError(`Failed to open config.yaml: ${describeBridgeError(err)}`);
-    });
+    setIsAddingProject(false);
+    setIsEditingConfig(true);
   };
 
   const isProjectTag = selected === SettingsTag.Projects || selected.startsWith(PROJECT_TAG_PREFIX);
@@ -611,18 +749,22 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     ...sections.map((section) => section.tag),
     SettingsTag.Tunnel,
   ]);
-  const showsProject = !isAddingProject && isProjectTag && selectedProject !== null;
+  const showsProject =
+    !isEditingConfig && !isAddingProject && isProjectTag && selectedProject !== null;
   /** V1's two fallbacks to `CodingAgentSetupView`: no projects to show, and an unrecognised tag. */
   const fallsBackToCodingAgent =
+    !isEditingConfig &&
     !isAddingProject &&
     ((isProjectTag && selectedProject === null) || (!isProjectTag && !knownTags.has(selected)));
-  const on = (tag: string) => !isAddingProject && selected === tag;
+  const on = (tag: string) => !isEditingConfig && !isAddingProject && selected === tag;
   const showCodingAgent = on(SettingsTag.CodingAgent) || fallsBackToCodingAgent;
 
   const projectNames = projects.map((project) => project.name);
-  const currentLabel = isAddingProject
-    ? "Add Project"
-    : sectionLabel(selected, sections, projectNames);
+  const currentLabel = isEditingConfig
+    ? "config.yaml"
+    : isAddingProject
+      ? "Add Project"
+      : sectionLabel(selected, sections, projectNames);
 
   return (
     <div className="flex h-full min-h-0" data-testid="settings-view">
@@ -686,7 +828,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               label={section.label}
               selected={
                 section.tag === SettingsTag.Security
-                  ? securitySelected && !isAddingProject
+                  ? securitySelected && !isEditingConfig && !isAddingProject
                   : on(section.tag)
               }
               onClick={() => selectSection(section.tag)}
@@ -734,7 +876,24 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </Select>
         </div>
 
-        {showsProject && selectedProject ? (
+        {isEditingConfig ? (
+          // No scroller and no inset, unlike the two branches below: the editor is a
+          // `PlanWorkspace`, which owns its own chrome and expects the whole pane. Wrapping it in
+          // `overflow-auto py-4 pl-4` would give the split pane a height of its content and collapse
+          // the CodeMirror host, which sizes itself from the box it is given.
+          <React.Suspense fallback={null}>
+            <ConfigEditorView
+              tendrilHome={serviceInfo?.tendrilHome}
+              // `App.handleSelectPlan`'s navigation, minus its detail prefetch: a plan is
+              // `PlansApp` plus args, so the app id carries the number and the args carry it again
+              // for the page that reads them.
+              onOpenPlan={(planId) => {
+                uiStore.setSelectedPlanId(planId);
+                uiStore.navigate({ appId: `plan-${planId}`, args: { planId } });
+              }}
+            />
+          </React.Suspense>
+        ) : showsProject && selectedProject ? (
           // The same inset and the same scroll owner as the section branch below. Settings is a
           // full-bleed page (V1's `SidebarLayout`), so the content pane is what supplies both;
           // leaving this branch bare made it the one settings section that took its padding from the
@@ -752,6 +911,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 agent={saved.codingAgent}
                 isBeta={isBeta}
                 onSaveRaw={saveRawKey}
+                onReloadConfig={reloadConfig}
+                siblingNames={projectNames.filter((name) => name !== selectedProject.name)}
+                onRemoved={selectAfterRemove}
+                onDeleted={selectAfterDelete}
               />
             </div>
           </div>
@@ -916,7 +1079,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 </SettingsSection>
               )}
 
-              {securitySelected && !isAddingProject && <SecurityTunnelingSection />}
+              {securitySelected && !isEditingConfig && !isAddingProject && (
+                <SecurityTunnelingSection />
+              )}
 
               {on(SettingsTag.Advanced) && (
                 <>

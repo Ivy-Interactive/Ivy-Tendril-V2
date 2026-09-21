@@ -6,7 +6,7 @@ import {
   buildJobRows,
   buildStatusSegments,
   formatJobCost,
-  formatTokens,
+  promptDisplay,
   truncatePrompt,
   jobStatusMessage,
   agentOutputLabel,
@@ -310,14 +310,6 @@ describe("cost and token cells", () => {
     expect(formatJobCost({ cost: 1.234, costSource: "agent" })).toBe("$1.23");
   });
 
-  // `FormatHelper.FormatTokens` keeps scaling past a million rather than saturating.
-  it("formats tokens the way V1 does", () => {
-    expect(formatTokens(450)).toBe("450");
-    expect(formatTokens(45_000)).toBe("45K");
-    expect(formatTokens(1_400_000)).toBe("1.4M");
-    expect(formatTokens(1_400_000_000)).toBe("1400.0M");
-  });
-
   it("renders an absent cost as an em dash beside a populated Tokens cell", async () => {
     renderJobs([job("00010", "Completed", { tokens: 450_000 })]);
 
@@ -356,6 +348,93 @@ describe("cost and token cells", () => {
     expect(tokens).toHaveTextContent("1.4M");
     expect(tokens.getAttribute("title")).toContain("1,450,000");
     expect(tokens.getAttribute("title")).toContain("Cache read 1,400,000");
+  });
+});
+
+/**
+ * `JobsApp.Helpers.cs` `GetPromptDisplay`. The chain is plan title, then the operator's own words off
+ * the typed args, then the plan id - and the middle link is the one a `CreatePlan` imported from the
+ * Inbox has, because its plan does not exist until the agent has reported one.
+ */
+describe("the Prompt cell's fallback chain", () => {
+  /**
+   * The reported bug, from the user's own database: ten `CreatePlan` rows, `Type` and `Project`
+   * filled, `ReportedPlanId` and `ReportedPlanTitle` both empty, and the whole request sitting in
+   * `Args.description` the entire time.
+   */
+  it("shows what an Inbox import was launched with, before it has a plan", () => {
+    const [row] = buildJobRows([
+      job("00001", "Running", {
+        type: "CreatePlan",
+        planId: undefined,
+        planTitle: undefined,
+        prompt:
+          "Task from GitHub Issue #2752 (https://github.com/Ivy-Interactive/Ivy-Tendril/issues/2752): the timer never resets",
+      }),
+    ]);
+
+    expect(row.prompt).toBe(
+      "Task from GitHub Issue #2752 (https://github.com/Ivy-Interactive/Ivy-Tendril/issues/2752): the timer never resets",
+    );
+  });
+
+  it("prefers the plan's title once the agent has reported one", () => {
+    expect(
+      promptDisplay({
+        id: "00002",
+        type: "CreatePlan",
+        project: "ivy-tendril",
+        status: "Running",
+        planId: "00008",
+        planTitle: "Fix Stuck Chats on Subagent Execution",
+        prompt: "Task from GitHub Issue #2632: some chats appear stuck",
+      }),
+    ).toBe("Fix Stuck Chats on Subagent Execution");
+  });
+
+  it("falls back to the plan id when there is no prose at all", () => {
+    expect(
+      promptDisplay({
+        id: "00003",
+        type: "ExpandPlan",
+        project: "ivy-tendril",
+        status: "Running",
+        planId: "00006",
+      }),
+    ).toBe("00006");
+  });
+
+  /**
+   * An empty string is not a prompt. Taking one would stop the chain a step early and render the
+   * same blank cell the chain exists to fill.
+   */
+  it("steps over an empty title rather than accepting it", () => {
+    expect(
+      promptDisplay({
+        id: "00004",
+        type: "CreatePlan",
+        project: "ivy-tendril",
+        status: "Running",
+        planTitle: "   ",
+        prompt: "Reconcile stuck running jobs after an unexpected quit",
+      }),
+    ).toBe("Reconcile stuck running jobs after an unexpected quit");
+  });
+
+  it("renders the Inbox import's words in the table's Prompt cell", async () => {
+    renderJobs([
+      job("00001", "Running", {
+        type: "CreatePlan",
+        planId: undefined,
+        planTitle: undefined,
+        prompt: "Task from GitHub Issue #2752: the timer never resets",
+      }),
+    ]);
+
+    await waitForRows(1);
+    expect(
+      await screen.findByText("Task from GitHub Issue #2752: the timer never resets"),
+    ).toBeTruthy();
   });
 });
 
@@ -1083,8 +1162,11 @@ describe("Jobs table errors", () => {
  *
  * The framework's grid draws a cell with a click handler at `cursor: pointer` and a plain one at
  * `cursor: default` (`widgets/dataTables/utils/cellContent.ts:583`, `:459`), and reserves blue underlined
- * text for a **link** cell (`utils/customRenderers.ts:526`, `utils/canvasText.ts:103`). V1's Jobs table has
- * four cell actions; two survive in V2, and they are one of each kind.
+ * text for a **link** cell (`utils/customRenderers.ts:526`, `utils/canvasText.ts:103`). V1's Jobs table
+ * hangs five cell actions off five columns (`JobsApp.DataTable.cs:95-175`), and V2 now has all five —
+ * one of them a link, the rest sheet openers.
+ *
+ * Where each one *goes* is `jobs-cell-actions.test.tsx`; this is only about what the cell looks like.
  */
 describe("Jobs clickable cells", () => {
   afterEach(() => vi.restoreAllMocks());
@@ -1104,9 +1186,16 @@ describe("Jobs clickable cells", () => {
     const clickable = Array.from(
       document.querySelectorAll<HTMLElement>('tbody td[data-clickable="true"]'),
     );
-    // Plan Id (navigates) and Agent Output (opens the sheet). Not Status, Prompt, Type, Project, Timer,
-    // Cost, Tokens, Timestamp or Status Message — none of those has a cell action in V2.
-    expect(clickable).toHaveLength(2);
+    // V1's five: Plan Id (navigates), Prompt, Cost, Tokens and Agent Output (each opens a sheet). Not
+    // Status, Type, Project, Timer, Timestamp or Status Message — none of those has a cell action.
+    const columns = clickable.map((element) => element.getAttribute("data-column"));
+    expect([...columns].sort((a, b) => (a ?? "").localeCompare(b ?? ""))).toEqual([
+      "agentOutput",
+      "cost",
+      "planId",
+      "prompt",
+      "tokens",
+    ]);
     for (const element of clickable) {
       expect(element).toHaveClass("cursor-pointer");
     }
@@ -1225,5 +1314,84 @@ describe("Jobs output sheet layout", () => {
     // The sheet itself no longer scrolls; the layout owns it, and owns the padding too.
     expect(sheet.className).toContain("overflow-hidden");
     expect(sheet.className).toContain("p-0");
+  });
+
+  /**
+   * The chain that puts the metrics footer in the footer.
+   *
+   * `AgentViewer` asks for `height: 100%`, and a percentage height resolves against nothing unless
+   * every box above it has a definite one. It did not: the sheet scrolled its content through Radix's
+   * viewport, which injects a `display: table` wrapper of its own that no height survives, and the
+   * viewer's own box offered `min-h-96` — a floor, not a height. So the shell sized to its content and
+   * its `flex: 0 0 auto` footer pinned to the bottom of a box that ended wherever the log ended, with
+   * dead space under it. jsdom computes no layout, so this asserts the class contract that makes the
+   * height definite rather than the geometry it produces.
+   */
+  it("hands the output a definite height rather than a floor inside a scroller", async () => {
+    vi.spyOn(jobsStore, "fetchJobDetail").mockResolvedValue({ ...job("00021", "Running") });
+    vi.spyOn(jobsStore, "subscribeToJob").mockReturnValue(() => {});
+    renderJobs([job("00021", "Running")]);
+    await waitForRows(1);
+
+    fireEvent.click(screen.getByTestId("job-output-00021"));
+    const sheet = await waitFor(() => screen.getByTestId("job-output-sheet"));
+    const view = await waitFor(() => screen.getByTestId("job-session-view"));
+
+    // No Radix scroll viewport between the header layout and the view: the log is the only scroller,
+    // which is also what stops an outer scroller fighting the viewer's virtualizer for the position.
+    expect(sheet.querySelector("[data-radix-scroll-area-viewport]")).toBeNull();
+    // The padded wrapper is a flex column of definite height rather than the default `p-4` block.
+    const content = sheet.querySelector('[data-slot="header-layout-header"]')?.nextElementSibling
+      ?.firstElementChild;
+    expect(content).toHaveClass("flex", "h-full", "min-h-0", "flex-col");
+    // …and the view and the output box carry it down to the viewer.
+    expect(view).toHaveClass("h-full", "min-h-0");
+    const output = view.lastElementChild;
+    expect(output).toHaveClass("min-h-0", "flex-1", "overflow-hidden");
+    expect(output?.className).not.toContain("min-h-96");
+  });
+
+  /**
+   * Three full-width rules used to stack down the first 50px of this sheet — under the title, under
+   * the job's metadata, and over the metrics strip — each drawn by a different owner. Parallel lines
+   * at that density read as a form rather than as a hierarchy. Each is dropped at its own call site so
+   * the page framing and the other `HeaderLayout` consumers keep theirs.
+   */
+  it("draws none of the three stacked rules, and leaves the debug sheet's alone", async () => {
+    vi.spyOn(jobsStore, "fetchJobDetail").mockResolvedValue({ ...job("00021", "Running") });
+    vi.spyOn(jobsStore, "subscribeToJob").mockReturnValue(() => {});
+    renderJobs([job("00021", "Running")]);
+    await waitForRows(1);
+
+    // The strip renders nothing for a run that has said nothing worth a line, so the job needs one
+    // event with a cost on it before there is a footer to assert about at all.
+    vi.spyOn(jobsStore, "getSessionEvents").mockReturnValue([
+      {
+        id: "e1",
+        type: "result",
+        timestamp: 0,
+        payload: {},
+        rawText: JSON.stringify({
+          kind: "result",
+          timestamp: "2026-09-16T12:00:00.000Z",
+          is_success: true,
+          duration_ms: 4000,
+        }),
+      },
+    ]);
+
+    fireEvent.click(screen.getByTestId("job-output-00021"));
+    const sheet = await waitFor(() => screen.getByTestId("job-output-sheet"));
+
+    // 1: the sheet title's divider, from `HeaderLayout`'s `showDivider` default.
+    expect(sheet.querySelector('[data-slot="header-layout-header"]')).not.toHaveClass("border-b");
+    // 2: the job metadata block's own rule, and the `pb-4` that only existed to hold it off the text.
+    const view = await waitFor(() => screen.getByTestId("job-session-view"));
+    const meta = view.firstElementChild;
+    expect(meta?.className).not.toContain("border-b");
+    expect(meta?.className).not.toContain("pb-4");
+    // 3: the metrics strip's own rule, dropped per instance so the page framing keeps it.
+    await waitFor(() => expect(sheet.querySelector(".aov-metrics")).not.toBeNull());
+    expect(sheet.querySelector(".aov-metrics")).toHaveClass("aov-metrics-flush");
   });
 });

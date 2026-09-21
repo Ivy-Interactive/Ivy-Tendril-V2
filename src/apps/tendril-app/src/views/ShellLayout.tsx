@@ -37,8 +37,18 @@ import { OfflineBanner } from "../components/OfflineBanner";
 import { ServiceStatusBanner } from "../components/service";
 import { UpdateNotice } from "../components/UpdateNotice";
 import { firstStringArg } from "../utils/eventArgs";
-import { pageTabTitle, usesSidebarList, type ShellSidebarList } from "../state/sidebarListStore";
-import { appDescriptor, isFullBleedApp, type SessionPane } from "../state/navigation";
+import {
+  pageTabTitle,
+  usesSidebarList,
+  withNavSelection,
+  type ShellSidebarList,
+} from "../state/sidebarListStore";
+import {
+  AGENT_APP_ID,
+  appDescriptor,
+  isFullBleedApp,
+  type SessionPane,
+} from "../state/navigation";
 
 /**
  * V1 `TendrilAppShell.PageTabId`. Identifies the strip's leading tab, which reveals the page behind
@@ -378,8 +388,15 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
 }) => {
   /* V1 `TendrilAppShell.Build()` line-for-line: a published list is rendered while
      `UsesSidebarList` holds, so moving between two sidebar-section apps (Review to Plans) does not
-     blank the sidebar; anything else falls back to the section's own Search button. */
-  const list = sidebarList && usesSidebarList(sidebarList.appId, activeNav) ? sidebarList : null;
+     blank the sidebar; anything else falls back to the section's own Search button.
+
+     `withNavSelection` is V2's own: the list we retain across a `plan-<id>` nav is one whose
+     publisher unmounted on that nav, so its `selectedId` is whatever was selected before the click
+     and nothing will ever republish it. Resolving the selection from the nav here -- once, where the
+     rail, the section and the flyout all read it -- is what keeps those three from disagreeing. */
+  const retained =
+    sidebarList && usesSidebarList(sidebarList.appId, activeNav) ? sidebarList : null;
+  const list = withNavSelection(retained, activeNav);
 
   /* V1 folds a `CollapsedMenu` list into the Chat row's rail flyout (`chatButton.List(...)`)
      instead of leaving it on the rail as narrow ID chips, and `ShellSidebarSection` drops its own
@@ -466,6 +483,16 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
      closing one is how the reviewer says they are done watching. */
   const sessions: SessionPane[] = sessionTabs ?? [];
 
+  /* V1 `TendrilAppShell`: "Terminal panes are reached from the Chats list, so the strip only shows
+     the other session tabs (review actions)." A terminal chat is a conversation and belongs beside
+     the other conversations in the sidebar; carrying it here too showed one chat twice under two
+     names, the sidebar's own title and the strip's generic "Agent".
+
+     Only the *strip* is filtered. `activeSessionIndex` below still indexes the unfiltered
+     `sessions`, because that number is what `TendrilShell` uses to pick a pane out of
+     `slots.SessionContents`, which the caller builds from the same unfiltered list. */
+  const stripSessions = sessions.filter((session) => session.appId !== AGENT_APP_ID);
+
   const pageNavId = pageNav ?? activeNav;
   const pageAppTitle = appDescriptor(pageNavId)?.title ?? pageNavId;
   /* The page behind the session panes is what the content container pads, not the session on top:
@@ -479,18 +506,26 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
 
   const shellTabs: ShellTabDto[] = [
     { id: PAGE_TAB_ID, title: pageTitle, icon: pageIcon(pageNavId), closable: false },
-    ...sessions.map((session) => ({ id: session.id, title: session.title })),
+    ...stripSessions.map((session) => ({ id: session.id, title: session.title })),
   ];
 
   /* V1's `.HasTabs(stripTabs.Count > 0)` counts session tabs only: the page tab never keeps the
      strip alive on its own, and ShellTabs applies the same rule to its own markup. Keep the two in
-     step. */
-  const hasSessionTabs = sessions.length > 0;
+     step. A terminal pane alone therefore leaves the strip hidden, as it does in V1. */
+  const hasSessionTabs = stripSessions.length > 0;
 
   /* V1 `SelectedStripTabId`: the active session's id, or the page tab when no session is showing. */
   const activeSession =
     activeSessionId ?? (sessions.some((s) => s.id === activeNav) ? activeNav : null);
-  const selectedStripTabId = activeSession ?? PAGE_TAB_ID;
+  /* V1 `SelectedStripTabId` again: a terminal pane marks *nothing* in the strip, rather than falling
+     back to the page tab - the page is not what is on screen, so highlighting it would be a lie. */
+  const activeStripSession =
+    activeSession && stripSessions.some((session) => session.id === activeSession)
+      ? activeSession
+      : null;
+  const selectedStripTabId = activeStripSession ?? (activeSession ? undefined : PAGE_TAB_ID);
+  /* Indexes the UNFILTERED list: `TendrilShell` reads this number off `slots.SessionContents`, which
+     holds one node per session pane including the agent terminals the strip leaves out. */
   const activeSessionIndex = activeSession
     ? sessions.findIndex((session) => session.id === activeSession)
     : null;

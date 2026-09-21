@@ -15,6 +15,7 @@ pub use commands::inbox::*;
 pub use commands::jobs::*;
 pub use commands::local_file::*;
 pub use commands::plans::*;
+pub use commands::promptwares::*;
 pub use commands::pull_requests::*;
 pub use commands::state::*;
 pub use commands::tables::*;
@@ -167,8 +168,18 @@ pub fn run() {
             cmd_upload_chat_attachment,
             cmd_list_projects,
             cmd_create_project,
+            // The only way the app may add a repository to an existing project: `PUT /api/config`
+            // stores what it is handed, so a remote URL added that way keeps its credentials and
+            // never becomes a checkout. This route clones first.
+            cmd_add_project_repo,
+            cmd_rename_project,
+            cmd_remove_project,
+            cmd_delete_project_data,
             cmd_get_config,
             cmd_put_config,
+            cmd_get_config_text,
+            cmd_put_config_text,
+            cmd_get_promptware_program,
             cmd_get_onboarding_status,
             cmd_complete_onboarding,
             cmd_dismiss_onboarding,
@@ -244,6 +255,11 @@ pub fn run() {
             cmd_start_share_tunnel,
             cmd_stop_share_tunnel,
             cmd_get_cloudflared_install_state,
+            // The install itself and the way out of one. Without these the Install button in Security
+            // & Tunneling cannot reach the daemon, and a fresh machine has no way to get cloudflared
+            // except by hand.
+            cmd_install_cloudflared,
+            cmd_cancel_cloudflared_install,
             // Full-access tunnel and the session password it is gated on — Settings' "Security &
             // Tunneling" section. Same module as the share commands.
             cmd_get_full_tunnel,

@@ -327,8 +327,25 @@ fn watch_paths_respects_max_watched_plan_folders() {
     assert!(!plan_folders.contains(&&oldest));
 }
 
+/// Serialises the tests that touch the self-write map.
+///
+/// That map is one process-wide static, and cargo runs tests on threads, so the two tests below are
+/// not independent however carefully they pick their paths: each opens with `clear_self_writes`, and
+/// a clear landing between the other test's note and its assertion wipes the very entry it is about
+/// to check. CI caught that as a flake in `self_write_is_suppressed_within_window`; it reproduces on
+/// demand by delaying the second test's clear by 40 ms.
+///
+/// The failure is worse in the other direction, which is why both tests take the lock rather than
+/// just the one that flaked: `self_write_expires_after_window` asserts a *negative*, so a stray clear
+/// makes it pass without testing anything.
+fn self_write_lock() -> std::sync::MutexGuard<'static, ()> {
+    static LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    LOCK.lock().unwrap_or_else(|e| e.into_inner())
+}
+
 #[test]
 fn self_write_is_suppressed_within_window() {
+    let _guard = self_write_lock();
     self_writes::clear_self_writes();
     let path = Path::new("/tendril/Plans/00576-Foo/plan.yaml");
     let now = Instant::now();
@@ -348,6 +365,7 @@ fn self_write_is_suppressed_within_window() {
 
 #[test]
 fn self_write_expires_after_window() {
+    let _guard = self_write_lock();
     self_writes::clear_self_writes();
     let path = Path::new("/tendril/Plans/00577-Bar/plan.yaml");
     let now = Instant::now();

@@ -49,6 +49,22 @@ export interface AgentMetricsFooterProps {
   metrics: StreamMetrics;
   /** Whether the run has reported its terminal result — what stops the elapsed timer. */
   isComplete: boolean;
+  /**
+   * `false` drops the rule over the strip, for a framing that already rules off the viewer's edge.
+   * See {@link AgentViewerProps.showMetricsDivider}; the padding stays either way, because it is what
+   * keeps these figures off the last line of the log.
+   */
+  showDivider?: boolean;
+  /**
+   * When the run actually began, from whoever owns the run rather than from its log.
+   *
+   * `metrics.startedAt` is the timestamp of the first line folded out of the event stream, which is
+   * only the run's start while the log holds exactly one run. A job id that was reissued after its
+   * row was cleared inherits the kept log of the job before it, and the footer then anchors on that
+   * run's first line: a job two minutes old reported "20h 25m". The daemon's own `startedAt` for
+   * the job is authoritative, so a caller that has one passes it and the stream is the fallback.
+   */
+  startedAt?: string | null;
 }
 
 /**
@@ -67,7 +83,12 @@ export interface AgentMetricsFooterProps {
  * Renders nothing when the stream has said nothing worth a line, so a viewer waiting on its first
  * output does not grow an empty bar.
  */
-export const AgentMetricsFooter: React.FC<AgentMetricsFooterProps> = ({ metrics, isComplete }) => {
+export const AgentMetricsFooter: React.FC<AgentMetricsFooterProps> = ({
+  metrics,
+  isComplete,
+  showDivider = true,
+  startedAt,
+}) => {
   // The agent's own duration outranks our reading of the clock, and once the run is over the span
   // between its first and last event is the measurement — neither is an estimate, so neither carries a
   // "~"; they differ only in who did the measuring, which the hover text says.
@@ -78,7 +99,7 @@ export const AgentMetricsFooter: React.FC<AgentMetricsFooterProps> = ({ metrics,
   const reportedMs = metrics.durationMs;
   const frozenMs =
     reportedMs != null ? reportedMs : isComplete && Number.isFinite(streamSpan) ? streamSpan : null;
-  const elapsedMs = useElapsedMs(metrics.startedAt, frozenMs, isComplete);
+  const elapsedMs = useElapsedMs(startedAt ?? metrics.startedAt, frozenMs, isComplete);
 
   // A finished run whose whole life was one event has a span of 0 and nothing to say about duration;
   // "0s" under it is noise, not information.
@@ -89,7 +110,10 @@ export const AgentMetricsFooter: React.FC<AgentMetricsFooterProps> = ({ metrics,
   if (!showElapsed && tokens == null && costUsd == null) return null;
 
   return (
-    <div className="aov-metrics" data-testid="agent-metrics-footer">
+    <div
+      className={`aov-metrics${showDivider ? "" : " aov-metrics-flush"}`}
+      data-testid="agent-metrics-footer"
+    >
       {showElapsed && (
         <Metric
           label="Elapsed"

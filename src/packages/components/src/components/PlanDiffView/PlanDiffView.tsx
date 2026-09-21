@@ -700,7 +700,7 @@ const CommentWidgetContainer: React.FC<CommentWidgetContainerProps> = ({
           <div className="flex items-center justify-end gap-2 mt-1">
             <button
               type="button"
-              className="px-3 py-1 text-xs font-medium border border-border rounded hover:bg-muted transition-colors cursor-pointer"
+              className="px-3 py-1 text-xs font-medium border border-border rounded hover:bg-secondary/60 transition-colors cursor-pointer"
               onClick={() => {
                 if (isEditing) {
                   onCancelEdit();
@@ -1093,8 +1093,26 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
                 }}
               >
                 <div
-                  className="flex items-center gap-2 cursor-pointer select-none grow min-w-0"
+                  // The cursor is gated on the same flag as the handler. It used to be an
+                  // unconditional `cursor-pointer` beside a `collapsible ? ... : undefined` click,
+                  // so a non-collapsible header promised a click it would never answer. The
+                  // role/tabIndex/keydown trio is the other half: this was mouse-only, unreachable by
+                  // keyboard, and a bare `onClick` div is an accessibility bug regardless of cursor.
+                  className={`flex items-center gap-2 select-none grow min-w-0 ${
+                    collapsible ? "cursor-pointer" : "cursor-default"
+                  }`}
+                  role={collapsible ? "button" : undefined}
+                  tabIndex={collapsible ? 0 : undefined}
                   onClick={collapsible ? toggleViewed : undefined}
+                  onKeyDown={
+                    collapsible
+                      ? (event) => {
+                          if (event.key !== "Enter" && event.key !== " ") return;
+                          event.preventDefault();
+                          toggleViewed();
+                        }
+                      : undefined
+                  }
                 >
                   {collapsible && (
                     <svg
@@ -1152,7 +1170,7 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
                       className={`size-3.5 shrink-0 rounded-sm border transition-colors flex items-center justify-center ${
                         isViewed
                           ? "bg-primary text-primary-foreground border-primary"
-                          : "border-border bg-background hover:bg-accent"
+                          : "border-border bg-background hover:bg-secondary/60"
                       }`}
                     >
                       {isViewed && (
@@ -1194,7 +1212,7 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
                           aria-label={hidden ? "Show comments" : "Hide comments"}
                           aria-pressed={!hidden}
                           disabled={fileCommentCount === 0}
-                          className="flex items-center gap-1 p-1 rounded hover:bg-muted text-muted-foreground hover:text-foreground transition-colors cursor-pointer disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
+                          className="flex items-center gap-1 p-1 rounded hover:bg-secondary/60 text-muted-foreground hover:text-foreground transition-colors cursor-pointer disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"
                           onClick={(e) => {
                             e.stopPropagation();
                             if (fileCommentCount === 0) return;

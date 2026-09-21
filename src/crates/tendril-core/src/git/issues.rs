@@ -1,4 +1,4 @@
-use crate::config::expand_variables;
+use crate::config::expand_config_path;
 use crate::error::{Result, TendrilError};
 use crate::git::service::run_git;
 use crate::models::ProjectConfig;
@@ -218,15 +218,14 @@ pub fn resolve_project_github_repos(
     project: &ProjectConfig,
     tendril_home: &Path,
 ) -> Vec<(String, String)> {
-    let home_str = tendril_home.to_string_lossy();
     let mut repos = Vec::new();
 
     for repo_ref in &project.repos {
-        let expanded = expand_variables(&repo_ref.path, &home_str);
-        let repo_path = Path::new(&expanded);
+        let repo_path = expand_config_path(&repo_ref.path, tendril_home);
         if !repo_path.is_dir() {
             continue;
         }
+        let repo_path = repo_path.as_path();
 
         if let Ok((code, stdout, _)) = run_git(&["remote", "get-url", "origin"], repo_path) {
             if code == 0 {

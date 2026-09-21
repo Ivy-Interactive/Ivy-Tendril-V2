@@ -171,6 +171,86 @@ describe("jobsStore action guards", () => {
     expect(await jobsStore.stopAllJobs()).toBe(1);
   });
 
+  /**
+   * The regression this guards: the sweep used to `await` each cancel in turn. `cancel_job` blocks
+   * server-side on a kill grace of three seconds
+   * (`crates/tendril-core/src/jobs/process_tree.rs:68`), so fifteen jobs held the Stop All confirm on
+   * "Working..." for ~45s.
+   *
+   * Asserting on a call *count* cannot catch this - the sequential version made exactly the same
+   * calls. What distinguishes the two is whether the later cancels are in flight before the first
+   * one resolves, so that is what is measured: every cancel must have been issued while the first is
+   * still pending. Under the old code `j2`/`j3` were not called at all until `j1` had settled.
+   */
+  it("issues a pass's cancels concurrently rather than awaiting each in turn", async () => {
+    await seed([job("j1", "Running"), job("j2", "Running"), job("j3", "Running")]);
+
+    const inFlight: string[] = [];
+    let releaseFirst: (() => void) | undefined;
+    const firstCallBlocked = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+
+    vi.spyOn(bridge, "cancelJob").mockImplementation(async (id: string) => {
+      inFlight.push(id);
+      // Only the first cancel blocks. A sequential sweep would deadlock on it until the assertion
+      // below releases it, having issued nothing else.
+      if (id === "j1") await firstCallBlocked;
+    });
+
+    const sweep = jobsStore.stopAllJobs();
+
+    // Yield once so the synchronous dispatch of the whole pass can run. The remaining cancels are
+    // only here if they were issued without waiting for `j1`.
+    await Promise.resolve();
+    expect(inFlight).toEqual(["j1", "j2", "j3"]);
+
+    releaseFirst?.();
+    expect(await sweep).toBe(3);
+  });
+
+  /**
+   * Concurrency means the cancels no longer settle in the order they were issued, and
+   * `Promise.allSettled` resolves positionally rather than by completion. This pins the consequence
+   * that matters to the caller: a result is matched to the id that produced it, so the one the
+   * daemon refused is the one excluded from the count -- not whichever happened to finish in that
+   * slot. `j1` settles last and `j3` first, so a sweep that paired results with ids by completion
+   * order would credit the refusal to the wrong job and still answer 2.
+   */
+  it("matches each cancel's outcome to its own id when they settle out of order", async () => {
+    await seed([job("j1", "Running"), job("j2", "Running"), job("j3", "Running")]);
+
+    const delays: Record<string, number> = { j1: 20, j2: 10, j3: 0 };
+    vi.spyOn(bridge, "cancelJob").mockImplementation(async (id: string) => {
+      await new Promise((resolve) => setTimeout(resolve, delays[id] ?? 0));
+      if (id === "j3") throw new Error("process already gone");
+    });
+
+    // The refusal is `j3`, which settles first. Only `j1` and `j2` count.
+    expect(await jobsStore.stopAllJobs()).toBe(2);
+    // `j3` is the one left un-stopped, so it is the row the store did not patch.
+    expect(jobsStore.getJobDetail("j3")).toBeUndefined();
+  });
+
+  // The multi-select stop shares `stopEachIds`, so it inherits the same concurrency. Its contract is
+  // the count, which must still exclude the one the daemon refused.
+  it("stopQueuedJobs issues its cancels concurrently and still counts only what stopped", async () => {
+    await seed([job("j1", "Queued"), job("j2", "Queued"), job("j3", "Queued")]);
+
+    const inFlight: string[] = [];
+    vi.spyOn(bridge, "cancelJob").mockImplementation(async (id: string) => {
+      inFlight.push(id);
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      if (id === "j2") throw new Error("process already gone");
+    });
+
+    const sweep = jobsStore.stopQueuedJobs();
+    await Promise.resolve();
+    expect(inFlight).toEqual(["j1", "j2", "j3"]);
+
+    expect(await sweep).toBe(2);
+  });
+
   it("offers no Delete or Force Start while the bridge cannot perform them", async () => {
     expect(jobsStore.canDeleteJob()).toBe(false);
     expect(jobsStore.canForceStartJob()).toBe(false);

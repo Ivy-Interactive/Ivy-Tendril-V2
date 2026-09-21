@@ -1,5 +1,6 @@
 import React, { useCallback } from "react";
 import { Copy, GitBranchPlus, GitCommitHorizontal } from "lucide-react";
+import { Card } from "../ui/card";
 import { IconButton } from "../ui/IconButton";
 
 /**
@@ -241,14 +242,14 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
         </h4>
 
         {data.worktrees.length === 0 ? (
-          <div className="mt-2 flex flex-col items-center gap-1 rounded-xl border border-border bg-card/40 p-4 text-center">
+          <Card className="mt-2 flex flex-col items-center gap-1 p-4 text-center">
             <GitBranchPlus className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
             <p className="text-sm text-muted-foreground/70">{noWorktreesReason(planState)}</p>
-          </div>
+          </Card>
         ) : (
-          <div className="mt-2 space-y-3">
+          <div className="mt-2 space-y-8">
             {data.worktrees.map((worktree) => (
-              <div key={worktree.path} className="rounded-xl border border-border bg-card/40 p-4">
+              <div key={worktree.path}>
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-semibold text-foreground">{worktree.name}</span>
                   <IconButton
@@ -256,7 +257,7 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
                     tooltip={false}
                     size="xs"
                     variant="outline"
-                    className="border-border bg-transparent hover:bg-muted"
+                    className="border-border bg-transparent hover:bg-secondary/60"
                     onClick={() => copyPath(normalizePath(worktree.path))}
                   >
                     <Copy className="h-3 w-3" />
@@ -294,13 +295,13 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
                 {worktree.commits.length > 0 ? (
                   <CommitTable rows={worktree.commits} />
                 ) : (
-                  <div className="mt-3 flex flex-col items-center gap-1 rounded-lg border border-border bg-card/40 p-3 text-center">
+                  <Card className="mt-3 flex flex-col items-center gap-1 p-3 text-center">
                     <GitCommitHorizontal
                       className="h-4 w-4 text-muted-foreground"
                       aria-hidden="true"
                     />
                     <p className="text-sm text-muted-foreground/70">(no commits)</p>
-                  </div>
+                  </Card>
                 )}
               </div>
             ))}
@@ -317,9 +318,7 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
             Recorded on the plan but reached from no worktree the plan still has — usually because
             the worktree was removed once the PR merged.
           </p>
-          <div className="mt-2 rounded-xl border border-border bg-card/40 p-4">
-            <CommitTable rows={data.unassociatedCommits} statusOf={statusOf} />
-          </div>
+          <CommitTable rows={data.unassociatedCommits} statusOf={statusOf} />
         </section>
       )}
 

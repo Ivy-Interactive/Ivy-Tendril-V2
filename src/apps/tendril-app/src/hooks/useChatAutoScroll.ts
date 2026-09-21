@@ -197,7 +197,13 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions = {}): UseCh
     if (spacer) spacer.style.height = "0px";
   }, [spacerRef]);
 
-  useLayoutEffect(() => {
+  /**
+   * Sizes the spacer and, the first time round, scrolls the pinned row to the top.
+   *
+   * Everything here is geometry, so it is a single function called from two places: React's own
+   * render, and a ResizeObserver for the growth React never hears about.
+   */
+  const measurePin = useCallback(() => {
     const container = scrollContainerRef.current;
     const spacer = spacerRef.current;
     const pin = pinRef.current;
@@ -212,15 +218,63 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions = {}): UseCh
     // virtualized row is absolutely positioned and would report an offset relative to itself.
     const containerTop = container.getBoundingClientRect().top - container.scrollTop;
     const targetTop = target.getBoundingClientRect().top - containerTop;
-    const contentEnd = spacer.getBoundingClientRect().top - containerTop;
+
+    // The content end is the bottom of the scrollable content, not the spacer's own top. V1 can use
+    // the latter (`spacer.offsetTop` in `useThreadScroll.ts`) because its spacer is the last child of
+    // `.chat-thread`; here the scroll anchor is rendered after it, and the list's `gap-6` sits
+    // between the two. Measuring at the spacer's top leaves that 25px out of the reservation, so the
+    // thread stays scrollable 25px past the pinned position - which is the sliver of dead space that
+    // showed under a reply. Subtracting the spacer's current height from the full scroll height
+    // counts every trailing sibling, whatever the list renders after the spacer.
+    const spacerHeight = spacer.getBoundingClientRect().height;
+    const contentEnd = container.scrollHeight - spacerHeight;
 
     const needed = container.clientHeight - (contentEnd - targetTop) - PIN_TOP_PADDING;
-    spacer.style.height = `${Math.max(0, Math.round(needed))}px`;
+    const height = Math.max(0, Math.round(needed));
+    // Guarded because this also runs from a ResizeObserver watching the container: writing the same
+    // height back would be a layout change the observer reports, and the two would feed each other.
+    if (spacer.style.height !== `${height}px`) {
+      spacer.style.height = `${height}px`;
+    }
 
     if (!pin.scrolled) {
       pin.scrolled = true;
       container.scrollTop = Math.max(0, Math.round(targetTop - PIN_TOP_PADDING));
     }
+  }, [scrollContainerRef, spacerRef]);
+
+  const measurePinRef = useRef(measurePin);
+  measurePinRef.current = measurePin;
+
+  useLayoutEffect(measurePin);
+
+  /**
+   * Re-measures when the thread changes height without React re-rendering.
+   *
+   * The reservation is only right for the height the content had when it was last measured, and a
+   * reply changes height on its own long after its delta arrived: a markdown block whose lazy chunk
+   * resolves, an image that decodes, a code block that re-wraps when the window is resized. Each
+   * leaves the spacer reserving room for content that is now there - the visible gap above the
+   * composer - until the next delta happens to force a render. V1 has the same problem and answers
+   * it the same way, with the ResizeObserver over the thread and its children in `ChatWidget.tsx`.
+   *
+   * Re-subscribed every render, like the scroll listener above and for the same two reasons: the
+   * thread is not mounted until a conversation has messages, so a subscription keyed on stable deps
+   * would run once against a null ref and never attach; and re-reading the children each time is
+   * what keeps the list's own wrapper observed after the empty state has been replaced.
+   */
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (!container || typeof ResizeObserver === "undefined") return;
+
+    const observer = new ResizeObserver(() => measurePinRef.current());
+    observer.observe(container);
+    // The rows live in the column the list wraps them in, which is what actually grows; the
+    // container's own box is pinned by its flex parent and would report nothing.
+    for (const child of Array.from(container.children)) {
+      observer.observe(child);
+    }
+    return () => observer.disconnect();
   });
 
   return {
@@ -240,5 +294,3 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions = {}): UseCh
     clearPin,
   };
 }
-
-export default useChatAutoScroll;

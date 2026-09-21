@@ -79,6 +79,23 @@ pub fn forget(tendril_home: &Path) -> Option<Arc<TunnelService>> {
     forget_of_kind(TunnelKind::Share, tendril_home)
 }
 
+/// The `cloudflared` install tracker for `tendril_home`, created on first use.
+///
+/// Separate from the per-kind services above and keyed by home alone, because there is one
+/// `cloudflared` per installation and both tunnels run it: two trackers would let a share install and
+/// a full-access install race for the same path. It lives here for the same reason the services do —
+/// `AppState` is not this area's to change — and creating one starts nothing.
+pub fn install_for_home(tendril_home: &Path) -> Arc<super::installer::CloudflaredInstall> {
+    static INSTALLS: OnceLock<Mutex<HashMap<PathBuf, Arc<super::installer::CloudflaredInstall>>>> =
+        OnceLock::new();
+    let map = INSTALLS.get_or_init(|| Mutex::new(HashMap::new()));
+    let mut guard = map.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    guard
+        .entry(tendril_home.to_path_buf())
+        .or_insert_with(|| Arc::new(super::installer::CloudflaredInstall::new()))
+        .clone()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

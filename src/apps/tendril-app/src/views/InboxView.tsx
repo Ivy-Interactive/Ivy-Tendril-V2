@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
-  ChevronDown,
-  ChevronRight,
   CircleDot,
   ExternalLink,
   FileText,
@@ -18,19 +16,23 @@ import {
   Badge,
   Button,
   DataTable,
+  HeaderLayout,
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
+  SidebarListRow,
+  SidebarListRowExpandable,
+  SidebarListRowSubItem,
   type DataTableColumn,
   type DataTableRowAction,
+  type SidebarListRowIcon,
 } from "@ivy-interactive/components/ui";
 import {
   BadgeSelect,
   PlanMarkdown,
   type BadgeSelectOption,
 } from "@ivy-interactive/components/tendril";
-import { ivyColorVar } from "@ivy-interactive/components";
 import { bridge } from "../api/bridge";
 import { describeBridgeError } from "../types/api";
 import type { GitHubIssue, InboxProposal, ProjectSummary, SweepReport } from "../types/api";
@@ -204,136 +206,77 @@ function buildIssueIntake(issue: GitHubIssue): string {
 }
 
 /**
- * One row of V1's inbox sidebar (`SidebarListRow.Build`): a full-width button, `Secondary` while
- * selected and `Ghost` otherwise, with the count badge suppressed unless it is greater than zero.
+ * V1's inbox sidebar rows (`Helpers/SidebarListRow.cs`), from the package's shared component - the
+ * same three shapes the Shell and the Settings rail draw, which this view used to reimplement.
+ *
+ * These three wrappers exist only to fix what is constant for this rail: every row is a tab in the
+ * `role="tablist"` above, and the expander is always V1's `Icons.Folder`. Everything visual - the
+ * `Secondary`/`Ghost` tones, the suppressed zero badge, the 1rem sub-item indent and V1's
+ * project-colour box - comes from the shared component.
  */
 const RailRow: React.FC<{
-  icon: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+  icon: SidebarListRowIcon;
   label: string;
   count?: number;
   selected: boolean;
   onClick: () => void;
   testId?: string;
-}> = ({ icon: IconCmp, label, count, selected, onClick, testId }) => (
-  <button
-    type="button"
-    role="tab"
-    aria-selected={selected}
-    data-testid={testId}
+}> = ({ icon, label, count, selected, onClick, testId }) => (
+  <SidebarListRow
+    icon={icon}
+    label={label}
+    count={count}
+    selected={selected}
     onClick={onClick}
-    className={`flex w-full items-center gap-2 rounded-field px-2 py-1.5 text-left text-xs transition-colors ${
-      selected
-        ? "bg-secondary text-secondary-foreground"
-        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-    }`}
-  >
-    <IconCmp className="size-4 shrink-0" aria-hidden />
-    <span className="truncate">{label}</span>
-    {count !== undefined && count > 0 && (
-      <Badge variant="secondary" density="Small" className="ml-auto">
-        {count}
-      </Badge>
-    )}
-  </button>
+    role="tab"
+    testId={testId}
+  />
 );
 
-/** V1 `SidebarListRow.BuildExpandable`: icon, label, spacer, then a chevron for the open state. */
+/**
+ * V1 `SidebarListRow.BuildExpandable`. The icon is not a prop because V1's inbox passes
+ * `Icons.Folder` at its single call site.
+ */
 const RailExpander: React.FC<{
   label: string;
   expanded: boolean;
   selected: boolean;
   onClick: () => void;
 }> = ({ label, expanded, selected, onClick }) => (
-  <button
-    type="button"
-    aria-expanded={expanded}
+  <SidebarListRowExpandable
+    icon={Folder}
+    label={label}
+    expanded={expanded}
+    selected={selected}
     onClick={onClick}
-    className={`flex w-full items-center gap-2 rounded-field px-2 py-1.5 text-left text-xs transition-colors ${
-      selected
-        ? "bg-secondary text-secondary-foreground"
-        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-    }`}
-  >
-    <Folder className="size-4 shrink-0" aria-hidden />
-    <span className="truncate">{label}</span>
-    {expanded ? (
-      <ChevronDown className="ml-auto size-3 shrink-0" aria-hidden />
-    ) : (
-      <ChevronRight className="ml-auto size-3 shrink-0" aria-hidden />
-    )}
-  </button>
+  />
 );
 
 /**
- * V1 `SidebarListRow.BuildSubItem`: a 1rem indent, then either an icon or a small colour box, then
- * the label. Icon *or* colour, never both — which is why the "No projects in settings" row keeps its
- * folder icon and gets no dot.
- *
- * The colour box is V1's, literally: `new Box().Background(color).BorderRadius(BorderRadius.Rounded)
- * .Width(Size.Units(3)).Height(Size.Units(3))` — a 0.75rem square at Ivy's `Rounded` radius, which
- * resolves to 0.5rem, so it reads as a dot without being a circle. That is why this is
- * `size-3 rounded-box` and not `size-2 rounded-full`, and it is the same marker the Settings
- * sidebar draws (`views/settings/SidebarListRow.tsx`) for the same projects.
- *
- * `color` is an Ivy `Colors` name, resolved through the package's `ivyColorVar` — the one
- * name-to-token mapping in the codebase, shared with `Badge` and `TuiBadge`. A row with neither an
- * icon nor a colour keeps the old neutral marker.
+ * V1 `SidebarListRow.BuildSubItem`. Icon *or* colour, never both - which is why the "No projects in
+ * settings" row keeps its folder icon and gets no dot, and why it is also the one sub-item here with
+ * no `onClick`: the shared component renders a handler-less sub-item as static text rather than as a
+ * tab nobody can select.
  */
 const RailSubItem: React.FC<{
   label: string;
-  icon?: React.ComponentType<{ className?: string; "aria-hidden"?: boolean }>;
+  icon?: SidebarListRowIcon;
   /** An Ivy `Colors` name, e.g. the project's configured colour. */
   color?: string;
   selected?: boolean;
   onClick?: () => void;
   testId?: string;
-}> = ({ label, icon: IconCmp, color, selected = false, onClick, testId }) => {
-  const shared = `flex w-full items-center gap-2 rounded-field py-1.5 pl-4 pr-2 text-left text-xs transition-colors ${
-    selected
-      ? "bg-secondary text-secondary-foreground"
-      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-  }`;
-
-  const marker = IconCmp ? (
-    <IconCmp className="size-4 shrink-0" aria-hidden />
-  ) : color ? (
-    <span
-      aria-hidden
-      data-testid={testId ? `${testId}-dot` : undefined}
-      data-color={color}
-      className="size-3 shrink-0 rounded-box"
-      style={{ backgroundColor: ivyColorVar(color) }}
-    />
-  ) : (
-    <span
-      aria-hidden
-      className={`size-2 shrink-0 rounded-full ${selected ? "bg-primary" : "bg-muted-foreground/50"}`}
-    />
-  );
-
-  if (!onClick) {
-    return (
-      <span className={`${shared} cursor-default`} data-testid={testId}>
-        {marker}
-        <span className="truncate">{label}</span>
-      </span>
-    );
-  }
-
-  return (
-    <button
-      type="button"
-      role="tab"
-      aria-selected={selected}
-      data-testid={testId}
-      onClick={onClick}
-      className={shared}
-    >
-      {marker}
-      <span className="truncate">{label}</span>
-    </button>
-  );
-};
+}> = ({ label, icon, color, selected = false, onClick, testId }) => (
+  <SidebarListRowSubItem
+    label={label}
+    icon={icon}
+    color={color}
+    selected={selected}
+    onClick={onClick}
+    role={onClick ? "tab" : undefined}
+    testId={testId}
+  />
+);
 
 export interface InboxViewProps {
   projects?: ProjectSummary[];
@@ -1072,6 +1015,14 @@ export const InboxView: React.FC<InboxViewProps> = ({
       : `${activeProject?.name || selectedProject || "Project"} Issues`;
 
   /**
+   * The Issues categories are served from `repos/{slug}/issues`, which answers with pull requests
+   * too, so `filteredIssues` drops them (see above) whether or not the user has typed a filter.
+   * That drop is a client-side narrowing exactly like the search box is, and the footer has to
+   * count it: leaving it out is what made a page of 50 render 44 rows under "Showing 1-50 of 51".
+   */
+  const dropsPullRequests = !isReviews && issues.some((issue) => issue.isPullRequest === true);
+
+  /**
    * V1's search and column filters run over `allIssues`, the whole category, and its footer counts
    * whatever survived them. V2's run over the page the daemon returned, so while a filter is active
    * the footer has to count the filtered rows: reporting the server's total next to one visible row,
@@ -1079,7 +1030,10 @@ export const InboxView: React.FC<InboxViewProps> = ({
    * filtering searches what is loaded.
    */
   const isClientFiltered =
-    searchQuery.trim().length > 0 || selectedLabels.length > 0 || selectedAssignees.length > 0;
+    searchQuery.trim().length > 0 ||
+    selectedLabels.length > 0 ||
+    selectedAssignees.length > 0 ||
+    dropsPullRequests;
 
   const rowCount = isClientFiltered
     ? filteredIssues.length
@@ -1162,7 +1116,10 @@ export const InboxView: React.FC<InboxViewProps> = ({
       <div data-testid="inbox-content" className="flex min-h-0 min-w-0 flex-1 flex-col gap-4">
         {/* Header: title, refresh and the Auto-Accept state on the left; the bulk actions on the
             right, in V1's order (`ContentView.BuildIssuesView`). */}
-        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
+        {/* `shrink-0` on every piece of chrome in this column, here and below: the panel and the
+            table are the two things that may give up height, and anything else that shrinks does it
+            by clipping its own wrapped rows rather than by scrolling. */}
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3 shrink-0">
           <div className="flex min-w-0 items-center gap-2">
             <h1 className="text-2xl font-bold text-foreground">{title}</h1>
             <Button
@@ -1245,11 +1202,17 @@ export const InboxView: React.FC<InboxViewProps> = ({
                 Deselect All
               </Button>
               {/* V1: `{selectedCount} of {allIssues.Count} selected`, where `allIssues` is the whole
-                  category rather than the visible page, and is not narrowed by the table's own
-                  search. The daemon's `totalCount` is that number; it is absent for a project's
-                  issues, which come back as a bare array, so the page length stands in there. */}
+                  category, which V1 had loaded in full. V2 pages, so this counts against the same
+                  denominator the footer prints - the server total normally, the rows that survived
+                  a client-side narrowing when one is in effect. Reading the raw `totalCount` here
+                  was the other half of "I made select all, its only 44": Select All could only
+                  reach the 44 rows the PR drop left, and the label answered 51.
+
+                  `Math.max` because a selection outlives the page it was made on: two pages of one
+                  row each leave `selectedCount` at 2 while the current page holds 1, and "2 of 1"
+                  is worse than the total it is counting towards. */}
               <span className="text-xs text-muted-foreground" data-testid="inbox-selection-summary">
-                {selectedCount} of {totalCount ?? issues.length} selected
+                {selectedCount} of {Math.max(selectedCount, rowCount)} selected
               </span>
               {onOpenChat && (
                 <Button
@@ -1284,7 +1247,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
         </div>
 
         {/* Freshness and, for a multi-repo project, which repo is being listed. */}
-        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+        <div className="flex shrink-0 flex-wrap items-center gap-3 text-xs text-muted-foreground">
           {selectedCategory === "project-issues" && activeProjectRepos.length > 1 && (
             <div className="flex items-center gap-1.5">
               <label htmlFor="inbox-repo-select">Repo:</label>
@@ -1338,7 +1301,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
         </div>
 
         {fireNotice && (
-          <p data-testid="inbox-fire-notice" className="text-xs text-muted-foreground">
+          <p data-testid="inbox-fire-notice" className="shrink-0 text-xs text-muted-foreground">
             {fireNotice}
           </p>
         )}
@@ -1352,31 +1315,64 @@ export const InboxView: React.FC<InboxViewProps> = ({
             not filtered by category or project, and repeating them under Reviews or a project's
             issues would attach them to a list they have nothing to do with. */}
         {isMyIssues && checkSummary && proposals.length === 0 && !proposalError && (
-          <p data-testid="inbox-check-summary" className="text-xs text-muted-foreground">
+          <p data-testid="inbox-check-summary" className="shrink-0 text-xs text-muted-foreground">
             {checkSummary}
           </p>
         )}
 
         {isMyIssues && proposalError && (
-          <ErrorBanner data-testid="inbox-proposal-error">{proposalError}</ErrorBanner>
+          <ErrorBanner data-testid="inbox-proposal-error" className="shrink-0">
+            {proposalError}
+          </ErrorBanner>
         )}
 
         {isMyIssues && proposals.length > 0 && (
-          <div data-testid="inbox-proposals" className="space-y-2">
-            <div className="flex items-baseline justify-between">
-              <h2 className="text-sm font-semibold text-foreground">
-                Assigned issues awaiting your decision
-                <span className="ml-2 text-xs font-normal text-muted-foreground">
-                  {proposals.length}
-                </span>
-              </h2>
-              {checkSummary && (
-                <span data-testid="inbox-check-summary" className="text-xs text-muted-foreground">
-                  {checkSummary}
-                </span>
-              )}
-            </div>
+          /* `HeaderLayout`, not a `space-y` block, and this is the panel that was breaking the page.
+             It is the codebase's own fixed-chrome-over-scrolling-content primitive
+             (`ui/panel-layout.tsx`, porting `Ivy-Framework/.../HeaderLayoutWidget.tsx`), so the
+             heading and its count stay put while the cards scroll under them.
 
+             Why the panel and not the table: a sweep can import dozens of proposals, and this block
+             had no bound of any kind. The column's own `min-h-0` lets it *shrink*, but shrinking is
+             distributed over the flex line — an unbounded `flex-shrink: 1` sibling keeps its content
+             height as its basis, so it took 496px of a 568px column and left the table `height: 0`.
+             The table's `fillHeight` chain was intact the whole time; it was handed nothing to fill,
+             the column overflowed, and the frame's `overflow-y-auto` (`CONTENT_PADDED_CLASS`,
+             `ShellLayout.tsx:75`) became the scroller — which is the rail scrolling away, since the
+             rail is inside that frame.
+
+             `max-h-[min(16rem,33%)]` is the bound that makes the shrink resolve, and it has to be a
+             `min()` of the two: a fixed cap alone (`max-h-64`) is still most of the column in a 400px
+             window, and a percentage alone hands a tall window more queue than it needs. 16rem is
+             about three cards; a third is the share a transient triage queue may take from the list
+             it is triaging into. Measured in Chromium against this view's own compiled markup: as
+             shipped the page scrolls at every height tried (1000 down to 320px) and the rail leaves
+             the viewport with it; with the cap it never scrolls at any of them, the search box stays
+             on screen throughout, and the rail stays at the top.
+
+             `h-auto` overrides the primitive's own `h-full` so one proposal keeps one proposal's
+             height rather than reserving the whole cap, and `contentClassName` drops the default
+             `p-4` for the `space-y-2` this list already had. */
+          <HeaderLayout
+            data-testid="inbox-proposals"
+            className="h-auto max-h-[min(16rem,33%)] min-h-0 shrink"
+            contentClassName="space-y-2 p-0 pt-2"
+            header={
+              <div className="flex items-baseline justify-between">
+                <h2 className="text-sm font-semibold text-foreground">
+                  Assigned issues awaiting your decision
+                  <span className="ml-2 text-xs font-normal text-muted-foreground">
+                    {proposals.length}
+                  </span>
+                </h2>
+                {checkSummary && (
+                  <span data-testid="inbox-check-summary" className="text-xs text-muted-foreground">
+                    {checkSummary}
+                  </span>
+                )}
+              </div>
+            }
+          >
             {proposals.map((proposal) => (
               <div
                 key={proposal.id}
@@ -1422,7 +1418,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                 </div>
               </div>
             ))}
-          </div>
+          </HeaderLayout>
         )}
 
         {/* V1's order in `BuildIssuesView`: the spinner only while the list is still empty, then the

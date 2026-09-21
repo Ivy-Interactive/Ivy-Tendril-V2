@@ -22,6 +22,7 @@ const AGENT_BRAND_ICONS: Record<string, string> = {
   gemini: "Gemini",
   copilot: "Copilot",
   antigravity: "Antigravity",
+  apple: "Apple",
   opencode: "OpenCode",
   ivy: "IvyCorner",
   openaiproxy: "OpenAI",
@@ -79,7 +80,7 @@ const PanelSelect: React.FC<{
         aria-label={title}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="h-7 w-full cursor-pointer appearance-none truncate whitespace-nowrap rounded-selector border border-border bg-popover pl-2.5 pr-7 text-sm text-popover-foreground outline-none hover:bg-accent focus:border-foreground"
+        className="h-7 w-full cursor-pointer appearance-none truncate whitespace-nowrap rounded-selector border border-border bg-popover pl-2.5 pr-7 text-sm text-popover-foreground outline-none hover:bg-secondary/60 focus:border-foreground"
       >
         {/* A value the list does not contain still has to be showable, or the select silently
             snaps to its first option and reports a model the host never chose. */}
@@ -316,7 +317,7 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
           aria-expanded={open}
           aria-label={`Agent: ${label}`}
           onClick={toggleMenu}
-          className="inline-flex h-7.5 max-w-46 items-center gap-2 rounded-selector border-0 bg-transparent p-1.5 text-sm text-foreground opacity-60 transition-[opacity,background-color] hover:bg-accent hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[open=true]:bg-accent data-[open=true]:opacity-100"
+          className="inline-flex h-7.5 max-w-46 items-center gap-2 rounded-selector border-0 bg-transparent p-1.5 text-sm text-foreground opacity-60 transition-[opacity,background-color] hover:bg-secondary/60 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[open=true]:bg-secondary data-[open=true]:opacity-100"
         >
           <BrandIcon name={agentBrandIcon(selectedAgentId)} size={16} className="shrink-0" />
           {!compact && <span className="truncate whitespace-nowrap">{label}</span>}
@@ -348,7 +349,7 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
                     tabIndex={0}
                     data-selected={agent.id === selectedAgentId}
                     data-options-open={optionsOpen}
-                    className="group flex h-7.5 cursor-pointer items-center gap-2 whitespace-nowrap rounded-selector pl-2 pr-1 text-sm text-popover-foreground outline-none data-[selected=true]:bg-muted hover:bg-accent focus-visible:bg-accent data-[options-open=true]:bg-accent"
+                    className="group flex h-7.5 cursor-pointer items-center gap-2 whitespace-nowrap rounded-selector pl-2 pr-1 text-sm text-popover-foreground outline-none data-[selected=true]:bg-secondary hover:bg-secondary/60 focus-visible:bg-secondary/60 data-[options-open=true]:bg-secondary"
                     onClick={() => chooseAgent(agent.id)}
                     onKeyDown={(e) => {
                       if (e.key === "Enter" || e.key === " ") {
@@ -372,7 +373,7 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
                           type="button"
                           aria-label={`${agent.label} options`}
                           aria-expanded={optionsOpen}
-                          className="inline-flex size-5.5 shrink-0 items-center justify-center rounded-selector border-0 bg-transparent text-muted-foreground opacity-0 transition-[opacity,background-color,color] group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-accent hover:text-foreground aria-expanded:bg-accent aria-expanded:text-foreground aria-expanded:opacity-100"
+                          className="inline-flex size-5.5 shrink-0 items-center justify-center rounded-selector border-0 bg-transparent text-muted-foreground opacity-0 transition-[opacity,background-color,color] group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-secondary/60 hover:text-foreground aria-expanded:bg-secondary aria-expanded:text-foreground aria-expanded:opacity-100"
                           onClick={(e) => {
                             e.stopPropagation();
                             toggleOptions(agent.id);
@@ -422,5 +423,3 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
     </>
   );
 };
-
-export default AgentPicker;

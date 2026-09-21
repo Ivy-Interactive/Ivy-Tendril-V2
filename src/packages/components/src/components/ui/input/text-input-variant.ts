@@ -23,7 +23,7 @@ export function normalizeInputDensity(density?: Densities | string | null): Inpu
  * than the glyph, which reads as extra padding.
  */
 export const affixEmbeddedButtonClasses =
-  "[&_button:not([data-invalid-icon])]:!px-2 [&_button:not([data-invalid-icon])]:shadow-none [&_button:not([data-invalid-icon])]:rounded-sm [&_button:not([data-invalid-icon])]:hover:bg-accent [&_button:not([data-invalid-icon])]:cursor-pointer [&_button:not([data-invalid-icon])]:transition-colors [&_button:not([data-invalid-icon]).size-7]:!size-4 [&_button:not([data-invalid-icon]).size-9]:!size-6";
+  "[&_button:not([data-invalid-icon])]:!px-2 [&_button:not([data-invalid-icon])]:shadow-none [&_button:not([data-invalid-icon])]:rounded-sm [&_button:not([data-invalid-icon])]:hover:bg-secondary/60 [&_button:not([data-invalid-icon])]:cursor-pointer [&_button:not([data-invalid-icon])]:transition-colors [&_button:not([data-invalid-icon]).size-7]:!size-4 [&_button:not([data-invalid-icon]).size-9]:!size-6";
 
 /** Tighter affix cell padding when the slot only contains an icon-sized Ivy button (not trailing invalid). */
 export const affixIconOnlyCellPaddingClasses =
@@ -490,7 +490,7 @@ export function textInputTrailingIconButtonClasses(
   const d = normalizeInputDensity(density);
   return cn(
     textInputTrailingHitTargetVariant({ density: d }),
-    "cursor-pointer rounded text-muted-foreground hover:bg-accent hover:text-foreground focus:outline-none",
+    "cursor-pointer rounded text-muted-foreground hover:bg-secondary/60 hover:text-foreground focus:outline-none",
     overlay && "pointer-events-auto",
   );
 }

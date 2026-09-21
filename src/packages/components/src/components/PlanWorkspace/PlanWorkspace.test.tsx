@@ -2,7 +2,12 @@ import { act, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import "@testing-library/jest-dom";
 import { PlanWorkspace } from "./PlanWorkspace";
-import { CHAT_WIDTH_STORAGE_KEY } from "./chatWidth";
+import {
+  CHAT_WIDTH_STORAGE_KEY,
+  chatWidthStorageKey,
+  readStoredChatWidth,
+  writeStoredChatWidth,
+} from "./chatWidth";
 import { matchesShortcut, shortcutKeys } from "./shortcuts";
 
 const actions = [
@@ -57,7 +62,7 @@ describe("PlanWorkspace", () => {
       unobserve = vi.fn();
       disconnect = vi.fn();
     } as unknown as typeof ResizeObserver;
-    window.localStorage.removeItem(CHAT_WIDTH_STORAGE_KEY);
+    window.localStorage.clear();
   });
 
   afterEach(() => {
@@ -65,7 +70,7 @@ describe("PlanWorkspace", () => {
       vi.runOnlyPendingTimers();
     });
     vi.useRealTimers();
-    window.localStorage.removeItem(CHAT_WIDTH_STORAGE_KEY);
+    window.localStorage.clear();
   });
 
   it("renders the title bar, tabs and the selected tab's content", () => {
@@ -98,6 +103,42 @@ describe("PlanWorkspace", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: /Delete/ }));
     expect(handler).toHaveBeenCalledWith("OnAction", "w", ["Delete"]);
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+  });
+
+  it("closes the overflow menu on Escape and returns focus to its trigger", () => {
+    renderWorkspace();
+    const trigger = screen.getByRole("button", { name: "More actions" });
+    fireEvent.click(trigger);
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("moves focus between overflow menu items with ArrowDown/ArrowUp", () => {
+    const manyMenuItems = [
+      { tag: "Rename", label: "Rename", icon: "Pencil" },
+      { tag: "Duplicate", label: "Duplicate", icon: "Copy" },
+      { tag: "Delete", label: "Delete", icon: "Trash", danger: true },
+    ];
+    renderWorkspace(vi.fn(), { menuItems: manyMenuItems });
+    fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+    const menu = screen.getByRole("menu");
+    const items = screen.getAllByRole("menuitem");
+    expect(items.map((el) => el.getAttribute("data-tag"))).toEqual([
+      "Rename",
+      "Duplicate",
+      "Delete",
+    ]);
+
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    expect(items[0]).toHaveFocus();
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    expect(items[1]).toHaveFocus();
+    fireEvent.keyDown(menu, { key: "ArrowUp" });
+    expect(items[0]).toHaveFocus();
   });
 
   it("marks the active icon action as pressed", () => {
@@ -439,11 +480,13 @@ describe("PlanWorkspace", () => {
     fireEvent.pointerUp(window, { clientX: 700 });
 
     expect(root.style.getPropertyValue("--pws-chat-width")).toBe("500px");
-    expect(window.localStorage.getItem(CHAT_WIDTH_STORAGE_KEY)).toBe("500");
+    expect(window.localStorage.getItem(chatWidthStorageKey("w"))).toBe("500");
+    // Not the plan page's key: this workspace is `id="w"`, and the two must not share a slot.
+    expect(window.localStorage.getItem(CHAT_WIDTH_STORAGE_KEY)).toBeNull();
 
     fireEvent.doubleClick(handle);
     expect(root.style.getPropertyValue("--pws-chat-width")).toBe("420px");
-    expect(window.localStorage.getItem(CHAT_WIDTH_STORAGE_KEY)).toBeNull();
+    expect(window.localStorage.getItem(chatWidthStorageKey("w"))).toBeNull();
   });
 
   it("never lets the chat grow past its share of the workspace", () => {
@@ -564,5 +607,59 @@ describe("shortcuts", () => {
 
     expect(handler).toHaveBeenCalledTimes(1);
     expect(handler).toHaveBeenCalledWith("OnAction", "w", ["Execute"]);
+  });
+});
+
+/**
+ * The width key was global — `tendril.plan.chatWidth` for every workspace — and that was only ever
+ * correct while exactly one `PlanWorkspace` existed in the app. It no longer does: the config editor
+ * mounts a second one, and under a shared key the last pane dragged silently resized the other the
+ * next time it opened. The key is now derived from the `id` the workspace already takes.
+ *
+ * The compatibility half is the part worth pinning. `plan-workspace` keeps the original key verbatim
+ * rather than moving to a derived one, because a rename would read as a reset of the width every
+ * existing operator has already dragged the plan chat to.
+ */
+describe("chatWidthStorageKey", () => {
+  it("keeps the plan workspace on the key its width is already stored under", () => {
+    expect(chatWidthStorageKey("plan-workspace")).toBe(CHAT_WIDTH_STORAGE_KEY);
+    expect(CHAT_WIDTH_STORAGE_KEY).toBe("tendril.plan.chatWidth");
+  });
+
+  it("gives every other workspace a key of its own", () => {
+    expect(chatWidthStorageKey("config-editor-workspace")).toBe(
+      "tendril.chatWidth.config-editor-workspace",
+    );
+    expect(chatWidthStorageKey("review-workspace")).not.toBe(chatWidthStorageKey("plan-workspace"));
+  });
+
+  it("reads and writes each workspace's width independently", () => {
+    window.localStorage.clear();
+
+    writeStoredChatWidth("plan-workspace", 700);
+    writeStoredChatWidth("config-editor-workspace", 500);
+
+    expect(readStoredChatWidth("plan-workspace")).toBe(700);
+    expect(readStoredChatWidth("config-editor-workspace")).toBe(500);
+    // An operator who had dragged the plan chat before this change finds that width still there.
+    expect(window.localStorage.getItem(CHAT_WIDTH_STORAGE_KEY)).toBe("700");
+
+    // Resetting one pane leaves the other alone, which is the whole point of the parameterisation.
+    writeStoredChatWidth("config-editor-workspace", null);
+    expect(readStoredChatWidth("config-editor-workspace")).toBeNull();
+    expect(readStoredChatWidth("plan-workspace")).toBe(700);
+
+    window.localStorage.clear();
+  });
+
+  /** A width below the floor is not a width, whichever key it came off. */
+  it("ignores a stored value that is not a usable width", () => {
+    window.localStorage.setItem(CHAT_WIDTH_STORAGE_KEY, "not-a-number");
+    expect(readStoredChatWidth("plan-workspace")).toBeNull();
+
+    window.localStorage.setItem(CHAT_WIDTH_STORAGE_KEY, "12");
+    expect(readStoredChatWidth("plan-workspace")).toBeNull();
+
+    window.localStorage.clear();
   });
 });

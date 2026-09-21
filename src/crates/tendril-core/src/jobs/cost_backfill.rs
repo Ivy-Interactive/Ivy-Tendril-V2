@@ -9,7 +9,7 @@
 //! Works off the database rather than the in-memory job map: most of the rows worth repairing are
 //! only on disk.
 
-use crate::agents::{model_specs, pricing};
+use crate::agents::pricing;
 use crate::db::{insert_job, jobs::list_jobs, open_database};
 use crate::models::JobItem;
 use std::path::Path;
@@ -68,25 +68,27 @@ pub fn run_pass(tendril_home: &Path) -> BackfillReport {
     for mut job in jobs.into_iter().filter(is_candidate) {
         let model = job.model.clone().unwrap_or_default();
 
-        // `model_specs::find` is what `pricing::get_model_price` consults before falling back to its
-        // hardcoded 3.00/15.00 rates, so a `None` here is precisely "no price list entry" — the
-        // original's unpriced case. Going straight to `calculate_cost` would invent a figure for a
-        // model nobody has prices for and stamp it `estimated`, which is the corruption this service
-        // exists to undo.
-        if model_specs::find(&model).is_none() {
-            report.unpriced += 1;
-            continue;
-        }
-
         // The same path `extract_and_record_usage` uses, so a backfilled figure and a freshly
-        // estimated one agree to the last cent.
-        let cost = pricing::calculate_cost(
+        // estimated one agree to the last cent. `try_` rather than `calculate_cost`: a `None` is
+        // precisely "no price list entry" — the original's unpriced case — and going straight to
+        // `calculate_cost` would invent a figure at its hardcoded 3.00/15.00 fallback for a model
+        // nobody has prices for and stamp it `estimated`, which is the corruption this service
+        // exists to undo.
+        //
+        // It also covers the case that sent the user here: a models.dev row for a model the catalog
+        // lists but publishes no `cost` block for parses to a card of zeros, which priced a real
+        // 1.25M-token Opus 5 run at $0.00 and stamped it `estimated`. That is the same invented
+        // figure wearing a different mask, so it is the same refusal.
+        let Some(cost) = pricing::try_calculate_cost(
             &model,
             job.input_tokens.unwrap_or(0),
             job.output_tokens.unwrap_or(0),
             job.cache_read_tokens.unwrap_or(0),
             job.cache_write_tokens.unwrap_or(0),
-        );
+        ) else {
+            report.unpriced += 1;
+            continue;
+        };
 
         job.cost = Some(cost);
         job.cost_source = Some("estimated".to_string());

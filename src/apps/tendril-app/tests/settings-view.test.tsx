@@ -2,6 +2,10 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
 import { SettingsView } from "../src/views/SettingsView";
 import { bridge } from "../src/api/bridge";
+import {
+  resetPromptwareProgramTransport,
+  setPromptwareProgramTransport,
+} from "../src/api/promptwaresApi";
 import type { ServiceInfo, TendrilConfig } from "../src/types/api";
 
 /**
@@ -14,6 +18,21 @@ import type { ServiceInfo, TendrilConfig } from "../src/types/api";
  * clicking the row. Before the structural pass every section was mounted at once, which is why these
  * tests previously needed no navigation at all.
  */
+
+/**
+ * Radix's Select scrolls the highlighted option into view as soon as its content mounts, and jsdom
+ * implements neither this nor the pointer-capture methods its item handlers call. Stubbed here
+ * rather than in `src/test/setup.ts` because this is the only file in the suite that opens one.
+ */
+if (!window.HTMLElement.prototype.scrollIntoView) {
+  window.HTMLElement.prototype.scrollIntoView = vi.fn();
+}
+if (!window.HTMLElement.prototype.hasPointerCapture) {
+  window.HTMLElement.prototype.hasPointerCapture = vi.fn(() => false);
+}
+if (!window.HTMLElement.prototype.releasePointerCapture) {
+  window.HTMLElement.prototype.releasePointerCapture = vi.fn();
+}
 
 const baseConfig: TendrilConfig = {
   codingAgent: "claude",
@@ -110,6 +129,8 @@ describe("SettingsView", () => {
       "Gemini",
       "Antigravity",
       "OpenCode",
+      "Cursor",
+      "Apple",
       "OpenAI",
       "Anthropic",
       "Berget AI",
@@ -236,13 +257,22 @@ describe("SettingsView", () => {
 
   /** `ConfigCommand.ValidateCodingAgent` refuses an unregistered agent and names the valid set. */
   it("names an unknown configured coding agent instead of just selecting nothing", async () => {
-    getConfig.mockResolvedValue({ ...baseConfig, codingAgent: "cursor" });
+    getConfig.mockResolvedValue({ ...baseConfig, codingAgent: "aider" });
     await renderSettings();
 
     expect(screen.getByTestId("unknown-coding-agent")).toHaveTextContent(
-      "Unknown coding agent 'cursor'. Valid agents: antigravity, claude, codex, copilot, gemini, opencode",
+      "Unknown coding agent 'aider'. Valid agents: antigravity, apple, claude, codex, copilot, cursor, gemini, opencode",
     );
-    for (const agent of ["claude", "copilot", "codex", "gemini", "antigravity", "opencode"]) {
+    for (const agent of [
+      "claude",
+      "copilot",
+      "codex",
+      "gemini",
+      "antigravity",
+      "opencode",
+      "cursor",
+      "apple",
+    ]) {
       expect(screen.getByTestId(`coding-agent-${agent}`)).toHaveAttribute("aria-pressed", "false");
     }
   });
@@ -399,8 +429,97 @@ describe("SettingsView", () => {
     });
   });
 
-  /** `PromptwaresSetupView` / `EditPromptwareDialogContent`, over the `promptwares` map. */
-  describe("promptwares", () => {
+  /**
+   * `PromptwaresSetupView` / `EditPromptwareDialogContent`, over the `promptwares` map.
+   *
+   * The `promptwares` key, the `promptwares-card` test id and the `promptware-*` control ids are all
+   * left spelled the daemon's way on purpose - they are the persisted config key and DOM handles, not
+   * things an operator reads. Only the visible strings say "agent".
+   */
+  describe("workflow agents", () => {
+    /**
+     * Radix's Select opens on a keypress here rather than a click: its trigger listens on
+     * `pointerdown`, and jsdom's `click` carries none of the pointer state that handler reads, so a
+     * clicked trigger never opens and the test only fails on the timeout.
+     */
+    const selectAgent = async (name: string) => {
+      await act(async () => {
+        fireEvent.keyDown(screen.getByRole("combobox", { name: "Agent" }), { key: "ArrowDown" });
+      });
+      await act(async () => {
+        fireEvent.click(screen.getByRole("option", { name }));
+      });
+    };
+
+    afterEach(() => {
+      resetPromptwareProgramTransport();
+    });
+
+    it("calls these agents, not promptwares, everywhere the operator can read it", async () => {
+      setPromptwareProgramTransport(() => Promise.reject(new Error("not deployed")));
+      await renderSettings("promptwares");
+
+      const card = screen.getByTestId("promptwares-card");
+      expect(card.querySelector("h2")).toHaveTextContent("Workflow Agents");
+      expect(card.querySelector("label[for='promptware-select']")).toHaveTextContent("Agent");
+      expect(card.querySelector("label[for='promptware-new-name']")).toHaveTextContent("Add Agent");
+      expect(card.querySelector("#promptware-new-name")).toHaveAttribute(
+        "placeholder",
+        "Agent name (e.g. CreatePlan)...",
+      );
+      expect(card.textContent).not.toMatch(/promptware/i);
+    });
+
+    /**
+     * The point of the pane: selecting an agent shows the prompt it actually runs, read from the
+     * deployed `Program.md` rather than from config.
+     */
+    it("shows the selected agent's deployed prompt, and re-reads it when the selection changes", async () => {
+      const readProgram = vi.fn((name: string) =>
+        Promise.resolve({
+          name,
+          program: `# ${name}\n\nDo the ${name} thing.`,
+          layer: "shipped" as const,
+        }),
+      );
+      setPromptwareProgramTransport(readProgram);
+
+      getConfig.mockResolvedValue({
+        ...baseConfig,
+        raw: {
+          ...baseConfig.raw,
+          promptwares: { ExecutePlan: { profile: "deep" }, CreatePlan: { profile: "quick" } },
+        },
+      });
+      await renderSettings("promptwares");
+
+      // `_default` is a fallback rather than an agent, so nothing is fetched for it.
+      expect(readProgram).not.toHaveBeenCalled();
+      expect(screen.getByTestId("promptware-program").textContent).toContain("no prompt");
+
+      await selectAgent("ExecutePlan");
+
+      expect(readProgram).toHaveBeenCalledWith("ExecutePlan");
+      const pane = screen.getByTestId("promptware-program");
+      expect(pane.textContent).toContain("Do the ExecutePlan thing.");
+      // Rendered as markdown through the shared renderer, not dumped as raw text.
+      expect(pane.querySelector(".pmv-markdown h1")).toHaveTextContent("ExecutePlan");
+      // Opening a Radix Select and mounting the markdown renderer costs more than the 5s default.
+    }, 20000);
+
+    it("says why the pane is empty when nothing is deployed under that name", async () => {
+      setPromptwareProgramTransport(() =>
+        Promise.reject(new Error("No prompt deployed for agent 'CreatePlan'")),
+      );
+      await renderSettings("promptwares");
+
+      await selectAgent("CreatePlan");
+
+      expect(screen.getByTestId("promptware-program").textContent).toContain(
+        "No prompt deployed for agent 'CreatePlan'",
+      );
+    }, 20000);
+
     it("edits the reserved _default entry and merges it rather than replacing the map", async () => {
       getConfig.mockResolvedValue({
         ...baseConfig,

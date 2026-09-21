@@ -7,7 +7,7 @@ import {
   type DashboardMonthValueDto,
   type DashboardTrendDto,
 } from "@ivy-interactive/components/tendril";
-import { BladeContainer } from "@ivy-interactive/components/ui";
+import { BladeContainer, IconButton } from "@ivy-interactive/components/ui";
 import { X } from "lucide-react";
 import type { DashboardActivity, PlanSummary, Job, RecentMergedPr } from "../types/api";
 import { firstStringArg } from "../utils/eventArgs";
@@ -382,14 +382,14 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
                 // a stack; as the root of this overlay it fills the panel instead.
                 width: "flex",
                 headerAction: (
-                  <button
-                    type="button"
-                    aria-label="Close breakdown"
-                    className="rounded-selector p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground"
+                  <IconButton
+                    label="Close breakdown"
+                    size="md"
+                    tone="muted"
                     onClick={() => setSelectedKpi(null)}
                   >
                     <X className="size-4" />
-                  </button>
+                  </IconButton>
                 ),
               }}
             />

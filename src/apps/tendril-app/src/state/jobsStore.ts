@@ -393,6 +393,18 @@ class JobsStore {
    * Queued job to Running while the sweep is still in flight. The same is true of the daemon's
    * dispatcher, so the list is re-read after each pass, and the pass count is bounded at three for
    * V1's stated reason - a pathological launch/stop loop must not spin forever.
+   *
+   * Each pass is dispatched concurrently by `stopEachIds`, which is what makes the loop affordable:
+   * a pass costs one kill grace rather than one per job, and passes two and three normally find
+   * nothing left active and break immediately.
+   *
+   * Deliberately not `POST /api/jobs/stop-all` (`crates/tendril-server/src/routes/mod.rs:180`),
+   * which would collapse the whole sweep into a single round-trip. That route sits inside
+   * `auth_middleware` and the webview holds no bearer credential of its own, so reaching it needs
+   * the same three-file client half {@link OptionalJobBridge} describes -- a `stop_all_jobs` on
+   * `ServiceClient`, a `#[tauri::command]` registered in `lib.rs`, and a wrapper in `api/bridge.ts`.
+   * None of those exist yet. That is worth revisiting, but it was never the reason this was slow:
+   * the cost was awaiting the cancels one at a time, not the number of requests.
    */
   public async stopAllJobs(): Promise<number> {
     const stopped = new Set<string>();
@@ -421,19 +433,31 @@ class JobsStore {
     return stopped.length;
   }
 
-  /** One pass. The caller owns the refresh, so a multi-pass sweep costs one request per pass. */
+  /**
+   * One pass. The caller owns the refresh, so a multi-pass sweep costs one request per pass.
+   *
+   * The cancels are issued together rather than one after another. `cancel_job` blocks server-side
+   * on `kill_tree(p, DEFAULT_KILL_GRACE)`, and that grace is three seconds
+   * (`crates/tendril-core/src/jobs/process_tree.rs:68`), so awaiting each in turn made the sweep
+   * cost the sum of the kills: fifteen jobs held the Stop All confirm on "Working..." for ~45s. The
+   * daemon kills each job's tree independently, so the same fifteen overlap in about one grace.
+   *
+   * `allSettled`, not `all`: one failure must not abort the sweep. V1's loop keeps going and returns
+   * what it managed to stop, so nine successes are not reported as zero because the tenth was
+   * refused -- and with `all` a single rejection would also abandon the remaining cancels
+   * mid-flight, which is worse than the sequential version it replaced.
+   *
+   * The result preserves `ids` order because `allSettled` resolves positionally, so a caller reading
+   * the returned ids sees the same order the sequential sweep produced.
+   */
   private async stopEachIds(ids: readonly string[], message?: string): Promise<string[]> {
-    const stopped: string[] = [];
-    for (const id of ids) {
-      // Sequential, and one failure does not abort the sweep: V1's loop keeps going and returns what
-      // it managed to stop, so nine successes are not reported as zero because the tenth was refused.
-      try {
-        if (await this.cancelJob(id, message)) stopped.push(id);
-      } catch {
-        /* counted as not stopped; the next pass or the poll will show it still running */
-      }
-    }
-    return stopped;
+    const outcomes = await Promise.allSettled(ids.map((id) => this.cancelJob(id, message)));
+
+    return ids.filter((_id, index) => {
+      const outcome = outcomes[index];
+      // A rejection is counted as not stopped; the next pass or the poll will show it still running.
+      return outcome !== undefined && outcome.status === "fulfilled" && outcome.value;
+    });
   }
 
   /**

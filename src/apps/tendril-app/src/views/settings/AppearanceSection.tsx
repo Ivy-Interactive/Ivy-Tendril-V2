@@ -16,6 +16,7 @@ import {
   SunMoon,
   Terminal,
 } from "lucide-react";
+import { chatLauncher } from "../../state/chatLauncher";
 import { notificationsStore } from "../../state/notificationsStore";
 import { describeBridgeError } from "../../types/api";
 import type { AppearanceSettings, ChatMode } from "../../state/appearance";
@@ -129,7 +130,14 @@ export const AppearanceSection: React.FC<{
   const chooseChatMode = (mode: ChatMode, label: string) => {
     const previous = chatMode;
     setChatMode(mode);
-    void write("chatMode", mode, `Chat opens as ${label}`, () => setChatMode(previous));
+    // Published to the launcher as well as this pane's own state, the same optimism the theme
+    // buttons above apply: the write plus its filesystem event is a round trip, and a new chat
+    // started in between would otherwise open in the mode the user just changed away from.
+    chatLauncher.setMode(mode);
+    void write("chatMode", mode, `Chat opens as ${label}`, () => {
+      setChatMode(previous);
+      chatLauncher.setMode(previous);
+    });
   };
 
   const active = getThemePreset(theme);

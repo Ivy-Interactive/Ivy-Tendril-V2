@@ -14,6 +14,8 @@
   <img src="https://img.shields.io/badge/macOS%20%7C%20Windows%20%7C%20Linux-4493F8?style=flat-square" alt="Supported platforms: macOS, Windows, and Linux" />
 </p>
 
+<h2>This is a WIP upgrade of Tendril. This repo will be deleted once we are done</h2>
+
 <h2>The Agentic Software Factory for 10x Builders</h2>
 
 <p>
@@ -129,6 +131,7 @@ Works with **any CLI agent**: if it runs in a terminal, it runs in Tendril.
   <a href="https://docs.github.com/en/copilot/how-tos/set-up/install-copilot-cli"><kbd><img src="https://www.google.com/s2/favicons?domain=github.com&sz=64" alt="GitHub Copilot logo" width="16" valign="middle" /> GitHub Copilot</kbd></a> &nbsp;
   <a href="https://github.com/google-gemini/gemini-cli"><kbd><img src="https://www.google.com/s2/favicons?domain=google.com&sz=64" alt="Gemini logo" width="16" valign="middle" /> Gemini</kbd></a> &nbsp;
   <a href="https://opencode.ai/docs/cli/"><kbd><img src="https://www.google.com/s2/favicons?domain=opencode.ai&sz=64" alt="OpenCode logo" width="16" valign="middle" /> OpenCode</kbd></a> &nbsp;
+  <a href="https://developer.apple.com/documentation/foundationmodels"><kbd><img src="https://www.google.com/s2/favicons?domain=apple.com&sz=64" alt="Apple Foundation Models logo" width="16" valign="middle" /> Apple Foundation Models</kbd></a> &nbsp;
   <kbd>+ any CLI agent</kbd>
 </p>
 

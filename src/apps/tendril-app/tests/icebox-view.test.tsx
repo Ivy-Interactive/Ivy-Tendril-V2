@@ -64,8 +64,11 @@ describe("IceboxView thaw", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /thaw plan/i }));
 
-    // `TransitionState(selectedPlan.FolderName, PlanStatus.Draft)`.
-    await waitFor(() => expect(updatePlanField).toHaveBeenCalledWith("00300", "state", "Draft"));
+    // `TransitionState(selectedPlan.FolderName, PlanStatus.Draft)`. Four arguments because the write
+    // goes through `plansStore.transitionPlanOptimistic`, which passes `allowFailedVerifications` on.
+    await waitFor(() =>
+      expect(updatePlanField).toHaveBeenCalledWith("00300", "state", "Draft", undefined),
+    );
     expect(onPlanChanged).toHaveBeenCalledWith("00300");
     // The host's plan list has not refetched yet, so the view has to drop the card itself or it
     // keeps offering a second Thaw on a plan that already moved.
@@ -124,5 +127,53 @@ describe("IceboxView delete", () => {
     await waitFor(() =>
       expect(screen.queryByTestId("icebox-plan-card-00300")).not.toBeInTheDocument(),
     );
+  });
+});
+
+/**
+ * `SidebarView.BuildRowBadges`: the projects, then
+ * `new Badge(plan.Level).Color(config.GetLevelColor(plan.Level) ?? Colors.Gray).Small()`.
+ *
+ * The card used to print the level as a plain footer line, so the one thing the level badge exists to
+ * communicate — which level it is, at a glance — was not communicated at all.
+ */
+describe("IceboxView level badge", () => {
+  const DEFAULT_LEVELS = [
+    { name: "Bug", color: "Red" },
+    { name: "Feature", color: "Blue" },
+    { name: "Epic", color: "Purple" },
+    { name: "Chore", color: "Slate" },
+    { name: "Nitpick", color: "Gray" },
+  ];
+
+  it.each([
+    ["Bug", "Red"],
+    ["Feature", "Blue"],
+    ["Epic", "Purple"],
+    ["Chore", "Slate"],
+    ["Nitpick", "Gray"],
+  ])("colours a %s card's level badge %s", async (level, color) => {
+    vi.spyOn(bridge, "getConfig").mockResolvedValue({ raw: { levels: DEFAULT_LEVELS } });
+
+    renderView([iced({ level })]);
+
+    await waitFor(() =>
+      expect(screen.getByTestId(`level-badge-${level}`)).toHaveAttribute(
+        "data-level-color",
+        color,
+      ),
+    );
+  });
+
+  it("puts the level in the badge row rather than as plain footer text", async () => {
+    vi.spyOn(bridge, "getConfig").mockResolvedValue({ raw: { levels: DEFAULT_LEVELS } });
+
+    renderView([iced({ level: "Bug", project: "Tendril" })]);
+
+    const badge = await waitFor(() => screen.getByTestId("level-badge-Bug"));
+    // Beside the state and project badges, which is where `BuildRowBadges` appends it.
+    const badgeRow = badge.parentElement as HTMLElement;
+    expect(within(badgeRow).getByText("Icebox")).toBeInTheDocument();
+    expect(within(badgeRow).getByText("Tendril")).toBeInTheDocument();
   });
 });

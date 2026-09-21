@@ -4,6 +4,7 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
+  Spinner,
 } from "@ivy-interactive/components/ui";
 import {
   Activity,
@@ -14,8 +15,6 @@ import {
   CheckCircle2,
   Cpu,
   Ellipsis,
-  Loader2,
-  MessageSquarePlus,
   Pencil,
   Sparkles,
   Trash2,
@@ -23,6 +22,8 @@ import {
   XCircle,
 } from "lucide-react";
 import type { Job } from "../types/api";
+import type { ChatMode } from "../state/appearance";
+import { NewChatModeButtons } from "../components/chat/NewChatModeButtons";
 import { isCompletedJob, isFailedJob, isRunningJob } from "../utils/jobStatus";
 
 const jobsLabel = (count: number) => `${count} job${count === 1 ? "" : "s"}`;
@@ -67,13 +68,13 @@ export const JobsMenu: React.FC<JobsMenuProps> = ({
           aria-label="View running jobs"
           aria-expanded={open}
           title={runningCount > 0 ? `${runningCount} job(s) running` : "View jobs"}
-          className={`inline-flex h-8 select-none items-center gap-1.5 whitespace-nowrap rounded-selector bg-muted px-3 transition-colors hover:bg-accent ${
+          className={`inline-flex h-8 select-none items-center gap-1.5 whitespace-nowrap rounded-selector bg-muted px-3 transition-colors hover:bg-secondary/60 ${
             failedCount > 0 && runningCount === 0 ? "text-destructive" : "text-foreground"
           }`}
         >
           {runningCount > 0 ? (
             <>
-              <Loader2 className="size-4 animate-spin" aria-hidden="true" />
+              <Spinner size="md" aria-hidden="true" />
               <span>{runningCount} running</span>
               <span
                 className="inline-block size-1.5 shrink-0 animate-pulse rounded-full bg-current"
@@ -111,7 +112,7 @@ export const JobsMenu: React.FC<JobsMenuProps> = ({
           <div className="flex items-center gap-1.5">
             {runningCount > 0 && (
               <span className="inline-flex items-center gap-1 rounded-selector bg-muted px-1.5 py-0.5 text-2xs text-foreground">
-                <Loader2 className="size-2.5 animate-spin" aria-hidden="true" />
+                <Spinner size={10} borderWidth="1.5px" aria-hidden="true" />
                 {runningCount} running
               </span>
             )}
@@ -146,7 +147,7 @@ export const JobsMenu: React.FC<JobsMenuProps> = ({
                   }`}
                 >
                   {isRunningJob(job) ? (
-                    <Loader2 className="size-3.5 animate-spin" aria-hidden="true" />
+                    <Spinner size="sm" aria-hidden="true" />
                   ) : isCompletedJob(job) ? (
                     <CheckCircle2 className="size-3.5" aria-hidden="true" />
                   ) : isFailedJob(job) ? (
@@ -193,7 +194,7 @@ export const JobsMenu: React.FC<JobsMenuProps> = ({
                     setOpen(false);
                     onOpenPlan?.(planId);
                   }}
-                  className="flex w-full items-start gap-2 px-3 py-1.5 text-left hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="flex w-full items-start gap-2 px-3 py-1.5 text-left hover:bg-secondary/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {body}
                 </button>
@@ -216,7 +217,7 @@ export const JobsMenu: React.FC<JobsMenuProps> = ({
                 setOpen(false);
                 onReviewJobs();
               }}
-              className="flex w-full items-center justify-center gap-1.5 rounded-selector px-2 py-1.5 text-xs hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+              className="flex w-full items-center justify-center gap-1.5 rounded-selector px-2 py-1.5 text-xs hover:bg-secondary/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Sparkles className="size-3.5" aria-hidden="true" />
               <span>Ask agent to review outcomes</span>
@@ -240,7 +241,12 @@ export interface ChatHeaderProps {
   onReviewJobs?: () => void;
   onRename?: (title: string) => void;
   onDelete?: () => void;
-  onNewChat?: () => void;
+  /**
+   * Starts a chat. Called with no argument by the plain button, which resolves the mode through
+   * `chatLauncher` and therefore obeys the `chatMode` setting; called with a mode by the sibling
+   * button beside it, which is the direct pick that overrides the default.
+   */
+  onNewChat?: (override?: ChatMode) => void;
   /** Rendered after the title when supplied; the app keeps its agent picker in the composer. */
   agentPicker?: React.ReactNode;
 }
@@ -329,11 +335,10 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           <JobsMenu jobs={jobs} spawned onOpenPlan={onOpenPlan} onReviewJobs={onReviewJobs} />
         )}
         <div className="flex items-center">
-          {onNewChat && (
-            <IconButton label="New chat" size="lg" onClick={onNewChat}>
-              <MessageSquarePlus className="size-4" aria-hidden="true" />
-            </IconButton>
-          )}
+          {/* Two buttons, not one: the left keeps the configured default and the right is the
+              direct pick, "same size" as requested. Both are `size="lg"`, which is what every other
+              button in this header is. */}
+          {onNewChat && <NewChatModeButtons onNewChat={onNewChat} size="lg" />}
           {/* V2-only: V1 detaches from the tail on a scroll up and has no control for it. The
               desktop app keeps an explicit lock, as an icon button so the header stays as V1's. */}
           <IconButton
@@ -371,7 +376,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
                       setMenuOpen(false);
                       startTitleEdit();
                     }}
-                    className="flex items-center gap-2 whitespace-nowrap rounded-selector px-2.5 py-2 text-left hover:bg-accent hover:text-accent-foreground"
+                    className="flex items-center gap-2 whitespace-nowrap rounded-selector px-2.5 py-2 text-left hover:bg-secondary/60 hover:text-foreground"
                   >
                     <Pencil className="size-3.5" aria-hidden="true" />
                     Edit name
@@ -383,7 +388,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
                       setMenuOpen(false);
                       onDelete?.();
                     }}
-                    className="flex items-center gap-2 whitespace-nowrap rounded-selector px-2.5 py-2 text-left text-destructive hover:bg-accent"
+                    className="flex items-center gap-2 whitespace-nowrap rounded-selector px-2.5 py-2 text-left text-destructive hover:bg-secondary/60"
                   >
                     <Trash2 className="size-3.5" aria-hidden="true" />
                     Delete chat
@@ -397,5 +402,3 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
     </div>
   );
 };
-
-export default ChatHeader;

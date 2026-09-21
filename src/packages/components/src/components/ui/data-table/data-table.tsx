@@ -42,6 +42,13 @@ import type {
   DataTableVirtualized,
 } from "./types";
 import { useColumnVisibility } from "./use-column-visibility";
+import { useColumnReorder } from "./use-column-reorder";
+import {
+  parseDeclaredWidth,
+  useColumnLayout,
+  type DataTableColumnWidths,
+} from "./use-column-layout";
+import { useDataTableCellSelection } from "./use-data-table-cell-selection";
 import {
   DATA_TABLE_LOAD_MORE_THRESHOLD_ROWS,
   useDataTableInfiniteScroll,
@@ -131,6 +138,70 @@ export interface DataTableProps<TRow> extends Omit<
    * box was cleared). An expression that does not parse is never committed, so this never reports one.
    */
   onFilterExpressionChange?: (expression: string, filter: RemoteTableFilter | null) => void;
+
+  /**
+   * Column resizing by dragging a header's trailing edge. **Defaults to true**, as V1 does
+   * (`widgets/dataTables/DataTableDefaults.ts:33`, `allowColumnResizing: true`, mirrored in
+   * `Ivy/Widgets/DataTables/DataTableConfig.cs:12`).
+   *
+   * `column.width` is the *starting* width, not a fixed one: once a column has been dragged the
+   * override wins, and it survives a re-render — `useColumnManagement.ts:73-79` refuses to recompute
+   * a width that already exists, for the same reason. Widths are keyed by column name and clamped to
+   * [50, 2000] px.
+   *
+   * Not persisted across mounts. Neither is V1's: it holds widths in `useState` and there is no
+   * storage call anywhere under `widgets/dataTables/`.
+   */
+  allowColumnResizing?: boolean;
+  /** Controlled resized widths in px, keyed by column `name`. */
+  columnWidths?: DataTableColumnWidths;
+  defaultColumnWidths?: DataTableColumnWidths;
+  onColumnWidthsChange?: (widths: DataTableColumnWidths) => void;
+
+  /**
+   * Column reordering by dragging a header's grip. **Defaults to true**
+   * (`DataTableDefaults.ts:32`, `allowColumnReordering: true`).
+   *
+   * Reordering permutes the visible columns only. Hidden columns keep their declared positions, so
+   * showing one again puts it back where it was declared rather than wherever the order happened to
+   * leave it — `useColumnManagement.ts:169-178` goes to some length to preserve exactly that.
+   *
+   * Like widths, the order resets when the *structure* of `columns` changes (a column added,
+   * removed or renamed) and survives a change to any other column metadata
+   * (`useColumnManagement.ts:36-48`). Not persisted across mounts.
+   */
+  allowColumnReordering?: boolean;
+  /** Controlled column order, as `name`s. Names not listed keep their declared position. */
+  columnOrder?: string[];
+  defaultColumnOrder?: string[];
+  onColumnOrderChange?: (order: string[]) => void;
+
+  /**
+   * Rectangular cell selection with Cmd/Ctrl+C copy. **Defaults to true**
+   * (`DataTableDefaults.ts:34-35`, `allowCopySelection: true` with
+   * `selectionMode: SelectionModes.Cells`, which `utils/selectionModes.ts` resolves to
+   * `rangeSelect: "rect"`).
+   *
+   * Drag to select a rectangle, Shift+click to extend it from its anchor, Cmd/Ctrl+A to select every
+   * cell in the table, Escape or a click outside to clear. Copy writes tab-separated `text/plain`
+   * *and* a `text/html` table, so the same copy pastes as text into an editor and as cells into a
+   * spreadsheet. No header row is copied, matching glide's `copyHeaders: false` default, which V1
+   * never overrides.
+   *
+   * A range drag never fires a column's `onCellClick`: the operator was selecting, not activating.
+   * A plain click still does.
+   */
+  allowCopySelection?: boolean;
+  /**
+   * What a cell contributes to the clipboard, where the rendered cell is not its text.
+   *
+   * Falls back to the accessor value rendered through `toDisplayString`, which is right for the text
+   * and number cells that make up most of a table. Give this to a column whose `cell` renders a
+   * badge, an icon or a relative time and whose copied value should be the underlying one — the
+   * framework's equivalent is a cell's `copyData`, which its own renderers set for exactly these
+   * cases (`widgets/dataTables/utils/cellContent.ts:75`, `:330`, `:404`, `:456`).
+   */
+  getCellCopyText?: (row: TRow, column: DataTableColumn<TRow>, rowIndex: number) => string;
 
   /** Row selection with a header select-all checkbox. Defaults to false. */
   selectable?: boolean;
@@ -268,6 +339,16 @@ function DataTableInner<TRow>(
     filterExpression,
     defaultFilterExpression,
     onFilterExpressionChange,
+    allowColumnResizing = true,
+    columnWidths,
+    defaultColumnWidths,
+    onColumnWidthsChange,
+    allowColumnReordering = true,
+    columnOrder,
+    defaultColumnOrder,
+    onColumnOrderChange,
+    allowCopySelection = true,
+    getCellCopyText,
     selectable = false,
     selectedRowIds,
     defaultSelectedRowIds,
@@ -302,11 +383,47 @@ function DataTableInner<TRow>(
   const iconButtonSize = densityToIconButtonSize(density);
   const selectionIdPrefix = React.useId();
 
-  const { resolvedVisibility, visibleColumns, setColumnVisible } = useColumnVisibility({
+  const {
+    resolvedVisibility,
+    visibleColumns: declaredColumns,
+    setColumnVisible,
+  } = useColumnVisibility({
     columns,
     columnVisibility,
     defaultColumnVisibility,
     onColumnVisibilityChange,
+  });
+
+  /* The visible columns, permuted by the operator's order. Everything downstream — the header row,
+     every body cell, the footer, `data-column`, the copy buffer — iterates this one list, so a
+     header and its cells cannot drift apart. */
+  const {
+    orderedColumns: visibleColumns,
+    widthFor,
+    setColumnWidth,
+    resetColumnWidth,
+    moveColumn,
+  } = useColumnLayout({
+    columns: declaredColumns,
+    allowColumnResizing,
+    allowColumnReordering,
+    columnWidths,
+    defaultColumnWidths,
+    onColumnWidthsChange,
+    columnOrder,
+    defaultColumnOrder,
+    onColumnOrderChange,
+  });
+
+  const orderedColumnNames = React.useMemo(
+    () => visibleColumns.map((column) => column.name),
+    [visibleColumns],
+  );
+
+  const reorder = useColumnReorder({
+    enabled: allowColumnReordering,
+    orderedNames: orderedColumnNames,
+    moveColumn,
   });
 
   const { sortedRows, isSortable, directionFor, toggleSort } = useDataTableSort({
@@ -485,6 +602,38 @@ function DataTableInner<TRow>(
   });
 
   /**
+   * What one cell contributes to the clipboard.
+   *
+   * The caller's `getCellCopyText` when there is one, else the accessor value as text. Never the
+   * *rendered* node: a cell that renders a badge or an icon has no text to read back out of React,
+   * and the framework solves the same problem the same way — its renderers set an explicit
+   * `copyData` (`widgets/dataTables/utils/cellContent.ts:330`, `:404`, `:456`) and its truncating
+   * text cell copies the untruncated string (`cellContent.ts:157`), so what lands on the clipboard
+   * is the value rather than what happened to fit in the column.
+   */
+  const getCellText = React.useCallback(
+    (rowIndex: number, columnIndex: number): string => {
+      const row = pageRows[rowIndex];
+      const column = visibleColumns[columnIndex];
+      if (row === undefined || column === undefined) return "";
+      if (getCellCopyText) return getCellCopyText(row, column, rowIndex);
+      return toDisplayString(getCellValue(column, row));
+    },
+    [getCellCopyText, pageRows, visibleColumns],
+  );
+
+  const cellSelection = useDataTableCellSelection({
+    // The inline editor owns clicks and keys inside its cells, and a range drag across an editable
+    // table would fight it for the same gesture. The framework has the same exclusivity: an editable
+    // grid's click opens the overlay editor rather than starting a selection.
+    enabled: allowCopySelection && !editable,
+    rowCount: pageRows.length,
+    columnCount: visibleColumns.length,
+    getCellText,
+    containerRef: scrollContainerRef,
+  });
+
+  /**
    * The selection and row-action columns' width.
    *
    * A real width, always — never the `w-0` shrink-to-fit this used to be outside the windowed variant.
@@ -575,7 +724,12 @@ function DataTableInner<TRow>(
         role="button"
         tabIndex={0}
         aria-label={`Edit ${label}`}
-        className="w-full rounded-field outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        // `cursor-default` is deliberate and must not be "tidied away". This cell carries
+        // `role="button"`, which the shared pointer rule in `styles/base.css` targets, but it opens
+        // its editor on DOUBLE click -- the single `onClick` here only stops propagation. A pointer
+        // would advertise a single-click edit that never happens, so the utility overrides the base
+        // rule from `@layer utilities`, which outranks `@layer base`.
+        className="w-full cursor-default rounded-field outline-none focus-visible:ring-1 focus-visible:ring-ring"
         onClick={(event) => event.stopPropagation()}
         onDoubleClick={(event) => {
           event.stopPropagation();
@@ -639,7 +793,16 @@ function DataTableInner<TRow>(
             dataTableRowVariant({ interactive: Boolean(onRowClick), selected: rowSelected }),
             "outline-none focus-visible:ring-1 focus-visible:ring-ring",
           )}
-          onClick={onRowClick ? () => onRowClick(row, rowId) : undefined}
+          onClick={
+            onRowClick
+              ? () => {
+                  // Same rule as the per-cell handler below: a click that is the tail of a range
+                  // drag selected cells and must not also activate the row.
+                  if (cellSelection.shouldSuppressClick()) return;
+                  onRowClick(row, rowId);
+                }
+              : undefined
+          }
         >
           {selectable ? (
             <TableCell className={fitColumnClass("select")}>
@@ -660,21 +823,57 @@ function DataTableInner<TRow>(
             </TableCell>
           ) : null}
 
-          {visibleColumns.map((column) => (
-            <TableCell
-              key={column.name}
-              className={cn(
-                dataTableCellAlignVariant({ align: column.align ?? "Left" }),
-                column.wrapText ? "ivy-data-table-wrap" : "ivy-data-table-nowrap",
-                // `cellContent.ts:583`: a cell with a click handler is drawn with `cursor: pointer`.
-                column.clickable && "cursor-pointer",
-              )}
-              data-clickable={column.clickable ? "true" : undefined}
-              style={column.width ? { width: column.width } : undefined}
-            >
-              {renderCellContent(column, row, rowId, rowIndex)}
-            </TableCell>
-          ))}
+          {visibleColumns.map((column, columnIndex) => {
+            // A handler is itself an affordance, so a column that declares one is clickable whether
+            // or not it also says so - that way the cursor can never disagree with the behaviour.
+            const cellClickable = column.clickable || Boolean(column.onCellClick);
+            // A resized width wins over the declared one; see `allowColumnResizing`.
+            const resized = widthFor(column.name);
+            const width = resized !== undefined ? `${resized}px` : column.width;
+            const selected = cellSelection.isSelected(rowIndex, columnIndex);
+            return (
+              <TableCell
+                key={column.name}
+                className={cn(
+                  dataTableCellAlignVariant({ align: column.align ?? "Left" }),
+                  column.wrapText ? "ivy-data-table-wrap" : "ivy-data-table-nowrap",
+                  // `cellContent.ts:583`: a cell with a click handler is drawn with `cursor: pointer`.
+                  cellClickable && "cursor-pointer",
+                )}
+                // Which column this cell belongs to. `data-row-id` already identifies the row; this
+                // is the other half of the coordinate, and what lets a caller - or a test - address
+                // one cell rather than counting `<td>`s and breaking when a column is reordered.
+                data-column={column.name}
+                data-clickable={cellClickable ? "true" : undefined}
+                // The range-selection tint. An attribute rather than a class because the rule that
+                // paints it also has to survive the opaque sticky actions cell, which is CSS's job
+                // (see `data-table.css`) and not a utility's.
+                data-selected={selected ? "true" : undefined}
+                style={width ? { width } : undefined}
+                onMouseDown={(event) =>
+                  cellSelection.handleCellMouseDown(rowIndex, columnIndex, event)
+                }
+                onMouseEnter={() => cellSelection.handleCellMouseEnter(rowIndex, columnIndex)}
+                onClick={
+                  column.onCellClick
+                    ? (event) => {
+                        // `onRowClick` is the fallback for cells that define no action of their own,
+                        // so a cell that has one must not fire it too: V1's grid dispatches a cell
+                        // action *or* a row activation, and routing both would open two sheets.
+                        event.stopPropagation();
+                        // A click that is really the end of a range drag selected cells; it did not
+                        // ask to open anything. The plain click that selects a single cell is not
+                        // suppressed, so a one-cell press still activates as it always did.
+                        if (cellSelection.shouldSuppressClick()) return;
+                        column.onCellClick?.(row, rowId);
+                      }
+                    : undefined
+                }
+              >
+                {renderCellContent(column, row, rowId, rowIndex)}
+              </TableCell>
+            );
+          })}
 
           {hasActionsColumn ? (
             <TableCell className={fitColumnClass("actions")}>
@@ -765,10 +964,42 @@ function DataTableInner<TRow>(
 
       <div
         className={cn(
-          "rounded-box border border-border bg-background",
+          // `overflow-hidden` is unconditional, and that is the fix for the clipped corners rather
+          // than an optimisation.
+          //
+          // This box draws the rounded border; the header row inside it is square. Without a clip
+          // the header's own background paints over the corner arcs, so the top two corners read as
+          // cut off — which is the bug as the user described it ("tables get cropped at top
+          // corners"). It only ever looked right under `fillHeight`, which happened to add
+          // `overflow-hidden` for its own reasons, so every non-fill table in the app showed it.
+          //
+          // Clipping here rather than rounding the first and last header cells, and the difference
+          // is load-bearing:
+          //  - The header cells that need rounding are not knowable from CSS. The first visible cell
+          //    is the selection checkbox, or the first column, or a reordered column; the last is
+          //    the sticky actions cell or whichever column ends up rightmost. `:first-child` follows
+          //    the DOM, and the actions cell is pinned with `position: sticky`, so the *visually*
+          //    rightmost cell while scrolled sideways is not the last one. Corners would come and go
+          //    with reordering and scrolling.
+          //  - Rounding the header alone also leaves the bottom corners to the last row, and the
+          //    last row changes with every page, filter and window.
+          //
+          // Nothing that must escape the box is clipped, which is the thing worth checking before
+          // adding `overflow-hidden` to anything:
+          //  - The sticky `<thead>` is unaffected. `position: sticky` pins against the nearest
+          //    *scrolling* ancestor, and that is the `overflow-auto` div `Table` renders inside this
+          //    box (`table.tsx:48-52`), not this box. This element does not scroll, so it is not the
+          //    header's containing block.
+          //  - Every overlay that leaves the table is portalled to `document.body` by Radix — the
+          //    row-actions `DropdownMenu`, the column-options `Popover`, `Tooltip`, `Select` — so
+          //    none of them are descendants of this box at paint time.
+          //  - The pagination page-size control is a deliberate native `<select>`
+          //    (`data-table-pagination.tsx:132`), whose popup the browser renders outside the page
+          //    entirely.
+          "overflow-hidden rounded-box border border-border bg-background",
           // The chain a bounded scroll viewport needs: this box takes the remaining height, and
           // `min-h-0` is what stops a flex item from refusing to shrink below its content.
-          fillHeight && "flex min-h-0 flex-1 flex-col overflow-hidden",
+          fillHeight && "flex min-h-0 flex-1 flex-col",
         )}
       >
         <Table
@@ -779,7 +1010,19 @@ function DataTableInner<TRow>(
           // reading would include the header (N + 1); N is the convention here, applied whether or
           // not windowing is active so a screen reader always hears the true row count.
           aria-rowcount={total}
-          onKeyDown={rowFocus.handleKeyDown}
+          onKeyDown={(event) => {
+            // Cell selection first: it claims Cmd/Ctrl+A and Escape, neither of which row focus
+            // wants, and it `preventDefault`s the ones it takes so the check below sees them
+            // handled.
+            cellSelection.handleKeyDown(event);
+            rowFocus.handleKeyDown(event);
+          }}
+          // While a range drag is live the browser's own text selection has to be off, or the drag
+          // paints a range *and* highlights the text under it and the Cmd+C that follows copies the
+          // text selection instead (a live text selection wins the `copy` event). An attribute
+          // rather than a class so the rule lives beside the tint it belongs to; see
+          // `data-table.css`.
+          data-range-dragging={cellSelection.isDragging || undefined}
           className={cn("ivy-data-table", virtualization.active && "ivy-data-table-virtualized")}
           containerRef={scrollContainerRef}
           containerClassName={fillHeight ? "min-h-0 flex-1" : undefined}
@@ -806,13 +1049,28 @@ function DataTableInner<TRow>(
                 </TableHead>
               ) : null}
 
-              {visibleColumns.map((column) => (
+              {visibleColumns.map((column, columnIndex) => (
                 <DataTableColumnHeader
                   key={column.name}
                   column={column}
                   sortable={isSortable(column)}
                   direction={directionFor(column)}
                   onToggleSort={toggleSort}
+                  resizable={allowColumnResizing}
+                  /* The width the handle steps from: the live override, else a `column.width` that
+                     parses to pixels. A `%` or `auto` width parses to nothing and the handle
+                     measures the rendered `<th>` instead — see `parseDeclaredWidth`. */
+                  resizeWidth={widthFor(column.name) ?? parseDeclaredWidth(column.width)}
+                  onResize={(next) => setColumnWidth(column.name, next)}
+                  onResetWidth={() => resetColumnWidth(column.name)}
+                  reorderable={allowColumnReordering}
+                  dragging={reorder.draggingName === column.name}
+                  dropTarget={reorder.dropTargetName === column.name}
+                  onReorderStart={() => reorder.beginDrag(column.name)}
+                  onReorderOver={() => reorder.dragOver(column.name)}
+                  onReorderNudge={(direction) => reorder.nudge(column.name, direction)}
+                  columnPosition={columnIndex + 1}
+                  columnTotal={visibleColumns.length}
                 />
               ))}
 
@@ -836,14 +1094,19 @@ function DataTableInner<TRow>(
             <TableFooter>
               <TableRow>
                 {selectable ? <TableCell /> : null}
-                {visibleColumns.map((column) => (
-                  <TableCell
-                    key={column.name}
-                    className={cn(dataTableCellAlignVariant({ align: column.align ?? "Left" }))}
-                  >
-                    {column.footer}
-                  </TableCell>
-                ))}
+                {visibleColumns.map((column) => {
+                  const resized = widthFor(column.name);
+                  const width = resized !== undefined ? `${resized}px` : column.width;
+                  return (
+                    <TableCell
+                      key={column.name}
+                      className={cn(dataTableCellAlignVariant({ align: column.align ?? "Left" }))}
+                      style={width ? { width } : undefined}
+                    >
+                      {column.footer}
+                    </TableCell>
+                  );
+                })}
                 {hasActionsColumn ? <TableCell /> : null}
               </TableRow>
             </TableFooter>
@@ -859,7 +1122,17 @@ function DataTableInner<TRow>(
             pageSizeOptions={pageSizeOptions}
             total={total}
             rangeStart={pagination.rangeStart}
-            rangeEnd={pagination.rangeEnd}
+            /* `pagination.rangeEnd` is page arithmetic — `min(page * pageSize, total)` — so under
+               `manualPagination` it believes whatever `rowCount` the caller passed. A caller whose
+               own rows were narrowed after the count was taken makes the footer claim more rows
+               than the body holds; the Inbox did exactly that, reading "Showing 1-50 of 51" over
+               44 rendered rows. The footer can never be more right than the rows on screen, so
+               clamp it to them. */
+            rangeEnd={
+              pageRows.length === 0
+                ? pagination.rangeEnd
+                : Math.min(pagination.rangeEnd, pagination.rangeStart + pageRows.length - 1)
+            }
             onPageChange={pagination.setPage}
             onPageSizeChange={pagination.setPageSize}
           />

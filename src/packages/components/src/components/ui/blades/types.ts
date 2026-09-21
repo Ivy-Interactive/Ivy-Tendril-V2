@@ -16,6 +16,12 @@ export interface BladeDescriptor {
   /** Stable identity; auto-generated from a `React.useId`-derived counter when omitted on push. */
   id?: string;
   title: string;
+  /**
+   * Rendered in place of the title heading, for a header that edits the thing it names. `title` is
+   * still required and still names the landmark, so the blade keeps its accessible name while the
+   * heading is swapped out - which is the whole point of not simply widening `title` to a node.
+   */
+  titleSlot?: React.ReactNode;
   subtitle?: string;
   /** Named hint, or any CSS length ("32rem", "480px") applied as an inline width. */
   width?: BladeWidth;

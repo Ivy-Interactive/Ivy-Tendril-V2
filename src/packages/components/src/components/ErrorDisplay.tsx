@@ -30,34 +30,64 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ title, message, stac
       .filter(Boolean)
       .join("\n\n");
 
-    void copyToClipboard(errorDetails);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    copyToClipboard(errorDetails)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch((err: unknown) => {
+        console.error("Copy failed:", err);
+      });
   };
 
   return (
-    <div className="flex flex-col h-full gap-4">
-      <div className="shrink-0">
+    <div className="flex flex-col h-full min-h-0 min-w-0 gap-4">
+      <div className="shrink-0 min-w-0">
         {title && (
           <div>
             <h4 className="text-sm font-medium mb-2">Type</h4>
-            <p>{title}</p>
+            {/* Exception type names are single unbroken tokens (`System.InvalidOperationException`),
+             * which have no break opportunity of their own: without `break-words` one widens the
+             * whole card past its container and scrolls the page sideways. */}
+            <p className="break-words">{title}</p>
           </div>
         )}
 
         {message && (
           <div className="mt-4">
             <h4 className="text-sm font-medium mb-2">Message</h4>
-            <p>{message}</p>
+            {/* Same reason as the type above - a message is often one long token (a URL, a path, a
+             * serialized payload) rather than prose that wraps on its own spaces. */}
+            <p className="break-words">{message}</p>
           </div>
         )}
       </div>
 
       {stackTrace && (
-        <div className="flex-1 min-h-0">
-          <h4 className="text-sm font-medium mb-2">Stack Trace</h4>
-          <div tabIndex={0} className="w-full overflow-auto border border-border rounded-md">
-            <Suspense fallback={<pre className="p-4 font-mono text-sm">{stackTrace}</pre>}>
+        /* A flex column, not a plain block: the heading and the scroller have to divide this
+         * section's height between them. As a block, the scroller below had no height to resolve
+         * `flex-1` against and sized to its content instead - a 470px box inside a 148px section -
+         * so it spilled out the bottom and painted straight over the Copy Details row. */
+        <div className="flex-1 min-h-0 min-w-0 flex flex-col">
+          <h4 className="text-sm font-medium mb-2 shrink-0">Stack Trace</h4>
+          {/* `flex-1 min-h-0` is what actually bounds this box to the space the section has left,
+           * and only a bounded box can scroll - `overflow-auto` on a content-sized box never
+           * engages. `min-h-0` overrides the `min-height: auto` a flex item gets by default, which
+           * would otherwise floor the box at its content height and re-create the overflow.
+           * The `break-words` descendants cover the highlighter's own <pre>/<code>, whose inline
+           * theme styles set no overflow-wrap: `wrapLongLines` only sets `pre-wrap`, which wraps at
+           * spaces and so leaves a long unbroken file path scrolling sideways forever. */}
+          <div
+            tabIndex={0}
+            className="w-full flex-1 min-h-0 overflow-auto border border-border rounded-md [&_pre]:break-words [&_code]:break-words"
+          >
+            <Suspense
+              fallback={
+                <pre className="p-4 font-mono text-sm whitespace-pre-wrap break-words">
+                  {stackTrace}
+                </pre>
+              }
+            >
               <SyntaxHighlighter
                 language="csharp"
                 style={prismTheme}
@@ -84,5 +114,3 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ title, message, stac
     </div>
   );
 };
-
-export default ErrorDisplay;

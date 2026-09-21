@@ -128,7 +128,22 @@ fn tier_defaults_apply_with_no_coding_agents_configured() {
             Some("medium"),
         ),
         ("ivy", "deep", Some("claude-opus-5"), Some("max")),
+        // Cursor's tiers name the Thinking family at the top, because plain Opus 5 stops at `high`
+        // on Cursor and a `deep` tier that silently clamps is not a deep tier.
+        (
+            "cursor",
+            "deep",
+            Some("claude-opus-5-thinking"),
+            Some("max"),
+        ),
+        ("cursor", "balanced", Some("claude-sonnet-5"), Some("high")),
+        ("cursor", "quick", Some("gemini-3.8-flash"), Some("low")),
         ("ivy", "quick", Some("gemini-3.8-flash"), Some("low")),
+        // `fm serve` serves one model and takes no effort argument, so every tier resolves to the
+        // same run and neither knob is rendered.
+        ("apple", "deep", None, None),
+        ("apple", "balanced", None, None),
+        ("apple", "quick", None, None),
     ] {
         let r = resolve(&s, agent, "ExecutePlan", Some(tier));
         assert_eq!(r.model.as_deref(), model, "{agent}/{tier} model");
@@ -153,6 +168,26 @@ fn gemini_gets_a_model_but_never_an_effort() {
         assert_eq!(r.model.as_deref(), Some("gemini-3.8-flash"), "{tier} model");
         assert_eq!(r.effort, None, "{tier} must have no effort");
     }
+}
+
+/// A configured model or effort is a request `fm serve` cannot honour: it serves exactly one model
+/// and rejects any other id, and the on-device model has no reasoning-effort control. Both are
+/// dropped at resolution rather than rendered into a launch the server would refuse.
+#[test]
+fn apple_ignores_a_configured_model_and_effort() {
+    let s = settings(
+        r#"
+codingAgents:
+- name: apple
+  profiles:
+  - name: deep
+    model: claude-opus-5
+    effort: max
+"#,
+    );
+    let r = resolve(&s, "apple", "ExecutePlan", Some("deep"));
+    assert_eq!(r.model, None, "apple must not carry a caller's model");
+    assert_eq!(r.effort, None, "apple must not carry a caller's effort");
 }
 
 #[test]

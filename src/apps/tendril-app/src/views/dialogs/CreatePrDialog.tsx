@@ -1,6 +1,6 @@
 import * as React from "react";
-import { Button } from "@ivy-interactive/components/ui";
-import { PlanActionsController } from "../../controllers/plan_actions";
+import { Button, Callout, Input, Textarea } from "@ivy-interactive/components/ui";
+import { PlanActionsController } from "../../controllers/planActions";
 import {
   describeBridgeError,
   type CreatePrOptions,
@@ -9,7 +9,6 @@ import {
   type StartJobResponse,
 } from "../../types/api";
 import { DialogShell } from "./DialogShell";
-import { ALERT_CLASS, FIELD_CLASS } from "./fieldStyles";
 
 export interface CreatePrDialogProps {
   isOpen: boolean;
@@ -202,13 +201,12 @@ export function CreatePrDialog({ isOpen, onClose, plan, onJobStarted }: CreatePr
         <label htmlFor="create-pr-reviewers" className="mb-1 block text-xs text-muted-foreground">
           Reviewers
         </label>
-        <input
+        <Input
           id="create-pr-reviewers"
           aria-label="Reviewers"
           value={reviewers}
           onChange={(event) => setReviewers(event.target.value)}
           placeholder="octocat, hubot"
-          className={FIELD_CLASS}
         />
         <p className="mt-1 text-xs text-muted-foreground">
           Comma-separated GitHub logins. V2 has no separate assignee field — the CLI folds an
@@ -220,22 +218,18 @@ export function CreatePrDialog({ isOpen, onClose, plan, onJobStarted }: CreatePr
         <label htmlFor="create-pr-comment" className="mb-1 block text-xs text-muted-foreground">
           Comment
         </label>
-        <textarea
+        <Textarea
           id="create-pr-comment"
           aria-label="Comment"
           rows={3}
           value={comment}
           onChange={(event) => setComment(event.target.value)}
           placeholder="Anything the reviewer should know before reading the diff…"
-          className={FIELD_CLASS}
+          className="text-sm"
         />
       </div>
 
-      {error && (
-        <div role="alert" className={ALERT_CLASS}>
-          {error}
-        </div>
-      )}
+      {error && <Callout.Error className="mt-4">{error}</Callout.Error>}
     </DialogShell>
   );
 }

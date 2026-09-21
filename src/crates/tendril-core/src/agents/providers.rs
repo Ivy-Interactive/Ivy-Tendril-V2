@@ -64,8 +64,10 @@ pub fn build_agent_spec(provider: &str, config: &AgentLaunchConfig) -> AgentProc
         "gemini" => build_gemini_spec(config),
         "opencode" => build_opencode_spec(config),
         "copilot" => build_copilot_spec(config),
+        "cursor" => build_cursor_spec(config),
         "ivy" => build_ivy_spec(config),
         "openaiproxy" | "proxy" => build_openai_proxy_spec(config),
+        "apple" => build_apple_spec(config),
         _ => build_claude_spec(config),
     }
 }
@@ -180,6 +182,22 @@ pub fn build_agent_pty_spec(provider: &str, config: &AgentPtyConfig) -> AgentPty
                 argv.push(model.to_string());
             }
             prompt_flag = Some("-i");
+        }
+        // Cursor takes its reasoning level inside the model id rather than as a flag, so the pty
+        // path composes the same way the one-shot one does — see `format_cursor_model`. `--trust`
+        // is still required (an untrusted workspace prompts before the TUI is usable), but
+        // `--print` / `--output-format` are not: this session is the interface, not a stream to
+        // parse. `--force` is left off too, because an interactive user is there to approve.
+        "cursor" => {
+            argv.push(resolve_cursor_binary());
+            argv.push("--trust".to_string());
+            if let Some(model) = model {
+                let composed = format_cursor_model(Some(model), None);
+                if !composed.is_empty() {
+                    argv.push("--model".to_string());
+                    argv.push(composed);
+                }
+            }
         }
         // All four are OpenCode: `ivy` and the proxies are the same CLI pointed at a different
         // base URL, which is why they always shared `build_opencode_spec`. They used to resolve a
@@ -361,10 +379,21 @@ fn build_antigravity_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
     // Always write to a fresh temp file rather than trusting `config.prompt_file_path` as-is, so
     // the guardrails above are present even when the caller already supplied its own prompt file.
     args.push("--print".to_string());
-    let temp_path = write_temp_prompt(&final_prompt, "tendril-agy-prompt");
-    let normalized = temp_path.to_string_lossy().replace('\\', "/");
-    args.push(format!("@{}", normalized));
-    temp_files.push(temp_path);
+    match write_temp_prompt(&final_prompt, "tendril-agy-prompt") {
+        Some(temp_path) => {
+            let normalized = temp_path.to_string_lossy().replace('\\', "/");
+            args.push(format!("@{}", normalized));
+            temp_files.push(temp_path);
+        }
+        // An `@<file>` that was never written is the one argument `--print` must not be handed: agy
+        // does not fail on the missing path, it takes the whole `@/tmp/...md` as the literal prompt,
+        // so the run opens by asking the model about a file name and the job's actual instructions
+        // are gone. `--print` accepts the prompt inline too — `probe.rs`'s `antigravity_model`
+        // launches that way — so the text goes on the command line instead, guardrails and all. The
+        // file is preferred only because a long prompt strains argv, which makes this the fallback
+        // rather than the default.
+        None => args.push(final_prompt),
+    }
 
     let mut env = default_environment();
     for (k, v) in &config.environment_variables {
@@ -567,12 +596,24 @@ fn build_claude_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
 
     let mut temp_files = Vec::new();
 
+    // The prompt already goes down stdin, so a system prompt that could not be written to disk is
+    // prepended to it rather than dropped — the same degradation `build_cursor_spec` and
+    // `build_opencode_spec` make for CLIs that have no system-prompt flag to render at all. What
+    // must not survive the failed write is `--system-prompt-file` itself: claude exits on a path it
+    // cannot read instead of starting without the instructions, which turns a lost system prompt
+    // into a lost job.
+    let mut stdin_content = config.prompt.clone();
+
     if let Some(sys) = &config.system_prompt {
         if !sys.is_empty() {
-            let temp_sys = write_temp_prompt(sys, "tendril-sysprompt");
-            args.push("--system-prompt-file".to_string());
-            args.push(temp_sys.to_string_lossy().to_string());
-            temp_files.push(temp_sys);
+            match write_temp_prompt(sys, "tendril-sysprompt") {
+                Some(temp_sys) => {
+                    args.push("--system-prompt-file".to_string());
+                    args.push(temp_sys.to_string_lossy().to_string());
+                    temp_files.push(temp_sys);
+                }
+                None => stdin_content = format!("{}\n\n---\n\n{}", sys, config.prompt),
+            }
         }
     }
 
@@ -600,7 +641,7 @@ fn build_claude_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
         args,
         environment: env,
         working_directory: config.working_directory.clone(),
-        stdin_content: Some(config.prompt.clone()),
+        stdin_content: Some(stdin_content),
         redirect_stdin: true,
         temp_files,
     }
@@ -911,6 +952,330 @@ fn build_copilot_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
 }
 
 // ---------------------------------------------------------------------------
+// Cursor CLI (cursor-agent)
+// ---------------------------------------------------------------------------
+
+/// The effort rungs `cursor-agent` accepts for each base model, in the order its own `--list-models`
+/// declares them. Empirically read off the CLI (`cursor-agent --model <bogus>` prints the whole
+/// accepted list), not guessed: the ladder is a property of the *family*, and composing a rung a
+/// family does not have is rejected outright — `claude-opus-5-max` and `gemini-3.8-flash-xhigh` are
+/// both "Cannot use this model", while `claude-opus-5-high` and `gpt-5.5-extra-high` are fine.
+///
+/// A family listed here with rungs also accepts its **bare** id, which the server resolves to that
+/// family's own default rung (`gpt-5.6-terra` launches as "GPT-5.6 Terra 272K Medium"). That is why
+/// [`format_cursor_model`] can pass the bare id through for an unset effort rather than having to
+/// pick a rung on the CLI's behalf.
+///
+/// The `-fast` variants of most of these ids exist too, and are deliberately not offered: `-fast` is
+/// a separately-billed priority tier, and Tendril has no rate card for it.
+const CURSOR_EFFORT_LADDERS: &[(&str, &[&str])] = &[
+    // Anthropic — the two five-rung families and the three-rung Opus 5.
+    ("claude-opus-5", &["low", "medium", "high"]),
+    (
+        "claude-opus-5-thinking",
+        &["low", "medium", "high", "xhigh", "max"],
+    ),
+    (
+        "claude-opus-4-8",
+        &["low", "medium", "high", "xhigh", "max"],
+    ),
+    (
+        "claude-opus-4-8-thinking",
+        &["low", "medium", "high", "xhigh", "max"],
+    ),
+    (
+        "claude-opus-4-7",
+        &["low", "medium", "high", "xhigh", "max"],
+    ),
+    (
+        "claude-opus-4-7-thinking",
+        &["low", "medium", "high", "xhigh", "max"],
+    ),
+    (
+        "claude-sonnet-5",
+        &["low", "medium", "high", "xhigh", "max"],
+    ),
+    // Sonnet 5 Thinking is the one Anthropic row with a gap in the middle of its ladder: the CLI
+    // lists `-thinking-low`, `-medium`, `-high`, `-xhigh` and `-max`, so it is declared whole.
+    (
+        "claude-sonnet-5-thinking",
+        &["low", "medium", "high", "xhigh", "max"],
+    ),
+    (
+        "claude-fable-5-1",
+        &["low", "medium", "high", "xhigh", "max"],
+    ),
+    (
+        "claude-fable-5-1-thinking",
+        &["low", "medium", "high", "xhigh", "max"],
+    ),
+    // OpenAI — the Sol/Terra/Luna trio share one six-rung ladder that starts at `none`.
+    (
+        "gpt-5.6-sol",
+        &["none", "low", "medium", "high", "xhigh", "max"],
+    ),
+    (
+        "gpt-5.6-terra",
+        &["none", "low", "medium", "high", "xhigh", "max"],
+    ),
+    (
+        "gpt-5.6-luna",
+        &["none", "low", "medium", "high", "xhigh", "max"],
+    ),
+    // 5.5 spells its top rung `extra-high` rather than `xhigh`; see `cursor_effort_rung`.
+    ("gpt-5.5", &["none", "low", "medium", "high", "extra-high"]),
+    ("gpt-5.4", &["low", "medium", "high", "xhigh"]),
+    ("gpt-5.4-mini", &["none", "low", "medium", "high", "xhigh"]),
+    ("gpt-5.3-codex", &["low", "high", "xhigh"]),
+    ("gpt-5.2", &["low", "high", "xhigh"]),
+    // Google.
+    ("gemini-3.8-flash", &["low", "medium", "high"]),
+    ("gemini-3.7-flash", &["low", "medium", "high"]),
+    ("gemini-3.6-flash", &["minimal", "low", "medium", "high"]),
+    // Moonshot.
+    ("kimi-k3", &["low", "high", "max"]),
+];
+
+/// The rungs `cursor-agent` accepts for `base`, or `None` when the family takes no effort at all
+/// (`gemini-3.1-pro` and `gpt-5-mini` are listed by the CLI as bare ids only).
+fn cursor_efforts_for(base: &str) -> Option<&'static [&'static str]> {
+    let wanted = base.trim().to_ascii_lowercase();
+    CURSOR_EFFORT_LADDERS
+        .iter()
+        .find(|(id, _)| *id == wanted)
+        .map(|(_, efforts)| *efforts)
+}
+
+/// Tendril's effort level rendered as the rung `base` actually spells, or `None` when that family
+/// has no rung for it.
+///
+/// Two adjustments, both forced by the CLI rather than chosen:
+/// - `gpt-5.5` spells its top rung `extra-high`, so Tendril's `xhigh` maps onto that.
+/// - A family whose ladder stops short of the requested level gets the highest rung it *does* have,
+///   the same lossy-downward mapping `build_copilot_spec` applies when it folds `max` onto `xhigh`.
+///   Refusing instead would mean a picker offering `max` for a Claude model and a launch that dies.
+fn cursor_effort_rung(base: &str, effort: &str) -> Option<&'static str> {
+    let ladder = cursor_efforts_for(base)?;
+    let wanted = effort.trim().to_ascii_lowercase();
+
+    // `xhigh` and `extra-high` are the same rung under two spellings, so a request for either
+    // matches whichever one this family declares.
+    let aliases: &[&str] = match wanted.as_str() {
+        "xhigh" | "extra-high" => &["xhigh", "extra-high"],
+        _ => &[],
+    };
+    if let Some(found) = ladder
+        .iter()
+        .find(|rung| **rung == wanted || aliases.contains(rung))
+    {
+        return Some(found);
+    }
+
+    // Not offered by this family: fall to the nearest rung below, by the ladder's own order. The
+    // levels are declared weakest-first, so the last rung is the strongest this family has.
+    const ORDER: &[&str] = &[
+        "none",
+        "minimal",
+        "low",
+        "medium",
+        "high",
+        "xhigh",
+        "extra-high",
+        "max",
+    ];
+    let wanted_rank = ORDER.iter().position(|level| *level == wanted)?;
+    ladder
+        .iter()
+        .rfind(|rung| {
+            ORDER
+                .iter()
+                .position(|level| level == *rung)
+                .is_some_and(|rank| rank <= wanted_rank)
+        })
+        .copied()
+        // Every rung this family has is stronger than what was asked for — take its weakest.
+        .or_else(|| ladder.first().copied())
+}
+
+/// The single id `cursor-agent --model` takes, composed from Tendril's separate (model, effort)
+/// pair.
+///
+/// Cursor is the one provider with no `--effort` flag: the reasoning level is *baked into the model
+/// id*, so `claude-opus-5` at high effort is the id `claude-opus-5-high`. The bracket override the
+/// `--help` text advertises (`'claude-opus-4-8[context=1m,effort=high]'`) is not accepted by the
+/// server, so composition is the only way to send an effort at all.
+///
+/// The rules, in order:
+/// - No model, or `default`: the empty string, and the caller sends no `--model` — Cursor then picks
+///   the account's own default, exactly as leaving the flag off does for every other provider.
+/// - An id already carrying a rung (`gpt-5.2-high`), or one of the `-fast` priority ids, is passed
+///   through untouched: the caller composed it themselves.
+/// - Effort unset or `default`: the **bare** base id. Verified to launch for every family declared
+///   in [`CURSOR_EFFORT_LADDERS`], including the ones whose `--list-models` output shows only
+///   composed ids — `kimi-k3` resolves to "Kimi K3 Low" and `gpt-5.6-terra` to "Terra 272K Medium".
+///   The server picks the family's own default rung, which is a better default than one Tendril
+///   invents.
+/// - Otherwise `<base>-<rung>`, where the rung is what that family spells this level (see
+///   [`cursor_effort_rung`]), and a family with no ladder at all keeps its bare id.
+pub fn format_cursor_model(model: Option<&str>, effort: Option<&str>) -> String {
+    let base = model.unwrap_or("").trim();
+    if base.is_empty() || base.eq_ignore_ascii_case("default") {
+        return String::new();
+    }
+
+    let lower = base.to_ascii_lowercase();
+    // An id the caller already composed. `-thinking` is part of a family name rather than a rung, so
+    // it is not treated as one.
+    let composed = lower.ends_with("-fast")
+        || CURSOR_EFFORT_LADDERS.iter().any(|(family, rungs)| {
+            rungs
+                .iter()
+                .any(|rung| lower == format!("{}-{}", family, rung))
+        });
+    if composed {
+        return base.to_string();
+    }
+
+    let Some(effort) = effort
+        .map(str::trim)
+        .filter(|e| !e.is_empty() && !e.eq_ignore_ascii_case("default"))
+    else {
+        return base.to_string();
+    };
+
+    match cursor_effort_rung(&lower, effort) {
+        Some(rung) => format!("{}-{}", base, rung),
+        // A family with no effort ladder — the flag would be rejected, so the bare id stands.
+        None => base.to_string(),
+    }
+}
+
+/// Cursor's own tool names, which `--allowed-tools` and `--exclude-tools` validate strictly against
+/// (an unknown name is a hard error listing all sixty-nine of them). Mirrors
+/// [`translate_copilot_tool`]: a canonical Tendril tool maps onto Cursor's spelling, and anything
+/// already spelled Cursor's way (`*_tool_call`) passes through.
+pub fn translate_cursor_tool(canonical: &str) -> String {
+    let lower = canonical.to_ascii_lowercase();
+    // Already one of Cursor's own names.
+    if lower.ends_with("_tool_call") {
+        return lower;
+    }
+    // A rule carrying a directory (`Write(/plans/**)`) names the tool before the parenthesis.
+    let bare = lower.split('(').next().unwrap_or(&lower).trim().to_string();
+    match bare.as_str() {
+        "read" => "read_tool_call".to_string(),
+        "write" | "edit" => "edit_tool_call".to_string(),
+        "bash" => "shell_tool_call".to_string(),
+        "glob" => "glob_tool_call".to_string(),
+        "grep" => "grep_tool_call".to_string(),
+        "ls" | "list" => "ls_tool_call".to_string(),
+        "webfetch" => "web_fetch_tool_call".to_string(),
+        "websearch" => "web_search_tool_call".to_string(),
+        "task" => "task_tool_call".to_string(),
+        "todowrite" | "todoread" => "update_todos_tool_call".to_string(),
+        other => format!("{}_tool_call", other.replace(['-', ' '], "_")),
+    }
+}
+
+fn build_cursor_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
+    // `--trust` is not optional: without it the CLI stops to ask whether the workspace is trusted,
+    // and a `--print` run that stops to ask never produces a line. `--force` is Cursor's spelling of
+    // "run the tools you were given" — `--yolo` is documented as its alias.
+    let mut args = vec![
+        "--print".to_string(),
+        "--output-format".to_string(),
+        "stream-json".to_string(),
+        "--trust".to_string(),
+        "--force".to_string(),
+    ];
+
+    // Cursor has no `--effort` flag: the level is part of the model id. See `format_cursor_model`.
+    let composed = format_cursor_model(config.model.as_deref(), config.effort.as_deref());
+    if !composed.is_empty() {
+        args.push("--model".to_string());
+        args.push(composed);
+    }
+
+    if !config.allowed_tools.is_empty() {
+        let mut translated: Vec<String> = Vec::new();
+        for tool in &config.allowed_tools {
+            let native = translate_cursor_tool(tool);
+            if !translated.contains(&native) {
+                translated.push(native);
+            }
+        }
+        args.push("--allowed-tools".to_string());
+        args.push(translated.join(","));
+    }
+
+    if !config.denied_tools.is_empty() {
+        let mut translated: Vec<String> = Vec::new();
+        for tool in &config.denied_tools {
+            let native = translate_cursor_tool(tool);
+            if !translated.contains(&native) {
+                translated.push(native);
+            }
+        }
+        args.push("--exclude-tools".to_string());
+        args.push(translated.join(","));
+    }
+
+    // Cursor's `--add-dir` is Copilot's: a directory the agent may touch outside the workspace. So
+    // a `Write(/plans/00553/Artifacts/**)` rule has to widen it here too, or the allowlist grants a
+    // path the sandbox then refuses -- `extract_copilot_dirs` is the same extraction, not a
+    // Copilot-specific one.
+    for dir in merge_dirs(
+        &config.writable_directories,
+        &extract_copilot_dirs(&config.allowed_tools),
+    ) {
+        args.push("--add-dir".to_string());
+        args.push(dir);
+    }
+
+    if let Some(sid) = &config.session_id {
+        if !sid.is_empty() {
+            args.push("--resume".to_string());
+            args.push(sid.clone());
+        }
+    }
+
+    // MCP servers are deliberately not rendered. Cursor loads them from a config *file* at a fixed
+    // location and nowhere else: `~/.cursor/mcp.json` or `<workspace>/.cursor/mcp.json`. There is no
+    // `--mcp-config` flag, `CURSOR_CONFIG_DIR` is not consulted for it (`cursor-agent mcp list` under
+    // one still prints "expected in .cursor/mcp.json or ~/.cursor/mcp.json"), and `--plugin-dir`
+    // carries plugins rather than servers. Writing the only file it *does* read means writing into
+    // the user's own repository and clobbering whatever MCP configuration they already keep there,
+    // which is a worse failure than not attaching a server. `build_opencode_spec` documents the same
+    // kind of gap for tool allow-lists. `--approve-mcps` is likewise omitted: with no servers
+    // attached it would only pre-approve whatever the user's own `.cursor/mcp.json` declares.
+
+    args.extend(config.extra_arguments.clone());
+
+    // No `--system-prompt`: the flag exists in the CLI's argument parser but the server rejects it
+    // ("unknown option '--system-prompt'"), so the instructions are prepended to the prompt instead —
+    // the same thing `build_opencode_spec` does for a CLI with no system-prompt argument.
+    let stdin_content = match config.system_prompt.as_deref().filter(|s| !s.is_empty()) {
+        Some(sys) => format!("{}\n\n---\n\n{}", sys, config.prompt),
+        None => config.prompt.clone(),
+    };
+
+    let mut env = default_environment();
+    for (k, v) in &config.environment_variables {
+        env.insert(k.clone(), v.clone());
+    }
+
+    AgentProcessSpec {
+        command: resolve_cursor_binary(),
+        args,
+        environment: env,
+        working_directory: config.working_directory.clone(),
+        stdin_content: Some(stdin_content),
+        redirect_stdin: true,
+        temp_files: Vec::new(),
+    }
+}
+
+// ---------------------------------------------------------------------------
 // Ivy Agent (ivy)
 // ---------------------------------------------------------------------------
 fn build_ivy_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
@@ -996,6 +1361,244 @@ fn build_openai_proxy_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
                 .insert("ANTHROPIC_API_KEY".to_string(), key);
         }
     }
+
+    spec
+}
+
+// ---------------------------------------------------------------------------
+// Apple Foundation Models (apple)
+// ---------------------------------------------------------------------------
+
+/// The OpenCode provider key the `fm serve` stanza is registered under.
+const APPLE_PROVIDER_KEY: &str = "apple";
+
+/// The OpenCode agent the trimmed tool surface is declared on, and the value passed to `--agent`.
+/// Declaring it is not enough: without the flag OpenCode runs its default `build` agent and the
+/// trimming never applies.
+const APPLE_AGENT_NAME: &str = "apple-fm";
+
+/// The only model `fm serve` serves. It answers `GET /v1/models` with the single id `system` and
+/// rejects every other id with HTTP 400, so each model the catalog offers for this agent resolves
+/// here rather than being passed through.
+pub const APPLE_MODEL_ID: &str = "apple/system";
+
+/// The same model as [`APPLE_MODEL_ID`], spelled the way `fm serve` itself spells it.
+///
+/// Two ids for one model, because two different things are addressing it. OpenCode names a model
+/// `provider/model` and resolves the `apple/` half against the provider stanza below, so everything
+/// that talks to OpenCode -- the catalog, the launch, the price row -- says `apple/system`. The
+/// server behind it has no notion of providers and serves the bare id: `GET /v1/models` returns
+/// `system`, and a request for `apple/system` comes back `HTTP 400 Unknown model 'apple/system'`.
+/// Anything speaking to `fm serve` directly rather than through OpenCode -- the model probe in
+/// [`crate::agents::probe`] -- has to use this one.
+pub const APPLE_WIRE_MODEL_ID: &str = "system";
+
+/// The system prompt the on-device agent runs under, replacing OpenCode's own.
+///
+/// Two separate measurements against a live `fm serve` motivate this, both taken with the prompt
+/// "are you alive?".
+///
+/// The first is correctness. With OpenCode's default prompt the model answered
+/// `[WebFetch] Retrieved from opencode.ai: I am a CLI tool for software engineering tasks.` -- a
+/// tool transcript it invented. `webfetch` was already disabled and the emitted JSON contains no
+/// tool part at all, so nothing was called: a 3B on-device model given a prompt that is mostly
+/// tool-calling protocol imitates the protocol instead of answering. Turning more tools off does
+/// not help, because the instructions are what it is copying. Replacing the prompt does: the same
+/// question then answers "I am a foundation model running on-device, not alive."
+///
+/// The second is headroom. The default prompt costs 4,532 input tokens of an 8,192-token window
+/// before the user's question is read. This prompt with the tool surface below costs ~310 in an
+/// empty directory -- a fraction of that -- which is the difference between a window that fits a
+/// conversation and one that does not.
+///
+/// The last two sentences answer a third measurement, of a chat that repeated itself. Asked to
+/// "go through issues in ivy-tendril-v2", the model replied "I will now find these issues" and
+/// stopped; told "I dont see any tool calls happen", it replied with the same sentence again. It
+/// was not ignoring the history -- `build_chat_agent_prompt` replays it, and the replay was
+/// verified in the failing turn -- it was answering honestly. It announces an intent it can never
+/// carry out, because it emits no tool calls and the turn ends with its reply. So the prompt has
+/// to rule out the announcement itself: there is no later turn in which the work happens. With
+/// `skill` disabled but this text absent the model stopped looping and began inventing instead,
+/// answering the same question with three plausible fabricated issues. Both sentences are needed:
+/// one to stop it promising, one to give it something truthful to say in place of the promise.
+const APPLE_SYSTEM_PROMPT: &str = "You are a helpful assistant running on-device via Apple \
+Foundation Models. Answer the user directly and concisely in plain prose. You have no tools \
+available: you cannot read files, run commands, search the repository, or browse the web. Never \
+write a tool name, never write text in square brackets, and never describe an action you did not \
+take. Never say you will do something and never ask the user for permission to proceed -- your \
+reply is your entire turn, so there is no later in which to act. When a request needs information \
+you were not given, say plainly in one sentence that you cannot access it and state what you \
+would need pasted in.";
+
+/// Where `fm serve` listens when started with no arguments.
+const APPLE_DEFAULT_BASE_URL: &str = "http://127.0.0.1:1976/v1";
+
+/// The on-device model's transcript ceiling. Measured against `fm serve` by bisection: 7.3k tokens
+/// of input is accepted and roughly 8.5k is refused with "the session's transcript exceeded the
+/// model's context size", so the declared window is the power of two just under the real limit.
+const APPLE_CONTEXT_WINDOW: u64 = 8192;
+
+/// The on-device model's output ceiling, declared conservatively against the same context budget.
+const APPLE_MAX_OUTPUT_TOKENS: u64 = 1024;
+
+/// `fm serve`'s OpenAI-compatible endpoint, with the `/v1` suffix normalized on.
+///
+/// `APPLE_FM_BASE_URL` overrides the default for an `fm serve --port` on another port, or one
+/// reached over a tunnel.
+pub(crate) fn apple_base_url() -> String {
+    let raw = std::env::var("APPLE_FM_BASE_URL")
+        .ok()
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| APPLE_DEFAULT_BASE_URL.to_string());
+
+    let trimmed = raw.trim_end_matches('/');
+    if trimmed.to_ascii_lowercase().ends_with("/v1") {
+        trimmed.to_string()
+    } else {
+        format!("{}/v1", trimmed)
+    }
+}
+
+/// The OpenCode configuration registering `fm serve` as an OpenAI-compatible provider.
+///
+/// OpenCode has no built-in Apple provider, so one is declared inline rather than written to the
+/// operator's `opencode.json`: `OPENCODE_CONFIG_CONTENT` is read as a whole config document, which
+/// keeps this provider self-contained and leaves no temp file behind. That matters because
+/// [`agent_command`] builds a throwaway spec purely to read the binary name, so spec building for a
+/// default config must stay free of side effects.
+///
+/// The `apple-fm` agent trims the tool surface OpenCode would otherwise describe in its system
+/// prompt. Measured against `fm serve`, the untrimmed prompt costs about 7k tokens of an 8k window,
+/// leaving almost nothing for the task; dropping these six tools brings it to about 4.5k.
+fn apple_opencode_config(base_url: &str) -> serde_json::Value {
+    serde_json::json!({
+        "$schema": "https://opencode.ai/config.json",
+        "provider": {
+            APPLE_PROVIDER_KEY: {
+                "npm": "@ai-sdk/openai-compatible",
+                "name": "Apple Foundation Models",
+                "options": { "baseURL": base_url, "apiKey": "local" },
+                "models": {
+                    APPLE_WIRE_MODEL_ID: {
+                        "name": "Apple On-Device",
+                        "limit": {
+                            "context": APPLE_CONTEXT_WINDOW,
+                            "output": APPLE_MAX_OUTPUT_TOKENS,
+                        },
+                    }
+                },
+            }
+        },
+        "agent": {
+            APPLE_AGENT_NAME: {
+                "description": "Apple Foundation Models on-device, with a trimmed tool surface",
+                "mode": "primary",
+                "model": APPLE_MODEL_ID,
+                "prompt": APPLE_SYSTEM_PROMPT,
+                // Every tool, off. The narrower six-tool list this started as left 2,740 input
+                // tokens of the 8,192-token window spent on tool descriptions; with all of them off
+                // it is ~310. The model cannot use them in any case -- it emits no tool calls -- so
+                // every byte describing one is a byte the conversation does not get.
+                //
+                // `"*"` is what makes the list exhaustive, and the entries after it are regression
+                // pins rather than the mechanism. Naming every builtin is not enough, because not
+                // every tool is a builtin: OpenCode registers a tool per `SKILL.md` folder it
+                // discovers under the working directory, and one per tool an attached MCP server
+                // advertises, and neither set is known here. Both leaked past the explicit list.
+                // Measured with the same prompt: this repo's six skills cost 1,305 input tokens in
+                // the repo root against 507 in an empty directory, and asked to name its skills the
+                // model listed all six -- which is what produced the chat loop the system prompt
+                // above describes, since it saw a `tendrillable` tool, said it would use it, and
+                // emitted no call. A probe MCP server advertising one tool cost another 47 on top.
+                // `"*": false` covers all three kinds at once and holds as skills and servers are
+                // added; `skill` and the builtins stay named so a regression in either is a test
+                // failure here rather than a silent return of the loop.
+                "tools": {
+                    "*": false,
+                    "skill": false,
+                    "webfetch": false,
+                    "task": false,
+                    "todowrite": false,
+                    "todoread": false,
+                    "patch": false,
+                    "multiedit": false,
+                    "bash": false,
+                    "edit": false,
+                    "write": false,
+                    "read": false,
+                    "grep": false,
+                    "glob": false,
+                    "list": false,
+                },
+            }
+        },
+    })
+}
+
+/// Apple's on-device Foundation Models, reached through the bundled OpenCode CLI.
+///
+/// `fm serve` speaks OpenAI Chat Completions, so this is the same wrapper shape as
+/// [`build_ivy_spec`] and [`build_openai_proxy_spec`]: pre-resolve the model, delegate to
+/// [`build_opencode_spec`], then override the parts that are Apple-specific. It differs from those
+/// two in three ways, each forced by what `fm serve` actually accepts:
+///
+/// - The model is pinned rather than mapped. `fm serve` serves exactly one id and rejects the rest
+///   with HTTP 400, so honouring a caller's model would produce a request the server refuses.
+/// - Effort is dropped. The on-device model has no reasoning-effort control, so a `--variant` would
+///   advertise a knob that does not exist. The catalog lists no efforts for this agent to match.
+/// - The provider is declared inline through `OPENCODE_CONFIG_CONTENT`, because OpenCode ships no
+///   Apple provider to point a base URL at.
+///
+/// The server itself is not started here, for the same reason no other provider starts one: spec
+/// building is synchronous, runs on paths that only want the binary name, and must not have side
+/// effects. `fm serve` is an ambient prerequisite, reported by the `Apple` health check.
+fn build_apple_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
+    let base_url = apple_base_url();
+
+    let mut modified = config.clone();
+    modified.model = Some(APPLE_MODEL_ID.to_string());
+    modified.effort = None;
+
+    let mut spec = build_opencode_spec(&modified);
+
+    // Selects the trimmed agent declared in the config above. Measured against `fm serve`, the
+    // default `build` agent spends about 6.9k of the 8k window describing its tools before the task
+    // is even read; `apple-fm` brings that to about 4.5k. Appended rather than inserted so it lands
+    // after `--model`, ahead of `extra_arguments`, where a caller could still override it.
+    let model_end = spec
+        .args
+        .iter()
+        .position(|a| a == "--model")
+        .map(|i| i + 2)
+        .unwrap_or(spec.args.len());
+    spec.args.splice(
+        model_end..model_end,
+        ["--agent".to_string(), APPLE_AGENT_NAME.to_string()],
+    );
+
+    // Merged into the delegate's document rather than written over it. `build_opencode_spec` puts
+    // the configured MCP servers in this same variable -- `opencode run` has no `--mcp-config`
+    // flag, so that is the only channel they have -- and a blanket insert here would silently drop
+    // every one of them, leaving the agent unable to call back into Tendril.
+    let mut document = match spec.environment.get("OPENCODE_CONFIG_CONTENT") {
+        Some(existing) => serde_json::from_str(existing).unwrap_or_else(|_| serde_json::json!({})),
+        None => serde_json::json!({}),
+    };
+    if let (Some(target), Some(apple)) = (
+        document.as_object_mut(),
+        apple_opencode_config(&base_url).as_object(),
+    ) {
+        for (key, value) in apple {
+            target.insert(key.clone(), value.clone());
+        }
+    }
+    spec.environment
+        .insert("OPENCODE_CONFIG_CONTENT".to_string(), document.to_string());
+    spec.environment
+        .insert("OPENAI_BASE_URL".to_string(), base_url);
+    spec.environment
+        .insert("OPENAI_API_KEY".to_string(), "local".to_string());
 
     spec
 }
@@ -1384,19 +1987,50 @@ pub fn write_mcp_config(servers: &[McpServerConfig]) -> Option<PathBuf> {
     let temp_dir = std::env::temp_dir();
     let filename = format!("tendril-mcp-{}.json", uuid::Uuid::new_v4().simple());
     let path = temp_dir.join(filename);
-    let _ = std::fs::write(
+    // `None` rather than a path to a file that is not there. Every caller pushes the return value
+    // straight onto `--mcp-config`, so swallowing the error handed the agent a flag pointing at
+    // nothing — the agent then starts with no MCP servers, or refuses the argument outright, and
+    // the only clue is the agent's own error. A temp dir that is missing or unwritable is the real
+    // case: `std::env::temp_dir` reads `TMPDIR`, which the caller does not control.
+    if let Err(e) = std::fs::write(
         &path,
         serde_json::to_string_pretty(&root).unwrap_or_default(),
-    );
+    ) {
+        tracing::warn!(
+            "Could not write the MCP config to '{}': {e}. The agent will launch without its MCP \
+             servers.",
+            path.display()
+        );
+        return None;
+    }
     Some(path)
 }
 
-fn write_temp_prompt(content: &str, prefix: &str) -> PathBuf {
+/// `content` in a fresh temp file, or `None` when the write did not happen.
+///
+/// `Option` rather than `io::Result` for the same reason as [`write_mcp_config`]: the error is
+/// worth reporting but not worth returning. Neither caller can act on the difference between one
+/// `io::ErrorKind` and another — each already has a degradation that puts the text on the command
+/// line or down stdin instead — and [`build_agent_spec`] returns a spec, not a result, so an
+/// `io::Error` propagated out of here would only be unwrapped or discarded a frame later. Logging
+/// at the point that still has the path and the errno is strictly more informative than that.
+///
+/// The write used to be `let _ = fs::write(..)`, which handed the caller a path to a file that was
+/// never created. A missing or unwritable temp directory is the real shape of the failure:
+/// `std::env::temp_dir` reads `TMPDIR`, which the caller does not control.
+fn write_temp_prompt(content: &str, prefix: &str) -> Option<PathBuf> {
     let temp_dir = std::env::temp_dir();
     let filename = format!("{}-{}.md", prefix, uuid::Uuid::new_v4().simple());
     let path = temp_dir.join(filename);
-    let _ = std::fs::write(&path, content);
-    path
+    if let Err(e) = std::fs::write(&path, content) {
+        tracing::warn!(
+            "Could not write the prompt file '{}': {e}. The caller will pass the text inline \
+             instead.",
+            path.display()
+        );
+        return None;
+    }
+    Some(path)
 }
 
 fn find_on_path(binary: &str) -> Option<PathBuf> {
@@ -1498,6 +2132,70 @@ pub fn resolve_opencode_binary() -> String {
     }
 
     "opencode".to_string()
+}
+
+/// The `cursor-agent` executable's file name on this platform.
+const CURSOR_BINARY: &str = if cfg!(windows) {
+    "cursor-agent.exe"
+} else {
+    "cursor-agent"
+};
+
+/// The Cursor CLI to launch. Same order as [`resolve_opencode_binary`] — a copy shipped beside the
+/// app, then `$HOME/.tendril/bin`, then `PATH` — with Cursor's own installer directory
+/// (`~/.local/bin`, where `install.cursor.com` puts the launcher) as the last place to look.
+///
+/// Falls back to the bare name so a missing install fails as `cursor-agent`'s own "not found" rather
+/// than as a path that does not exist.
+pub fn resolve_cursor_binary() -> String {
+    if let Ok(curr_exe) = std::env::current_exe() {
+        if let Some(parent) = curr_exe.parent() {
+            let direct = parent.join(CURSOR_BINARY);
+            if direct.is_file() {
+                return direct.to_string_lossy().to_string();
+            }
+            let bin = parent.join("bin").join(CURSOR_BINARY);
+            if bin.is_file() {
+                return bin.to_string_lossy().to_string();
+            }
+        }
+    }
+
+    if let Ok(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
+        let tendril_managed = Path::new(&home)
+            .join(".tendril")
+            .join("bin")
+            .join(CURSOR_BINARY);
+        if tendril_managed.is_file() {
+            return tendril_managed.to_string_lossy().to_string();
+        }
+    }
+
+    if let Some(p) = find_on_path("cursor-agent") {
+        return p.to_string_lossy().to_string();
+    }
+
+    if let Ok(home) = std::env::var("USERPROFILE").or_else(|_| std::env::var("HOME")) {
+        let fallback = Path::new(&home).join(".local").join("bin");
+        #[cfg(windows)]
+        {
+            for ext in &[".cmd", ".exe", ".bat"] {
+                let candidate = fallback.join(format!("cursor-agent{}", ext));
+                if candidate.is_file() {
+                    return candidate.to_string_lossy().to_string();
+                }
+            }
+        }
+        #[cfg(not(windows))]
+        {
+            let candidate = fallback.join(CURSOR_BINARY);
+            if candidate.is_file() {
+                return candidate.to_string_lossy().to_string();
+            }
+        }
+    }
+
+    "cursor-agent".to_string()
 }
 
 /// Tests for the `PATH` an agent is launched with. Inline rather than in `tests/` because the
@@ -1698,5 +2396,122 @@ mod agent_path_tests {
             },
         );
         assert_eq!(spec.environment.get("PATH").unwrap(), "/only/this");
+    }
+}
+
+/// Tests for the one thing Cursor does that no other provider does: it has no effort argument, so
+/// the reasoning rung has to be composed into the model id. Inline because `format_cursor_model` is
+/// a translation between two vocabularies rather than a launch, and the ladders it reads are
+/// private to this module.
+#[cfg(test)]
+mod cursor_model_tests {
+    use super::{format_cursor_model, translate_cursor_tool};
+
+    fn composed(model: &str, effort: &str) -> String {
+        format_cursor_model(Some(model), Some(effort))
+    }
+
+    /// The rule, in the ordinary case: `<base>-<rung>`.
+    #[test]
+    fn an_effort_is_composed_onto_the_model_id() {
+        assert_eq!(composed("claude-opus-5", "low"), "claude-opus-5-low");
+        assert_eq!(composed("claude-opus-5", "medium"), "claude-opus-5-medium");
+        assert_eq!(composed("gpt-5.6-terra", "max"), "gpt-5.6-terra-max");
+        assert_eq!(
+            composed("gemini-3.8-flash", "high"),
+            "gemini-3.8-flash-high"
+        );
+        assert_eq!(composed("kimi-k3", "max"), "kimi-k3-max");
+    }
+
+    /// **The reason the ladders are per-family rather than per-agent.** Cursor rejects a rung its
+    /// family does not have -- `claude-opus-5-max` is not a model -- so a level above the family's
+    /// top has to come down to the top rather than be sent and fail.
+    #[test]
+    fn an_effort_above_a_familys_ladder_clamps_to_its_top() {
+        // Plain Opus 5 stops at `high`; the Thinking variant is the one that goes to `max`.
+        assert_eq!(composed("claude-opus-5", "xhigh"), "claude-opus-5-high");
+        assert_eq!(composed("claude-opus-5", "max"), "claude-opus-5-high");
+        assert_eq!(
+            composed("claude-opus-5-thinking", "max"),
+            "claude-opus-5-thinking-max"
+        );
+        // Gemini's flash rows stop at `high`, and Kimi has no `medium` at all, so `medium` takes
+        // the rung below rather than inventing one.
+        assert_eq!(
+            composed("gemini-3.8-flash", "xhigh"),
+            "gemini-3.8-flash-high"
+        );
+        assert_eq!(composed("kimi-k3", "medium"), "kimi-k3-low");
+    }
+
+    /// A rung two families spell differently is sent the way the family being launched spells it.
+    #[test]
+    fn a_familys_own_spelling_wins_over_tendrils() {
+        // GPT-5.5 calls its fourth rung `extra-high`; every other GPT family calls it `xhigh`.
+        assert_eq!(composed("gpt-5.5", "xhigh"), "gpt-5.5-extra-high");
+        assert_eq!(composed("gpt-5.5", "max"), "gpt-5.5-extra-high");
+        assert_eq!(composed("gpt-5.4", "xhigh"), "gpt-5.4-xhigh");
+        // ...and a level below the family's floor takes the floor.
+        assert_eq!(composed("gpt-5.3-codex", "medium"), "gpt-5.3-codex-low");
+        assert_eq!(composed("claude-opus-5", "none"), "claude-opus-5-low");
+    }
+
+    /// No effort means no opinion, and the bare id is a model Cursor accepts -- it applies the
+    /// family's own default rung. Tendril picking one for it would be inventing a preference.
+    #[test]
+    fn no_effort_sends_the_bare_model_id() {
+        for effort in [None, Some(""), Some("default"), Some("Default")] {
+            assert_eq!(
+                format_cursor_model(Some("claude-opus-5"), effort),
+                "claude-opus-5",
+                "{effort:?} should leave the id bare"
+            );
+        }
+        // A model with no ladder of its own is bare-only, at every level.
+        assert_eq!(composed("gemini-3.1-pro", "high"), "gemini-3.1-pro");
+        assert_eq!(composed("gpt-5-mini", "max"), "gpt-5-mini");
+    }
+
+    /// No model means no `--model` at all, which is Cursor's "use whatever is configured".
+    #[test]
+    fn no_model_composes_nothing() {
+        for model in [None, Some(""), Some("  "), Some("default")] {
+            assert_eq!(
+                format_cursor_model(model, Some("high")),
+                "",
+                "{model:?} should send no model"
+            );
+        }
+    }
+
+    /// A user who types a composed id into the model box means it. Re-composing would produce
+    /// `claude-opus-5-high-medium`, which is not a model.
+    #[test]
+    fn an_already_composed_id_passes_through() {
+        assert_eq!(
+            composed("claude-opus-5-thinking-max", "low"),
+            "claude-opus-5-thinking-max"
+        );
+        assert_eq!(composed("gpt-5.5-extra-high", "low"), "gpt-5.5-extra-high");
+        // `-fast` is Cursor's priority-routing suffix, and it is always last.
+        assert_eq!(
+            composed("gpt-5.6-terra-high-fast", "low"),
+            "gpt-5.6-terra-high-fast"
+        );
+        assert_eq!(composed("composer-2.5-fast", "max"), "composer-2.5-fast");
+    }
+
+    /// The tool names `--allowed-tools` validates against are Cursor's own, not Tendril's.
+    #[test]
+    fn canonical_tool_names_become_cursors() {
+        assert_eq!(translate_cursor_tool("read"), "read_tool_call");
+        assert_eq!(translate_cursor_tool("write"), "edit_tool_call");
+        assert_eq!(translate_cursor_tool("edit"), "edit_tool_call");
+        assert_eq!(translate_cursor_tool("bash"), "shell_tool_call");
+        // A scoped permission is a name with a qualifier, and the qualifier is not part of it.
+        assert_eq!(translate_cursor_tool("Write(/tmp/**)"), "edit_tool_call");
+        // Something already in Cursor's vocabulary is left alone.
+        assert_eq!(translate_cursor_tool("mcp_tool_call"), "mcp_tool_call");
     }
 }

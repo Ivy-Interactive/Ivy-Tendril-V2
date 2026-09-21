@@ -1,9 +1,60 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::{Mutex, MutexGuard};
 use tendril_core::agents::{
     agent_command, build_agent_spec, format_opencode_model, translate_claude_tool,
-    translate_copilot_tool, write_mcp_config, AgentLaunchConfig, McpServerConfig,
+    translate_copilot_tool, translate_cursor_tool, write_mcp_config, AgentLaunchConfig,
+    McpServerConfig,
 };
+
+/// Serialises every test here that depends on the process temp directory.
+///
+/// `std::env::temp_dir` is process-global, and `agent_command_leaves_no_temp_files_behind` below
+/// has to repoint it to count what one call leaves behind. Without this lock a sibling writing a
+/// temp file during that window either lands inside the probe's count or, once the probe removes
+/// its scratch directory, fails to be written at all.
+///
+/// That second case is what turned CI red. The outcome depends on how libtest happens to interleave
+/// the tests: with enough threads the siblings start before the probe deletes anything and the file
+/// is written fine, but as parallelism drops they run after it, `temp_dir()` names a directory that
+/// is gone, and the write fails. Measured on this binary before the fix, it failed 20/20 runs at one
+/// and at two test threads and 0/20 at three or more — so it was invisible on a developer machine
+/// and deterministic on the runner.
+fn temp_dir_lock() -> MutexGuard<'static, ()> {
+    static LOCK: Mutex<()> = Mutex::new(());
+    // A sibling that panicked while holding this poisoned it, and the poison says nothing about
+    // whether the temp directory is usable — take it anyway rather than cascading one failure into
+    // every other test in the file.
+    LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// Restores a process-global environment variable to what it was, on drop and on panic.
+struct EnvGuard {
+    key: &'static str,
+    previous: Option<String>,
+}
+
+impl EnvGuard {
+    fn set(key: &'static str, value: &std::path::Path) -> Self {
+        let previous = std::env::var(key).ok();
+        // SAFETY: the caller holds `temp_dir_lock`, and every test in this binary that reads the
+        // environment takes that lock first, so no other thread is reading it concurrently.
+        unsafe { std::env::set_var(key, value) };
+        Self { key, previous }
+    }
+}
+
+impl Drop for EnvGuard {
+    fn drop(&mut self) {
+        // SAFETY: as in `set` — the lock is still held for as long as this guard is alive.
+        unsafe {
+            match &self.previous {
+                Some(value) => std::env::set_var(self.key, value),
+                None => std::env::remove_var(self.key),
+            }
+        }
+    }
+}
 
 #[test]
 fn test_tool_translation() {
@@ -24,6 +75,14 @@ fn test_tool_translation() {
     assert_eq!(translate_copilot_tool("glob"), "glob");
     assert_eq!(translate_copilot_tool("websearch"), "web_fetch");
     assert_eq!(translate_copilot_tool("webfetch"), "web_fetch");
+
+    // Cursor names every tool `<verb>_tool_call`, and `--allowed-tools` rejects anything else.
+    assert_eq!(translate_cursor_tool("read"), "read_tool_call");
+    assert_eq!(translate_cursor_tool("write"), "edit_tool_call");
+    assert_eq!(translate_cursor_tool("edit"), "edit_tool_call");
+    assert_eq!(translate_cursor_tool("bash"), "shell_tool_call");
+    assert_eq!(translate_cursor_tool("grep"), "grep_tool_call");
+    assert_eq!(translate_cursor_tool("glob"), "glob_tool_call");
 }
 
 #[test]
@@ -71,6 +130,8 @@ fn test_opencode_model_formatting() {
 
 #[test]
 fn test_mcp_config_generation() {
+    let _temp_dir = temp_dir_lock();
+
     assert!(write_mcp_config(&[]).is_none());
 
     let mut env = HashMap::new();
@@ -99,8 +160,47 @@ fn test_mcp_config_generation() {
     let _ = std::fs::remove_file(path);
 }
 
+/// A path is only returned for a file that really is on disk.
+///
+/// Every caller pushes this straight onto `--mcp-config`, so a path to a file the write never
+/// created launches the agent pointing at nothing: it comes up with no MCP servers, or rejects the
+/// argument outright, and the only clue is the agent's own error. The write used to be
+/// `let _ = fs::write(..)`, which discarded exactly the error that says so.
+///
+/// `TMPDIR` is the lever because `std::env::temp_dir` reads it and a caller does not control it — a
+/// temp directory that is missing or unwritable is the real shape of this failure, and it is also
+/// how the sibling probe above used to break this very test.
+#[test]
+fn write_mcp_config_reports_a_failed_write_rather_than_naming_a_missing_file() {
+    let _temp_dir = temp_dir_lock();
+
+    let absent = std::env::temp_dir().join(format!(
+        "tendril-mcp-no-such-directory-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&absent);
+
+    let _tmpdir = EnvGuard::set("TMPDIR", &absent);
+    let _tmp = EnvGuard::set("TMP", &absent);
+
+    let servers = vec![McpServerConfig {
+        name: "docs".to_string(),
+        command: "node".to_string(),
+        arguments: vec![],
+        environment: HashMap::new(),
+    }];
+
+    assert!(
+        write_mcp_config(&servers).is_none(),
+        "a write into a directory that does not exist must not yield a path"
+    );
+}
+
 #[test]
 fn test_all_agent_providers_spec_generation() {
+    // Several of these builders write a prompt or MCP file into the process temp directory.
+    let _temp_dir = temp_dir_lock();
+
     let base_config = AgentLaunchConfig {
         prompt: "Fix the bug in the parser".to_string(),
         working_directory: PathBuf::from("D:/test-workspace"),
@@ -134,11 +234,14 @@ fn test_all_agent_providers_spec_generation() {
         ("gemini", "gemini", true),
         ("opencode", "opencode", true),
         ("copilot", "copilot", true),
+        ("cursor", "cursor-agent", true),
         // The three proxy flavours are the bundled OpenCode with a different base URL, not a
         // separate `ivy-agent` binary - see `resolve_opencode_binary`.
         ("ivy", "opencode", true),
         ("openaiproxy", "opencode", true),
         ("proxy", "opencode", true),
+        // Apple is the same bundled OpenCode, pointed at `fm serve`.
+        ("apple", "opencode", true),
     ];
 
     for (provider_name, expected_cmd_prefix, expect_stdin) in providers {
@@ -185,9 +288,32 @@ fn test_all_agent_providers_spec_generation() {
 /// cleans `temp_files` up, and a probe never runs one, so this had been leaking a file per call.
 #[test]
 fn agent_command_leaves_no_temp_files_behind() {
-    let temp_dir = std::env::temp_dir();
+    // Scoped to this test's own directory rather than the process-wide one. `std::env::temp_dir`
+    // is shared by every test binary in the workspace, and several of them build antigravity specs
+    // without cleaning `temp_files` up, so counting files there measured the whole suite's
+    // behaviour instead of this call's: the assertion flipped depending on which siblings happened
+    // to be running, failing about half the time under the default test-threads. `TMPDIR` is what
+    // `temp_dir` reads on unix, and `TMP` on windows, so pointing them at a fresh directory makes
+    // the count observe only the calls below.
+    //
+    // The lock and the guards are what keep that redirection from leaking out of this test. The
+    // redirection is process-wide, and the scratch directory is deleted at the end, so a sibling
+    // running in the window saw `temp_dir()` name a directory that no longer existed and its
+    // `fs::write` failed silently.
+    let _temp_dir = temp_dir_lock();
+
+    let scratch = std::env::temp_dir().join(format!(
+        "tendril-agent-command-probe-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&scratch);
+    std::fs::create_dir_all(&scratch).expect("the probe needs a scratch directory");
+
+    let _tmpdir = EnvGuard::set("TMPDIR", &scratch);
+    let _tmp = EnvGuard::set("TMP", &scratch);
+
     let count_prompts = || {
-        std::fs::read_dir(&temp_dir)
+        std::fs::read_dir(&scratch)
             .map(|entries| {
                 entries
                     .filter_map(|entry| entry.ok())
@@ -211,16 +337,101 @@ fn agent_command_leaves_no_temp_files_behind() {
         "gemini",
         "opencode",
         "copilot",
+        "cursor",
+        // The same bundled OpenCode as the row above, but reached through its own spec builder, so
+        // a temp file leaked there would be missed by every other id in this list.
+        "apple",
     ] {
         assert!(
             !agent_command(provider).is_empty(),
             "{provider} resolved to an empty command"
         );
     }
+    let after = count_prompts();
+
+    let _ = std::fs::remove_dir_all(&scratch);
+
     assert_eq!(
         before,
-        count_prompts(),
+        after,
         "agent_command left a temp prompt file in {}",
-        temp_dir.display()
+        scratch.display()
+    );
+}
+
+/// A prompt file that could not be written never reaches the command line as a path.
+///
+/// The twin of `write_mcp_config_reports_a_failed_write_rather_than_naming_a_missing_file` above,
+/// for `write_temp_prompt`, and asserted through the two builders that call it because the writer
+/// itself is private. Each degrades differently, which is the point of pinning both:
+///
+/// - Antigravity's `--print @<file>` is the dangerous one. `agy` does not reject a missing path, it
+///   takes the literal `@/tmp/....md` as the prompt, so a swallowed write silently replaced the
+///   job's instructions with a file name. The text must go inline instead.
+/// - Claude's `--system-prompt-file` is the opposite failure: it exits on a path it cannot read. The
+///   flag has to be dropped, and the system prompt folded into the stdin prompt, which is where
+///   Cursor and OpenCode already put theirs.
+///
+/// `TMPDIR` is the lever for the same reason as the MCP test: `std::env::temp_dir` reads it, and a
+/// temp directory that is missing or unwritable is the real shape of this failure.
+#[test]
+fn a_failed_prompt_write_degrades_to_inline_text_rather_than_a_missing_path() {
+    let _temp_dir = temp_dir_lock();
+
+    let absent = std::env::temp_dir().join(format!(
+        "tendril-prompt-no-such-directory-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&absent);
+
+    let _tmpdir = EnvGuard::set("TMPDIR", &absent);
+    let _tmp = EnvGuard::set("TMP", &absent);
+
+    let config = AgentLaunchConfig {
+        prompt: "Fix the parser.".to_string(),
+        system_prompt: Some("You are a senior engineer".to_string()),
+        ..Default::default()
+    };
+
+    let agy = build_agent_spec("antigravity", &config);
+    assert!(
+        !agy.args.iter().any(|a| a.starts_with('@')),
+        "antigravity must not point --print at a file that was never written, got {:?}",
+        agy.args
+    );
+    assert!(
+        agy.temp_files.is_empty(),
+        "a file that was never created must not be queued for cleanup, got {:?}",
+        agy.temp_files
+    );
+    let last = agy
+        .args
+        .last()
+        .expect("antigravity always renders a prompt");
+    assert!(
+        last.contains("Fix the parser."),
+        "the prompt must survive inline, got {}",
+        last
+    );
+
+    let claude = build_agent_spec("claude", &config);
+    assert!(
+        !claude.args.iter().any(|a| a == "--system-prompt-file"),
+        "claude exits on an unreadable --system-prompt-file, so the flag must be dropped, got {:?}",
+        claude.args
+    );
+    assert!(
+        claude.temp_files.is_empty(),
+        "a file that was never created must not be queued for cleanup, got {:?}",
+        claude.temp_files
+    );
+    let stdin = claude
+        .stdin_content
+        .as_deref()
+        .expect("claude sends its prompt down stdin");
+    assert!(
+        stdin.contains("You are a senior engineer") && stdin.contains("Fix the parser."),
+        "the system prompt must fold into stdin rather than be dropped, got {}",
+        stdin
     );
 }

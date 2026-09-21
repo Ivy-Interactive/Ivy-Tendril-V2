@@ -83,23 +83,15 @@ export function rewriteDocLink(
   return { href: trimmed, kind: "unresolved" };
 }
 
-/**
- * Splits a line into alternating "outside inline code" / "inside inline code" chunks, so a
- * ``[link](target)`` written inside backticks is left alone.
- */
-function outsideInlineCode(line: string, transform: (chunk: string) => string): string {
-  const parts = line.split(/(`+[^`]*`+)/);
-  return parts.map((part, index) => (index % 2 === 1 ? part : transform(part))).join("");
-}
-
-const INLINE_TARGET = /(!?\[(?:[^[\]\\]|\\.)*\]\()([^()\s]+)((?:\s+"[^"]*")?\))/g;
+const INLINE_OR_CODE = /(`+[^`\n]*`+)|(!?\[(?:[^[\]\\]|\\.)*\]\()([^()\s]+)((?:\s+"[^"]*")?\))/g;
 const REFERENCE_DEFINITION = /^(\s{0,3}\[(?:[^[\]\\]|\\.)+\]:\s*)(\S+)(.*)$/;
 
 /**
  * Rewrites every authored link and image target in a markdown body to its final URL.
  *
  * Fenced code blocks and inline code spans are skipped: a `.md` path inside a fence is sample text
- * that must render exactly as written.
+ * that must render exactly as written. Links containing inline code inside their brackets
+ * (e.g. `[`code`](target.md)`) are rewritten to their proper route.
  */
 export function rewriteDocLinks(
   body: string,
@@ -115,18 +107,19 @@ export function rewriteDocLinks(
       out.push(line);
       return;
     }
+    const definition = REFERENCE_DEFINITION.exec(line);
+    if (definition) {
+      out.push(`${definition[1]}${rewriteTarget(definition[2])}${definition[3]}`);
+      return;
+    }
     out.push(
-      outsideInlineCode(line, (chunk) => {
-        const definition = REFERENCE_DEFINITION.exec(chunk);
-        if (definition) {
-          return `${definition[1]}${rewriteTarget(definition[2])}${definition[3]}`;
-        }
-        return chunk.replace(
-          INLINE_TARGET,
-          (_match, open: string, target: string, close: string) =>
-            `${open}${rewriteTarget(target)}${close}`,
-        );
-      }),
+      line.replace(
+        INLINE_OR_CODE,
+        (_match, code: string | undefined, open: string, target: string, close: string) => {
+          if (code) return code;
+          return `${open}${rewriteTarget(target)}${close}`;
+        },
+      ),
     );
   });
   return out.join("\n");

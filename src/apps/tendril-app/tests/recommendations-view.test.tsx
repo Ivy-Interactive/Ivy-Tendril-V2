@@ -36,6 +36,9 @@ const renderView = (props: Partial<React.ComponentProps<typeof RecommendationsVi
     <RecommendationsView
       onSelectPlan={props.onSelectPlan ?? vi.fn()}
       onJobStarted={props.onJobStarted}
+      // Spread last so a new prop does not have to be wired in here to reach the view. The
+      // `projects` list arrived with the Create Issue button and was silently dropped until it was.
+      {...props}
     />,
   );
 
@@ -369,5 +372,116 @@ describe("RecommendationsView actions", () => {
     await waitFor(() =>
       expect(screen.getByTestId("recommendation-title")).toHaveTextContent("Second one"),
     );
+  });
+});
+
+/**
+ * Filing a recommendation as a GitHub issue. V2-only: `Apps/Recommendations/` has no issue button,
+ * so there is no C# counterpart to check these against. Issue #214.
+ */
+describe("RecommendationsView create issue", () => {
+  const openDialog = async () => {
+    renderView({ projects: [{ name: "Tendril-App", repos: ["/repos/tendril"] }] as never });
+    await waitFor(() =>
+      expect(screen.getByTestId("recommendation-create-issue")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByTestId("recommendation-create-issue"));
+    await waitFor(() => expect(screen.getByTestId("create-issue-dialog")).toBeInTheDocument());
+  };
+
+  it("starts a CreateIssue job carrying the recommendation as the subject", async () => {
+    const list = vi
+      .spyOn(bridge, "listCrossPlanRecommendations")
+      .mockResolvedValue([
+        rec({ title: "Cache the model list", description: "The catalog refetches every render." }),
+      ]);
+    const setState = vi.spyOn(bridge, "setRecommendationState").mockResolvedValue(undefined);
+    const startJob = vi
+      .spyOn(bridge, "startJob")
+      .mockResolvedValue({ jobId: "00600", status: "Queued" });
+
+    await openDialog();
+    fireEvent.click(screen.getByTestId("dialog-confirm"));
+
+    await waitFor(() =>
+      expect(startJob).toHaveBeenCalledWith({
+        type: "CreateIssue",
+        // The source plan scopes the job; the override is what the issue is about.
+        folderPath: "00021",
+        repo: "/repos/tendril",
+        titleOverride: "Cache the model list",
+        bodyOverride: "The catalog refetches every render.",
+        // `recommendationId()`, which is also what keeps two recommendations of one plan from
+        // colliding on the job's dedupe key.
+        issueSource: "00021::Cache the model list",
+      }),
+    );
+
+    // Filing an issue is not a decision: recommendation state is deliberately untouched, so the
+    // row stays Pending and the list is not re-read.
+    expect(setState).not.toHaveBeenCalled();
+    expect(list).toHaveBeenCalledTimes(1);
+  });
+
+  it("seeds the dialog from the recommendation and lets the wording be fixed first", async () => {
+    vi.spyOn(bridge, "listCrossPlanRecommendations").mockResolvedValue([
+      rec({ title: "Terse title", description: "Terse body." }),
+    ]);
+    const startJob = vi
+      .spyOn(bridge, "startJob")
+      .mockResolvedValue({ jobId: "00601", status: "Queued" });
+
+    await openDialog();
+    expect(screen.getByTestId("create-issue-title")).toHaveValue("Terse title");
+    expect(screen.getByTestId("create-issue-body")).toHaveValue("Terse body.");
+
+    fireEvent.change(screen.getByTestId("create-issue-title"), {
+      target: { value: "A title someone can act on" },
+    });
+    fireEvent.click(screen.getByTestId("dialog-confirm"));
+
+    await waitFor(() =>
+      expect(startJob).toHaveBeenCalledWith(
+        expect.objectContaining({ titleOverride: "A title someone can act on" }),
+      ),
+    );
+  });
+
+  it("will not file an issue with no title", async () => {
+    vi.spyOn(bridge, "listCrossPlanRecommendations").mockResolvedValue([rec()]);
+    const startJob = vi.spyOn(bridge, "startJob");
+
+    await openDialog();
+    fireEvent.change(screen.getByTestId("create-issue-title"), { target: { value: "   " } });
+
+    // The plan's own title is not the fallback here, so there would be nothing to name it with.
+    expect(screen.getByTestId("dialog-confirm")).toBeDisabled();
+    expect(startJob).not.toHaveBeenCalled();
+  });
+
+  it("offers nowhere to run gh when neither plan nor project records a repo", async () => {
+    vi.spyOn(bridge, "listCrossPlanRecommendations").mockResolvedValue([rec()]);
+
+    renderView();
+    await waitFor(() =>
+      expect(screen.getByTestId("recommendation-create-issue")).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByTestId("recommendation-create-issue"));
+
+    await waitFor(() => expect(screen.getByTestId("create-issue-no-repos")).toBeInTheDocument());
+    expect(screen.getByTestId("dialog-confirm")).toBeDisabled();
+  });
+
+  it("is unavailable while a decision is in flight", async () => {
+    vi.spyOn(bridge, "listCrossPlanRecommendations").mockResolvedValue([rec()]);
+    // Never settles, so the accept stays mid-flight for the assertion below.
+    vi.spyOn(bridge, "setRecommendationState").mockReturnValue(new Promise(() => {}));
+
+    renderView({ projects: [{ name: "Tendril-App", repos: ["/repos/tendril"] }] as never });
+    await waitFor(() => expect(screen.getByTestId("recommendation-accept")).toBeInTheDocument());
+
+    fireEvent.click(screen.getByTestId("recommendation-accept"));
+
+    await waitFor(() => expect(screen.getByTestId("recommendation-create-issue")).toBeDisabled());
   });
 });

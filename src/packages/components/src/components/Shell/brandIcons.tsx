@@ -1,6 +1,6 @@
 // Brand icons for coding agents, ported from the Ivy framework's Icon component
 // (ClaudeCode, Antigravity, OpenCode, IvyCorner) and Simple Icons (OpenAI, Gemini,
-// Copilot, Anthropic) so the shell bundle does not depend on react-icons.
+// Copilot, Anthropic, Apple, Cursor) so the shell bundle does not depend on react-icons.
 import React from "react";
 import { ChevronUp, MessageCircle, Terminal } from "lucide-react";
 
@@ -77,6 +77,31 @@ const DiscordIcon = svgIcon(
   "M20.317 4.3698a19.7913 19.7913 0 00-4.8851-1.5152.0741.0741 0 00-.0785.0371c-.211.3753-.4447.8648-.6083 1.2495-1.8447-.2762-3.68-.2762-5.4868 0-.1636-.3933-.4058-.8742-.6177-1.2495a.077.077 0 00-.0785-.037 19.7363 19.7363 0 00-4.8852 1.515.0699.0699 0 00-.0321.0277C.5334 9.0458-.319 13.5799.0992 18.0578a.0824.0824 0 00.0312.0561c1.8483 1.3568 3.6390 2.1885 5.3970 2.7396a.0777.0777 0 00.0842-.0276c.4616-.6304.8731-1.2952 1.226-1.9942a.076.076 0 00-.0416-.1057c-.6528-.2476-1.2743-.5495-1.8722-.8923a.077.077 0 01-.0076-.1277c.1258-.0943.2517-.1923.3718-.2914a.0743.0743 0 01.0776-.0105c3.9278 1.7933 8.18 1.7933 12.0614 0a.0739.0739 0 01.0785.0095c.1202.099.246.1981.3728.2924a.077.077 0 01-.0066.1276 12.2986 12.2986 0 01-1.873.8914.0766.0766 0 00-.0407.1067c.3604.698.7719 1.3628 1.225 1.9932a.076.076 0 00.0842.0286c1.7662-.5511 3.5569-1.3828 5.4052-2.7396a.077.077 0 00.0313-.0552c.5004-5.177-.8382-9.6739-3.5485-13.6604a.061.061 0 00-.0312-.0286zM8.02 15.3312c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9555-2.4189 2.157-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.9555 2.4189-2.1569 2.4189zm7.9748 0c-1.1825 0-2.1569-1.0857-2.1569-2.419 0-1.3332.9554-2.4189 2.1569-2.4189 1.2108 0 2.1757 1.0952 2.1568 2.419 0 1.3332-.946 2.4189-2.1568 2.4189Z",
 );
 
+// The Apple logomark. `Icon.tsx` renders this mark through react-icons' `FaApple`, which this file
+// cannot import (see the constraint at the top), so the same geometry is inlined verbatim, keeping
+// the two renderings identical. The 384x512 viewBox is the mark's own, letterboxed into the square
+// the other icons use rather than re-fitted, so the glyph keeps its proportions.
+//
+// That letterboxing is deliberate, and it is not an outlier: rendered at size 16 the mark measures
+// 11.8x14.0, filling 87.5% of the box, which sits between IvyCorner (83.3%) and Antigravity (64.7%)
+// -- both long shipped. Re-fitting the viewBox to fill the square would make Apple the largest mark
+// in the row instead of a consistent one, so the proportions stay as Apple draws them.
+const AppleIcon = svgIcon(
+  "0 0 384 512",
+  "M318.7 268.7c-.2-36.7 16.4-64.4 50-84.8-18.8-26.9-47.2-41.7-84.7-44.6-35.5-2.8-74.3 20.7-88.5 20.7-15 0-49.4-19.7-76.4-19.7C63.3 141.2 4 184.8 4 273.5q0 39.3 14.4 81.2c12.8 36.7 59 126.7 107.2 125.2 25.2-.6 43-17.9 75.8-17.9 31.8 0 48.3 17.9 76.4 17.9 48.6-.7 90.4-82.5 102.6-119.3-65.2-30.7-61.7-90-61.7-91.9zm-56.6-164.2c27.3-32.4 24.8-61.9 24-72.5-24.1 1.4-52 16.4-67.9 34.9-17.5 19.8-27.8 44.3-25.6 71.9 26.1 2 49.9-11.4 69.5-34.3z",
+);
+
+// The Cursor cube, inlined from Simple Icons for the same reason `AppleIcon` above is: `Icon.tsx`
+// renders this mark through react-icons' `SiCursor`, which this file cannot import, so the geometry
+// is copied verbatim and the two renderings stay identical rather than drifting into two cubes.
+//
+// The mark is one path with two subpaths -- the outer cube and the inner face -- which reads as a
+// hole under the default nonzero fill rule, the way Simple Icons draws it.
+const CursorIcon = svgIcon(
+  "0 0 24 24",
+  "M11.503.131 1.891 5.678a.84.84 0 0 0-.42.726v11.188c0 .3.162.575.42.724l9.609 5.55a1 1 0 0 0 .998 0l9.61-5.55a.84.84 0 0 0 .42-.724V6.404a.84.84 0 0 0-.42-.726L12.497.131a1.01 1.01 0 0 0-.996 0M2.657 6.338h18.55c.263 0 .43.287.297.515L12.23 22.918c-.062.107-.229.064-.229-.06V12.335a.59.59 0 0 0-.295-.51l-9.11-5.257c-.109-.063-.064-.23.061-.23",
+);
+
 const ChevronUpIcon = ({ size = 16, className }: BrandIconProps) => (
   <ChevronUp size={size} className={className} />
 );
@@ -100,6 +125,8 @@ export const brandIcons: Record<string, React.FC<BrandIconProps>> = {
   Copilot: CopilotIcon,
   Anthropic: AnthropicIcon,
   Discord: DiscordIcon,
+  Apple: AppleIcon,
+  Cursor: CursorIcon,
   ChevronUp: ChevronUpIcon,
   Terminal: TerminalIcon,
   MessageCircle: MessageCircleIcon,

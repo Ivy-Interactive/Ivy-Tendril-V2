@@ -279,3 +279,59 @@ describe("PlanGitView pull requests and empty state", () => {
     ).toBeInTheDocument();
   });
 });
+
+/**
+ * `GitTabView.cs` contains exactly two `new Card()`: `RenderNoWorktreesState` at :95 and the
+ * "(no commits)" state at :226. Everything else it renders - each worktree section, the commit
+ * tables, the unassociated-commits block - is a bare `Layout.Vertical()`. V2 had boxed all of them
+ * in a hand-written `rounded-xl border border-border bg-card/40`, which is both a card the
+ * reference does not draw and not the card the reference does draw.
+ *
+ * These pin the split: the two empty states get the shared `Card`'s own classes, and nothing else
+ * gets a surface. Asserting on classes rather than appearance is unusual here, but the whole point
+ * of the change is which element carries a border, and no accessible query can see that.
+ */
+describe("PlanGitView surfaces follow V1's two cards", () => {
+  const boxed = (el: Element | null) =>
+    el?.className.includes("border") && el.className.includes("bg-card");
+
+  it("draws the shared Card, not a hand-rolled surface, around the no-worktrees state", () => {
+    render(<PlanGitView data={data({ worktrees: [] })} planState="Completed" />);
+
+    const box = screen.getByText(/removed after the plan reached its final state/).parentElement;
+    // The shared `Card`: `bg-card` at full opacity plus `shadow`, where the hand-rolled surface
+    // was `bg-card/40` with none.
+    expect(box?.className).toContain("bg-card");
+    expect(box?.className).toContain("shadow");
+    expect(box?.className).not.toContain("bg-card/40");
+  });
+
+  it("draws the shared Card around the (no commits) state", () => {
+    render(<PlanGitView data={data({ worktrees: [section({ commits: [] })] })} />);
+
+    const box = screen.getByText("(no commits)").parentElement;
+    expect(box?.className).toContain("bg-card");
+    expect(box?.className).toContain("shadow");
+    expect(box?.className).not.toContain("bg-card/40");
+  });
+
+  it("leaves a worktree section unboxed, as `RenderWorktreeSection` does", () => {
+    render(<PlanGitView data={data()} />);
+
+    // The section wrapper is the element holding the worktree's name.
+    const name = screen.getByText("Ivy-Tendril-V2");
+    expect(boxed(name.closest("div")?.parentElement ?? null)).toBeFalsy();
+  });
+
+  it("leaves the unassociated commits table unboxed", () => {
+    render(
+      <PlanGitView
+        data={data({ worktrees: [], unassociatedCommits: [commit({ title: "Orphan work" })] })}
+      />,
+    );
+
+    const table = screen.getByText("Orphan work").closest("table");
+    expect(table).not.toBeNull();
+    expect(boxed(table!.parentElement)).toBeFalsy();
+  });
+});

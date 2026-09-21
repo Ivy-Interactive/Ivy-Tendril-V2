@@ -2,7 +2,12 @@ import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } fr
 import { render, screen, fireEvent, act, waitFor } from "@testing-library/react";
 import { SecurityTunnelingSection } from "../src/views/settings/SecurityTunnelingSection";
 import { notificationsStore } from "../src/state/notificationsStore";
-import type { PasswordStatus, TunnelApi, TunnelSnapshot } from "../src/api/tunnelApi";
+import type {
+  CloudflaredInstallState,
+  PasswordStatus,
+  TunnelApi,
+  TunnelSnapshot,
+} from "../src/api/tunnelApi";
 
 /**
  * `Apps/Settings/SecuritySetupView.cs` and the `TunnelSetupView` it composes — V1's one
@@ -39,15 +44,30 @@ const connected = (url: string): TunnelSnapshot => ({
 /** A bridge error as `describeBridgeError`/`bridgeErrorCode` read it. */
 const bridgeError = (code: string, message: string) => ({ code, message });
 
+/** An installed `cloudflared`, which is the state that renders no install block at all. */
+const INSTALLED: CloudflaredInstallState = {
+  installed: true,
+  binaryPath: "/opt/homebrew/bin/cloudflared",
+  expectedPath: "/home/u/.tendril/tools/cloudflared",
+  assetName: "cloudflared-darwin-arm64.tgz",
+  downloadUrl:
+    "https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-darwin-arm64.tgz",
+  downloadable: true,
+};
+
+const MISSING: CloudflaredInstallState = { ...INSTALLED, installed: false, binaryPath: null };
+
 interface StubOptions {
   passwordEnabled?: boolean;
   full?: TunnelSnapshot;
   share?: TunnelSnapshot;
+  /** Defaults to an installed binary, so tests that are not about the installer see no install block. */
+  install?: CloudflaredInstallState;
 }
 
 /**
- * The nine commands the section drives. The mocks are returned individually as well as bundled into an
- * `api`, so an assertion never has to reference one through the object — which would be an unbound
+ * The twelve commands the section drives. The mocks are returned individually as well as bundled into
+ * an `api`, so an assertion never has to reference one through the object — which would be an unbound
  * method reference.
  */
 function stubApi(options: StubOptions = {}) {
@@ -55,6 +75,7 @@ function stubApi(options: StubOptions = {}) {
     passwordEnabled: options.passwordEnabled ?? false,
     full: options.full ?? DISABLED,
     share: options.share ?? DISABLED,
+    install: options.install ?? INSTALLED,
   };
 
   const getPasswordStatus = vi.fn((): Promise<PasswordStatus> =>
@@ -74,6 +95,11 @@ function stubApi(options: StubOptions = {}) {
   const getShareTunnel = vi.fn(() => Promise.resolve(state.share));
   const startShareTunnel = vi.fn(() => Promise.resolve(state.share));
   const stopShareTunnel = vi.fn(() => Promise.resolve(DISABLED));
+  // Reads `state.install` on each call rather than closing over a value, so a test can advance the
+  // install the way the daemon would and let the component's poll pick it up.
+  const getCloudflaredInstallState = vi.fn(() => Promise.resolve(state.install));
+  const installCloudflared = vi.fn(() => Promise.resolve(state.install));
+  const cancelCloudflaredInstall = vi.fn(() => Promise.resolve(state.install));
 
   const api: TunnelApi = {
     getPasswordStatus,
@@ -85,6 +111,9 @@ function stubApi(options: StubOptions = {}) {
     getShareTunnel,
     startShareTunnel,
     stopShareTunnel,
+    getCloudflaredInstallState,
+    installCloudflared,
+    cancelCloudflaredInstall,
   };
   return {
     api,
@@ -98,6 +127,9 @@ function stubApi(options: StubOptions = {}) {
     getShareTunnel,
     startShareTunnel,
     stopShareTunnel,
+    getCloudflaredInstallState,
+    installCloudflared,
+    cancelCloudflaredInstall,
   };
 }
 
@@ -278,7 +310,7 @@ describe("Tunnel (full access)", () => {
       Promise.reject(
         bridgeError(
           "TUNNEL_PASSWORD_REQUIRED",
-          "A full-access tunnel publishes this whole daemon on the public internet, so it needs a password first.",
+          "A full-access tunnel publishes this whole daemon on the public internet, so it needs a password first. Set one under Session Protection, then activate the tunnel.",
         ),
       ),
     );
@@ -287,9 +319,12 @@ describe("Tunnel (full access)", () => {
     await click("full-tunnel-activate");
 
     const error = screen.getByTestId("full-tunnel-error");
-    // The daemon's own message, verbatim, plus a pointer at the form above.
+    // The daemon's own message, verbatim, and nothing else. This pane used to append its own "Set one
+    // under Session Protection above" underneath, which rendered the instruction twice; the remediation
+    // is the daemon's to word so that the share dialog and a CLI caller get it too.
     expect(error).toHaveTextContent(/needs a password first/);
-    expect(error).toHaveTextContent(/Session Protection/);
+    expect(error).toHaveTextContent(/Set one under Session Protection/);
+    expect(error.textContent?.match(/Set one under/g) ?? []).toHaveLength(1);
     // A refused start leaves no spinner behind — V1's `status.Set(TunnelStatus.Disabled)` in its catch.
     expect(screen.queryByTestId("full-tunnel-connecting")).not.toBeInTheDocument();
     expect(screen.getByTestId("full-tunnel-activate")).toBeInTheDocument();
@@ -373,8 +408,114 @@ describe("Share Tunnel", () => {
     await click("share-tunnel-activate");
 
     const error = screen.getByTestId("share-tunnel-error");
+    // The daemon's message, verbatim and with nothing appended. The offer to fetch it lives in its own
+    // block above rather than inside a tunnel's error, because there is one cloudflared for both.
     expect(error).toHaveTextContent(/brew install cloudflared/);
-    // No "shall I download it for you?" prompt: V2 does not fetch unpinned binaries.
-    expect(error).not.toHaveTextContent(/download/i);
+  });
+
+  it("shows the copy error and fires no success toast when neither clipboard mechanism works", async () => {
+    const { api } = stubApi({ share: connected("https://otter.trycloudflare.com") });
+    const writeText = vi.fn(() => Promise.reject(new Error("clipboard blocked")));
+    Object.assign(navigator, { clipboard: { writeText } });
+    // jsdom does not implement `execCommand`, but that is an environment gap, not a guarantee this
+    // test should lean on — make the "no working fallback" case explicit rather than relying on it.
+    document.execCommand = vi.fn(() => false);
+    await renderSection(api);
+
+    await waitFor(() => expect(screen.getByTestId("share-tunnel-active")).toBeInTheDocument());
+    await click("share-tunnel-copy");
+
+    expect(writeText).toHaveBeenCalledWith("https://otter.trycloudflare.com");
+    expect(screen.getByTestId("share-tunnel-error")).toHaveTextContent(/Could not copy the URL/);
+    expect(notifySuccess).not.toHaveBeenCalledWith("URL Copied", expect.anything());
+  });
+});
+
+describe("cloudflared install", () => {
+  it("says nothing at all when cloudflared is already there", async () => {
+    const { api } = stubApi();
+    await renderSection(api);
+
+    expect(screen.queryByTestId("cloudflared-install")).not.toBeInTheDocument();
+  });
+
+  it("offers to install a missing cloudflared, and keeps the manual instructions underneath", async () => {
+    const { api, installCloudflared } = stubApi({ install: MISSING });
+    await renderSection(api);
+
+    expect(screen.getByTestId("cloudflared-install")).toBeInTheDocument();
+    // The manual route is demoted to a fallback, not deleted: it is what a failed download falls back
+    // to and the supported path for anyone who would rather own the binary.
+    const manual = screen.getByTestId("cloudflared-manual");
+    expect(manual).toHaveTextContent(/brew install cloudflared/);
+    expect(manual).toHaveTextContent(/cloudflared-darwin-arm64\.tgz/);
+
+    // Nothing is fetched until the user asks: mounting the section must not start a download.
+    expect(installCloudflared).not.toHaveBeenCalled();
+
+    await click("cloudflared-install-button");
+    expect(installCloudflared).toHaveBeenCalled();
+  });
+
+  it("shows download progress and offers a way out of it", async () => {
+    const { api, state, cancelCloudflaredInstall } = stubApi({
+      install: {
+        ...MISSING,
+        progress: {
+          phase: "downloading",
+          downloadedBytes: 10_485_760,
+          totalBytes: 20_971_520,
+        },
+      },
+    });
+    await renderSection(api);
+
+    expect(screen.getByTestId("cloudflared-progress")).toHaveTextContent(/50%/);
+
+    // A 40 MB transfer the user cannot escape is as bad as one with no progress at all.
+    state.install = { ...MISSING, progress: { phase: "cancelled", downloadedBytes: 0 } };
+    await click("cloudflared-cancel");
+
+    expect(cancelCloudflaredInstall).toHaveBeenCalled();
+    await waitFor(() => expect(screen.getByTestId("cloudflared-cancelled")).toBeInTheDocument());
+  });
+
+  it("falls back to the manual instructions when the download fails", async () => {
+    const { api } = stubApi({
+      install: {
+        ...MISSING,
+        progress: {
+          phase: "failed",
+          downloadedBytes: 0,
+          error:
+            "could not reach GitHub to look up the cloudflared release. Check your network, or install cloudflared yourself.",
+        },
+      },
+    });
+    await renderSection(api);
+
+    expect(screen.getByTestId("cloudflared-error")).toHaveTextContent(/could not reach GitHub/);
+    expect(screen.getByTestId("cloudflared-manual")).toHaveTextContent(/brew install cloudflared/);
+    // A failure is retryable — the button stays, relabelled.
+    expect(screen.getByTestId("cloudflared-install-button")).toHaveTextContent(/Try again/);
+  });
+
+  it("does not offer to download over an operator's own binaryPath", async () => {
+    const { api } = stubApi({
+      install: {
+        ...MISSING,
+        downloadable: false,
+        configuredPathError:
+          "shareTunnel.binaryPath is set to /opt/wrong/cloudflared, which is not an executable file",
+      },
+    });
+    await renderSection(api);
+
+    // "your configured path is wrong" and "cloudflared is missing" stay distinct: fetching a copy into
+    // tools/ would not even be used, because the override wins in `resolve_binary`.
+    expect(screen.getByTestId("cloudflared-configured-error")).toHaveTextContent(
+      /shareTunnel\.binaryPath is set to/,
+    );
+    expect(screen.queryByTestId("cloudflared-install-button")).not.toBeInTheDocument();
   });
 });

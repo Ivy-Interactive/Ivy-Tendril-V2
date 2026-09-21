@@ -45,5 +45,3 @@ export function ErrorSheet() {
     </>
   );
 }
-
-export default ErrorSheet;

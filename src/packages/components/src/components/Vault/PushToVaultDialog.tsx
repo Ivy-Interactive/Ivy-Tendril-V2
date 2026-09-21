@@ -233,7 +233,7 @@ export const PushToVaultDialog: React.FC<PushToVaultDialogProps> = ({
                   </label>
                   <Badge variant="secondary">{assetSummary(project)}</Badge>
                   <CollapsibleTrigger
-                    className="group ml-auto rounded-selector p-1 text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
+                    className="group ml-auto rounded-selector p-1 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
                     aria-label={`Assets for ${project}`}
                   >
                     <ChevronDown

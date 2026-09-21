@@ -7,8 +7,8 @@
 use std::collections::HashMap;
 use std::path::PathBuf;
 use tendril_core::agents::{
-    build_agent_spec, format_opencode_model, AgentLaunchConfig, AgentProcessSpec, McpServerConfig,
-    ANTIGRAVITY_TOOL_SCHEMA_GUARDRAILS,
+    build_agent_spec, format_opencode_model, model_specs, pricing, AgentLaunchConfig,
+    AgentProcessSpec, McpServerConfig, ANTIGRAVITY_TOOL_SCHEMA_GUARDRAILS,
 };
 
 /// One launch config exercising every field a provider might render.
@@ -265,6 +265,79 @@ fn opencode_renders_neither_tools_nor_directories() {
     assert_opencode_mcp_env(&spec);
 }
 
+/// The provider with no effort flag at all. Everything else on this page renders the level as its
+/// own argument; Cursor has to fold it into the model, so the one field most likely to be silently
+/// dropped is the one that does not appear in the argument list under its own name.
+#[test]
+fn cursor_folds_the_effort_into_the_model_id() {
+    let spec = build_agent_spec("cursor", &full_config());
+
+    assert!(
+        spec.command.contains("cursor-agent"),
+        "cursor should launch cursor-agent, got {}",
+        spec.command
+    );
+
+    assert_eq!(
+        spec.args,
+        s(&[
+            "--print",
+            "--output-format",
+            "stream-json",
+            // Without `--trust`, a `--print` run stops to ask about the workspace and emits nothing.
+            "--trust",
+            "--force",
+            // `opus` at `max`: the alias is not one of Cursor's families, so it carries no ladder
+            // and stays bare rather than becoming a model id that does not exist.
+            "--model",
+            "opus",
+            "--allowed-tools",
+            "read_tool_call,edit_tool_call",
+            "--exclude-tools",
+            "shell_tool_call",
+            "--add-dir",
+            "/home/.tendril",
+            "--add-dir",
+            "/plans/00553",
+            "--add-dir",
+            "/plans/00553/Artifacts",
+            "--flag",
+        ])
+    );
+
+    // There is no `--effort` to find, on any model.
+    assert!(!spec.args.iter().any(|a| a == "--effort"));
+
+    // A real Cursor family does carry its ladder, and `max` is above plain Opus 5's top rung.
+    let composed = |model: &str, effort: &str| {
+        build_agent_spec(
+            "cursor",
+            &AgentLaunchConfig {
+                model: Some(model.to_string()),
+                effort: Some(effort.to_string()),
+                ..full_config()
+            },
+        )
+        .args
+        .join(" ")
+    };
+    assert!(composed("claude-opus-5", "max").contains("--model claude-opus-5-high"));
+    assert!(
+        composed("claude-opus-5-thinking", "max").contains("--model claude-opus-5-thinking-max")
+    );
+    assert!(composed("gpt-5.6-terra", "low").contains("--model gpt-5.6-terra-low"));
+
+    // The prompt goes down stdin, and the system prompt with it -- `--system-prompt` parses locally
+    // and is then rejected by the server, so there is nothing to render it as.
+    assert_eq!(spec.stdin_content.as_deref(), Some("Do the thing."));
+    assert!(spec.redirect_stdin);
+
+    // MCP is not rendered at all: Cursor reads servers only from `.cursor/mcp.json`, and writing
+    // that would clobber the user's own file. A `--mcp-config` here would be a flag Cursor rejects.
+    assert!(!spec.args.iter().any(|a| a == "--mcp-config"));
+    assert!(spec.temp_files.is_empty());
+}
+
 #[test]
 fn copilot_merges_explicit_and_extracted_directories() {
     let spec = build_agent_spec("copilot", &full_config());
@@ -433,6 +506,183 @@ fn ivy_delegates_to_opencode_with_the_proxy_model() {
 }
 
 #[test]
+fn apple_pins_the_only_model_fm_serve_offers_and_drops_effort() {
+    let spec = build_agent_spec("apple", &full_config());
+
+    // `full_config` asks for opus at max effort. Neither survives: `fm serve` serves exactly one
+    // model and rejects any other id, and the on-device model has no reasoning-effort control, so
+    // no `--variant` is rendered at all.
+    assert_eq!(
+        args_with_mcp_placeholder(&spec),
+        s(&[
+            "run",
+            "--auto",
+            "--format",
+            "json",
+            "--model",
+            "apple/system",
+            "--agent",
+            "apple-fm",
+            "--flag",
+        ])
+    );
+
+    // OpenCode ships no Apple provider, so the launch carries one inline rather than writing a
+    // config file the spec would have to clean up.
+    let config = spec
+        .environment
+        .get("OPENCODE_CONFIG_CONTENT")
+        .expect("apple must declare its provider inline");
+    let parsed: serde_json::Value =
+        serde_json::from_str(config).expect("the inline config must be valid JSON");
+    assert_eq!(
+        parsed["provider"]["apple"]["options"]["baseURL"],
+        serde_json::json!("http://127.0.0.1:1976/v1"),
+        "the provider must point at the local fm serve endpoint"
+    );
+    assert_eq!(
+        parsed["provider"]["apple"]["models"]["system"]["limit"]["context"],
+        serde_json::json!(8192)
+    );
+    // Every tool off, not a chosen few. Measured against a live `fm serve`: the six-tool list this
+    // started as left 2,740 of the 8,192-token window spent describing tools before the question
+    // was read, and turning the rest off brings that to 512. The model emits no tool calls at all,
+    // so a tool left on buys nothing and costs the conversation its headroom.
+    let tools = parsed["agent"]["apple-fm"]["tools"]
+        .as_object()
+        .expect("apple declares a tool surface");
+    assert!(
+        tools
+            .values()
+            .all(|enabled| enabled == &serde_json::json!(false)),
+        "every tool must be off, found some enabled: {tools:?}"
+    );
+    for required in [
+        // The catch-all, and the only entry that covers tools this code cannot name: OpenCode
+        // registers one per discovered `SKILL.md` folder and one per tool an attached MCP server
+        // advertises. Both leaked past a list of builtins (this repo's six skills cost 1,305 input
+        // tokens against 507 in an empty directory; a one-tool probe server cost 47 more), and the
+        // skills are what made the model announce a `tendrillable` call it never emitted.
+        "*",
+        // Kept named alongside the wildcard so a regression in the skill surface specifically
+        // fails here, rather than silently restoring the loop.
+        "skill",
+        "webfetch",
+        "task",
+        "todowrite",
+        "todoread",
+        "patch",
+        "multiedit",
+        "bash",
+        "edit",
+        "write",
+        "read",
+        "grep",
+        "glob",
+        "list",
+    ] {
+        assert_eq!(
+            tools.get(required),
+            Some(&serde_json::json!(false)),
+            "{required} must be named explicitly; OpenCode enables anything left unlisted"
+        );
+    }
+
+    // The prompt is the half of this that tool flags cannot do. Under OpenCode's own prompt the
+    // on-device model answered "are you alive?" with `[WebFetch] Retrieved from opencode.ai: ...`,
+    // inventing a tool transcript for a tool that was already disabled and that the emitted JSON
+    // shows was never called -- a small model given a prompt that is mostly tool-calling protocol
+    // imitates the protocol. Replacing the prompt is what stops it.
+    let prompt = parsed["agent"]["apple-fm"]["prompt"]
+        .as_str()
+        .expect("apple must override OpenCode's system prompt");
+    assert!(
+        prompt.contains("no tools"),
+        "the prompt has to tell the model it has no tools: {prompt}"
+    );
+    assert!(
+        prompt.contains("square brackets"),
+        "the prompt has to name the shape it was hallucinating: {prompt}"
+    );
+    // The model cannot act, and the turn ends with its reply, so an announced intent is never
+    // carried out -- that is what made a chat repeat "I will now find these issues" verbatim after
+    // the user pointed out nothing had happened.
+    assert!(
+        prompt.contains("no later in which to act"),
+        "the prompt has to rule out promising work it cannot do in a later turn: {prompt}"
+    );
+    // Removing the promise alone made it invent: the same question came back with three plausible
+    // fabricated issues. It needs a truthful alternative to offer in place of the promise.
+    assert!(
+        prompt.contains("cannot access it"),
+        "the prompt has to give it an honest refusal to use instead of inventing: {prompt}"
+    );
+
+    // The Apple stanza shares `OPENCODE_CONFIG_CONTENT` with the MCP servers, because `opencode
+    // run` takes no `--mcp-config` flag and that variable is the only channel they have. Writing
+    // the provider over the document instead of into it would silently drop every server and leave
+    // the agent unable to call back into Tendril.
+    assert_eq!(
+        parsed["mcp"]["tendril"],
+        serde_json::json!({
+            "type": "local",
+            "command": ["tendril", "mcp"],
+            "enabled": true,
+        }),
+        "declaring the Apple provider must not drop the MCP servers sharing this variable"
+    );
+
+    // Declaring the agent does nothing on its own: OpenCode runs its default `build` agent unless
+    // `--agent` names another one. Measured against `fm serve`, the difference is about 6.9k input
+    // tokens versus about 4.5k for the same prompt, out of a window of 8k. Asserting the flag and
+    // the stanza together is what keeps one from being changed without the other.
+    let agent_flag = spec
+        .args
+        .iter()
+        .position(|a| a == "--agent")
+        .map(|i| spec.args[i + 1].as_str());
+    assert_eq!(
+        agent_flag,
+        Some("apple-fm"),
+        "the trimmed agent must be selected, not merely declared"
+    );
+
+    assert_eq!(
+        spec.environment.get("OPENAI_BASE_URL"),
+        Some(&"http://127.0.0.1:1976/v1".to_string())
+    );
+}
+
+/// The id a run is billed under is the one the launch puts on the wire, not the one the catalog
+/// happens to display. Those were two different strings once: the launch sent `apple/system` while
+/// the price row was named `apple-foundation-system`, so `find` missed and `get_model_price` fell
+/// back to its hardcoded 3.00/15.00 — a free on-device run recorded at Sonnet rates. Asserting the
+/// launched id against the price list, rather than either one against a literal, is what keeps a
+/// rename of one from silently un-pricing the other.
+#[test]
+fn the_apple_model_the_launch_sends_is_the_one_the_price_list_knows() {
+    let spec = build_agent_spec("apple", &full_config());
+
+    let model_index = spec
+        .args
+        .iter()
+        .position(|a| a == "--model")
+        .expect("apple must pin a model");
+    let launched = &spec.args[model_index + 1];
+
+    let priced = model_specs::find(launched)
+        .unwrap_or_else(|| panic!("the launched model '{}' is not in the price list", launched));
+    assert_eq!(priced.model_id.as_ref(), launched);
+
+    let price = pricing::get_model_price(launched);
+    assert_eq!(
+        (price.input_per_million, price.output_per_million),
+        (0.0, 0.0),
+        "the on-device model runs locally and bills nothing"
+    );
+}
+
+#[test]
 fn openai_proxy_delegates_to_opencode() {
     let spec = build_agent_spec("openaiproxy", &full_config());
 
@@ -514,6 +764,33 @@ fn test_interactive_pty_specs_match_v1() {
     assert!(gemini.contains(&"--yolo".to_string()));
     assert!(gemini.contains(&"--skip-trust".to_string()));
     assert!(gemini.windows(2).any(|w| w == ["-i", "fix the queue"]));
+
+    // `CursorPty`: `--trust` is as necessary interactively as it is in `--print`, but `--force` is
+    // not -- an interactive user is there to approve. And no `--print`/`--output-format`, which
+    // would turn the pane into a log.
+    let cursor = with_prompt("cursor");
+    // The binary resolves to an absolute path when one is installed, the same way OpenCode's does.
+    assert!(cursor[0].ends_with("cursor-agent"), "got {}", cursor[0]);
+    assert_eq!(cursor[1], "--trust");
+    assert!(!cursor.contains(&"--print".to_string()));
+    assert!(!cursor.contains(&"--force".to_string()));
+    assert_eq!(cursor.last().map(String::as_str), Some("fix the queue"));
+    // `default` is not a model here either.
+    assert!(!cursor.contains(&"--model".to_string()));
+
+    // A real model is composed the same way the one-shot path composes it, minus an effort the
+    // interactive config has no field for.
+    let cursor_model = build_agent_pty_spec(
+        "cursor",
+        &AgentPtyConfig {
+            model: Some("claude-opus-5".to_string()),
+            ..Default::default()
+        },
+    )
+    .argv;
+    assert!(cursor_model
+        .windows(2)
+        .any(|w| w == ["--model", "claude-opus-5"]));
 
     // A real model reaches the command line, normalised the way the one-shot path normalises it.
     let claude_opus = build_agent_pty_spec(

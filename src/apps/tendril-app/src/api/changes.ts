@@ -9,6 +9,11 @@ export interface ChangeInvalidationDeps {
   refreshPlanDetail: (folder: string) => void;
   refreshJobs: () => void;
   refreshProjects: () => void;
+  /**
+   * Re-reads the `chatMode` setting. Optional so a caller that does not launch chats (a test, an
+   * embedded host) need not supply one.
+   */
+  refreshChatMode?: () => void;
   /** Folder path or name of the plan currently open in the detail view, if any. */
   selectedPlanFolder?: string | null;
 }
@@ -36,6 +41,11 @@ export function applyChangeEvent(event: ChangeEvent, deps: ChangeInvalidationDep
     case "config": {
       // The shell's `projects` state and every project dropdown are derived from config.yaml.
       deps.refreshProjects();
+      // So is `chatMode`, and it used to be the one derived value nothing refreshed: the shell read
+      // it once at mount, so choosing "terminal" in Appearance did nothing until the app restarted.
+      // The setting is written through the same `putConfig` that raises this event, so the pane that
+      // changed it and a `tendril config` edit from the CLI both land here.
+      deps.refreshChatMode?.();
       break;
     }
     case "inbox": {

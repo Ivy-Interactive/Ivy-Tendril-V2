@@ -75,6 +75,19 @@ tendril promptware delete-memory {PROMPTWARE_NAME} <filename>.md
 /// an agent is the failure this section exists to fix.
 pub const PLAN_REFERENCE: &str = include_str!("plan_reference.md");
 
+/// The wireframe guidance, appended after [`PLAN_REFERENCE`] for the promptwares that mention
+/// wireframes at all.
+///
+/// It is a separate document, and separately gated, for a reason the reference's own size test
+/// states: the reference is appended to a prompt on every run of seven promptwares, so its length is
+/// a real and recurring token cost, and it is held under V1's 479 lines. Wireframe guidance is 98
+/// lines that only some of those runs can act on -- CreatePr is told to run one command and never
+/// writes a wireframe, and the four promptwares that author no plan content at all never see either
+/// document. Folding it into `plan_reference.md` put that file 99 lines over its ceiling, which is
+/// what the size test caught; splitting it keeps every promptware paying for exactly the guidance it
+/// cites.
+pub const WIREFRAME_REFERENCE: &str = include_str!("wireframe_reference.md");
+
 /// Whether a `Program.md` sends the agent to the `## Reference Documents` section.
 ///
 /// The section is appended **only** to promptwares that cite it, rather than to every promptware as
@@ -87,6 +100,17 @@ pub const PLAN_REFERENCE: &str = include_str!("plan_reference.md");
 /// ExecutePlan writes "see the plan link rules in the Reference Documents" with no emphasis.
 pub fn cites_reference_documents(program: &str) -> bool {
     program.to_ascii_lowercase().contains("reference documents")
+}
+
+/// Whether a `Program.md` needs the wireframe guidance appended.
+///
+/// Same rule as [`cites_reference_documents`], on the bare word: a Program that never mentions
+/// wireframes never pays for the section, and one that starts mentioning them gets it on the next
+/// compile with no code change. The citations are not uniformly bold or uniformly phrased --
+/// CreatePlan writes "**Wireframes** in the Reference Documents", RetryPlan writes "Wireframes are a
+/// layout reference, never code" -- so matching the word is what covers them all.
+pub fn cites_wireframes(program: &str) -> bool {
+    program.to_ascii_lowercase().contains("wireframe")
 }
 
 pub fn compile_firmware(program_folder: &Path, values: &HashMap<String, String>) -> Result<String> {
@@ -155,7 +179,12 @@ fn render_reference_documents(program_content: &str) -> String {
         return String::new();
     }
 
-    format!("\n{}", PLAN_REFERENCE.trim_end())
+    let mut rendered = format!("\n{}", PLAN_REFERENCE.trim_end());
+    if cites_wireframes(program_content) {
+        rendered.push_str("\n\n");
+        rendered.push_str(WIREFRAME_REFERENCE.trim_end());
+    }
+    rendered
 }
 
 /// Renders the `## Project Skills` firmware section. Empty when there are no skills, so the

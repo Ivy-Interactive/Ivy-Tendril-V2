@@ -3,6 +3,7 @@ import Markdown, { defaultUrlTransform } from "react-markdown";
 import "./plan-markdown.css";
 import { getHeight, getWidth } from "@/lib/styles";
 import { BlockHandler } from "./BlockHandler";
+import { WireframeBaseContext } from "./wireframeContext";
 import type { MarkdownAnnotation } from "./annotationUtils";
 import {
   applyAnnotationHighlights,
@@ -27,10 +28,26 @@ export type IvyEventHandler = (eventName: string, widgetId: string, args: unknow
 
 export interface PlanMarkdownProps {
   id: string;
+  /**
+   * Where the plan being rendered serves its wireframes, ending in a slash (`/__wireframes/123/`).
+   * Undefined means this markdown is not a plan - a chat message, an agent's summary - and a
+   * `wireframe` fence renders a placeholder rather than a live preview.
+   */
+  wireframeBaseUrl?: string;
   width?: string;
   height?: string;
   content?: string;
   article?: boolean;
+  /**
+   * Render the markdown body on its own, without the plan page around it.
+   *
+   * V1 has no equivalent flag because it has no shared component: `ChatWidget`/`AssistantTurn`
+   * render `BlockMarkdown` inside a plain `.chat-markdown-body`, and `.pmv-root`'s shell — the
+   * `Cap()` stand-in, the 1.5rem gutter, the widget's own scroll — belongs to the plan tab alone.
+   * Sharing one renderer here means a chat turn gets that page unless it opts out, which is what
+   * pushes a code block's left edge out of line with the prose above it.
+   */
+  flow?: boolean;
   dangerouslyAllowLocalFiles?: boolean;
   annotations?: MarkdownAnnotation[];
   scrollTo?: { questionId: string; token: number } | null;
@@ -55,10 +72,12 @@ const EMPTY_ANNOTATIONS: MarkdownAnnotation[] = [];
 
 export const PlanMarkdown: React.FC<PlanMarkdownProps> = ({
   id,
+  wireframeBaseUrl,
   width,
   height,
   content = "",
   article = false,
+  flow = false,
   dangerouslyAllowLocalFiles = false,
   annotations = EMPTY_ANNOTATIONS,
   scrollTo,
@@ -507,7 +526,7 @@ export const PlanMarkdown: React.FC<PlanMarkdownProps> = ({
   };
 
   return (
-    <div className="pmv-root" style={shellStyle}>
+    <div className={flow ? "pmv-root pmv-root--flow" : "pmv-root"} style={shellStyle}>
       {isSearchOpen && (
         <SearchOverlay
           query={searchQuery}
@@ -523,7 +542,9 @@ export const PlanMarkdown: React.FC<PlanMarkdownProps> = ({
         <div className="pmv-body">
           <div ref={contentRef} className={article ? "pmv-markdown pmv-article" : "pmv-markdown"}>
             <QuestionsAnswerContext.Provider value={answerCallback}>
-              {markdownTree}
+              <WireframeBaseContext.Provider value={wireframeBaseUrl || undefined}>
+                {markdownTree}
+              </WireframeBaseContext.Provider>
             </QuestionsAnswerContext.Provider>
           </div>
         </div>

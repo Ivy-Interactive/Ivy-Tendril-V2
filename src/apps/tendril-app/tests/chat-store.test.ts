@@ -169,7 +169,7 @@ describe("ChatStore State Management & Event Handling", () => {
     });
   });
 
-  it("dispatches expected payload to chatApi.answerQuestions on submitAnswer", async () => {
+  it("dispatches expected payload to chatApi.answerQuestions on submitAnswers", async () => {
     vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSession]);
     vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSession);
     vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
@@ -190,8 +190,8 @@ describe("ChatStore State Management & Event Handling", () => {
 
     await chatStore.fetchSessions();
 
-    // Call submitAnswer with single option string
-    await chatStore.submitAnswer("asst-msg-q", "db-choice", "sqlite");
+    // One question in the block
+    await chatStore.submitAnswers("asst-msg-q", { "db-choice": ["sqlite"] });
 
     expect(answerSpy).toHaveBeenCalledWith("session-1", "asst-msg-q", {
       "db-choice": ["sqlite"],
@@ -199,11 +199,16 @@ describe("ChatStore State Management & Event Handling", () => {
 
     expect(chatStore.getState().activeSession?.messages[0].content).toBe("Answered: SQLite");
 
-    // Call submitAnswer with array of options
-    await chatStore.submitAnswer("asst-msg-q", "features", ["auth", "logging"]);
+    // A whole block at once: one call carries every question, which is the point of batching.
+    await chatStore.submitAnswers("asst-msg-q", {
+      features: ["auth", "logging"],
+      "db-choice": ["sqlite"],
+    });
     expect(answerSpy).toHaveBeenCalledWith("session-1", "asst-msg-q", {
       features: ["auth", "logging"],
+      "db-choice": ["sqlite"],
     });
+    expect(answerSpy).toHaveBeenCalledTimes(2);
   });
 
   it("handles queue addition and deletion", async () => {
@@ -380,7 +385,7 @@ describe("ChatStore State Management & Event Handling", () => {
       await chatStore.fetchSessions();
 
       // Initiate submission
-      const submitPromise = chatStore.submitAnswer("msg-q", "db", "postgres");
+      const submitPromise = chatStore.submitAnswers("msg-q", { db: ["postgres"] });
 
       // While in flight, inProgressAnswers has the selection
       expect(chatStore.getInProgressAnswers("msg-q")).toEqual({
@@ -432,7 +437,7 @@ describe("ChatStore State Management & Event Handling", () => {
 
       await chatStore.fetchSessions();
 
-      await expect(chatStore.submitAnswer("msg-q2", "db", "sqlite")).rejects.toThrow(
+      await expect(chatStore.submitAnswers("msg-q2", { db: ["sqlite"] })).rejects.toThrow(
         "Network timeout",
       );
 
