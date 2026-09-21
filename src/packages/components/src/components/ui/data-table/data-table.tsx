@@ -864,7 +864,17 @@ function DataTableInner<TRow>(
             pageSizeOptions={pageSizeOptions}
             total={total}
             rangeStart={pagination.rangeStart}
-            rangeEnd={pagination.rangeEnd}
+            /* `pagination.rangeEnd` is page arithmetic — `min(page * pageSize, total)` — so under
+               `manualPagination` it believes whatever `rowCount` the caller passed. A caller whose
+               own rows were narrowed after the count was taken makes the footer claim more rows
+               than the body holds; the Inbox did exactly that, reading "Showing 1-50 of 51" over
+               44 rendered rows. The footer can never be more right than the rows on screen, so
+               clamp it to them. */
+            rangeEnd={
+              pageRows.length === 0
+                ? pagination.rangeEnd
+                : Math.min(pagination.rangeEnd, pagination.rangeStart + pageRows.length - 1)
+            }
             onPageChange={pagination.setPage}
             onPageSizeChange={pagination.setPageSize}
           />

@@ -31,9 +31,9 @@ vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
  * claim a seeded value it never showed.
  */
 function visibleText(root: HTMLElement): string {
-  const controls = root.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
-    "input, textarea, select",
-  );
+  const controls = root.querySelectorAll<
+    HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+  >("input, textarea, select");
   const values = Array.from(controls, (c) => c.value ?? "");
   return [root.textContent ?? "", ...values].join("\n");
 }

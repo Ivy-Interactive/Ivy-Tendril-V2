@@ -1014,6 +1014,14 @@ export const InboxView: React.FC<InboxViewProps> = ({
       : `${activeProject?.name || selectedProject || "Project"} Issues`;
 
   /**
+   * The Issues categories are served from `repos/{slug}/issues`, which answers with pull requests
+   * too, so `filteredIssues` drops them (see above) whether or not the user has typed a filter.
+   * That drop is a client-side narrowing exactly like the search box is, and the footer has to
+   * count it: leaving it out is what made a page of 50 render 44 rows under "Showing 1-50 of 51".
+   */
+  const dropsPullRequests = !isReviews && issues.some((issue) => issue.isPullRequest === true);
+
+  /**
    * V1's search and column filters run over `allIssues`, the whole category, and its footer counts
    * whatever survived them. V2's run over the page the daemon returned, so while a filter is active
    * the footer has to count the filtered rows: reporting the server's total next to one visible row,
@@ -1021,7 +1029,10 @@ export const InboxView: React.FC<InboxViewProps> = ({
    * filtering searches what is loaded.
    */
   const isClientFiltered =
-    searchQuery.trim().length > 0 || selectedLabels.length > 0 || selectedAssignees.length > 0;
+    searchQuery.trim().length > 0 ||
+    selectedLabels.length > 0 ||
+    selectedAssignees.length > 0 ||
+    dropsPullRequests;
 
   const rowCount = isClientFiltered
     ? filteredIssues.length
@@ -1187,11 +1198,17 @@ export const InboxView: React.FC<InboxViewProps> = ({
                 Deselect All
               </Button>
               {/* V1: `{selectedCount} of {allIssues.Count} selected`, where `allIssues` is the whole
-                  category rather than the visible page, and is not narrowed by the table's own
-                  search. The daemon's `totalCount` is that number; it is absent for a project's
-                  issues, which come back as a bare array, so the page length stands in there. */}
+                  category, which V1 had loaded in full. V2 pages, so this counts against the same
+                  denominator the footer prints - the server total normally, the rows that survived
+                  a client-side narrowing when one is in effect. Reading the raw `totalCount` here
+                  was the other half of "I made select all, its only 44": Select All could only
+                  reach the 44 rows the PR drop left, and the label answered 51.
+
+                  `Math.max` because a selection outlives the page it was made on: two pages of one
+                  row each leave `selectedCount` at 2 while the current page holds 1, and "2 of 1"
+                  is worse than the total it is counting towards. */}
               <span className="text-xs text-muted-foreground" data-testid="inbox-selection-summary">
-                {selectedCount} of {totalCount ?? issues.length} selected
+                {selectedCount} of {Math.max(selectedCount, rowCount)} selected
               </span>
               {onOpenChat && (
                 <Button

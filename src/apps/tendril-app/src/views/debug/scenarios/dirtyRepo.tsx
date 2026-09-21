@@ -96,7 +96,9 @@ export const dirtyRepoSurface = defineSurface("DirtyRepoDialog", "dialog", Dirty
     props: {
       dirtyRepos: [
         repo("/Users/dev/source/repos/Company.Product.Web", ["M src/Components/Dashboard.tsx"]),
-        repo("/Users/dev/source/repos/Company.Product.Api", ["M Controllers/ReportingController.cs"]),
+        repo("/Users/dev/source/repos/Company.Product.Api", [
+          "M Controllers/ReportingController.cs",
+        ]),
         repo("/Users/dev/source/repos/Company.Product.Shared", ["M Models/Report.cs"]),
         repo("/Users/dev/source/repos/Company.Product.Infrastructure", ["M Terraform/main.tf"]),
       ],

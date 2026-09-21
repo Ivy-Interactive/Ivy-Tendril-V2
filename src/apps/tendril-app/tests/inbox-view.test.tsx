@@ -683,6 +683,34 @@ describe("InboxView Component & Triage Tests", () => {
 
       await waitFor(() => expect(issueRow(103)).not.toBeNull());
     });
+
+    it("counts the dropped pull requests out of the footer and the selection summary", async () => {
+      // The user's report: "it says showing first 50, but lol wtf i made select all its only 44".
+      // A page of 50 that holds 6 pull requests renders 44 rows, and both numbers beside it used
+      // to come from the server instead: the footer read "Showing 1-50 of 51" and Select All
+      // filled 44 while the summary claimed 51. The PR drop is a client-side narrowing exactly as
+      // the search box is, so it has to count as one.
+      const page = Array.from({ length: 50 }, (_, i) => ({
+        ...mockIssues[0],
+        number: 200 + i,
+        title: `Issue ${200 + i}`,
+        isPullRequest: i >= 44,
+      }));
+      listGitHubIssuesSpy.mockResolvedValue(
+        makePage(page, { hasMore: true, totalCount: 51, perPage: PAGE_SIZE }),
+      );
+
+      render(<InboxView projects={mockProjects} />);
+      await waitForInboxIdle();
+      await waitFor(() => expect(issueRow(200)).not.toBeNull());
+
+      expect(issueRow(244)).toBeNull();
+      expect(document.querySelectorAll("[data-row-id]").length).toBe(44);
+      expect(screen.getByText("Showing 1–44 of 44")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Select All" }));
+      expect(screen.getByTestId("inbox-selection-summary")).toHaveTextContent("44 of 44 selected");
+    });
   });
 
   describe("issue urls and target projects", () => {
