@@ -1,5 +1,6 @@
 import * as React from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { copyToClipboard } from "@ivy-interactive/components";
 import { Button, Callout, Spinner } from "@ivy-interactive/components/ui";
 import { ClipboardCopy, ExternalLink, Share2 } from "lucide-react";
 import { describeBridgeError, bridgeErrorCode } from "../../types/api";
@@ -199,7 +200,7 @@ export function ShareTunnelDialog({
   const handleCopy = async () => {
     if (targetUrl === null) return;
     try {
-      await navigator.clipboard.writeText(targetUrl);
+      await copyToClipboard(targetUrl);
       notificationsStore.notifySuccess("Link Copied", "Share URL copied to clipboard");
     } catch (err) {
       setError(`Could not copy the link: ${describeBridgeError(err)}`);

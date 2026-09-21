@@ -1,5 +1,6 @@
 import React from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { copyToClipboard } from "@ivy-interactive/components";
 import { Button, Callout, Input, Label, Spinner, Switch } from "@ivy-interactive/components/ui";
 import { ClipboardCopy, Download, ExternalLink } from "lucide-react";
 import {
@@ -638,7 +639,7 @@ const TunnelBlock: React.FC<{ api: TunnelApi; kind: BlockKind }> = ({ api, kind 
   const handleCopy = async () => {
     if (url === null) return;
     try {
-      await navigator.clipboard.writeText(url);
+      await copyToClipboard(url);
       notificationsStore.notifySuccess("URL Copied", copy.copiedToast);
     } catch (err) {
       setError(`Could not copy the URL: ${describeBridgeError(err)}`);
