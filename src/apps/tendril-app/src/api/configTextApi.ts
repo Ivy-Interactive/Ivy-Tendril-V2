@@ -19,6 +19,7 @@
  */
 
 import { invoke } from "@tauri-apps/api/core";
+import { isTauri } from "../utils/tauri";
 
 /** `GET /api/config/text`. `maskedPaths` is document order, e.g. `llm.apiKey`. */
 export interface MaskedConfigText {
@@ -31,11 +32,6 @@ export type ConfigTextTransport = () => Promise<MaskedConfigText>;
 
 /** Writes edited config text back. Swapped in tests. */
 export type ConfigTextWriteTransport = (text: string) => Promise<void>;
-
-/** Whether the shell is around us. The same test `bridge.ts` and `agentsApi.ts` use. */
-function isTauri(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-}
 
 const PATH = "/api/config/text";
 

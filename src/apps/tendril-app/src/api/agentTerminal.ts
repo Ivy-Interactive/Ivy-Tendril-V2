@@ -6,6 +6,7 @@ import {
   type AgentTerminalEvent,
   type EventUnsubscribe,
 } from "./events";
+import { encodeBase64, isTauri } from "../utils/tauri";
 
 /** The `meta` frame: what a pane needs before it can type into the agent. */
 export interface AgentTerminalSession {
@@ -40,20 +41,6 @@ export interface AgentTerminalRun {
   resize(rows: number, cols: number): Promise<void>;
   /** Stops watching the output **and ends the agent**: it has nothing to serve once the pane is gone. */
   close(): Promise<void>;
-}
-
-function isTauri(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-}
-
-/** Encodes raw bytes for the daemon's `input` route, which takes base64 for the same reason `log` does. */
-function encodeBase64(data: string | Uint8Array): string {
-  const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary);
 }
 
 /**
