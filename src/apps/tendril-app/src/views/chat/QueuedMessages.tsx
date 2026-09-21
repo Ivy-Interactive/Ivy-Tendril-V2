@@ -1,6 +1,6 @@
 import React, { useRef, useState } from "react";
 import { ArrowRight, Check, ChevronDown, Paperclip, Pencil, Trash2, X } from "lucide-react";
-import { Badge, IconButton, Input } from "@ivy-interactive/components/ui";
+import { IconButton, Input } from "@ivy-interactive/components/ui";
 import type { ChatStore } from "../../state/chatStore";
 import type { ChatQueuedItem } from "../../types/chat";
 
@@ -59,12 +59,9 @@ export const ChatQueuedMessages: React.FC<{
           <div className="flex items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2">
               <span className="font-medium text-foreground">Queued Messages</span>
-              <Badge
-                variant="outline"
-                className="min-w-5 justify-center rounded-full border-transparent bg-background px-1.5 text-xs text-foreground"
-              >
+              <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-background px-1.5 text-xs text-foreground">
                 {queuedItems.length}
-              </Badge>
+              </span>
               <span className="truncate text-xs text-muted-foreground">
                 Sends after agent finishes working
               </span>
@@ -149,13 +146,10 @@ export const ChatQueuedMessages: React.FC<{
                               : "")}
                         </span>
                         {item.attachments && item.attachments.length > 0 && (
-                          <Badge
-                            variant="outline"
-                            className="shrink-0 gap-1 rounded-full border-transparent bg-muted px-1.5 text-xs-tight text-muted-foreground"
-                          >
+                          <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 text-xs-tight text-muted-foreground">
                             <Paperclip className="size-2.5" />
                             {item.attachments.length}
-                          </Badge>
+                          </span>
                         )}
                       </span>
                       <div className="flex shrink-0 items-center gap-1.5">

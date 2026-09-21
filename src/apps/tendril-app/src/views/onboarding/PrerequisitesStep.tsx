@@ -40,7 +40,7 @@ export function CheckBadge({ status }: { status: DoctorCheckStatus }) {
   return (
     <Badge
       variant="outline"
-      className={`rounded border px-1.5 py-0.5 text-2xs font-bold uppercase ${CHECK_STATUS_CLASSES[status]}`}
+      className={`px-1.5 py-0.5 text-2xs font-bold uppercase ${CHECK_STATUS_CLASSES[status]}`}
     >
       {STATUS_LABELS[status]}
     </Badge>
