@@ -2,6 +2,8 @@ import React, { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ChevronDown, Flag, Folder, Plus, WandSparkles, X, type LucideIcon } from "lucide-react";
 import { TuiBadge } from "../ui/TuiBadge";
+import { useOutsideClick } from "../../hooks/use-outside-click";
+import { useMenuKeyboard } from "../../hooks/use-menu-keyboard";
 import "./badge-select.css";
 
 type IvyEventHandler = (eventName: string, widgetId: string, args: unknown[]) => void;
@@ -118,6 +120,7 @@ export function BadgeSelect({
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const badgesRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement | HTMLDivElement>(null);
   const selected = Array.isArray(value) ? value : [];
   const selectedKey = selected.join("\u0000");
 
@@ -195,19 +198,21 @@ export function BadgeSelect({
     };
   }, [open]);
 
+  useOutsideClick(open, [rootRef, menuRef], () => setOpen(false));
+
+  useMenuKeyboard(open, {
+    containerRef: menuRef,
+    triggerRef,
+    onClose: () => setOpen(false),
+    itemSelector: '[role="option"]',
+  });
+
   useEffect(() => {
     if (!open) return;
-    const onPointerDown = (e: MouseEvent) => {
-      const target = e.target as Node;
-      if (rootRef.current?.contains(target) || menuRef.current?.contains(target)) return;
-      setOpen(false);
-    };
     const onReposition = () => updateMenuPosition();
-    document.addEventListener("mousedown", onPointerDown);
     window.addEventListener("resize", onReposition);
     window.addEventListener("scroll", onReposition, true);
     return () => {
-      document.removeEventListener("mousedown", onPointerDown);
       window.removeEventListener("resize", onReposition);
       window.removeEventListener("scroll", onReposition, true);
     };
@@ -341,6 +346,7 @@ export function BadgeSelect({
     <div ref={rootRef} className="bselect" style={parseWidth(width)} title={tooltip}>
       {selected.length === 0 ? (
         <button
+          ref={triggerRef as React.RefObject<HTMLButtonElement>}
           type="button"
           aria-label={placeholder || tooltip || "Select"}
           className="bselect-trigger"
@@ -352,6 +358,7 @@ export function BadgeSelect({
         </button>
       ) : (
         <div
+          ref={triggerRef as React.RefObject<HTMLDivElement>}
           role="combobox"
           tabIndex={0}
           aria-label={placeholder || tooltip || "Select"}

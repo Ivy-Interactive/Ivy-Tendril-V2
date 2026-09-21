@@ -14,6 +14,7 @@ import {
 import type { ShellItemState, ShellSectionItemDto } from "./types";
 import { TuiBadge } from "../ui/TuiBadge";
 import { IconButton } from "../ui/IconButton";
+import { useMenuKeyboard } from "../../hooks/use-menu-keyboard";
 import "./shell.css";
 
 const STATE_LABELS: Record<ShellItemState, string> = { working: "Working", completed: "Completed" };
@@ -86,22 +87,15 @@ const ItemMenu: React.FC<ItemMenuProps> = ({
     onOpenChange?.(open);
   }, [open, onOpenChange]);
 
+  useMenuKeyboard(open, {
+    containerRef: menuRef,
+    triggerRef: buttonRef,
+    onClose: close,
+    autoFocusFirst: true,
+  });
+
   useEffect(() => {
     if (!open) return;
-    menuRef.current?.querySelector<HTMLElement>("[role=menuitem]")?.focus();
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") {
-        close();
-        return;
-      }
-      if (e.key !== "ArrowDown" && e.key !== "ArrowUp") return;
-      const items = [...(menuRef.current?.querySelectorAll<HTMLElement>("[role=menuitem]") ?? [])];
-      if (items.length === 0) return;
-      e.preventDefault();
-      const current = items.indexOf(document.activeElement as HTMLElement);
-      const delta = e.key === "ArrowDown" ? 1 : -1;
-      items[(current + delta + items.length) % items.length].focus();
-    };
     const onPointerDown = (e: Event) => {
       const target = e.target as Node | null;
       if (!target) return;
@@ -109,17 +103,15 @@ const ItemMenu: React.FC<ItemMenuProps> = ({
       setOpen(false);
     };
     const onScroll = () => setOpen(false);
-    window.addEventListener("keydown", onKeyDown);
     window.addEventListener("pointerdown", onPointerDown, true);
     window.addEventListener("scroll", onScroll, true);
     window.addEventListener("resize", onScroll);
     return () => {
-      window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("pointerdown", onPointerDown, true);
       window.removeEventListener("scroll", onScroll, true);
       window.removeEventListener("resize", onScroll);
     };
-  }, [open, close]);
+  }, [open]);
 
   const pick = (action?: () => void) => {
     setOpen(false);
