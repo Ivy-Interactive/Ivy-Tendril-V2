@@ -61,6 +61,14 @@ describe("Package Exports", () => {
       expect(root.isCompressibleImage).toBeDefined();
       expect(root.processImageFile).toBeDefined();
     });
+
+    it("should export the shared token/cost/time formatters and clipboard helper", () => {
+      expect(typeof root.formatTokens).toBe("function");
+      expect(typeof root.formatCost).toBe("function");
+      expect(typeof root.formatTimeSpan).toBe("function");
+      expect(root.NO_VALUE).toBeDefined();
+      expect(typeof root.copyToClipboard).toBe("function");
+    });
   });
 
   describe("UI Primitives Export (components-storybook/ui)", () => {
