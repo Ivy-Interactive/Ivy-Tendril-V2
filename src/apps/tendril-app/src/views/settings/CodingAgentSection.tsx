@@ -1,7 +1,8 @@
 import React from "react";
-import { BrandIcon } from "@ivy-interactive/components/tendril";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { BrandIcon, CodeBlock } from "@ivy-interactive/components/tendril";
 import { Button, Callout, Input, Label, Switch } from "@ivy-interactive/components/ui";
-import { Check } from "lucide-react";
+import { Check, ExternalLink } from "lucide-react";
 import { agentsApi } from "../../api/agentsApi";
 import { providerModelsApi } from "../../api/providerModelsApi";
 import { notificationsStore } from "../../state/notificationsStore";
@@ -16,6 +17,7 @@ import { formatEnvLines, parseEnvLines } from "./configValues";
 import { normalizeAgentName } from "./projectConfig";
 import { AgentTestDialog, type TestModelEntry } from "./AgentTestDialog";
 import { AgentUsageStrip } from "./AgentUsageStrip";
+import { cardLabel, helpForCard, type AgentHelpStep } from "./agentHelp";
 import {
   LinesField,
   NativeSelectField,
@@ -128,6 +130,83 @@ const AgentCard: React.FC<{
     {selected && <Check className="ml-auto size-5 shrink-0 text-primary" aria-hidden="true" />}
   </button>
 );
+
+/**
+ * One numbered step of the Help block: what to do, and the shell or the link that does it.
+ *
+ * `CodeBlock` is passed no `language`, which is deliberate rather than an omission. With one it
+ * mounts the lazy `react-syntax-highlighter` and pulls the `vendor-syntax` chunk - 600 kB of
+ * refractor language packs to colour a `brew install` - and without one it renders the same geometry
+ * through `PlainPre` and keeps the copy button, which is the only part of it this block needs.
+ */
+const HelpStep: React.FC<{ title: string; step: AgentHelpStep; testId: string }> = ({
+  title,
+  step,
+  testId,
+}) => (
+  <div className="space-y-2" data-testid={testId}>
+    <p className="text-xs font-medium text-muted-foreground">{title}</p>
+    <p className="text-xs text-foreground">{step.summary}</p>
+    {step.command && <CodeBlock content={step.command} />}
+    {/* `openUrl` rather than an `<a>`: this is a webview, and a target-less navigation replaces the
+        app with the vendor's console. Same call `SecurityTunnelingSection` and `InboxView` make. */}
+    {step.url && (
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        data-testid={`${testId}-link`}
+        onClick={() => void openUrl(step.url!)}
+      >
+        <ExternalLink className="size-4" aria-hidden="true" />
+        {step.url}
+      </Button>
+    )}
+  </div>
+);
+
+/**
+ * Install and sign-in instructions for the card in front of the operator.
+ *
+ * It sits below Extra Arguments rather than above the grid because it answers a question asked after
+ * a card is picked, and because everything above it is settings this pane writes while none of this
+ * is. The data is in `agentHelp.ts` keyed by card - not inlined here per agent - so a new row in
+ * `CODING_AGENTS` is a missing map entry that `settings-coding-agent-help.test.tsx` fails on, rather
+ * than a Help section that silently renders nothing.
+ *
+ * Renders nothing for a card with no entry. That is only reachable through a `codingAgent` value
+ * that is not a card at all, which the `unknownAgent` callout at the top of the pane already names.
+ */
+const AgentHelpBlock: React.FC<{ card: string }> = ({ card }) => {
+  const help = helpForCard(card);
+  if (!help) return null;
+
+  return (
+    <SubSection
+      title="Help"
+      hint={`Getting ${cardLabel(card)} working on this machine.`}
+      testId="agent-help-block"
+    >
+      <div className="space-y-4" data-testid={`agent-help-${card}`}>
+        <HelpStep title="1. Install" step={help.install} testId="agent-help-install" />
+        <HelpStep
+          title={help.binary === null ? "2. API key" : "2. Authenticate"}
+          step={help.auth}
+          testId="agent-help-auth"
+        />
+        {/* The one fact an operator cannot get from the vendor's own docs: which binary *this* app
+            spawns. `probe_binary` resolves `cursor` to `cursor-agent` and `antigravity` to `agy`, so
+            following Cursor's or Google's instructions alone can leave a working CLI that Tendril
+            still reports as missing. */}
+        {help.binary !== null && (
+          <p className="text-xs text-muted-foreground" data-testid="agent-help-binary">
+            Tendril looks for <code className="font-mono">{help.binary}</code> on your PATH.
+          </p>
+        )}
+      </div>
+    </SubSection>
+  );
+};
 
 export const CodingAgentSection: React.FC<{
   config: TendrilConfig | null;
@@ -796,6 +875,8 @@ export const CodingAgentSection: React.FC<{
             />
           </div>
         </SubSection>
+
+        <AgentHelpBlock card={card} />
 
         <SaveError message={error} />
 
