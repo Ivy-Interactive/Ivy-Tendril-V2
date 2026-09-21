@@ -29,6 +29,72 @@ export const DRAFT_OWNERS_STORAGE_KEY = "tendril:chat:draft_session_owners";
  */
 export const COMPOSER_DRAFTS_STORAGE_KEY = "tendril:chat:composer_drafts";
 export const PINNED_SESSIONS_STORAGE_KEY = "tendril:chat:pinned_sessions";
+/**
+ * The agent, model and effort each session was last set to run with, keyed by session id.
+ *
+ * This is V2's stand-in for the durable record V1 keeps on the session itself.
+ * `ChatHistoryService.AddMessage` rewrites `AgentId` / `ModelId` / `Effort` onto the session record
+ * on every single message, so in V1 a session always described what it last ran with, and reopening
+ * it restored that. V2's daemon does not: `create_session` stamps `agent_id` / `model_id` once, and
+ * `turn.rs` reads them for the turn but never writes the turn's own choice back. A session record
+ * therefore preserves whatever the composer happened to hold when "New Chat" was clicked - and since
+ * people open a chat *first* and choose a provider *second*, that is usually the provider picked for
+ * the previous chat. Restoring it on switch is what transposed the two chats' providers.
+ *
+ * Keyed per session for the same reason {@link COMPOSER_DRAFTS_STORAGE_KEY} is, and it is the same
+ * bug in a different field: one global slot hands a choice made for one conversation to another.
+ */
+export const SESSION_SELECTIONS_STORAGE_KEY = "tendril:chat:session_selections";
+
+/** What one session runs with. All three are recorded together, as V1's `AddMessage` writes them. */
+export interface StoredSessionSelection {
+  agentId: string;
+  modelId: string;
+  effort: string;
+}
+
+export function loadStoredSessionSelections(): Record<string, StoredSessionSelection> {
+  try {
+    const storage =
+      typeof localStorage !== "undefined"
+        ? localStorage
+        : typeof window !== "undefined"
+          ? window.localStorage
+          : null;
+    if (storage) {
+      const raw = storage.getItem(SESSION_SELECTIONS_STORAGE_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          return parsed as Record<string, StoredSessionSelection>;
+        }
+      }
+    }
+  } catch {
+    // Fallback to in-memory if storage is restricted or throws
+  }
+  return {};
+}
+
+export function saveStoredSessionSelections(data: Record<string, StoredSessionSelection>): void {
+  try {
+    const storage =
+      typeof localStorage !== "undefined"
+        ? localStorage
+        : typeof window !== "undefined"
+          ? window.localStorage
+          : null;
+    if (storage) {
+      if (Object.keys(data).length === 0) {
+        storage.removeItem(SESSION_SELECTIONS_STORAGE_KEY);
+      } else {
+        storage.setItem(SESSION_SELECTIONS_STORAGE_KEY, JSON.stringify(data));
+      }
+    }
+  } catch {
+    // Ignore storage quota or access errors
+  }
+}
 
 export function loadStoredPinnedSessions(): Record<string, string> {
   try {
