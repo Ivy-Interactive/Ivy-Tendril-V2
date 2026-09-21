@@ -70,7 +70,7 @@ export const AddAnnotationPopover: React.FC<AddAnnotationPopoverProps> = ({
       </div>
       <textarea
         ref={textareaRef}
-        className="pmv-popover-textarea"
+        className="pmv-popover-textarea tui-comment-textarea"
         rows={3}
         placeholder="Add a comment..."
         value={comment}
@@ -181,7 +181,7 @@ export const EditAnnotationPopover: React.FC<EditAnnotationPopoverProps> = ({
       </div>
       <textarea
         ref={textareaRef}
-        className="pmv-popover-textarea"
+        className="pmv-popover-textarea tui-comment-textarea"
         rows={3}
         placeholder="Edit comment..."
         value={comment}

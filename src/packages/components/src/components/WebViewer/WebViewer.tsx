@@ -856,7 +856,7 @@ export const WebViewer: React.FC<WebViewerProps> = ({
             )}
             <textarea
               ref={commentRef}
-              className="wvr-comment-input"
+              className="wvr-comment-input tui-comment-textarea"
               value={comment}
               onChange={(e) => setComment(e.target.value)}
               onKeyDown={(e) => {
