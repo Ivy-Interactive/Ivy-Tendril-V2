@@ -47,26 +47,26 @@
 
 .tq-question-header {
   font-size: var(--text-xs-tight);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--tq-muted);
 }
 
 .tq-question-title {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 .tq-question-optional {
   margin-left: 8px;
-  font-weight: 400;
+  font-weight: var(--font-weight-normal);
   color: var(--tq-muted);
 }
 
 .tq-question[data-unanswered="true"] .tq-question-title::after {
   content: "Unanswered";
   margin-left: 8px;
-  font-weight: 400;
+  font-weight: var(--font-weight-normal);
   font-size: var(--text-xs);
   color: var(--tq-faint);
 }
@@ -206,7 +206,7 @@
   background: var(--tq-recommended-bg);
   color: var(--tq-recommended-fg);
   font-size: var(--text-xs-tight);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   line-height: 16px;
 }
 
@@ -247,7 +247,7 @@
   padding: 4px 10px;
   border-radius: var(--radius-lg);
   background: var(--tq-chip-bg);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 .tq-answer--none {
@@ -295,7 +295,7 @@
   background: var(--primary);
   color: var(--primary-foreground);
   font: inherit;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
   transition: opacity var(--duration-fast) var(--ease-standard);
 }

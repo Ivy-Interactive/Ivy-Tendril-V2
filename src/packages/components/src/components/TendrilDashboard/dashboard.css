@@ -75,14 +75,14 @@
 .tdb-greeting {
   font-size: 32px;
   line-height: 1.19;
-  font-weight: 400;
+  font-weight: var(--font-weight-normal);
   color: var(--tdb-faint);
 }
 
 .tdb-headline {
   font-size: 32px;
   line-height: 1.19;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--tdb-fg);
 }
 
@@ -135,7 +135,7 @@
 
 .tdb-block-title {
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   color: var(--tdb-fg);
 }
 
@@ -181,7 +181,7 @@
 
 .tdb-status-count {
   font-size: var(--text-base);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--tdb-fg);
 }
 
@@ -290,7 +290,7 @@ button.tdb-kpi:focus-visible {
 .tdb-kpi-value {
   font-size: 30px;
   line-height: 36px;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   min-width: 0;
   white-space: normal;
   overflow-wrap: break-word;
@@ -298,7 +298,7 @@ button.tdb-kpi:focus-visible {
 
 .tdb-kpi-subvalue {
   font-size: var(--text-sm-tight);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   opacity: var(--opacity-subtle);
   white-space: nowrap;
 }
@@ -352,7 +352,7 @@ button.tdb-kpi:focus-visible {
   background: none;
   font: inherit;
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   color: var(--tdb-faint);
   padding: 6px 10px;
   border-radius: var(--radius-lg);

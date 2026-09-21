@@ -165,6 +165,12 @@
   --control-height-sm: 28px;
   --row-height: 38px;
 
+  /* Font weights */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
   /* Type scale */
   --text-3xs: 0.5625rem;
   --text-2xs: 0.625rem;
