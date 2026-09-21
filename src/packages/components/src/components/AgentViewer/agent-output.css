@@ -665,11 +665,6 @@
   color: var(--red);
 }
 
-.aov-result-meta {
-  color: var(--aov-fg-muted);
-  font-size: var(--text-sm);
-}
-
 /* Always carries `.aov-markdown` too (`result-summary.tsx`), so its wrapping comes from there. */
 .aov-result-body {
   margin: 6px 0;
