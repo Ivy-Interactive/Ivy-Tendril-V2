@@ -72,4 +72,13 @@ describe("shellPathForRoute", () => {
   it("tolerates a base without a trailing slash", () => {
     expect(shellPathForRoute("/docs/concepts/plans", ROUTE_BASE)).toBe("concepts/plans/index.html");
   });
+
+  it("supports repo-prefixed base paths like GitHub Pages", () => {
+    expect(shellPathForRoute("/Ivy-Tendril-V2/docs/concepts/plans", "/Ivy-Tendril-V2/docs/")).toBe(
+      "concepts/plans/index.html",
+    );
+    expect(
+      shellPathForRoute("/Ivy-Tendril-V2/docs/gettingstarted/introduction", "/Ivy-Tendril-V2/docs"),
+    ).toBe("gettingstarted/introduction/index.html");
+  });
 });

@@ -6,7 +6,9 @@ import { emitRouteShells } from "./src/plugins/emit-route-shells";
 
 // Every docs URL is prefixed, matching ROUTE_BASE in src/lib/slug.ts and the links the repo README
 // already publishes (https://tendril.ivy.app/docs/gettingstarted/introduction).
-const BASE = "/docs/";
+// On GitHub Pages project sites, BASE can be overridden via VITE_BASE_PATH / BASE_PATH (e.g. /Ivy-Tendril-V2/docs/).
+const rawBase = process.env.VITE_BASE_PATH || process.env.BASE_PATH || "/docs/";
+const BASE = (rawBase.startsWith("/") ? rawBase : `/${rawBase}`).replace(/\/+$/, "") + "/";
 
 export default defineConfig({
   base: BASE,

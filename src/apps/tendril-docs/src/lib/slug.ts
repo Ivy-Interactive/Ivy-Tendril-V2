@@ -11,7 +11,14 @@
  */
 
 /** URL prefix every docs route carries. Matches `base` in `vite.config.ts`. */
-export const ROUTE_BASE = "/docs";
+export const ROUTE_BASE = (() => {
+  const raw =
+    (typeof import.meta !== "undefined" && import.meta.env?.BASE_URL) ||
+    (typeof process !== "undefined" && (process.env?.VITE_BASE_PATH || process.env?.BASE_PATH)) ||
+    "/docs/";
+  const normalized = (raw.startsWith("/") ? raw : `/${raw}`).replace(/\/+$/, "");
+  return normalized.length > 0 ? normalized : "/docs";
+})();
 
 /** File name (without extension) that makes a folder a section and gives it its own page. */
 export const SECTION_INDEX = "_Index";
