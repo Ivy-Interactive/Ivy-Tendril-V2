@@ -146,6 +146,11 @@ pub const TIMED_OUT: &str = "Timed out";
 /// How long output draining is given after a kill, so a wedged pipe cannot hang a probe.
 const POST_KILL_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// What `codex exec … -` says, on stderr and with exit 1, when the stdin `run_probe` closed hands it
+/// EOF instead of a prompt. `classify_codex_model` reads it as the model being accepted; see there
+/// for why. Lowercase because the classifiers match against a lowercased haystack.
+const CODEX_NO_PROMPT: &str = "no prompt provided via stdin";
+
 /// One probe's process outcome. `exit_code` is `-1` for "never ran, or was killed", which is the
 /// convention every classifier below reads together with `stderr`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -1184,15 +1189,32 @@ fn classify_claude_model(model: &str, out: &ProbeOutput) -> ModelValidation {
     )
 }
 
-/// V1 `CodexHealthCheck.ValidateModelAsync`.
+/// V1 `CodexHealthCheck.ValidateModelAsync`, minus the timeout that V1's design turned on.
 ///
-/// Five seconds, and a timeout means **success**: `codex exec … -` reads the prompt from stdin, so a
-/// valid model leaves it waiting there while an invalid one errors immediately. Getting as far as
-/// the wait is the answer.
+/// V1 waited for `codex exec … -` to block reading the prompt from stdin and read the five-second
+/// kill as proof the model was accepted. `run_probe` closes stdin on every probe, so that wait never
+/// happens: codex reaches the read, gets EOF, prints `No prompt provided via stdin` and exits 1.
+/// That complaint *is* the V1 signal — codex only asks for a prompt once argument parsing and model
+/// resolution are behind it — so `classify_codex_model` treats it as the success case and the
+/// timeout branch survives only for a machine slow enough to be killed before it gets there.
+///
+/// `-s read-only` rather than V1's `--full-auto`, which codex-cli 0.153.0 rejects outright with
+/// `unexpected argument '--full-auto' found`. The successor spellings are `-s <mode>` and
+/// `--dangerously-bypass-approvals-and-sandbox`; a probe that exits before it has a prompt runs no
+/// model-generated command at all, so it takes the most restricted mode on offer and states it
+/// rather than inheriting whatever `--sandbox auto` resolves to from the user's config.
 async fn codex_model(model: &str) -> ModelValidation {
+    let args = codex_probe_args(model);
+    let out = run_probe("codex", &args, Duration::from_secs(5)).await;
+    classify_codex_model(model, &out)
+}
+
+/// Split out from `codex_model` so the flag set can be asserted on without running codex.
+fn codex_probe_args(model: &str) -> Vec<String> {
     let mut args = vec![
         "exec".to_string(),
-        "--full-auto".to_string(),
+        "-s".to_string(),
+        "read-only".to_string(),
         "--json".to_string(),
         "--skip-git-repo-check".to_string(),
     ];
@@ -1201,9 +1223,7 @@ async fn codex_model(model: &str) -> ModelValidation {
         args.push(explicit.to_string());
     }
     args.push("-".to_string());
-
-    let out = run_probe("codex", &args, Duration::from_secs(5)).await;
-    classify_codex_model(model, &out)
+    args
 }
 
 fn classify_codex_model(model: &str, out: &ProbeOutput) -> ModelValidation {
@@ -1213,6 +1233,15 @@ fn classify_codex_model(model: &str, out: &ProbeOutput) -> ModelValidation {
 
     let combined = out.combined();
     let lower = combined.to_ascii_lowercase();
+
+    // Ahead of the error classification, because this is the probe's ordinary success path and it
+    // arrives as a failure: exit 1 with the prompt complaint on stderr. Codex asks for a prompt only
+    // after it has parsed the arguments and resolved `--model`, so being asked is the furthest a
+    // probe carrying no prompt can get, and reading it as an error fails every model on the list.
+    if lower.contains(CODEX_NO_PROMPT) {
+        return validation(ModelValidationStatus::Ok, model, None);
+    }
+
     let detail = if out.stderr.trim().is_empty() {
         combined.trim().to_string()
     } else {
@@ -1578,6 +1607,71 @@ mod tests {
             classify_codex_model("nope", &out(1, "", "invalid model 'nope'")).status,
             ModelValidationStatus::InvalidModel
         );
+    }
+
+    /// The other half of that rule, and the one that actually fires: `run_probe` closes stdin, so
+    /// codex never reaches the wait the timeout branch was written for. It asks for the prompt and
+    /// exits 1, and taking that at face value failed every model on the list -- issue #220.
+    #[test]
+    fn a_codex_prompt_complaint_also_means_the_model_was_accepted() {
+        let result =
+            classify_codex_model("gpt-5.6-sol", &out(1, "", "No prompt provided via stdin."));
+        assert_eq!(result.status, ModelValidationStatus::Ok);
+        assert_eq!(result.error_message, None);
+    }
+
+    /// Codex prints it on stderr today, but the classifiers all read both streams, and a `--json`
+    /// run putting it on stdout must not read as a failure either.
+    #[test]
+    fn the_codex_prompt_complaint_is_read_off_either_stream() {
+        assert_eq!(
+            classify_codex_model("gpt-5.6-sol", &out(1, "No prompt provided via stdin.", ""))
+                .status,
+            ModelValidationStatus::Ok
+        );
+        assert_eq!(
+            classify_codex_model("gpt-5.6-sol", &out(1, "", "NO PROMPT PROVIDED VIA STDIN")).status,
+            ModelValidationStatus::Ok
+        );
+    }
+
+    /// The success branch is ahead of the error classification, so it has to be the narrower of the
+    /// two: a run that got far enough to fail for a real reason still reports that reason.
+    #[test]
+    fn a_real_codex_failure_still_beats_the_prompt_complaint() {
+        assert_eq!(
+            classify_codex_model("nope", &out(1, "", "model 'nope' not supported")).status,
+            ModelValidationStatus::InvalidModel
+        );
+        assert_eq!(
+            classify_codex_model("gpt-5.6-sol", &out(1, "", "429 rate limit exceeded")).status,
+            ModelValidationStatus::RateLimit
+        );
+        assert_eq!(
+            classify_codex_model("gpt-5.6-sol", &out(1, "", "unauthorized")).status,
+            ModelValidationStatus::AuthError
+        );
+        // The flag defect itself: a rejected argument is not a verdict on the model.
+        assert_eq!(
+            classify_codex_model(
+                "gpt-5.6-sol",
+                &out(2, "", "error: unexpected argument '--full-auto' found")
+            )
+            .status,
+            ModelValidationStatus::Unknown
+        );
+    }
+
+    /// `--full-auto` is gone from codex-cli 0.153.0, which refuses to parse it at all. The probe
+    /// never runs a model-generated command, so it asks for the sandbox that allows none.
+    #[test]
+    fn the_codex_probe_names_a_sandbox_the_current_cli_accepts() {
+        let args = codex_probe_args("gpt-5.6-sol");
+        assert!(!args.iter().any(|arg| arg == "--full-auto"));
+        let sandbox = args.iter().position(|arg| arg == "-s").expect("-s");
+        assert_eq!(args[sandbox + 1], "read-only");
+        // Still the stdin form the whole classification depends on.
+        assert_eq!(args.last().unwrap(), "-");
     }
 
     #[test]
