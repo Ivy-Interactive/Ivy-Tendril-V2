@@ -61,5 +61,3 @@ export const TurnActivity: React.FC<TurnActivityProps> = ({ rawStream }) => {
     </div>
   );
 };
-
-export default TurnActivity;

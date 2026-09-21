@@ -340,5 +340,3 @@ export const ConfigEditorView: React.FC<ConfigEditorViewProps> = ({ tendrilHome,
     />
   );
 };
-
-export default ConfigEditorView;

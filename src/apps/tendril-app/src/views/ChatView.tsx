@@ -1188,5 +1188,3 @@ export const ChatView: React.FC<ChatViewProps> = ({
     </TooltipScope>
   );
 };
-
-export default ChatView;

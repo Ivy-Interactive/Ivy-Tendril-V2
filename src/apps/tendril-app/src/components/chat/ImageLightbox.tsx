@@ -56,5 +56,3 @@ export const ImageLightbox: React.FC<ImageLightboxProps> = ({ image, onClose }) 
     </DialogContent>
   </Dialog>
 );
-
-export default ImageLightbox;
