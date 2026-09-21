@@ -166,5 +166,3 @@ export const Icon: FC<IconProps> = ({ name, color, size, className, style }) => 
   const LucideIcon = icons[name as keyof typeof icons];
   return <LucideIcon style={style} color={color} size={size} className={cn(className)} />;
 };
-
-export default Icon;

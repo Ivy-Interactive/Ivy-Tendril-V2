@@ -162,5 +162,3 @@ export const JsonRenderer = ({ data, initialExpanded }: JsonRendererProps) => {
     </div>
   );
 };
-
-export default JsonRenderer;

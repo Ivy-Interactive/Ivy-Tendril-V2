@@ -111,5 +111,3 @@ export const CopyToClipboardButton: React.FC<CopyToClipboardButtonProps> = ({
     </button>
   );
 };
-
-export default CopyToClipboardButton;

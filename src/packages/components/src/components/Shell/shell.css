@@ -271,7 +271,7 @@
 
 .tsh-header-row {
   align-items: center;
-  height: 32px;
+  height: var(--control-height);
   width: calc(var(--tsh-sidebar-content) - 8px);
 }
 
@@ -283,8 +283,8 @@
 }
 
 .tsh-header-logo {
-  width: 32px;
-  height: 32px;
+  width: var(--control-height);
+  height: var(--control-height);
   flex-shrink: 0;
   /* `display` matters because this class lands on an `<img>` for a `logoUrl` logo and on a `<span>`
      for a node one, and an inline span ignores width and height. */
@@ -306,14 +306,14 @@
 
 .tsh-header-title {
   font-size: var(--text-base);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   line-height: 18px;
   color: var(--foreground);
 }
 
 .tsh-header-version {
   font-size: var(--text-sm);
-  font-weight: 400;
+  font-weight: var(--font-weight-normal);
   line-height: 14px;
   color: var(--foreground);
   opacity: var(--opacity-muted);
@@ -338,8 +338,8 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 32px;
-  height: 32px;
+  width: var(--control-height);
+  height: var(--control-height);
   border: none;
   padding: 0;
   background: transparent;
@@ -437,7 +437,7 @@
 
 .tsh-newplan-label {
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   white-space: nowrap;
 }
 
@@ -459,7 +459,7 @@
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  height: 38px;
+  height: var(--row-height);
   padding: 10px var(--tsh-row-pad-x);
   border: none;
   border-radius: var(--radius-lg);
@@ -506,7 +506,7 @@
 }
 
 .tsh-agent[data-active="true"] .tsh-agent-label {
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 .tsh-agent-brand {
@@ -529,7 +529,7 @@
 
 .tsh-agent-label {
   font-size: var(--text-sm);
-  font-weight: 400;
+  font-weight: var(--font-weight-normal);
   white-space: nowrap;
 }
 
@@ -574,7 +574,7 @@
   justify-content: space-between;
   flex-shrink: 0;
   width: 100%;
-  min-height: 38px;
+  min-height: var(--row-height);
   padding: 10px var(--tsh-row-pad-x);
   border: none;
   border-radius: var(--radius-lg);
@@ -618,12 +618,12 @@
 
 .tsh-nav-label {
   font-size: var(--text-sm);
-  font-weight: 400;
+  font-weight: var(--font-weight-normal);
   white-space: nowrap;
 }
 
 .tsh-nav-item[data-active="true"] .tsh-nav-label {
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 /* The shared count badge (ui.css), plus the sidebar's collapse transition. */
@@ -727,7 +727,7 @@
   justify-content: flex-start;
   flex-shrink: 0;
   width: 100%;
-  min-height: 38px;
+  min-height: var(--row-height);
   padding: 6px var(--tsh-row-pad-x);
   border: none;
   background: transparent;
@@ -752,18 +752,13 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  scrollbar-width: none;
-}
-
-.tsh-rail-list::-webkit-scrollbar {
-  display: none;
 }
 
 .tsh-rail-item {
   display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 28px;
+  min-height: var(--control-height-sm);
   flex-shrink: 0;
   width: 100%;
   padding: 6px 2px;
@@ -773,7 +768,7 @@
   color: var(--foreground);
   opacity: var(--opacity-muted);
   font-size: var(--text-xs-tight);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   line-height: 14px;
   white-space: nowrap;
   overflow: hidden;
@@ -842,7 +837,7 @@
   flex: 1;
   min-width: 0;
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   line-height: 18px;
   color: var(--foreground);
   white-space: nowrap;
@@ -873,7 +868,7 @@
 
 .tsh-rail-tooltip-title {
   font-size: var(--text-xs);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   line-height: 16px;
 }
 
@@ -895,7 +890,7 @@
 
 .tsh-section-title {
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   line-height: 18px;
   color: var(--foreground);
   white-space: nowrap;
@@ -927,7 +922,7 @@
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  min-height: 38px;
+  min-height: var(--row-height);
   padding: 10px var(--tsh-row-pad-x);
   border: none;
   border-radius: var(--radius-lg);
@@ -952,7 +947,7 @@
 
 .tsh-section-search-button-label {
   font-size: var(--text-sm);
-  font-weight: 400;
+  font-weight: var(--font-weight-normal);
   white-space: nowrap;
 }
 
@@ -1049,7 +1044,7 @@
   color: var(--foreground);
   font: inherit;
   font-size: var(--text-xs);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   line-height: 16px;
   outline: none;
 }
@@ -1074,18 +1069,8 @@
 }
 
 .tsh-item-menu-item {
-  display: flex;
-  align-items: center;
   gap: 8px;
-  padding: 8px 10px;
-  border: none;
-  border-radius: var(--radius-md);
-  background: transparent;
-  color: var(--foreground);
-  font: inherit;
   font-size: var(--text-sm-tight);
-  text-align: left;
-  cursor: pointer;
   white-space: nowrap;
 }
 
@@ -1107,7 +1092,7 @@
   flex: 1;
   min-width: 0;
   font-size: var(--text-xs);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   line-height: 16px;
   color: var(--foreground);
   white-space: nowrap;
@@ -1118,7 +1103,7 @@
 .tsh-section-item-tag {
   flex-shrink: 0;
   font-size: var(--text-xs);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   line-height: 16px;
   color: var(--foreground);
 }
@@ -1144,7 +1129,7 @@
 .tsh-section-group-label {
   padding: 8px 12px 4px;
   font-size: var(--text-2xs);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   color: var(--foreground);
@@ -1164,7 +1149,7 @@
 .tsh-settings {
   display: flex;
   align-items: center;
-  min-height: 38px;
+  min-height: var(--row-height);
   padding: 6px var(--tsh-row-pad-x);
   border: none;
   border-radius: var(--radius-lg);
@@ -1195,7 +1180,7 @@
    there it becomes a full-width row like every other one. */
 .tsh-settings[data-icon-only="true"] {
   justify-content: center;
-  width: 38px;
+  width: var(--row-height);
   padding: 6px 0;
   flex-shrink: 0;
 }
@@ -1207,7 +1192,7 @@
 
 .tsh-settings-label {
   font-size: var(--text-sm);
-  font-weight: 400;
+  font-weight: var(--font-weight-normal);
   white-space: nowrap;
 }
 
@@ -1284,7 +1269,7 @@
 
 .tsh-tab-label {
   font-size: var(--text-sm);
-  font-weight: 400;
+  font-weight: var(--font-weight-normal);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

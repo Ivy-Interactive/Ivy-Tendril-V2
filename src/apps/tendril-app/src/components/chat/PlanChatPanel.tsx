@@ -119,5 +119,3 @@ export const PlanChatPanel: React.FC<{
     </div>
   );
 };
-
-export default PlanChatPanel;

@@ -12,6 +12,7 @@ import { IconButton } from "../ui/IconButton";
 import { TuiKbd } from "../ui/TuiKbd";
 import { Tooltip, TooltipScope } from "../ui/TuiTooltip";
 import { useOutsideClick } from "../../hooks/use-outside-click";
+import { useMenuKeyboard } from "../../hooks/use-menu-keyboard";
 import { ActionIcon } from "./icons";
 import { shortcutKeys, useActionShortcuts } from "./shortcuts";
 import type { ShortcutBinding } from "./shortcuts";
@@ -104,21 +105,20 @@ interface OverflowMenuProps {
 const OverflowMenu: React.FC<OverflowMenuProps> = ({ items, onFire }) => {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
   const close = useCallback(() => setOpen(false), []);
   useOutsideClick(open, [wrapRef], close);
-
-  useEffect(() => {
-    if (!open) return;
-    const handle = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("keydown", handle);
-    return () => document.removeEventListener("keydown", handle);
-  }, [open]);
+  useMenuKeyboard(open, {
+    containerRef: menuRef,
+    triggerRef: buttonRef,
+    onClose: close,
+  });
 
   return (
     <div className="pws-menu-wrap" ref={wrapRef}>
       <IconButton
+        ref={buttonRef}
         label="More actions"
         tooltip="More"
         tooltipSide="bottom"
@@ -130,13 +130,13 @@ const OverflowMenu: React.FC<OverflowMenuProps> = ({ items, onFire }) => {
         <Ellipsis size={16} />
       </IconButton>
       {open && (
-        <div className="pws-menu" role="menu" aria-label="More actions">
+        <div ref={menuRef} className="pws-menu" role="menu" aria-label="More actions">
           {items.map((item) => (
             <button
               key={item.tag}
               type="button"
               role="menuitem"
-              className="pws-menu-item"
+              className="pws-menu-item tui-menu-item"
               data-danger={!!item.danger}
               data-tag={item.tag}
               disabled={item.disabled}
@@ -469,7 +469,7 @@ export const PlanWorkspace: React.FC<PlanWorkspaceProps> = ({
             {hasToolbar && <div className="pws-toolbar">{slots?.Toolbar}</div>}
             {(tabs.length > 0 || hasVerifications || hasQuestions) && (
               <div className="pws-tabs-row">
-                <div className="pws-tabs" role="tablist">
+                <div className="pws-tabs hidden-scrollbar" role="tablist">
                   {tabs.map((tab) => (
                     <button
                       key={tab.id}

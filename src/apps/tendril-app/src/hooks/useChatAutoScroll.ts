@@ -294,5 +294,3 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions = {}): UseCh
     clearPin,
   };
 }
-
-export default useChatAutoScroll;

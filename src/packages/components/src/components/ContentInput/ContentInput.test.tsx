@@ -1,5 +1,6 @@
 import { afterEach, describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent, act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom/vitest";
 
 vi.mock("pdfjs-dist", () => ({ GlobalWorkerOptions: {}, getDocument: vi.fn() }));
@@ -361,6 +362,43 @@ describe("ContentInput", () => {
     expect(canvas).toBeInTheDocument();
 
     getContextSpy.mockRestore();
+  });
+});
+
+describe("ContentInput split-button menu keyboard support", () => {
+  it("opens the menu with role=menu/menuitem, navigates with arrows, and closes with Escape without touching the composer", async () => {
+    const user = userEvent.setup();
+    render(<ContentInput id="civ-1" value="hello" menuOptions={["Plan", "Chat", "Build"]} />);
+
+    await user.click(screen.getByTitle("More options"));
+    const menu = screen.getByRole("menu");
+    const items = screen.getAllByRole("menuitem");
+    expect(items.map((el) => el.textContent)).toEqual(["Plan", "Chat", "Build"]);
+
+    await user.keyboard("{ArrowDown}");
+    expect(screen.getByRole("menuitem", { name: "Plan" })).toHaveFocus();
+    await user.keyboard("{ArrowDown}");
+    expect(screen.getByRole("menuitem", { name: "Chat" })).toHaveFocus();
+    await user.keyboard("{ArrowUp}");
+    expect(screen.getByRole("menuitem", { name: "Plan" })).toHaveFocus();
+
+    await user.keyboard("{Escape}");
+    expect(menu).not.toBeInTheDocument();
+    expect(screen.getByTitle("More options")).toHaveFocus();
+  });
+
+  it("never lets the menu's Escape/arrow handling reach the composer once focus is back there", async () => {
+    const user = userEvent.setup();
+    render(<ContentInput id="civ-1" value="hello" menuOptions={["Plan", "Chat"]} />);
+
+    const textarea = screen.getByRole("textbox");
+    await user.click(textarea);
+    await user.keyboard("{ArrowDown}{ArrowUp}{Escape}");
+
+    // None of these are menu keys from the hook's point of view: the menu was never opened, so
+    // there is nothing to close and the textarea keeps focus and its content untouched.
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(textarea).toHaveFocus();
   });
 });
 

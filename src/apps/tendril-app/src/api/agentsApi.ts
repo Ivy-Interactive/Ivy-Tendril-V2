@@ -17,6 +17,7 @@ import type {
   TestAgentRequest,
   TestAgentResult,
 } from "../types/agents";
+import { isTauri } from "../utils/tauri";
 
 /** Runs one Test Agent probe. Swapped in tests. */
 export type TestAgentTransport = (
@@ -26,11 +27,6 @@ export type TestAgentTransport = (
 
 /** Reads one agent's usage snapshot. Swapped in tests. */
 export type AgentUsageTransport = (agent: string) => Promise<AgentUsageSnapshot | null>;
-
-/** Whether the shell is around us. The same test `bridge.ts` and `providerModelsApi.ts` use. */
-function isTauri(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-}
 
 async function readError(response: Response, path: string): Promise<string> {
   const detail = await response

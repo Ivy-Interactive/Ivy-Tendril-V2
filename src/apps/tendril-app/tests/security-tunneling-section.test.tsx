@@ -412,6 +412,23 @@ describe("Share Tunnel", () => {
     // block above rather than inside a tunnel's error, because there is one cloudflared for both.
     expect(error).toHaveTextContent(/brew install cloudflared/);
   });
+
+  it("shows the copy error and fires no success toast when neither clipboard mechanism works", async () => {
+    const { api } = stubApi({ share: connected("https://otter.trycloudflare.com") });
+    const writeText = vi.fn(() => Promise.reject(new Error("clipboard blocked")));
+    Object.assign(navigator, { clipboard: { writeText } });
+    // jsdom does not implement `execCommand`, but that is an environment gap, not a guarantee this
+    // test should lean on — make the "no working fallback" case explicit rather than relying on it.
+    document.execCommand = vi.fn(() => false);
+    await renderSection(api);
+
+    await waitFor(() => expect(screen.getByTestId("share-tunnel-active")).toBeInTheDocument());
+    await click("share-tunnel-copy");
+
+    expect(writeText).toHaveBeenCalledWith("https://otter.trycloudflare.com");
+    expect(screen.getByTestId("share-tunnel-error")).toHaveTextContent(/Could not copy the URL/);
+    expect(notifySuccess).not.toHaveBeenCalledWith("URL Copied", expect.anything());
+  });
 });
 
 describe("cloudflared install", () => {

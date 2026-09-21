@@ -139,38 +139,38 @@
 .pmv-markdown h1 {
   font-size: 2.25rem;
   line-height: 2.5rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   margin: 2rem 0 0.75rem; /* bottom margin 0.75rem matches mb-3 */
 }
 .pmv-markdown h2 {
   font-size: 1.875rem;
   line-height: 2.25rem;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   margin: 0;
 }
 .pmv-markdown h3 {
   font-size: 1.5rem;
   line-height: 2rem;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   margin: 0;
   padding-bottom: 0.25rem;
 }
 .pmv-markdown h4 {
   font-size: 1.25rem;
   line-height: 1.75rem;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   margin: 0;
 }
 .pmv-markdown h5 {
   font-size: 1.125rem;
   line-height: 1.75rem;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   margin: 0;
 }
 .pmv-markdown h6 {
   font-size: var(--text-base);
   line-height: 1.5rem;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   margin: 0;
 }
 
@@ -217,7 +217,7 @@
   font-size: var(--text-base);
 }
 .pmv-markdown strong {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 .pmv-markdown em {
   font-style: italic;
@@ -296,7 +296,7 @@
     "Geist Mono Variable", "Geist Mono", "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo,
     Consolas, monospace;
   font-size: 0.9em;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   white-space: normal;
   word-break: break-word;
 }
@@ -311,7 +311,7 @@
   min-width: 20px;
   padding: 0 5px;
   font-size: var(--text-xs);
-  font-weight: 400;
+  font-weight: var(--font-weight-normal);
   font-family: inherit;
   line-height: 1;
   border: var(--border-width) solid color-mix(in srgb, currentColor 30%, transparent);
@@ -361,7 +361,7 @@
 .pmv-markdown pre code {
   background: none;
   padding: 0;
-  font-weight: 400;
+  font-weight: var(--font-weight-normal);
   border-radius: 0;
   font-size: inherit;
   display: block;
@@ -410,7 +410,7 @@
   border: var(--border-width) solid var(--border);
   padding: 0.5rem 1rem;
   text-align: left;
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
   font-size: 0.875em;
 }
 .pmv-markdown td {
@@ -456,7 +456,7 @@
   align-items: center;
   gap: 0.5rem;
   padding: 0.75rem 1rem;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
   cursor: pointer;
   user-select: none;
   list-style: none;
@@ -571,13 +571,13 @@
   background: var(--primary);
   color: var(--primary-foreground);
   font-size: var(--text-2xs);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   flex-shrink: 0;
 }
 
 .pmv-popover-author-name {
   font-size: var(--text-xs);
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   color: var(--foreground);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -591,23 +591,6 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.pmv-popover-textarea {
-  width: 100%;
-  border-radius: var(--radius-sm);
-  border: var(--border-width) solid var(--input);
-  background: var(--background);
-  padding: 0.375rem 0.5rem;
-  font-size: var(--text-sm);
-  resize: none;
-  outline: none;
-  font-family: inherit;
-  color: inherit;
-}
-
-.pmv-popover-textarea:focus {
-  box-shadow: 0 0 0 1px var(--ring);
 }
 
 .pmv-popover-actions {
@@ -733,7 +716,7 @@
   padding: 0.75rem;
   color: var(--destructive);
   font-size: var(--text-sm);
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 /* ─── GitHub-style alerts/callouts ────────────────────────────────────── */
@@ -749,7 +732,7 @@
   display: flex;
   align-items: center;
   gap: 0.5rem;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   margin-bottom: 0.25rem;
 }
 

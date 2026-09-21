@@ -21,4 +21,11 @@ pub mod manifest;
 pub mod project;
 pub mod screenshot;
 
+// Test-only: the shared env lock and `EnvGuard` the unit tests below `browser` and `build` use to
+// serialise their `WIREFRAME_*` mutations and put them back afterwards. Declared here rather than
+// inside one of those modules so both reach the same `Mutex` -- two locks would let a
+// `WIREFRAME_CACHE` test in one module run against a `WIREFRAME_CACHE` test in another.
+#[cfg(test)]
+mod test_support;
+
 pub use project::{TailwindMode, WireframeConfig, WireframeProject};

@@ -64,8 +64,11 @@ describe("IceboxView thaw", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /thaw plan/i }));
 
-    // `TransitionState(selectedPlan.FolderName, PlanStatus.Draft)`.
-    await waitFor(() => expect(updatePlanField).toHaveBeenCalledWith("00300", "state", "Draft"));
+    // `TransitionState(selectedPlan.FolderName, PlanStatus.Draft)`. Four arguments because the write
+    // goes through `plansStore.transitionPlanOptimistic`, which passes `allowFailedVerifications` on.
+    await waitFor(() =>
+      expect(updatePlanField).toHaveBeenCalledWith("00300", "state", "Draft", undefined),
+    );
     expect(onPlanChanged).toHaveBeenCalledWith("00300");
     // The host's plan list has not refetched yet, so the view has to drop the card itself or it
     // keeps offering a second Thaw on a plan that already moved.

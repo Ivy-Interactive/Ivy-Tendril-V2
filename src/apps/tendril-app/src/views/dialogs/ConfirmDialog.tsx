@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Button, Callout } from "@ivy-interactive/components/ui";
-import { DialogShell } from "./DialogShell";
+import { DialogShell, DialogShortcutHint } from "./DialogShell";
 import { type DialogWidth } from "./fieldStyles";
 
 export type ConfirmVariant = "destructive" | "warning" | "primary";
@@ -80,6 +80,19 @@ const VARIANT_CLASS: Record<ConfirmVariant, "destructive" | "warning" | "default
  *    keystroke that arrived late. `onShortcut` is withheld entirely while the confirm is disabled or
  *    busy, so the chord can never submit what the button itself refuses.
  *
+ * 8. **The chord is visible**, as a `DialogShortcutHint` key cap inside the confirm button. Point 7
+ *    bound the key and showed nothing, which made it an affordance only a reader of this file had:
+ *    the operator who reached the delete confirm through `PlanDetailView`'s Backspace still had no
+ *    way to know the answer was one chord away.
+ *
+ *    It does not weaken point 3. `TuiKbd` is `aria-hidden`, so the button's accessible name is still
+ *    the bare verb and a screen reader announces "Delete", not "Delete Ctrl ↵".
+ *
+ *    The cap is bound to the same `confirmArmed` as `onShortcut`, for the same reason and one more:
+ *    a badge rendered while the shortcut is withheld would advertise a key that does nothing, which
+ *    is a worse failure than showing none at all. It goes on the confirm only — Cancel is reached by
+ *    Escape (point 5) and `secondaryAction` is not the nominated primary.
+ *
  * `secondaryAction` is the one addition to the two-button footer, for V1's Delete Plan, whose
  * alternatives are the *reversible* answers and are read before the destructive one.
  */
@@ -102,10 +115,11 @@ export function ConfirmDialog({
   const cancelRef = React.useRef<HTMLButtonElement>(null);
   const bodyId = React.useId();
 
-  // The exact condition on the confirm button below, so the chord and the click can never disagree.
-  // `JobsView`'s clear-jobs confirm is the live case: it renders with `confirmDisabled` while the
-  // scope it would clear is empty, and a shortcut that ignored that would dispatch the clear the
-  // button is refusing.
+  // The exact condition on the confirm button below, so the chord, its key cap and the click can
+  // never disagree. `JobsView`'s clear-jobs confirm is the live case: it renders with
+  // `confirmDisabled` while the scope it would clear is empty, and a shortcut that ignored that
+  // would dispatch the clear the button is refusing — while a cap that ignored it would name a key
+  // that does nothing.
   const confirmArmed = !isBusy && !confirmDisabled;
 
   return (
@@ -138,6 +152,7 @@ export function ConfirmDialog({
             disabled={isBusy || confirmDisabled}
           >
             {isBusy ? "Working…" : confirmLabel}
+            {confirmArmed && <DialogShortcutHint shortcut="Ctrl+Enter" />}
           </Button>
         </>
       }

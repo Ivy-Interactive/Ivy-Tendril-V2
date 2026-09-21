@@ -255,6 +255,43 @@ class SidebarListStore {
   }
 
   /**
+   * Drops a row from the retained list, for a plan that has left every queue while the page that
+   * publishes the list is not mounted.
+
+   * The gap this closes is the one the operator sees as "the row is still there". A sidebar list is
+   * published by its page on every render, so while `PlansView` or `ReviewView` is on screen the
+   * shortened queue republishes itself and the row goes on its own. But {@link retainFor} keeps the
+   * list alive across a `plan-<id>` navigation on purpose (see {@link PLAN_DETAIL_NAV_PREFIX}), and
+   * on that page the publisher has unmounted — so the snapshot is frozen, nothing will republish it,
+   * and deleting the plan from its own page leaves a row pointing at a plan that no longer exists.
+   * `plansStore` dropping the plan cannot help: no mounted publisher is reading it.
+   *
+   * Matching is {@link isSamePlanId} rather than string equality for the reason that helper exists:
+   * the id reaches this from a dialog as `00021`, from a nav as `21` and from args as
+   * `00021-SomePlan`, and all three name the row.
+   *
+   * A list with no such row is left untouched, identity included, which is what leaves a retained
+   * chat list (session ids, not plan ids) alone and keeps the store's snapshot stability intact.
+   */
+  public removeItem(itemId: string): void {
+    const snapshot = this.snapshot;
+    if (snapshot === null) return;
+    const items = snapshot.items.filter((item) => !isSamePlanId(item.id, itemId));
+    if (items.length === snapshot.items.length) return;
+
+    // The selection goes with the row, so the shell does not paint a highlight on a plan that is
+    // gone. Which plan to open next is the shell's decision (`nextAfterRemoval`), not this store's.
+    const selectedId =
+      snapshot.selectedId && isSamePlanId(snapshot.selectedId, itemId) ? null : snapshot.selectedId;
+    const next = { ...snapshot, items, selectedId };
+
+    this.latest = this.latest === null ? null : { ...this.latest, items, selectedId };
+    this.snapshot = next;
+    this.signature = listSignature(next);
+    this.notify();
+  }
+
+  /**
    * V1 `TendrilAppShell.HandleOpenPage`: the sidebar section belongs to the page app, so it is
    * dropped when the page changes to an app without a list of its own. It is retained between apps
    * that both show sidebar sections, so the header and search button do not flicker.

@@ -1,5 +1,5 @@
 import { memo } from "react";
-import CopyToClipboardButton from "./CopyToClipboardButton";
+import { CopyToClipboardButton } from "./CopyToClipboardButton";
 import { Spinner } from "./ui/spinner";
 import { renderMermaid } from "@/lib/diagram";
 import { useDiagramRender } from "@/hooks/use-diagram-render";
@@ -60,4 +60,3 @@ MermaidRenderer.displayName = "MermaidRenderer";
 
 export { MermaidRenderer };
 export type { MermaidRendererProps };
-export default MermaidRenderer;

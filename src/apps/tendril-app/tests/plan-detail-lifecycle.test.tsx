@@ -372,7 +372,11 @@ describe("the discard action is gone", () => {
     const dialog = await screen.findByTestId("delete-plan-dialog");
     fireEvent.click(within(dialog).getByTestId("dialog-skip"));
 
-    await waitFor(() => expect(updateField).toHaveBeenCalledWith("00021", "state", "Skipped"));
+    // Four arguments because the dialog writes through `plansStore.transitionPlanOptimistic`, which
+    // passes `allowFailedVerifications` on for the callers that set it.
+    await waitFor(() =>
+      expect(updateField).toHaveBeenCalledWith("00021", "state", "Skipped", undefined),
+    );
   });
 });
 

@@ -1,6 +1,7 @@
 import { agentsApi } from "../api/agentsApi";
 import { chatApi } from "../api/chatApi";
 import { publishChatSessionCount } from "./chatSessionCount";
+import { navigation } from "./navigation";
 import { onChatEvent, type EventUnsubscribe } from "../api/events";
 import { DEFAULT_OPTION_ID, type AgentOption } from "../types/agents";
 import type {
@@ -795,9 +796,25 @@ export class ChatStore {
     this.notify();
   }
 
+  /**
+   * Deletes the conversations nobody ever said anything in, V1's `ChatHistoryService.PruneEmptySessions`.
+   *
+   * "Empty" means *abandoned*, and a terminal session is the one kind that is empty on purpose: the
+   * agent draws its own interface and nothing is ever written to the session's message list
+   * (`AgentTerminalView` parses no output and posts no messages), so `messages.length === 0` stays
+   * true for as long as the terminal runs. Only a session with no pane open on it is abandoned.
+   */
   public async pruneEmptySessions(keepSessionId?: string | null): Promise<void> {
+    // The open terminal panes, by session id — `navigation` keys an agent pane by the session it
+    // runs, so its own pane list is the register of which sessions are live.
+    const openPanes = new Set(navigation.getState().sessions.map((pane) => pane.id));
     const toDelete = this.state.sessions.filter((s) => {
       if (keepSessionId && s.id === keepSessionId) return false;
+      // A session with a terminal open on it is in use, however empty its transcript. Without this
+      // the Chat page's unmount prune deleted the session a terminal pane had just been opened for
+      // — and opening that pane is what unmounts the page — so `POST /chat/sessions/:id/terminal`
+      // arrived at a daemon that had already deleted the id and answered 404, every time.
+      if (openPanes.has(s.id)) return false;
       // A generating session is never pruned, whether or not it is the one on screen, which is
       // what `ChatHistoryService.PruneEmptySessions` checks.
       if (this.generatingSessionIds.has(s.id)) return false;

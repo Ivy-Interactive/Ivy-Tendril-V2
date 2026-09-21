@@ -169,5 +169,3 @@ export const AgentTerminalView: React.FC<AgentTerminalViewProps> = ({
     </HeaderLayout>
   );
 };
-
-export default AgentTerminalView;

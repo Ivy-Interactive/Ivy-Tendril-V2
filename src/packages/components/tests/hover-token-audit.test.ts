@@ -24,6 +24,7 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../../..")
 const BANNED: ReadonlyArray<{ pattern: RegExp; why: string }> = [
   { pattern: /hover:bg-accent\b/, why: "1.062:1 light / 1.030:1 on dark --card" },
   { pattern: /hover:bg-accent\//, why: "accent at partial alpha: 1.026:1 light / 1.010:1 dark" },
+  { pattern: /hover:bg-muted\b/, why: "byte-identical to --accent, same 1.062:1 / 1.030:1" },
   { pattern: /hover:bg-muted\/50/, why: "1.026:1, and exactly 1.000:1 on a bg-muted surface" },
   { pattern: /active:bg-accent\b/, why: "an active state indistinguishable from idle" },
   { pattern: /focus-visible:bg-accent\b/, why: "a focus fill at 1.062:1" },
@@ -32,12 +33,10 @@ const BANNED: ReadonlyArray<{ pattern: RegExp; why: string }> = [
 /**
  * Files still holding an invisible token because a concurrent agent owns them. Each entry is a
  * promise, not an exemption: this list must shrink to empty as those changes land. Do not add to it
- * to make a new violation pass -- use `bg-secondary/60`.
+ * to make a new violation pass -- use `bg-secondary/60`. Empty now; kept as a `Set` so a future
+ * exemption has somewhere to go without changing the check below.
  */
-const ALLOWLIST: ReadonlySet<string> = new Set([
-  "src/apps/tendril-app/src/views/ChatView.tsx",
-  "src/apps/tendril-app/src/views/ChatHeader.tsx",
-]);
+const ALLOWLIST: ReadonlySet<string> = new Set([]);
 
 const ROOTS = [
   "src/packages/components/src",
@@ -88,8 +87,8 @@ describe("hover token audit", () => {
     expect(violations).toEqual([]);
   });
 
-  it("the owned-file allowlist stays small and does not silently grow", () => {
-    // If this fails upward, the migration is being undone one exemption at a time.
-    expect(ALLOWLIST.size).toBeLessThanOrEqual(2);
+  it("the owned-file allowlist stays empty", () => {
+    // The migration is done; any new entry here is a regression, not a promise.
+    expect(ALLOWLIST.size).toBe(0);
   });
 });

@@ -361,5 +361,3 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
     </ChatBubble>
   );
 });
-
-export default ChatMessageRow;

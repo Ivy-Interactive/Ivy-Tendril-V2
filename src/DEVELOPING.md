@@ -39,9 +39,13 @@ CLI, so you do not need to care where it lands.
 |---|---|---|
 | `--no-watch` | `NO_WATCH=1` | Rust file watching off — the app does not rebuild when a crate changes |
 | `--no-hmr` | `NO_HMR=1` | Frontend HMR off — the webview does not hot-replace modules |
-| `--no-reload` | — | Both of the above |
+| `--no-reload` | — | Both of the above. `--no-hotreload` is an accepted alias |
 
 It prints which of these are active on start-up, so a surprising rebuild is easy to rule out.
+
+Anything else beginning `--no-` is rejected by the runner before the daemon starts, because
+everything it does not recognise is forwarded to the Tauri CLI — so a near miss used to surface as
+Tauri's usage text, several build steps later, naming neither the real flag nor this script.
 
 | Env | Default | Effect |
 |---|---|---|

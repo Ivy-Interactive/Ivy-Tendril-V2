@@ -4,6 +4,7 @@ import type { Job, PlanSummary } from "../types/api";
 import { NoContentView } from "../components/NoContentView";
 import { TendrilProcessWallpaper } from "../components/TendrilProcessWallpaper";
 import { usePublishSidebarList, type ShellSidebarList } from "../state/sidebarListStore";
+import { isPlanId, resolvePlanSelection } from "../state/plansStore";
 import { draftQueueFor, normalizePlanState } from "../utils/planQueues";
 
 /**
@@ -18,6 +19,14 @@ export {
   reviewQueueFor,
   REVIEW_QUEUE_STATES,
 } from "../utils/planQueues";
+
+/**
+ * `PlanSelectionHelper.ResolveSelection` and the next-item rule built on it, which moved to
+ * `plansStore` for the same reason the queue helpers live in `utils/planQueues`: the shell needs both
+ * and cannot import them from a `React.lazy` view without pulling it into the initial chunk. Still
+ * re-exported here, because this module is where they lived and where the app imports them from.
+ */
+export { nextAfterRemoval, resolvePlanSelection } from "../state/plansStore";
 
 /**
  * The New Plan shortcut, bound and labelled as V1 binds and labels it
@@ -97,59 +106,6 @@ export const parseProjects = (project: string | undefined): string[] =>
     .filter((p) => p.length > 0);
 
 /**
- * Whether `plan` is the plan `id` names.
- *
- * `PlanSelectionHelper.ResolveSelection` accepts three spellings of the same plan, because the id
- * reaches it from three places: `p.FolderName.Equals(saved)`, `p.Id.ToString() == saved` and
- * `p.FolderName.StartsWith(saved + "-")` — an app's args carry `00021-SomePlan`, a row carries the
- * folder and a link carries the bare number. The numeric comparison here covers all three, since
- * `parseInt` reads the leading id off a folder name.
- */
-const isPlanId = (plan: PlanSummary, id: string): boolean => {
-  if (plan.id.toLowerCase() === id.toLowerCase()) return true;
-  const left = Number.parseInt(plan.id, 10);
-  const right = Number.parseInt(id, 10);
-  return !Number.isNaN(left) && !Number.isNaN(right) && left === right;
-};
-
-/**
- * Which plan an app opens on, ported from V1's `Helpers/PlanSelectionHelper.cs`.
- *
- * V1 calls this on **every** `Build()` of both `PlansApp` and `ReviewApp` — it is not a mount-time
- * seed — and its three branches are, in order:
- *
- * 1. the saved plan, if it is still in the list
- *    (`currentPlans.FirstOrDefault(p => p.FolderName.Equals(selected.FolderName) || p.Id == selected.Id)`);
- * 2. failing that, whatever now sits at the **same index** it used to
- *    (`var newIndex = oldIndex >= 0 ? Math.Min(oldIndex, currentPlans.Count - 1) : 0`), so clearing a
- *    queue works down it instead of bouncing back to the top after every decision;
- * 3. and with nothing saved at all, the first plan:
- *    `if (currentSelected == null && currentPlans.Count > 0 && ...) return (currentPlans[0], ...)`.
- *
- * Both callers order the list `.OrderByDescending(p => p.Id)`, so "the first plan" is the **highest
- * id**: the latest plan, not the most recently touched one. An empty list selects nothing, which is
- * what puts V1 on its `NoContentView`.
- *
- * @param plans the app's own filtered, newest-first list.
- * @param savedId the plan the app already had selected, or the one its args named.
- * @param previousPlans the list as it was on the previous build, for branch 2.
- */
-export const resolvePlanSelection = (
-  plans: PlanSummary[],
-  savedId: string | null | undefined,
-  previousPlans: readonly PlanSummary[] = [],
-): PlanSummary | null => {
-  if (plans.length === 0) return null;
-  if (!savedId) return plans[0];
-
-  const match = plans.find((plan) => isPlanId(plan, savedId));
-  if (match) return match;
-
-  const oldIndex = previousPlans.findIndex((plan) => isPlanId(plan, savedId));
-  return plans[oldIndex >= 0 ? Math.min(oldIndex, plans.length - 1) : 0];
-};
-
-/**
  * The badges a row carries, in `PlansApp.BuildRowBadges` order: the state unless it is Draft (where
  * every plan starts, so saying so is not news), then one badge per project, then the level.
  */
@@ -221,7 +177,6 @@ export const PlansView: React.FC<PlansViewProps> = ({
    * (`TendrilAppShell.PageTabTitle`).
    */
   const [openedPlanId, setOpenedPlanId] = useState<string | null>(selectedPlanId);
-  const selectedId = selectedPlanId ?? openedPlanId;
 
   useShortcut("plans:new-plan", NEW_PLAN_SHORTCUT, () => onNewPlan?.(), {
     description: "New Plan",
@@ -229,6 +184,35 @@ export const PlansView: React.FC<PlansViewProps> = ({
   });
 
   const listPlans = useMemo(() => draftQueueFor(plans, jobs), [plans, jobs]);
+
+  /**
+   * Which of the two ids `ResolveSelection` is handed as its "saved" plan: the address while it names
+   * a plan still in the queue, and otherwise the plan this page last opened.
+   *
+   * The two disagree in exactly one case — the address still naming a plan that has just left the
+   * queue — and there the order is the whole difference. V1 has no such case: its `selected` is the
+   * app's own state, re-recorded from each resolution, and `PlansAppArgs.PlanId` only ever seeds it.
+   * Letting the prop outrank that state instead re-asks "where does the departed plan send us?" on
+   * every later render, and the answer does not keep: branch 2 needs the queue that plan was still
+   * in, which one render later is no longer what `previousQueue` holds. The selection falls through
+   * to `plans[0]`, so an operator who cleared a plan is advanced one step down the queue and then, a
+   * render later, thrown back to the top of it.
+   */
+  const addressIsLive =
+    selectedPlanId !== null && listPlans.some((plan) => isPlanId(plan, selectedPlanId));
+  const selectedId = addressIsLive ? selectedPlanId : (openedPlanId ?? selectedPlanId);
+
+  /**
+   * The queue as it was on the previous render, which is the argument `resolvePlanSelection`'s
+   * keep-the-index branch cannot work without — and which this page used to omit, leaving the branch
+   * unreachable and every plan that left the queue bouncing the selection back to the newest one.
+   *
+   * V1 needs no such ref because `PlansApp.Build` holds the previous list in the app's own state and
+   * passes it straight in; a function component has to carry it across renders itself. The ref is
+   * updated in an effect rather than during render so that the render which first sees a shortened
+   * list still reads the longer one, which is the whole point of the comparison.
+   */
+  const previousQueue = useRef<PlanSummary[]>(listPlans);
 
   /**
    * The plan this page opens on, which V1 opens **without being asked**: `PlansApp.Build` runs
@@ -241,8 +225,26 @@ export const PlansView: React.FC<PlansViewProps> = ({
    * `onSelectPlan` is a fresh closure on every host render, and re-running it would push a duplicate
    * history entry each time.
    */
-  const defaultSelection = resolvePlanSelection(listPlans, selectedId);
+  const defaultSelection = resolvePlanSelection(listPlans, selectedId, previousQueue.current);
   const autoOpenedId = useRef<string | null>(null);
+
+  /*
+   * The previous queue is only advanced once the *host* has accepted the resolution, not on every
+   * render that produced one.
+   *
+   * `onSelectPlan` is a navigation, so the host applies it a render later: until it does, this page
+   * re-renders with the shortened list and the departed plan still named as `selectedId`. Advancing
+   * the ref on the first of those renders threw away the only list the departed plan's index could
+   * be read from, so the second render found it in neither list and took `ResolveSelection`'s third
+   * branch — back to `plans[0]`, the newest plan, which is exactly the bounce keep-the-index exists
+   * to prevent. Holding the ref until `selectedId` names a plan that is actually in the list keeps
+   * V1's own invariant: `PlansApp.Build` re-resolves against the list it last *built* from, and it
+   * only ever builds from a list its selection belongs to.
+   */
+  useEffect(() => {
+    if (selectedId && !listPlans.some((plan) => isPlanId(plan, selectedId))) return;
+    previousQueue.current = listPlans;
+  }, [listPlans, selectedId]);
 
   useEffect(() => {
     const target = defaultSelection?.id;

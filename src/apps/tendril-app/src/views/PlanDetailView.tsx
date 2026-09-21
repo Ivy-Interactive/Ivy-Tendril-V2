@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
+import { copyToClipboard } from "@ivy-interactive/components";
 import { Badge } from "@ivy-interactive/components/ui";
 import {
   PlanWorkspace,
@@ -20,14 +21,14 @@ import {
 import { bridge } from "../api/bridge";
 import { PlanChatPanel } from "../components/chat/PlanChatPanel";
 import { extractPlanQuestions, patchQuestionsMarkdown } from "../utils/questionMarkdown";
-import { PlanActionsController } from "../controllers/plan_actions";
-import { type DraftAction } from "../controllers/draft_actions";
-import { buildUpdatePrompt } from "../controllers/update_prompt";
+import { PlanActionsController } from "../controllers/planActions";
+import { type DraftAction } from "../controllers/draftActions";
+import { buildUpdatePrompt } from "../controllers/updatePrompt";
 import {
   collectExecuteGuards,
   unfoldedAnswerCount,
   type ExecuteGuard,
-} from "../controllers/execute_guards";
+} from "../controllers/executeGuards";
 import { PlanVerifications } from "./PlanVerifications";
 import {
   formatPlanId,
@@ -244,7 +245,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
    * `planService.UpdateLatestRevision(...)` — `bridge.updateLatestRevision`, which overwrites the
    * newest revision **in place**. Not `writeRevision`: that appends, which would claim the agent
    * produced a new plan and would inflate `revisionCount`, the term
-   * `execute_guards.unfoldedAnswerCount` reads as `revisionCount === 1`.
+   * `executeGuards.unfoldedAnswerCount` reads as `revisionCount === 1`.
    *
    * A refused write is rolled back rather than left on screen. V1 can leave the question of what a
    * failure looks like alone because its write is synchronous and in-process; here the daemon can say
@@ -847,12 +848,10 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         setActiveDialog("delete");
         return;
       case "copyId":
-        await runAction("Copy Plan ID", () => navigator.clipboard.writeText(plan.id));
+        await runAction("Copy Plan ID", () => copyToClipboard(plan.id));
         return;
       case "copyPath":
-        await runAction("Copy Folder Path", () =>
-          navigator.clipboard.writeText(plan.folderPath ?? ""),
-        );
+        await runAction("Copy Folder Path", () => copyToClipboard(plan.folderPath ?? ""));
         return;
       case "openFolder":
         await runAction("Open Folder", () => openPath(plan.folderPath ?? ""));

@@ -400,7 +400,7 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
                 onClick={() => setActiveDialog({ rec: selected, action: "Decline" })}
                 className="text-xs"
               >
-                <X className="h-3.5 w-3.5" />
+                <X className="size-3.5" />
                 Decline
               </Button>
               <Button
@@ -411,7 +411,7 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
                 onClick={() => void handleSetState(selected, "Accepted")}
                 className="text-xs"
               >
-                <Check className="h-3.5 w-3.5" />
+                <Check className="size-3.5" />
                 {pendingId === recommendationId(selected) ? "Accepting..." : "Accept"}
               </Button>
             </div>
@@ -428,7 +428,7 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
               onClick={() => setActiveDialog({ rec: selected, action: "Accept" })}
               className="text-xs"
             >
-              <CircleCheck className="h-3.5 w-3.5" />
+              <CircleCheck className="size-3.5" />
               Accept with Notes
             </Button>
             {/* V2-only, no V1 counterpart: `Apps/Recommendations/` has no issue button, so this is
@@ -460,7 +460,7 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
               onClick={() => onSelectPlan(selected.planId)}
               className="text-xs"
             >
-              <ExternalLink className="h-3.5 w-3.5" />
+              <ExternalLink className="size-3.5" />
               View Plan
             </Button>
             <Button
@@ -471,7 +471,7 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
               disabled={isLoading}
               className="bg-card text-xs"
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? "animate-spin" : ""}`} />
+              <RefreshCw className={`size-3.5 ${isLoading ? "animate-spin" : ""}`} />
               Refresh
             </Button>
           </div>

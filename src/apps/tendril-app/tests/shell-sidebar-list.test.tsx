@@ -114,6 +114,63 @@ describe("sidebarListStore", () => {
     expect(sidebarListStore.getState()).toBeNull();
   });
 
+  /**
+   * The row a deleted plan leaves behind, which is the half of "it does not instantly remove the
+   * deleted thing from the sidebar" that dropping the plan from `plansStore` cannot reach.
+   *
+   * On Plans or Review the page republishes its own list on every render, so a shortened queue takes
+   * the row with it. On a `plan-<id>` page that publisher has unmounted and `retainFor` is keeping
+   * the snapshot alive on purpose — so it is frozen, and the row for the plan the operator just
+   * deleted from that very page stays in the sidebar and stays clickable.
+   */
+  it("drops a deleted plan's row from a list no mounted page can republish", () => {
+    sidebarListStore.publish(plansList());
+    sidebarListStore.retainFor("plan-00074");
+    const listener = vi.fn();
+    sidebarListStore.subscribe(listener);
+
+    sidebarListStore.removeItem("00074");
+
+    expect(sidebarListStore.getState()?.items.map((i) => i.id)).toEqual(["00075"]);
+    // The highlight goes with the row rather than staying on a plan that is gone. Which plan opens
+    // next is `nextAfterRemoval`'s decision, made by the shell, not this store's.
+    expect(sidebarListStore.getState()?.selectedId).toBeNull();
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
+  it("matches the row by any of the three spellings of a plan id", () => {
+    // `isSamePlanId`: the id reaches this from a dialog as `00074`, a nav as `74` and args as
+    // `00074-SomePlan`.
+    sidebarListStore.publish(plansList());
+    sidebarListStore.removeItem("74");
+    expect(sidebarListStore.getState()?.items.map((i) => i.id)).toEqual(["00075"]);
+  });
+
+  it("leaves a list holding no such row completely alone", () => {
+    // A retained chat list is keyed by session id, and a plan delete must not disturb it — identity
+    // included, or the shell re-renders for nothing.
+    sidebarListStore.publish(plansList());
+    const before = sidebarListStore.getState();
+    const listener = vi.fn();
+    sidebarListStore.subscribe(listener);
+
+    sidebarListStore.removeItem("00404");
+
+    expect(sidebarListStore.getState()).toBe(before);
+    expect(listener).not.toHaveBeenCalled();
+  });
+
+  it("keeps republishing coherent after a removal", () => {
+    // The signature has to move with the shortened list, or the page that remounts and republishes
+    // the *original* queue is mistaken for a no-op and the row never comes back.
+    sidebarListStore.publish(plansList());
+    sidebarListStore.removeItem("00074");
+
+    sidebarListStore.publish(plansList());
+
+    expect(sidebarListStore.getState()?.items.map((i) => i.id)).toEqual(["00074", "00075"]);
+  });
+
   it("titles the page tab after the selected row, falling back to the app title", () => {
     // V1 `TendrilAppShell.PageTabTitle`.
     expect(pageTabTitle("Plans", plansList())).toBe("#74 Draft the shell");

@@ -725,6 +725,12 @@ fn init_vault_repo(home: &HomeFixture) {
     let dir = home.vault_dir();
     std::fs::create_dir_all(dir.join("projects")).expect("create vault projects dir");
     fixture_git(&dir, &["init", "-q", "-b", "main", "."]);
+    // Repo-local, not the `GIT_AUTHOR_*` env `fixture_git` sets: the commit under test is made by
+    // `vault::service` inside this process, so it never sees that env. A developer machine has a
+    // global identity and hid this; CI has none, and there `git commit` refused, leaving the branch
+    // still pointing at the seed commit and the assertion reading "seed".
+    fixture_git(&dir, &["config", "user.name", "Tendril Test"]);
+    fixture_git(&dir, &["config", "user.email", "test@tendril.invalid"]);
     fixture_git(
         &dir,
         &["remote", "add", "origin", &remote.to_string_lossy()],

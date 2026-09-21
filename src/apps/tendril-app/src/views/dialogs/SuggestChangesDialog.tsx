@@ -1,7 +1,7 @@
 import * as React from "react";
 import { Button, Callout, Textarea } from "@ivy-interactive/components/ui";
 import { bridge } from "../../api/bridge";
-import { PlanActionsController } from "../../controllers/plan_actions";
+import { PlanActionsController } from "../../controllers/planActions";
 import { formatChangeRequest, readSource, type AppComment } from "../../utils/appComments";
 import {
   describeBridgeError,

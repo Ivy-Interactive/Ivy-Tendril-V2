@@ -59,8 +59,15 @@ describe("DeletePlanDialog", () => {
     render(<DeletePlanDialog isOpen onClose={vi.fn()} plan={plan} />);
 
     const footer = screen.getByTestId("dialog-cancel").parentElement as HTMLElement;
-    const labels = [...footer.querySelectorAll("button")].map((b) => b.textContent);
-    expect(labels).toEqual(["Cancel", "Move to Skipped", "Move to Icebox", "Delete"]);
+    // Accessible names, not `textContent`: the confirm carries a `DialogShortcutHint` key cap, and
+    // that cap is `aria-hidden` precisely so it decorates the button without joining its name. Reading
+    // raw text here would assert "DeleteCtrl\u21b5" and turn every future affordance into a failure in a
+    // test about footer *order*.
+    const buttons = [...footer.querySelectorAll("button")];
+    expect(buttons).toHaveLength(4);
+    ["Cancel", "Move to Skipped", "Move to Icebox", "Delete"].forEach((name, i) =>
+      expect(buttons[i]).toHaveAccessibleName(name),
+    );
   });
 
   it("moves the plan to Skipped instead, without deleting", async () => {
@@ -72,7 +79,11 @@ describe("DeletePlanDialog", () => {
 
     fireEvent.click(screen.getByTestId("dialog-skip"));
 
-    await waitFor(() => expect(updateField).toHaveBeenCalledWith("00021", "state", "Skipped"));
+    // Four arguments because the write goes through `plansStore.transitionPlanOptimistic`, which
+    // passes `allowFailedVerifications` on for the callers that set it (`PartialDeliveryDialog`).
+    await waitFor(() =>
+      expect(updateField).toHaveBeenCalledWith("00021", "state", "Skipped", undefined),
+    );
     expect(deletePlan).not.toHaveBeenCalled();
     expect(onSkipped).toHaveBeenCalledWith("00021");
   });
@@ -86,7 +97,9 @@ describe("DeletePlanDialog", () => {
 
     fireEvent.click(screen.getByTestId("dialog-archive"));
 
-    await waitFor(() => expect(updateField).toHaveBeenCalledWith("00021", "state", "Icebox"));
+    await waitFor(() =>
+      expect(updateField).toHaveBeenCalledWith("00021", "state", "Icebox", undefined),
+    );
     expect(deletePlan).not.toHaveBeenCalled();
     expect(onArchived).toHaveBeenCalledWith("00021");
   });

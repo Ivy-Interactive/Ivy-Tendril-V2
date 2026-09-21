@@ -368,5 +368,3 @@ export function useChatMessageWindow(
     visibleRange,
   };
 }
-
-export default useChatMessageWindow;

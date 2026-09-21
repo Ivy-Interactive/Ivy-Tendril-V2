@@ -281,7 +281,56 @@ function ensureSidecars() {
   }
 }
 
+/**
+ * The two spellings of "turn hot reload off". `--no-hotreload` is an alias rather than a mistake:
+ * the feature is called hot reload throughout, so that is the name a reader reaches for first, and
+ * it cost a full build and a started daemon to find out it was not the one. Accepting both is
+ * cheaper than being right about which one someone will guess.
+ */
+const NO_RELOAD_FLAGS = ["--no-reload", "--no-hotreload"];
+
+/** The flags this runner interprets itself; everything else is the Tauri CLI's to parse. */
+const OWN_FLAGS = ["--no-watch", "--no-hmr", ...NO_RELOAD_FLAGS];
+
+/**
+ * Reject a misspelled runner flag before anything expensive happens.
+ *
+ * Everything this script does not recognise is forwarded to the Tauri CLI, which is what lets
+ * `--config`, `--features` and friends work without being re-declared here. The cost is that a typo
+ * in one of *our* flags reaches a CLI that has never heard of it, and says so in its own vocabulary:
+ * `--no-hotreload` produced Tauri's usage text and exit code 2 — naming neither the flag that was
+ * meant nor this script — and only after the components build, the wireframe payload, both sidecars
+ * and the daemon had already been built and started. A minute of work to reach a spelling mistake.
+ *
+ * So this runs first, before any of that. Only `--no-*` is checked: those are the names this script
+ * owns, a near miss on one of them is the plausible mistake, and anything else really may be a Tauri
+ * flag we have never heard of either.
+ */
+function rejectUnknownFlags(rawArgs: string[]) {
+  const misspelled = rawArgs.find(
+    (arg) =>
+      arg.startsWith("--no-") &&
+      !OWN_FLAGS.includes(arg) &&
+      // Tauri's own `--no-*` flag, which is legitimately ours to forward.
+      arg !== "--no-dev-server-wait",
+  );
+  if (!misspelled) return;
+
+  console.error(
+    `\x1b[31m[dev-desktop] Unknown flag '${misspelled}'.\x1b[0m\n` +
+      `  This runner accepts:\n` +
+      `    --no-watch    Rust file watching off (or NO_WATCH=1)\n` +
+      `    --no-hmr      Frontend HMR off (or NO_HMR=1)\n` +
+      `    --no-reload   Both of the above (--no-hotreload is the same flag)\n` +
+      `  Anything else is forwarded to the Tauri CLI. See src/DEVELOPING.md.`,
+  );
+  process.exit(2);
+}
+
 async function main() {
+  // First, so a spelling mistake costs a second rather than a full build and a started daemon.
+  rejectUnknownFlags(process.argv.slice(2));
+
   console.log(
     "\x1b[36m[dev-desktop] Initializing Tendril desktop development environment...\x1b[0m",
   );
@@ -373,16 +422,16 @@ async function main() {
   }
 
   const rawArgs = process.argv.slice(2);
-  const noWatch =
-    rawArgs.includes("--no-watch") ||
-    rawArgs.includes("--no-reload") ||
-    process.env.NO_WATCH === "1";
-  const noHmr =
-    rawArgs.includes("--no-hmr") || rawArgs.includes("--no-reload") || process.env.NO_HMR === "1";
+  const noReload = rawArgs.some((arg) => NO_RELOAD_FLAGS.includes(arg));
+  const noWatch = rawArgs.includes("--no-watch") || noReload || process.env.NO_WATCH === "1";
+  const noHmr = rawArgs.includes("--no-hmr") || noReload || process.env.NO_HMR === "1";
 
-  // Filter out npm/vp forwarding delimiter "--" and custom flags Tauri CLI doesn't know about
+  // Filter out the npm/vp forwarding delimiter "--" and the flags the Tauri CLI does not know about.
+  // `--no-watch` is deliberately absent: that one is Tauri's own and is re-added below. Both reload
+  // spellings have to be stripped, or the alias reaches Tauri and fails exactly as the unrecognised
+  // flag did before it was an alias.
   const cleanArgs = rawArgs.filter(
-    (arg) => arg !== "--" && arg !== "--no-reload" && arg !== "--no-hmr",
+    (arg) => arg !== "--" && arg !== "--no-hmr" && !NO_RELOAD_FLAGS.includes(arg),
   );
 
   const tauriArgs: string[] = [];

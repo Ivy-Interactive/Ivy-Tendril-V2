@@ -20,4 +20,9 @@ export const Default: Story = {
     duration: 2,
     spread: 2,
   },
+  parameters: {
+    // The shimmer is a framer-motion animation driving backgroundPosition directly, not a CSS
+    // animation/transition, so the test runner's freeze CSS cannot pin it to one frame.
+    visual: { disable: true },
+  },
 };

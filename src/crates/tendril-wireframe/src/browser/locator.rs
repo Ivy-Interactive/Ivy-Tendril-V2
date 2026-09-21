@@ -187,6 +187,7 @@ fn from_path(name: &str) -> Option<PathBuf> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{env_lock, EnvGuard};
 
     #[test]
     fn an_explicit_path_that_exists_wins() {
@@ -199,7 +200,8 @@ mod tests {
     #[test]
     fn an_explicit_path_that_does_not_exist_says_so_rather_than_falling_back() {
         // Silently falling back to an installed Chrome would be worse: the caller asked for a
-        // specific binary, probably to reproduce something.
+        // specific binary, probably to reproduce something. No lock is needed: an explicit path
+        // short-circuits the `or_else` in `locate`, so this never reads the environment.
         let err = locate(Some(Path::new("/no/such/browser")))
             .unwrap_err()
             .to_string();
@@ -209,10 +211,14 @@ mod tests {
 
     #[test]
     fn the_environment_override_is_honoured() {
+        // The guard is declared after the lock so it restores the variable before the mutex is
+        // released, and it restores on the assertion panic below too -- the bare `remove_var` this
+        // replaced ran only on the success path, so a failure here used to leave every later
+        // `locate(None)` in the binary pointed at a deleted temp file.
+        let _env = env_lock();
         let file = tempfile::NamedTempFile::new().unwrap();
-        std::env::set_var("WIREFRAME_BROWSER", file.path());
+        let _browser = EnvGuard::set("WIREFRAME_BROWSER", file.path());
         let found = locate(None).unwrap();
-        std::env::remove_var("WIREFRAME_BROWSER");
         assert_eq!(found.path, file.path());
     }
 
@@ -227,7 +233,13 @@ mod tests {
     fn a_failure_lists_everything_it_searched() {
         // Only meaningful where no browser is installed; where one is, locate() succeeds and there
         // is nothing to assert about the message.
-        std::env::remove_var("WIREFRAME_BROWSER");
+        //
+        // Clearing the override is as much a process-global mutation as setting one, and this test
+        // used to do it bare and never put it back: it deleted whatever `WIREFRAME_BROWSER` the
+        // developer had exported, and, depending on interleaving, the one the test above was
+        // relying on.
+        let _env = env_lock();
+        let _browser = EnvGuard::remove("WIREFRAME_BROWSER");
         match locate(None) {
             Ok(found) => assert!(found.path.is_file()),
             Err(e) => {

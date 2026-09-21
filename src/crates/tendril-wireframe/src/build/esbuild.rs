@@ -235,6 +235,7 @@ pub async fn try_get_version(binary: &Path) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_support::{env_lock, EnvGuard};
 
     #[test]
     fn rid_maps_to_a_published_package() {
@@ -249,20 +250,29 @@ mod tests {
 
     #[test]
     fn cached_path_is_versioned_and_platform_scoped() {
-        std::env::set_var("WIREFRAME_CACHE", "/cache");
+        // Pinning the cache root keeps the assertion about the layout rather than about whatever
+        // `local_app_data()` resolves to on the machine running this. The guard is what stops that
+        // pin from escaping: `WIREFRAME_CACHE` is read by every `wireframe_cache_dir()` caller in
+        // the process, so leaving `/cache` set -- which is what the unconditional `remove_var` at
+        // the end did on any panic -- points a sibling's build output at a directory that does not
+        // exist.
+        let _env = env_lock();
+        let _cache = EnvGuard::set("WIREFRAME_CACHE", "/cache");
         let path = cached_path().to_string_lossy().replace('\\', "/");
         assert!(path.contains(&format!("/esbuild/{VERSION}/")), "got {path}");
         assert!(path.ends_with(binary_name()), "got {path}");
-        std::env::remove_var("WIREFRAME_CACHE");
     }
 
     #[test]
     fn the_override_wins_over_the_cache() {
-        std::env::set_var("WIREFRAME_ESBUILD", "/somewhere/esbuild");
+        // Two variables are in play, not one: `local_candidates` reads `WIREFRAME_ESBUILD` and then
+        // appends `cached_path()`, which reads `WIREFRAME_CACHE`. They share the one lock, so this
+        // cannot interleave with the cache test above.
+        let _env = env_lock();
+        let _esbuild = EnvGuard::set("WIREFRAME_ESBUILD", "/somewhere/esbuild");
         let candidates = local_candidates();
         assert_eq!(candidates[0], PathBuf::from("/somewhere/esbuild"));
         assert_eq!(candidates.len(), 2, "the cache stays as the fallback");
-        std::env::remove_var("WIREFRAME_ESBUILD");
     }
 
     #[test]

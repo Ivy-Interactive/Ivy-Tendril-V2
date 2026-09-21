@@ -200,5 +200,3 @@ const getWeightedRandomIndex = (likelihoods: number[]): number => {
   }
   return likelihoods.length - 1;
 };
-
-export default LogoLoading;

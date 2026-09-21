@@ -217,7 +217,7 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
                   className={`rounded-selector px-3 py-1.5 text-sm font-medium transition ${
                     selectedProject === o.value
                       ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
                   }`}
                 >
                   {o.label}

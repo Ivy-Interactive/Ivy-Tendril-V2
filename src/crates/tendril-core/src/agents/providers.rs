@@ -379,10 +379,21 @@ fn build_antigravity_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
     // Always write to a fresh temp file rather than trusting `config.prompt_file_path` as-is, so
     // the guardrails above are present even when the caller already supplied its own prompt file.
     args.push("--print".to_string());
-    let temp_path = write_temp_prompt(&final_prompt, "tendril-agy-prompt");
-    let normalized = temp_path.to_string_lossy().replace('\\', "/");
-    args.push(format!("@{}", normalized));
-    temp_files.push(temp_path);
+    match write_temp_prompt(&final_prompt, "tendril-agy-prompt") {
+        Some(temp_path) => {
+            let normalized = temp_path.to_string_lossy().replace('\\', "/");
+            args.push(format!("@{}", normalized));
+            temp_files.push(temp_path);
+        }
+        // An `@<file>` that was never written is the one argument `--print` must not be handed: agy
+        // does not fail on the missing path, it takes the whole `@/tmp/...md` as the literal prompt,
+        // so the run opens by asking the model about a file name and the job's actual instructions
+        // are gone. `--print` accepts the prompt inline too — `probe.rs`'s `antigravity_model`
+        // launches that way — so the text goes on the command line instead, guardrails and all. The
+        // file is preferred only because a long prompt strains argv, which makes this the fallback
+        // rather than the default.
+        None => args.push(final_prompt),
+    }
 
     let mut env = default_environment();
     for (k, v) in &config.environment_variables {
@@ -585,12 +596,24 @@ fn build_claude_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
 
     let mut temp_files = Vec::new();
 
+    // The prompt already goes down stdin, so a system prompt that could not be written to disk is
+    // prepended to it rather than dropped — the same degradation `build_cursor_spec` and
+    // `build_opencode_spec` make for CLIs that have no system-prompt flag to render at all. What
+    // must not survive the failed write is `--system-prompt-file` itself: claude exits on a path it
+    // cannot read instead of starting without the instructions, which turns a lost system prompt
+    // into a lost job.
+    let mut stdin_content = config.prompt.clone();
+
     if let Some(sys) = &config.system_prompt {
         if !sys.is_empty() {
-            let temp_sys = write_temp_prompt(sys, "tendril-sysprompt");
-            args.push("--system-prompt-file".to_string());
-            args.push(temp_sys.to_string_lossy().to_string());
-            temp_files.push(temp_sys);
+            match write_temp_prompt(sys, "tendril-sysprompt") {
+                Some(temp_sys) => {
+                    args.push("--system-prompt-file".to_string());
+                    args.push(temp_sys.to_string_lossy().to_string());
+                    temp_files.push(temp_sys);
+                }
+                None => stdin_content = format!("{}\n\n---\n\n{}", sys, config.prompt),
+            }
         }
     }
 
@@ -618,7 +641,7 @@ fn build_claude_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
         args,
         environment: env,
         working_directory: config.working_directory.clone(),
-        stdin_content: Some(config.prompt.clone()),
+        stdin_content: Some(stdin_content),
         redirect_stdin: true,
         temp_files,
     }
@@ -1983,12 +2006,31 @@ pub fn write_mcp_config(servers: &[McpServerConfig]) -> Option<PathBuf> {
     Some(path)
 }
 
-fn write_temp_prompt(content: &str, prefix: &str) -> PathBuf {
+/// `content` in a fresh temp file, or `None` when the write did not happen.
+///
+/// `Option` rather than `io::Result` for the same reason as [`write_mcp_config`]: the error is
+/// worth reporting but not worth returning. Neither caller can act on the difference between one
+/// `io::ErrorKind` and another — each already has a degradation that puts the text on the command
+/// line or down stdin instead — and [`build_agent_spec`] returns a spec, not a result, so an
+/// `io::Error` propagated out of here would only be unwrapped or discarded a frame later. Logging
+/// at the point that still has the path and the errno is strictly more informative than that.
+///
+/// The write used to be `let _ = fs::write(..)`, which handed the caller a path to a file that was
+/// never created. A missing or unwritable temp directory is the real shape of the failure:
+/// `std::env::temp_dir` reads `TMPDIR`, which the caller does not control.
+fn write_temp_prompt(content: &str, prefix: &str) -> Option<PathBuf> {
     let temp_dir = std::env::temp_dir();
     let filename = format!("{}-{}.md", prefix, uuid::Uuid::new_v4().simple());
     let path = temp_dir.join(filename);
-    let _ = std::fs::write(&path, content);
-    path
+    if let Err(e) = std::fs::write(&path, content) {
+        tracing::warn!(
+            "Could not write the prompt file '{}': {e}. The caller will pass the text inline \
+             instead.",
+            path.display()
+        );
+        return None;
+    }
+    Some(path)
 }
 
 fn find_on_path(binary: &str) -> Option<PathBuf> {
