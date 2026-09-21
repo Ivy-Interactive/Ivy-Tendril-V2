@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
+import { copyToClipboard } from "@ivy-interactive/components";
 import { Badge } from "@ivy-interactive/components/ui";
 import {
   PlanWorkspace,
@@ -847,12 +848,10 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         setActiveDialog("delete");
         return;
       case "copyId":
-        await runAction("Copy Plan ID", () => navigator.clipboard.writeText(plan.id));
+        await runAction("Copy Plan ID", () => copyToClipboard(plan.id));
         return;
       case "copyPath":
-        await runAction("Copy Folder Path", () =>
-          navigator.clipboard.writeText(plan.folderPath ?? ""),
-        );
+        await runAction("Copy Folder Path", () => copyToClipboard(plan.folderPath ?? ""));
         return;
       case "openFolder":
         await runAction("Open Folder", () => openPath(plan.folderPath ?? ""));

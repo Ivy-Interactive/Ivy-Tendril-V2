@@ -40,6 +40,7 @@ import type { RemoteTablePage, RemoteTableRequest } from "@ivy-interactive/compo
 import { invoke } from "@tauri-apps/api/core";
 
 import type { Job } from "../types/api";
+import { isTauri } from "../utils/tauri";
 
 /**
  * The daemon's `TableQuery`. `signal` and other client-only concerns are stripped before sending.
@@ -95,11 +96,6 @@ export type TableQueryTransport = (
   body: Record<string, unknown>,
   signal?: AbortSignal,
 ) => Promise<unknown>;
-
-/** Whether the shell is around us. The same test `bridge.ts` uses. */
-function isTauri(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-}
 
 /**
  * Tauri IPC inside the shell, HTTP outside it — the same rule `bridge.ts` uses, and for the same

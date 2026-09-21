@@ -1,6 +1,7 @@
 import React from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
 import { WandSparkles } from "lucide-react";
+import { copyToClipboard } from "@ivy-interactive/components";
 import { Button, Callout, Densities } from "@ivy-interactive/components/ui";
 import { PlanGitView, PlanMarkdown } from "@ivy-interactive/components/tendril";
 import type { Annotation, Job, PlanDetail, PlanGitData, RecommendationItem } from "../../types/api";
@@ -260,9 +261,7 @@ export const OtherTabsPane: React.FC<OtherTabsPaneProps> = ({
           <DetailRow label="Plan ID">
             <button
               type="button"
-              onClick={() =>
-                void runAction("Copy Plan ID", () => navigator.clipboard.writeText(plan.id))
-              }
+              onClick={() => void runAction("Copy Plan ID", () => copyToClipboard(plan.id))}
               title="Copy to clipboard"
               className="font-mono hover:underline"
             >
@@ -273,9 +272,7 @@ export const OtherTabsPane: React.FC<OtherTabsPaneProps> = ({
             <button
               type="button"
               onClick={() =>
-                void runAction("Copy Folder Path", () =>
-                  navigator.clipboard.writeText(plan.folderPath ?? ""),
-                )
+                void runAction("Copy Folder Path", () => copyToClipboard(plan.folderPath ?? ""))
               }
               title="Copy to clipboard"
               className="break-all font-mono hover:underline"

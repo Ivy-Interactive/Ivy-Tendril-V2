@@ -60,6 +60,7 @@ import type {
   VersionInfo,
 } from "../types/api";
 import type { ChatAttachment } from "../types/chat";
+import { encodeBase64, isTauri } from "../utils/tauri";
 
 export type { ReviewActionSession } from "./events";
 
@@ -84,20 +85,6 @@ export interface ReviewActionRun {
    * preview that replaces the terminal.
    */
   close(): Promise<void>;
-}
-
-function isTauri(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-}
-
-/** Encodes raw bytes for the daemon's `input` route, which takes base64 for the same reason `log` does. */
-function encodeBase64(data: string | Uint8Array): string {
-  const bytes = typeof data === "string" ? new TextEncoder().encode(data) : data;
-  let binary = "";
-  for (const byte of bytes) {
-    binary += String.fromCharCode(byte);
-  }
-  return btoa(binary);
 }
 
 function reviewActionUrl(projectName: string, actionName: string, endpoint: string): string {
@@ -275,7 +262,7 @@ async function invokeOrFetch<T>(
   init?: RequestInit,
 ): Promise<T> {
   try {
-    if (typeof window !== "undefined" && "__TAURI_INTERNALS__" in window) {
+    if (isTauri()) {
       return await invoke<T>(command, args);
     }
   } catch {

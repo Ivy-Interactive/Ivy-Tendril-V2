@@ -2,6 +2,7 @@ import * as React from "react";
 
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { useScrollShadow as useScrollShadowHook } from "@/hooks/use-scroll-shadow";
 
 /**
  * The two layouts a panel with fixed chrome and scrolling content needs, and the scroll shadow that makes
@@ -33,62 +34,18 @@ export type ScrollShadowEdge = "top" | "bottom";
  *
  * `bottom` (the header's case) is simply "scrolled away from the top". `top` (the footer's case) is "there
  * is more below", which needs the content's *size* as well as the scroll position — so it observes resizes
- * and mutations too, because content that streams in changes the answer without anyone scrolling. The
- * framework's `hooks/use-scroll-shadow.ts` does exactly this, and coalesces mutation bursts into one frame
- * for the same reason: an output pane appending a line per frame would otherwise measure on every one.
+ * and mutations too, because content that streams in changes the answer without anyone scrolling.
+ *
+ * A thin adapter over `hooks/use-scroll-shadow.ts` — same measurement, reversed argument order
+ * (`edge` first, to match this module's own `HeaderLayout`/`FooterLayout` call sites) and a
+ * `shadowed` field name kept for this module's existing callers.
  */
 export function useScrollShadow(
   edge: ScrollShadowEdge = "bottom",
   selector = "[data-radix-scroll-area-viewport]",
 ): { shadowed: boolean; scrollRef: React.RefObject<HTMLDivElement | null> } {
-  const [shadowed, setShadowed] = React.useState(false);
-  const scrollRef = React.useRef<HTMLDivElement | null>(null);
-
-  React.useEffect(() => {
-    const viewport = scrollRef.current?.querySelector(selector);
-    if (!viewport) return;
-
-    const measure = () => {
-      if (edge === "bottom") {
-        setShadowed(viewport.scrollTop > 0);
-        return;
-      }
-      const { scrollTop, scrollHeight, clientHeight } = viewport;
-      // The `+ 1`/`- 1` slack absorbs sub-pixel rounding, which otherwise leaves the shadow flickering on
-      // a container that is scrolled exactly to the end.
-      const overflowing = scrollHeight > clientHeight + 1;
-      setShadowed(overflowing && scrollTop < scrollHeight - clientHeight - 1);
-    };
-
-    measure();
-    viewport.addEventListener("scroll", measure, { passive: true });
-
-    // Only the `top` edge depends on content size: "scrolled down from the top" cannot change without a
-    // scroll event, but "is there more below" changes whenever the content grows.
-    let frame: number | null = null;
-    const resizeObserver = edge === "top" ? new ResizeObserver(measure) : null;
-    const mutationObserver =
-      edge === "top"
-        ? new MutationObserver(() => {
-            if (frame !== null) return;
-            frame = requestAnimationFrame(() => {
-              measure();
-              frame = null;
-            });
-          })
-        : null;
-    resizeObserver?.observe(viewport);
-    mutationObserver?.observe(viewport, { childList: true, subtree: true });
-
-    return () => {
-      viewport.removeEventListener("scroll", measure);
-      resizeObserver?.disconnect();
-      mutationObserver?.disconnect();
-      if (frame !== null) cancelAnimationFrame(frame);
-    };
-  }, [edge, selector]);
-
-  return { shadowed, scrollRef };
+  const { isScrolled, scrollRef } = useScrollShadowHook(selector, edge);
+  return { shadowed: isScrolled, scrollRef };
 }
 
 export interface HeaderLayoutProps {
