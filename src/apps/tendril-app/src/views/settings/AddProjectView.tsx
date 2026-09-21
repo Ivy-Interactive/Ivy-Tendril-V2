@@ -1,6 +1,6 @@
 import React from "react";
-import { ArrowLeft, ArrowRight, Loader2, Plus, X } from "lucide-react";
-import { Button, Callout, Input } from "@ivy-interactive/components/ui";
+import { ArrowLeft, ArrowRight, Plus, X } from "lucide-react";
+import { Button, Callout, Input, Spinner } from "@ivy-interactive/components/ui";
 import { jobsStore } from "../../state/jobsStore";
 import { describeBridgeError } from "../../types/api";
 import type { ProjectEntry } from "./projectConfig";
@@ -312,7 +312,7 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
                 className="flex h-32 items-center justify-center text-muted-foreground"
                 data-testid="add-project-agent-loading"
               >
-                <Loader2 className="size-5 animate-spin text-success" aria-hidden />
+                <Spinner size="lg" className="text-success" aria-hidden />
               </div>
             }
           >

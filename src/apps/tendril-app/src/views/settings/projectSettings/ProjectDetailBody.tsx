@@ -1,10 +1,11 @@
 import React from "react";
-import { Loader2, Plus, X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import {
   Button,
   Callout,
   DataTable,
   Input,
+  Spinner,
   type BladeDescriptor,
   type DataTableColumn,
   type DataTableRowAction,
@@ -556,7 +557,7 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
               onClick={() => void addRepo()}
             >
               {isAddingRepo ? (
-                <Loader2 className="size-4 animate-spin" aria-hidden />
+                <Spinner size="md" aria-hidden />
               ) : (
                 <Plus className="size-4" aria-hidden />
               )}

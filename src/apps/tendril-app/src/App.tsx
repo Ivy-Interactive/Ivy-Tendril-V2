@@ -32,7 +32,7 @@ import {
 } from "./types/api";
 import { getUpdateCommand } from "./utils/updateCommand";
 
-import { Loader2 } from "lucide-react";
+import { Spinner } from "@ivy-interactive/components/ui";
 import { ShellLayout } from "./views/ShellLayout";
 import { NewPlanModal } from "./views/NewPlanModal";
 import { ErrorBanner } from "./components/ErrorBanner";
@@ -753,7 +753,7 @@ export const App: React.FC = () => {
           key={session.id}
           fallback={
             <div className="flex h-full items-center justify-center text-muted-foreground">
-              <Loader2 className="h-6 w-6 animate-spin text-success" />
+              <Spinner size="xl" className="text-success" />
             </div>
           }
         >
@@ -773,7 +773,7 @@ export const App: React.FC = () => {
         key={session.id}
         fallback={
           <div className="flex h-full items-center justify-center text-muted-foreground">
-            <Loader2 className="h-6 w-6 animate-spin text-success" />
+            <Spinner size="xl" className="text-success" />
           </div>
         }
       >
@@ -1052,7 +1052,7 @@ export const App: React.FC = () => {
             className="flex h-screen items-center justify-center text-muted-foreground"
             data-testid="onboarding-fallback-spinner"
           >
-            <Loader2 className="h-6 w-6 animate-spin text-success" />
+            <Spinner size="xl" className="text-success" />
           </div>
         }
       >
@@ -1167,7 +1167,7 @@ export const App: React.FC = () => {
               className="flex h-64 items-center justify-center text-muted-foreground"
               data-testid="view-fallback-spinner"
             >
-              <Loader2 className="h-6 w-6 animate-spin text-success" />
+              <Spinner size="xl" className="text-success" />
             </div>
           }
         >

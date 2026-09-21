@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
-import { Loader2 } from "lucide-react";
 import {
   Badge,
   dataTableLinkClass,
+  Spinner,
   type DataTableColumn,
   type DataTableFilterOption,
   type RemoteSortColumn,
@@ -324,7 +324,7 @@ export function useJobColumns({
           >
             {row.agentOutput === "running" ? (
               <>
-                <Loader2 className="h-3 w-3 animate-spin text-info" aria-hidden="true" />
+                <Spinner size="xs" className="text-info" aria-hidden="true" />
                 {/* Monospace so a figure that ticks every second does not reflow the cell around it. */}
                 <span className="font-mono">{row.agentOutputLabel}</span>
               </>
