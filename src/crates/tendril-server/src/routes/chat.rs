@@ -321,8 +321,9 @@ pub async fn start_terminal_handler(
             }
         };
 
-    let mut frames = stream.frames;
-    let body = futures_util::stream::poll_fn(move |cx| frames.poll_recv(cx));
+    // Shutdown-aware, so a terminal left open does not hold the daemon on its graceful-shutdown
+    // grace period. See `pty::shutdown_aware_body`.
+    let body = crate::pty::shutdown_aware_body(stream.frames, state.shutdown_rx.clone());
     axum::response::sse::Sse::new(body).into_response()
 }
 

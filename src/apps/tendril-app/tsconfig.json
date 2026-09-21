@@ -27,5 +27,16 @@
       "@/*": ["./src/*"]
     }
   },
-  "include": ["src", "tests"]
+  /* `../../scripts/*.ts` is not part of this app, and is here because nothing else typechecks it.
+     `pnpm typecheck` at the root is `pnpm -r --if-present run typecheck`, and `pnpm -r` only visits
+     projects matching `pnpm-workspace.yaml`'s globs — `src/apps/*`, `src/packages/*`,
+     `src/extensions/*`. `src/scripts/` matches none of them and has no `package.json` of its own, so
+     `dev-desktop.ts` (700 lines of process and signal handling) reached CI unchecked. It ran under
+     `tsx`, which strips types without reading them.
+
+     This app is the right program to adopt them: `tests/app-icons.test.ts` already imports
+     `generate-app-icons.ts`, so one of the two was being checked here by accident. Listing the
+     directory makes that deliberate and covers the next script as well. Only `.ts` — the `.mjs`
+     helpers alongside them are plain JavaScript and are not annotated. */
+  "include": ["src", "tests", "../../scripts/*.ts"]
 }

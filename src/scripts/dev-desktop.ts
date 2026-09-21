@@ -226,16 +226,24 @@ function forceExit(code: number): never {
   process.exit(code);
 }
 
-// Registered before anything is spawned, so the flag is already set by the time an interrupted
-// child's `exit` listener runs: the group signal reaches them and us at the same moment, and it is
-// a coin toss which callback the loop picks up first.
-for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
-  // SIGHUP is here for the same reason as the other two: closing the terminal used to orphan the
-  // whole tree, daemon and all.
-  process.on(signal, () => {
-    interrupted = true;
-    void shutdown(0);
-  });
+/**
+ * Called before anything is spawned, so the flag is already set by the time an interrupted child's
+ * `exit` listener runs: the group signal reaches them and us at the same moment, and it is a coin
+ * toss which callback the loop picks up first.
+ *
+ * A function rather than top-level code because this module is also imported — by the tests that
+ * cover `parseRunnerFlags` — and an import that quietly takes over the importer's SIGINT is a
+ * surprise nobody asked for.
+ */
+function installSignalHandlers() {
+  for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+    // SIGHUP is here for the same reason as the other two: closing the terminal used to orphan the
+    // whole tree, daemon and all.
+    process.on(signal, () => {
+      interrupted = true;
+      void shutdown(0);
+    });
+  }
 }
 
 /**
@@ -312,14 +320,84 @@ function ensureSidecars() {
  * the feature is called hot reload throughout, so that is the name a reader reaches for first, and
  * it cost a full build and a started daemon to find out it was not the one. Accepting both is
  * cheaper than being right about which one someone will guess.
+ *
+ * Exported so the test suite can assert the two are interchangeable rather than trusting that every
+ * place which consults them was kept in step — there are three (detection, stripping, and the
+ * allowlist below), and an alias that is only honoured by two of them is worse than no alias at all.
  */
-const NO_RELOAD_FLAGS = ["--no-reload", "--no-hotreload"];
+export const NO_RELOAD_FLAGS = ["--no-reload", "--no-hotreload"];
 
 /** The flags this runner interprets itself; everything else is the Tauri CLI's to parse. */
-const OWN_FLAGS = ["--no-watch", "--no-hmr", ...NO_RELOAD_FLAGS];
+export const OWN_FLAGS = ["--no-watch", "--no-hmr", ...NO_RELOAD_FLAGS];
 
 /**
- * Reject a misspelled runner flag before anything expensive happens.
+ * Tauri's own `--no-*` flag. Ours to forward untouched, and the one exception to the rejection
+ * below, which would otherwise read it as a near miss on one of `OWN_FLAGS`.
+ */
+const FORWARDED_NO_FLAG = "--no-dev-server-wait";
+
+/** What the runner decided, from argv and the environment alone. */
+export interface RunnerFlags {
+  /** Rust file watching off: Tauri's `--no-watch`. */
+  noWatch: boolean;
+  /** Frontend HMR off: `NO_HMR=1` / `VITE_HMR=false` in the child's environment. */
+  noHmr: boolean;
+  /** The argv to hand the Tauri CLI, with the runner's own flags removed and `--no-watch` re-added. */
+  tauriArgs: string[];
+  /**
+   * A `--no-*` argument that looks like one of ours and is not, or `null`. The caller decides what
+   * to do about it; see `reportUnknownFlag`.
+   */
+  unknownFlag: string | null;
+}
+
+/**
+ * Work out what the runner was asked to do. Pure, and the single place the flags are interpreted.
+ *
+ * Both reload spellings have to be honoured in three separate places — detection, the strip that
+ * keeps them from reaching a Tauri CLI that has never heard of either, and the allowlist that
+ * decides whether an argument is a typo — and an alias honoured in only some of them fails in a way
+ * that looks like the flag simply being ignored. Doing all three from one `NO_RELOAD_FLAGS` here,
+ * rather than at three call sites, is what makes "they are the same flag" a property of the code
+ * instead of a convention.
+ */
+export function parseRunnerFlags(
+  rawArgs: string[],
+  env: NodeJS.ProcessEnv = process.env,
+): RunnerFlags {
+  const noReload = rawArgs.some((arg) => NO_RELOAD_FLAGS.includes(arg));
+  const noWatch = rawArgs.includes("--no-watch") || noReload || env.NO_WATCH === "1";
+  const noHmr = rawArgs.includes("--no-hmr") || noReload || env.NO_HMR === "1";
+
+  // Drop the npm/vp forwarding delimiter "--" and the flags the Tauri CLI does not know about.
+  // `--no-watch` is deliberately absent from the strip: that one is Tauri's own, and it is re-added
+  // below so that the env and alias routes to it produce the same argv as passing it directly.
+  const cleanArgs = rawArgs.filter(
+    (arg) => arg !== "--" && arg !== "--no-hmr" && !NO_RELOAD_FLAGS.includes(arg),
+  );
+
+  const tauriArgs: string[] = [];
+  if (noWatch) {
+    tauriArgs.push("--no-watch");
+  }
+  for (const arg of cleanArgs) {
+    if (!tauriArgs.includes(arg)) {
+      tauriArgs.push(arg);
+    }
+  }
+
+  // Only `--no-*` is checked: those are the names this script owns, a near miss on one of them is
+  // the plausible mistake, and anything else really may be a Tauri flag we have never heard of.
+  const unknownFlag =
+    rawArgs.find(
+      (arg) => arg.startsWith("--no-") && !OWN_FLAGS.includes(arg) && arg !== FORWARDED_NO_FLAG,
+    ) ?? null;
+
+  return { noWatch, noHmr, tauriArgs, unknownFlag };
+}
+
+/**
+ * Say which flag was not understood, before anything expensive happens.
  *
  * Everything this script does not recognise is forwarded to the Tauri CLI, which is what lets
  * `--config`, `--features` and friends work without being re-declared here. The cost is that a typo
@@ -327,35 +405,29 @@ const OWN_FLAGS = ["--no-watch", "--no-hmr", ...NO_RELOAD_FLAGS];
  * `--no-hotreload` produced Tauri's usage text and exit code 2 — naming neither the flag that was
  * meant nor this script — and only after the components build, the wireframe payload, both sidecars
  * and the daemon had already been built and started. A minute of work to reach a spelling mistake.
- *
- * So this runs first, before any of that. Only `--no-*` is checked: those are the names this script
- * owns, a near miss on one of them is the plausible mistake, and anything else really may be a Tauri
- * flag we have never heard of either.
  */
-function rejectUnknownFlags(rawArgs: string[]) {
-  const misspelled = rawArgs.find(
-    (arg) =>
-      arg.startsWith("--no-") &&
-      !OWN_FLAGS.includes(arg) &&
-      // Tauri's own `--no-*` flag, which is legitimately ours to forward.
-      arg !== "--no-dev-server-wait",
-  );
-  if (!misspelled) return;
-
+function reportUnknownFlag(flag: string) {
   console.error(
-    `\x1b[31m[dev-desktop] Unknown flag '${misspelled}'.\x1b[0m\n` +
+    `\x1b[31m[dev-desktop] Unknown flag '${flag}'.\x1b[0m\n` +
       `  This runner accepts:\n` +
       `    --no-watch    Rust file watching off (or NO_WATCH=1)\n` +
       `    --no-hmr      Frontend HMR off (or NO_HMR=1)\n` +
       `    --no-reload   Both of the above (--no-hotreload is the same flag)\n` +
       `  Anything else is forwarded to the Tauri CLI. See src/DEVELOPING.md.`,
   );
-  process.exit(2);
 }
 
 async function main() {
+  // Parsed once, up front. The rejection below has to happen before anything expensive, and the
+  // launch far below needs the same answer — reading argv twice is how the two spellings drifted
+  // apart in the first place.
+  const flags = parseRunnerFlags(process.argv.slice(2));
+
   // First, so a spelling mistake costs a second rather than a full build and a started daemon.
-  rejectUnknownFlags(process.argv.slice(2));
+  if (flags.unknownFlag) {
+    reportUnknownFlag(flags.unknownFlag);
+    process.exit(2);
+  }
 
   console.log(
     "\x1b[36m[dev-desktop] Initializing Tendril desktop development environment...\x1b[0m",
@@ -447,28 +519,7 @@ async function main() {
     console.log(`\n\x1b[32m[dev-desktop] Service is up and listening on port ${port}!\x1b[0m`);
   }
 
-  const rawArgs = process.argv.slice(2);
-  const noReload = rawArgs.some((arg) => NO_RELOAD_FLAGS.includes(arg));
-  const noWatch = rawArgs.includes("--no-watch") || noReload || process.env.NO_WATCH === "1";
-  const noHmr = rawArgs.includes("--no-hmr") || noReload || process.env.NO_HMR === "1";
-
-  // Filter out the npm/vp forwarding delimiter "--" and the flags the Tauri CLI does not know about.
-  // `--no-watch` is deliberately absent: that one is Tauri's own and is re-added below. Both reload
-  // spellings have to be stripped, or the alias reaches Tauri and fails exactly as the unrecognised
-  // flag did before it was an alias.
-  const cleanArgs = rawArgs.filter(
-    (arg) => arg !== "--" && arg !== "--no-hmr" && !NO_RELOAD_FLAGS.includes(arg),
-  );
-
-  const tauriArgs: string[] = [];
-  if (noWatch) {
-    tauriArgs.push("--no-watch");
-  }
-  for (const arg of cleanArgs) {
-    if (!tauriArgs.includes(arg)) {
-      tauriArgs.push(arg);
-    }
-  }
+  const { noWatch, noHmr, tauriArgs } = flags;
 
   const flagsSummary: string[] = [];
   if (noWatch) flagsSummary.push("Rust file watching disabled (--no-watch)");
@@ -535,7 +586,29 @@ async function main() {
   });
 }
 
-main().catch((err) => {
-  console.error(err);
-  void shutdown(1);
-});
+/**
+ * Only run the thing when this file *is* the thing being run.
+ *
+ * `tests/dev-desktop-flags.test.ts` imports `parseRunnerFlags` from here, and without this guard
+ * that import starts a daemon and a Tauri window from inside the test runner. Same shape as
+ * `generate-app-icons.ts`, which the icon tests import for the same reason. `realpathSync` on both
+ * sides because pnpm's store means the path Node reports and the path argv carries are routinely
+ * two spellings of one file.
+ */
+const invokedDirectly = (() => {
+  const entry = process.argv[1];
+  if (!entry) return false;
+  try {
+    return fs.realpathSync(entry) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
+
+if (invokedDirectly) {
+  installSignalHandlers();
+  main().catch((err) => {
+    console.error(err);
+    void shutdown(1);
+  });
+}

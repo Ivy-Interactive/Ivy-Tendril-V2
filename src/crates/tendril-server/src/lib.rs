@@ -249,6 +249,22 @@ pub async fn run_server(
         }
     }
 
+    // Every live pty session, before this function returns.
+    //
+    // Serving has stopped by now, but the process cannot leave while one of these is open: each
+    // session's reader sits on a `spawn_blocking` thread inside `reader.read(..)`, which returns only
+    // when the last slave fd closes, and dropping the runtime (which `#[tokio::main]` does when
+    // `main` returns) joins the blocking pool. A single review action or agent terminal therefore
+    // held the whole daemon open indefinitely — `dev-desktop.ts` waits five seconds and then
+    // SIGKILLs, and a SIGKILL skips `MasterGuard::drop`, so it also left `.master` behind.
+    //
+    // Signalling cannot substitute for this: `portable_pty` gives each child its own session, so it
+    // is outside the daemon's process group and a group-wide SIGINT never reaches it.
+    let killed = crate::pty::kill_all_sessions();
+    if killed > 0 {
+        tracing::info!("Closed {} live terminal session(s) on shutdown", killed);
+    }
+
     // Whatever is still queued, posted once on the way out. A best-effort call on a client that may
     // not exist: no client means nothing was ever queued.
     if let Some(telemetry) = &telemetry {
