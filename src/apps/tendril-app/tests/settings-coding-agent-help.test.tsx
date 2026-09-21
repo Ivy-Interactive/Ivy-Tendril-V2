@@ -220,4 +220,41 @@ describe("Settings / Coding Agent / Help", () => {
       }
     }
   });
+
+  /**
+   * Homebrew rejects `brew install <cask>` outright - "No available formula with the name" - so the
+   * cask/formula split is the difference between a command that works and one that errors in the
+   * operator's face. It is also invisible on a machine that already has the CLI, which is how three
+   * of these shipped wrong: the vendor docs say `brew install --cask copilot-cli` and the pane said
+   * `brew install copilot-cli`.
+   *
+   * Verified against `brew info` on 2026-09-21: claude-code, codex and copilot-cli are casks;
+   * gemini-cli is a formula (deprecated upstream, disabling 2026-12-18) and must NOT take --cask.
+   */
+  it("uses --cask for casks and a bare install for formulae", () => {
+    const CASKS = ["claude-code", "codex", "copilot-cli"];
+    const FORMULAE = ["gemini-cli"];
+
+    const brewLines = Object.entries(AGENT_HELP).flatMap(([card, help]) =>
+      [help.install, help.auth]
+        .flatMap((step) => (step.command ?? "").split("\n"))
+        .filter((line) => line.includes("brew install"))
+        .map((line) => ({ card, line })),
+    );
+    // Guard the guard: a refactor that drops every brew line must not leave this test vacuously green.
+    expect(brewLines.length).toBeGreaterThan(0);
+
+    for (const { card, line } of brewLines) {
+      for (const cask of CASKS) {
+        if (new RegExp(`\\b${cask}\\b`).test(line)) {
+          expect(line, `${card}: ${cask} is a cask, not a formula`).toContain("--cask");
+        }
+      }
+      for (const formula of FORMULAE) {
+        if (new RegExp(`\\b${formula}\\b`).test(line)) {
+          expect(line, `${card}: ${formula} is a formula, not a cask`).not.toContain("--cask");
+        }
+      }
+    }
+  });
 });

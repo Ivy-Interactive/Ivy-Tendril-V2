@@ -27,8 +27,20 @@ import { BYO_CARDS, CODING_AGENTS } from "./codingAgents";
  *
  * Commands were verified against the vendor's documentation and, where the CLI is installed on a
  * development machine, against its own `--help`. Two of the hints in `probe.rs` are already stale and
- * are deliberately *not* copied here: `gemini auth` is not a subcommand the Gemini CLI has, and
- * Copilot has no `copilot login` - it is a `/login` slash command inside the TUI.
+ * are deliberately *not* copied here: `gemini auth` is not a subcommand the Gemini CLI has (its
+ * commands are `mcp`, `extensions`, `skills`, `hooks` and `gemma`), and Copilot has no
+ * `copilot login` - GitHub's own install page says an unauthenticated first launch prompts for the
+ * `/login` slash command.
+ *
+ * That divergence is the one wart in this file: `probe.rs` keeps its own copy of these strings in
+ * `sign_in_hint`, so the same knowledge now lives twice and the two copies already disagree. A
+ * shared source of truth - the probe returning a structured hint this table renders, rather than
+ * each side spelling its own - is the right shape, but it would mean editing `probe.rs`, which is
+ * another agent's file while its stale hints are being fixed.
+ *
+ * The `brew` forms are load-bearing and are pinned by a test. Homebrew rejects `brew install <cask>`
+ * outright, so the cask/formula split decides whether the line runs at all: `claude-code`, `codex`
+ * and `copilot-cli` are casks and take `--cask`; `gemini-cli` is a formula and must not.
  */
 export interface AgentHelpStep {
   /** Why the command below is the one to run, or - where there is no command - what to do instead. */
@@ -89,7 +101,8 @@ export const AGENT_HELP: Record<string, AgentHelp> = {
       // already has the GitHub CLI is not broken, and saying so saves a redundant install.
       summary:
         "Installs the standalone `copilot` binary. An existing GitHub CLI also works: Tendril falls back to `gh copilot` when nothing named `copilot` is on PATH.",
-      command: "curl -fsSL https://gh.io/copilot-install | bash\n# or: brew install copilot-cli",
+      command:
+        "curl -fsSL https://gh.io/copilot-install | bash\n# or: brew install --cask copilot-cli",
     },
     auth: {
       // The `copilot login` in `probe.rs`'s sign-in hint does not exist. Authentication is a slash
@@ -117,15 +130,18 @@ export const AGENT_HELP: Record<string, AgentHelp> = {
   gemini: {
     binary: "gemini",
     install: {
-      summary: "Installs the `gemini` binary. MacPorts carries the same CLI as `gemini-cli`.",
-      command: "brew install gemini-cli",
+      summary:
+        "Installs the `gemini` binary. The Homebrew formula is deprecated upstream and is scheduled to be disabled on 2026-12-18, so it still installs today but will not forever; MacPorts carries the same CLI under the same name.",
+      command: "brew install gemini-cli\n# or: sudo port install gemini-cli",
     },
     auth: {
-      // `probe.rs` still suggests `gemini auth`; the CLI has no such subcommand. Sign-in is a choice
-      // on first launch, or an environment variable.
+      // `gemini auth` is not a subcommand - the CLI's are `mcp`, `extensions`, `skills`, `hooks` and
+      // `gemma`, so it is swallowed and nobody is signed in. `/auth` is a built-in slash command
+      // inside the session (subcommands `login` and `logout`, defaulting to login), which is why the
+      // block names the binary and the thing to type at it on separate lines.
       summary:
-        "There is no `gemini auth` subcommand. The first run offers `Sign in with Google`; a key from aistudio.google.com/apikey skips the browser entirely.",
-      command: "gemini\n# or: export GEMINI_API_KEY=...",
+        "There is no `gemini auth` subcommand. The first run offers `Sign in with Google`, and `/auth` re-runs that choice later; a key from aistudio.google.com/apikey skips the browser entirely.",
+      command: "gemini\n# then, at the prompt: /auth\n# or: export GEMINI_API_KEY=...",
     },
   },
 
