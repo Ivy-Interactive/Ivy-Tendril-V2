@@ -49,6 +49,23 @@ export interface DataTableColumn<TRow> {
    * and not just the few characters the value happens to occupy.
    */
   clickable?: boolean;
+  /**
+   * What this column's cells do when clicked — the legacy `.OnCellAction(t => t.Column, …)`.
+   *
+   * V1's Jobs table is the reference: it hangs *five* separate cell actions off five columns
+   * (`JobsApp.DataTable.cs:95-175`), so Plan Id navigates, Agent Output opens the output sheet, Cost
+   * and Tokens both open Cost & Tokens, and Prompt opens the full prompt. A table that routed every
+   * cell to one destination would be a different table.
+   *
+   * Declared beside {@link clickable} rather than wired inside each `cell` renderer so the *whole
+   * cell* is the target, not the few characters the value occupies — which is the difference the
+   * framework draws when it gives the cell `cursor: pointer`. A column that sets this and omits
+   * `clickable` still gets the cursor: the handler is the affordance.
+   *
+   * Takes precedence over the table's `onRowClick`, which is not fired for a cell that handles its
+   * own click — V1's grid dispatches a cell action *or* a row activation, never both.
+   */
+  onCellClick?: (row: TRow, id: string) => void;
   /** Cell becomes editable when the table is `editable`. Defaults to false. */
   editable?: boolean;
   /** Comparator override; defaults to the shared value comparator in utils.ts. */

@@ -410,6 +410,10 @@ pub struct JobDetailDto {
     /// labels `Arguments`. Distinct from `args`, the submitted `JobArgs` JSON.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cli_command: Option<String>,
+    /// Which execution profile the run used — V1's `Profile` row in the Cost & Tokens sheet. Detail
+    /// only: the list projection has no room for it and no cell that reads it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_profile: Option<String>,
     /// The plan folder the job ran against — V1's `PlanFolder`. `planFile` on the wire, which is a
     /// folder path despite the name (`jobs::deliverable` reads it as one).
     #[serde(default, skip_serializing_if = "Option::is_none")]

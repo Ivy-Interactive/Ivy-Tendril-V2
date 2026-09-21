@@ -665,21 +665,41 @@ function DataTableInner<TRow>(
             </TableCell>
           ) : null}
 
-          {visibleColumns.map((column) => (
-            <TableCell
-              key={column.name}
-              className={cn(
-                dataTableCellAlignVariant({ align: column.align ?? "Left" }),
-                column.wrapText ? "ivy-data-table-wrap" : "ivy-data-table-nowrap",
-                // `cellContent.ts:583`: a cell with a click handler is drawn with `cursor: pointer`.
-                column.clickable && "cursor-pointer",
-              )}
-              data-clickable={column.clickable ? "true" : undefined}
-              style={column.width ? { width: column.width } : undefined}
-            >
-              {renderCellContent(column, row, rowId, rowIndex)}
-            </TableCell>
-          ))}
+          {visibleColumns.map((column) => {
+            // A handler is itself an affordance, so a column that declares one is clickable whether
+            // or not it also says so - that way the cursor can never disagree with the behaviour.
+            const cellClickable = column.clickable || Boolean(column.onCellClick);
+            return (
+              <TableCell
+                key={column.name}
+                className={cn(
+                  dataTableCellAlignVariant({ align: column.align ?? "Left" }),
+                  column.wrapText ? "ivy-data-table-wrap" : "ivy-data-table-nowrap",
+                  // `cellContent.ts:583`: a cell with a click handler is drawn with `cursor: pointer`.
+                  cellClickable && "cursor-pointer",
+                )}
+                // Which column this cell belongs to. `data-row-id` already identifies the row; this
+                // is the other half of the coordinate, and what lets a caller - or a test - address
+                // one cell rather than counting `<td>`s and breaking when a column is reordered.
+                data-column={column.name}
+                data-clickable={cellClickable ? "true" : undefined}
+                style={column.width ? { width: column.width } : undefined}
+                onClick={
+                  column.onCellClick
+                    ? (event) => {
+                        // `onRowClick` is the fallback for cells that define no action of their own,
+                        // so a cell that has one must not fire it too: V1's grid dispatches a cell
+                        // action *or* a row activation, and routing both would open two sheets.
+                        event.stopPropagation();
+                        column.onCellClick?.(row, rowId);
+                      }
+                    : undefined
+                }
+              >
+                {renderCellContent(column, row, rowId, rowIndex)}
+              </TableCell>
+            );
+          })}
 
           {hasActionsColumn ? (
             <TableCell className={fitColumnClass("actions")}>

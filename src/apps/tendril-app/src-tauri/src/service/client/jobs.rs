@@ -306,6 +306,7 @@ impl TendrilClient {
                 .unwrap_or_default(),
             provider: detail_text("provider"),
             cli_command: detail_text("cliCommand"),
+            execution_profile: detail_text("executionProfile"),
             // `planFile` is the plan *folder* — see `JobDetailDto::plan_folder`.
             plan_folder: detail_text("planFile"),
             last_output_at: detail_text("lastOutputAt"),

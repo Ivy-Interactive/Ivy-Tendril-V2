@@ -147,6 +147,8 @@ export interface JobDetail extends Job {
   provider?: string;
   /** The command line the agent was launched with. V1's `CliCommand`, labelled `Arguments` there. */
   cliCommand?: string;
+  /** Which execution profile the run used. V1's `Profile` row in the Cost & Tokens sheet. */
+  executionProfile?: string;
   /** The plan folder the job ran against. V1's `PlanFolder`. */
   planFolder?: string;
   /** The artifacts the run left on this machine, each present only when the file exists. */

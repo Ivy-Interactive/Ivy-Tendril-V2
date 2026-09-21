@@ -38,6 +38,7 @@ import {
   buildJobRowActions,
   buildJobRows,
   buildStatusSegments,
+  promptSource,
   type JobRow,
   type JobRowActionCapabilities,
 } from "./jobs/rows";
@@ -100,6 +101,20 @@ const JobDebug = React.lazy(() =>
   import("./JobDebugSheet").then((m) => ({ default: m.JobDebugSheet })),
 );
 
+/** V1's Cost & Tokens sheet, opened by the Cost and Tokens cells. Lazy for the same reason. */
+const JobCost = React.lazy(() =>
+  import("./JobCostSheet").then((m) => ({ default: m.JobCostSheet })),
+);
+
+/**
+ * V1's Full Prompt sheet (`Apps/Jobs/Sheets/PromptSheet.cs`), whose entire body is
+ * `new CodeBlock(promptText, Languages.Text).WrapLines()`. Lazy because `CodeBlock` is the door to
+ * the syntax-highlighter chunk, which has no business loading with a table of jobs.
+ */
+const JobPromptBlock = React.lazy(() =>
+  import("@ivy-interactive/components/tendril").then((m) => ({ default: m.CodeBlock })),
+);
+
 /**
  * `JobsApp.DataTable.cs:93`: `c.BatchSize = 50`. A job list is long and mostly history.
  *
@@ -149,6 +164,17 @@ export const JobsView: React.FC<JobsViewProps> = ({
   const [openJobId, setOpenJobId] = useState<string | null>(null);
   /** V1's `showDebug(id)`: the Job Debug sheet, over the table. See {@link JobDebugSheet}. */
   const [debugJobId, setDebugJobId] = useState<string | null>(null);
+  /**
+   * V1's `showCost(id)`: the Cost & Tokens sheet, which **both** the Cost and Tokens cells open
+   * (`JobsApp.DataTable.cs:149-162`). One piece of state for the two columns, because they are two
+   * ways into the same sheet rather than two sheets.
+   */
+  const [costJobId, setCostJobId] = useState<string | null>(null);
+  /**
+   * V1's `showPrompt(text)`: the full, untruncated prompt. Keyed by job id rather than holding the
+   * text, so the sheet re-reads the row it belongs to and cannot go stale against a refetch.
+   */
+  const [promptJobId, setPromptJobId] = useState<string | null>(null);
   /**
    * The toolbar's filter, `c.AllowFiltering = true`: the expression as typed, and the wire filter it
    * parsed to.
@@ -399,10 +425,35 @@ export const JobsView: React.FC<JobsViewProps> = ({
     });
   };
 
+  /**
+   * V1's `showCost(id)`. The detail is fetched for the same reason the output sheet fetches it: the
+   * list projection carries `cost` and `tokens` but not `provider`, and the sheet names the provider.
+   */
+  const openJobCost = (jobId: string) => {
+    setCostJobId(jobId);
+    jobsStore.fetchJobDetail(jobId).catch(() => {
+      // Supplementary: the sheet falls back to the list row, which carries the figures themselves.
+    });
+  };
+
+  /**
+   * V1's `showPrompt(GetFullPrompt(job))`. V1 resolves the text from the job's typed args and falls
+   * back to the plan's `InitialPrompt`; the daemon has already done that resolution and put the
+   * result on the row, so this only has to open the sheet on it.
+   */
+  const openJobPrompt = (jobId: string) => {
+    setPromptJobId(jobId);
+    jobsStore.fetchJobDetail(jobId).catch(() => {
+      // Supplementary: `prompt` is already on the list row.
+    });
+  };
+
   const columns = useJobColumns({
     onSelectPlan,
     openPlan,
     openJobOutput,
+    openJobCost,
+    openJobPrompt,
     statusOptions,
     typeOptions,
     projectOptions,
@@ -442,6 +493,23 @@ export const JobsView: React.FC<JobsViewProps> = ({
    * be fetched) gets the sheet's own "nothing to show yet" line rather than a half-empty table.
    */
   const debugJob = debugJobId ? jobDetails?.[debugJobId] : undefined;
+
+  /**
+   * The Cost & Tokens and Prompt sheets' subjects. Unlike the debug sheet, the *list row* already
+   * carries what each one shows - the figures and the prompt text - so the fetched detail is
+   * preferred where it has arrived and the row is used until it does. Neither sheet has a loading
+   * state for that reason: there is nothing to wait for.
+   */
+  const costJob = costJobId
+    ? (jobDetails?.[costJobId] ?? jobs.find((job) => job.id === costJobId))
+    : undefined;
+  const promptJob = promptJobId
+    ? (jobDetails?.[promptJobId] ?? jobs.find((job) => job.id === promptJobId))
+    : undefined;
+  /** V1 titles the prompt sheet "Full Prompt" and the cost sheet "Cost & Tokens". */
+  const costJobTitle = costJob?.planId ? `Cost & Tokens — ${costJob.planId}` : "Cost & Tokens";
+  /** The untruncated text behind the Prompt cell - the same walk the cell does, without the cut. */
+  const promptText = promptJob ? promptSource(promptJob) : undefined;
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3" data-testid="jobs-view">
@@ -524,12 +592,12 @@ export const JobsView: React.FC<JobsViewProps> = ({
           }
           // `rerun-job` is unreachable: the entry is disabled. See `RERUN_UNAVAILABLE_REASON`.
         }}
-        // Not a V1 behaviour - V1's table selects nothing and activates nothing, it hangs four cell
-        // actions off individual cells. Three of those (`showOutput`, and `showCost` from both Cost
-        // and Tokens) open a sheet, and the two sheets V2 has not built (Cost & Tokens, Prompt) show
-        // figures the output sheet's header already carries, so the row opens that one. The Plan Id
-        // cell keeps its own, different destination.
-        onRowClick={(row) => openJobOutput(row.id)}
+        /* No `onRowClick`, which is V1's behaviour: its table selects nothing and activates nothing
+           (`c.SelectionMode = SelectionModes.None`), and hangs *five* separate cell actions off five
+           columns instead - Plan Id navigates, Agent Output opens the output sheet, Cost and Tokens
+           both open Cost & Tokens, and Prompt opens the full prompt. Routing every other cell to the
+           output sheet, as this did while those two sheets were missing, meant a click on Status or
+           Project opened something the reader did not ask for and hid the cell they were pointing at. */
         emptyState={
           /* Which of the two it is turns on whether a filter is narrowing anything, not on the row
              count: a filtered-to-nothing table and an empty one look identical and mean opposite
@@ -722,6 +790,83 @@ export const JobsView: React.FC<JobsViewProps> = ({
                  daemon could not answer, this is the honest state rather than a table of blanks. */
               <span className="text-xs text-muted-foreground" data-testid="job-debug-pending">
                 Loading job details…
+              </span>
+            )}
+          </HeaderLayout>
+        </SheetContent>
+      </Sheet>
+
+      {/* V1's Cost & Tokens sheet (`JobsApp.cs:51`), opened by the Cost *and* Tokens cells
+          (`JobsApp.DataTable.cs:149-162`) at the same `UxHelper.SheetWidth` as the sheets above. */}
+      <Sheet
+        open={costJobId !== null}
+        onOpenChange={(open) => {
+          if (!open) setCostJobId(null);
+        }}
+      >
+        <SheetContent
+          data-testid="job-cost-sheet-panel"
+          className="inset-y-0 flex w-full flex-col overflow-hidden p-0 sm:w-3/4 sm:max-w-none lg:w-1/2 xl:w-2/5"
+        >
+          <HeaderLayout
+            className="min-h-0 flex-1"
+            header={
+              <SheetHeader className="pr-8">
+                <SheetTitle>{costJobTitle}</SheetTitle>
+              </SheetHeader>
+            }
+          >
+            {costJob ? (
+              <React.Suspense
+                fallback={
+                  <div className="flex h-32 items-center justify-center text-muted-foreground">
+                    <Spinner size="lg" className="text-success" aria-hidden="true" />
+                  </div>
+                }
+              >
+                <JobCost job={costJob} />
+              </React.Suspense>
+            ) : null}
+          </HeaderLayout>
+        </SheetContent>
+      </Sheet>
+
+      {/* V1's Full Prompt sheet (`JobsApp.cs:51`), opened by the Prompt cell. Its whole body is one
+          wrapped code block, which is what `PromptSheet.cs` renders. */}
+      <Sheet
+        open={promptJobId !== null}
+        onOpenChange={(open) => {
+          if (!open) setPromptJobId(null);
+        }}
+      >
+        <SheetContent
+          data-testid="job-prompt-sheet"
+          className="inset-y-0 flex w-full flex-col overflow-hidden p-0 sm:w-3/4 sm:max-w-none lg:w-1/2 xl:w-2/5"
+        >
+          <HeaderLayout
+            className="min-h-0 flex-1"
+            header={
+              <SheetHeader className="pr-8">
+                <SheetTitle>Full Prompt</SheetTitle>
+              </SheetHeader>
+            }
+          >
+            {promptText ? (
+              <React.Suspense
+                fallback={
+                  <div className="flex h-32 items-center justify-center text-muted-foreground">
+                    <Spinner size="lg" className="text-success" aria-hidden="true" />
+                  </div>
+                }
+              >
+                {/* `WrapLines()`: a prompt is prose, so it wraps rather than scrolling sideways. */}
+                <JobPromptBlock content={promptText} wrapLines />
+              </React.Suspense>
+            ) : (
+              /* A job type that carries no prose of its own - `ExpandPlan`, `SplitPlan` - reaches the
+                 sheet with nothing to show. Saying so beats an empty box. */
+              <span className="text-xs text-muted-foreground" data-testid="job-prompt-empty">
+                This job recorded no prompt text.
               </span>
             )}
           </HeaderLayout>

@@ -131,11 +131,14 @@ function tokenBreakdown(job: Job): string | null {
  * arrived through a different path can carry `""`, and taking it would stop the chain one step early
  * and render the same blank cell.
  */
-export function promptDisplay(job: Job): string {
-  const source = [job.planTitle, job.prompt, job.planId].find(
+export function promptSource(job: Job): string | undefined {
+  return [job.planTitle, job.prompt, job.planId].find(
     (candidate) => candidate !== undefined && candidate !== null && candidate.trim() !== "",
   );
-  return truncatePrompt(source);
+}
+
+export function promptDisplay(job: Job): string {
+  return truncatePrompt(promptSource(job));
 }
 
 export interface BuildJobRowsOptions {

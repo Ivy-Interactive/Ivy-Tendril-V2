@@ -1,6 +1,5 @@
 import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
-import * as React from "react";
 import { describe, expect, it } from "vite-plus/test";
 
 import { DataTable } from "./data-table";

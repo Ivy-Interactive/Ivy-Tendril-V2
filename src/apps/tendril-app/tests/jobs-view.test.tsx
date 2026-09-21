@@ -1162,8 +1162,11 @@ describe("Jobs table errors", () => {
  *
  * The framework's grid draws a cell with a click handler at `cursor: pointer` and a plain one at
  * `cursor: default` (`widgets/dataTables/utils/cellContent.ts:583`, `:459`), and reserves blue underlined
- * text for a **link** cell (`utils/customRenderers.ts:526`, `utils/canvasText.ts:103`). V1's Jobs table has
- * four cell actions; two survive in V2, and they are one of each kind.
+ * text for a **link** cell (`utils/customRenderers.ts:526`, `utils/canvasText.ts:103`). V1's Jobs table
+ * hangs five cell actions off five columns (`JobsApp.DataTable.cs:95-175`), and V2 now has all five —
+ * one of them a link, the rest sheet openers.
+ *
+ * Where each one *goes* is `jobs-cell-actions.test.tsx`; this is only about what the cell looks like.
  */
 describe("Jobs clickable cells", () => {
   afterEach(() => vi.restoreAllMocks());
@@ -1183,9 +1186,16 @@ describe("Jobs clickable cells", () => {
     const clickable = Array.from(
       document.querySelectorAll<HTMLElement>('tbody td[data-clickable="true"]'),
     );
-    // Plan Id (navigates) and Agent Output (opens the sheet). Not Status, Prompt, Type, Project, Timer,
-    // Cost, Tokens, Timestamp or Status Message — none of those has a cell action in V2.
-    expect(clickable).toHaveLength(2);
+    // V1's five: Plan Id (navigates), Prompt, Cost, Tokens and Agent Output (each opens a sheet). Not
+    // Status, Type, Project, Timer, Timestamp or Status Message — none of those has a cell action.
+    const columns = clickable.map((element) => element.getAttribute("data-column"));
+    expect([...columns].sort((a, b) => (a ?? "").localeCompare(b ?? ""))).toEqual([
+      "agentOutput",
+      "cost",
+      "planId",
+      "prompt",
+      "tokens",
+    ]);
     for (const element of clickable) {
       expect(element).toHaveClass("cursor-pointer");
     }
