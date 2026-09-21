@@ -100,8 +100,12 @@ export const ShellAgentButton: React.FC<ShellAgentButtonProps> = ({
   // The pill is the host's badge when it sends one, else the floated list's length. Reading it from
   // the badge is what keeps the count on screen once the chats list is no longer published (#2556).
   const rawCount = badge ?? String(items?.length ?? 0);
-  const count = rawCount.length > 2 ? "99" : rawCount;
-  const showCount = collapsed && rawCount !== "" && rawCount !== "0";
+  // The rail fits two digits beside the icon; larger counts cap at 99. Expanded there is a whole
+  // row to spell the number out in, so the cap is the rail's, exactly as ShellNav gates its own.
+  const count = collapsed && rawCount.length > 2 ? "99" : rawCount;
+  // Not gated on `collapsed`: Chat carries its count at both widths like every other nav row. The
+  // expanded style has been sitting in shell.css unreachable since the pill was added (#195).
+  const showCount = rawCount !== "" && rawCount !== "0";
 
   const renderButton = (trigger?: RailFlyoutTrigger) => (
     <button
@@ -129,15 +133,20 @@ export const ShellAgentButton: React.FC<ShellAgentButtonProps> = ({
           </span>
           <span className="tsh-agent-label">{label}</span>
         </span>
+        {/* The count sits inside the row, beside the shortcut hint, exactly where ShellNav puts
+            its own. It used to be a sibling of `.tsh-row`, which only ever worked on the rail:
+            there the collapsed rule takes it `position: absolute` onto the icon, but expanded it
+            stays in flow after a row that is a full content box wide and `flex-shrink: 0`, so it
+            started at the row's right edge and `.tsh-agent`'s `overflow: hidden` cut it in half. */}
         <span className="tsh-agent-actions">
+          {showCount && (
+            <Badge numeric className="tsh-nav-badge tsh-agent-count">
+              {count}
+            </Badge>
+          )}
           <Kbd keys={hintKeys} variant="bare" className="tsh-kbd" />
         </span>
       </span>
-      {showCount && (
-        <Badge numeric className="tsh-nav-badge tsh-agent-count">
-          {count}
-        </Badge>
-      )}
     </button>
   );
 

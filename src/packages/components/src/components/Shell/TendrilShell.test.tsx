@@ -528,6 +528,61 @@ describe("Shell Sidebar Buttons", () => {
     });
     expect(handler).toHaveBeenCalledWith("OnClick", "settings", []);
   });
+
+  /**
+   * The Chat row's count, at both sidebar widths.
+   *
+   * It used to render only on the rail: `showCount` carried a `collapsed &&` conjunct, so expanding
+   * the sidebar hid a badge the host was still sending. Issue #195 reported this as the count going
+   * missing when the *app* went to the background, which is not what does it - the count is plumbed
+   * correctly and stays live - and the expanded style in shell.css had never been reachable.
+   *
+   * Every other nav item renders its badge unconditionally and uses `collapsed` only to cap the
+   * digits (`ShellNav`), so these pin Chat to that same contract.
+   */
+  const renderAgent = (collapsed: boolean, props: Record<string, unknown> = {}) => {
+    act(() => {
+      root.render(
+        <ShellContext.Provider value={{ collapsed, toggle: () => {} }}>
+          <ShellAgentButton id="agent" label="Chat" events={[]} eventHandler={vi.fn()} {...props} />
+        </ShellContext.Provider>,
+      );
+    });
+    return container.querySelector(".tsh-agent-count");
+  };
+
+  it("shows the chat count when the sidebar is expanded", () => {
+    expect(renderAgent(false, { badge: "7" })?.textContent).toBe("7");
+  });
+
+  it("still shows the chat count on the collapsed rail", () => {
+    expect(renderAgent(true, { badge: "7" })?.textContent).toBe("7");
+  });
+
+  it("caps the count at 99 only on the rail, where two digits is all that fits", () => {
+    // Expanded there is a whole row to spell the number out in, so the cap is the rail's alone.
+    expect(renderAgent(true, { badge: "128" })?.textContent).toBe("99");
+    expect(renderAgent(false, { badge: "128" })?.textContent).toBe("128");
+  });
+
+  it("renders no pill for an absent or zero count at either width", () => {
+    for (const collapsed of [false, true]) {
+      expect(renderAgent(collapsed, { badge: "0" })).toBeNull();
+      expect(renderAgent(collapsed, { badge: "" })).toBeNull();
+      expect(renderAgent(collapsed)).toBeNull();
+    }
+  });
+
+  it("keeps the count inside the row, where the button's overflow cannot clip it", () => {
+    // A sibling of `.tsh-row` only works on the rail: there the collapsed rule takes the badge
+    // `position: absolute` onto the icon, but expanded it stays in flow after a row that is a full
+    // content box wide and `flex-shrink: 0`, so `.tsh-agent`'s `overflow: hidden` cut it in half.
+    // jsdom computes no layout, so this asserts the containment the fix actually turns on.
+    const badge = renderAgent(false, { badge: "7" });
+    expect(badge, "no pill rendered, so this test would assert nothing").not.toBeNull();
+    expect(badge!.closest(".tsh-agent-actions")).not.toBeNull();
+    expect(badge!.closest(".tsh-row")).not.toBeNull();
+  });
 });
 
 describe("BrandIcon", () => {
