@@ -193,6 +193,25 @@ impl TendrilClient {
         Ok(resp.json().await?)
     }
 
+    /// How to install and sign in to each agent, via `GET /api/agents/hints`.
+    ///
+    /// Passed through as `serde_json::Value` rather than a typed DTO for the same reason
+    /// `test_agent` is: the shape is the daemon's, the webview is what renders it, and a redeclared
+    /// struct here would be a third copy of the thing this endpoint exists to stop duplicating.
+    pub async fn get_agent_hints(&self) -> Result<serde_json::Value, BridgeError> {
+        let url = format!("{}/api/agents/hints", self.base_url);
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "GET_AGENT_HINTS_FAILED",
+                format!("Failed to read agent hints ({status}): {text}"),
+            ));
+        }
+        Ok(resp.json().await?)
+    }
+
     pub async fn list_agents(&self) -> Result<Vec<AgentOptionDto>, BridgeError> {
         let url = format!("{}/api/agents", self.base_url);
         let resp = self.client.get(&url).headers(self.headers()).send().await?;

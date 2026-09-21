@@ -319,6 +319,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         // Agents
         .route("/api/agents", get(agents::get_agents_handler))
+        // How to install and sign in to each agent. Static, credential-free and the same for every
+        // caller - the same table a failed auth probe returns a hint from, so the Coding Agent
+        // pane's Help section and the Test Agent dialog cannot drift apart.
+        .route("/api/agents/hints", get(agents::get_agent_hints_handler))
         // Live model discovery for a bring-your-own-LLM endpoint. A POST because it takes a body and
         // reaches a third party; the key it uses is read from config here rather than sent by the
         // webview whenever the operator has already saved one.

@@ -220,6 +220,7 @@ pub fn run() {
             cmd_resize_agent_terminal,
             cmd_close_agent_terminal,
             cmd_list_agents,
+            cmd_get_agent_hints,
             cmd_fetch_provider_models,
             cmd_test_agent,
             cmd_get_agent_usage,

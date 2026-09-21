@@ -1,27 +1,31 @@
+import fs from "node:fs";
+import path from "node:path";
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, act, within } from "@testing-library/react";
 
 import { SettingsView } from "../src/views/SettingsView";
 import { bridge } from "../src/api/bridge";
 import { agentsApi } from "../src/api/agentsApi";
-import { AGENT_HELP } from "../src/views/settings/agentHelp";
 import { BYO_CARDS, CODING_AGENTS } from "../src/views/settings/codingAgents";
-import type { AgentOption } from "../src/types/agents";
+import type { AgentOption, AgentSignInHint } from "../src/types/agents";
 import type { ServiceInfo, TendrilConfig } from "../src/types/api";
 
 /**
  * The Help block under the Coding Agent pane: install and sign-in instructions for the card in front
  * of the operator.
  *
- * Three things are worth a test and nothing else is. That the block renders at all; that it renders
- * *this* card's instructions and not the last card's, which is the only way a help panel can be
- * actively harmful; and that every card in either grid has an entry - the parity assertion, which is
- * what stops a new agent shipping with a blank Help section the same way `apple` shipped with no card
- * at all (see `agent-roster-parity.test.ts`).
+ * **The instructions themselves are not this file's to check.** They come from the daemon, over
+ * `GET /api/agents/hints`, and `probe.rs`'s own tests pin their content - that every card has an
+ * entry, that no hint recommends npm, that the `brew` cask/formula split is right, that no hint
+ * names a command its CLI does not have. That used to be checked here too, against a second copy of
+ * the same prose kept in `agentHelp.ts`, and the two copies drifted: the pane said
+ * `claude auth login` while the probe said `claude login`, which the Claude CLI swallows as a prompt
+ * positional. One owner, one set of assertions.
  *
- * The copy itself is deliberately not asserted word for word. Vendors rename install scripts, and a
- * test that pins the prose turns every upstream correction into a two-file change with no added
- * safety; what matters is that the right entry reaches the DOM.
+ * What is left here is what this side actually owns: that the block renders, that it renders *this*
+ * card's hint and not the last card's - the only way a help panel can be actively harmful - that
+ * every shape the daemon can send has a rendering, and that the card list the daemon serves and the
+ * card list the pane offers are the same list.
  */
 
 const baseConfig: TendrilConfig = {
@@ -53,6 +57,83 @@ const CATALOG: AgentOption[] = [
     efforts: [{ id: "default", displayName: "Default" }],
   },
 ];
+
+/**
+ * A stand-in for what the daemon serves, covering each shape it can send rather than each card:
+ * a plain CLI, a CLI whose sign-in is a slash command typed at a running TUI, a binary the vendor
+ * does not name, and a provider with a console instead of a login.
+ */
+const HINTS: AgentSignInHint[] = [
+  {
+    agent: "claude",
+    binary: "claude",
+    install: {
+      summary: "The native installer puts `claude` in ~/.local/bin.",
+      commands: [
+        { command: "curl -fsSL https://claude.ai/install.sh | bash" },
+        { command: "brew install --cask claude-code" },
+      ],
+    },
+    auth: {
+      summary: "Opens a browser and signs in to your Anthropic account.",
+      commands: [{ command: "claude auth login" }],
+    },
+  },
+  {
+    agent: "codex",
+    binary: "codex",
+    install: { summary: "Installs `codex`.", commands: [{ command: "brew install --cask codex" }] },
+    auth: { summary: "Signs in with ChatGPT.", commands: [{ command: "codex login" }] },
+  },
+  {
+    agent: "copilot",
+    binary: "copilot",
+    install: {
+      summary: "Installs the standalone binary.",
+      commands: [{ command: "brew install --cask copilot-cli" }],
+    },
+    auth: {
+      summary: "Copilot has no login subcommand.",
+      // `then` is the daemon's field name for the slash command typed at the prompt, so the object
+      // reads as thenable to the linter. It is never awaited - it is wire data, not a promise.
+      // eslint-disable-next-line unicorn/no-thenable
+      commands: [{ command: "copilot", then: "/login" }],
+    },
+  },
+  {
+    agent: "cursor",
+    binary: "cursor-agent",
+    install: {
+      summary: "Symlinks `cursor-agent` into ~/.local/bin.",
+      commands: [{ command: "curl https://cursor.com/install -fsS | bash" }],
+    },
+    auth: { summary: "Opens a browser.", commands: [{ command: "cursor-agent login" }] },
+  },
+  {
+    agent: "antigravity",
+    binary: "agy",
+    install: {
+      summary: "Installs `agy` to ~/.local/bin.",
+      commands: [{ command: "curl -fsSL https://antigravity.google/cli/install.sh | bash" }],
+    },
+    auth: { summary: "The first run signs in.", commands: [{ command: "agy" }] },
+  },
+  {
+    agent: "anthropic_card",
+    install: { summary: "Nothing to install.", commands: [] },
+    auth: {
+      summary: "Create a key, paste it into API Key above, and Save.",
+      commands: [],
+      url: "https://console.anthropic.com/settings/keys",
+    },
+  },
+];
+
+const hintFor = (agent: string): AgentSignInHint => {
+  const hint = HINTS.find((h) => h.agent === agent);
+  if (!hint) throw new Error(`No fixture hint for ${agent}`);
+  return hint;
+};
 
 const openUrl = vi.fn((_url: string) => Promise.resolve());
 vi.mock("@tauri-apps/plugin-opener", () => ({
@@ -94,6 +175,7 @@ describe("Settings / Coding Agent / Help", () => {
       cachePath: "/home/user/.tendril/models.json",
     });
     vi.spyOn(agentsApi, "listAgents").mockResolvedValue(CATALOG);
+    vi.spyOn(agentsApi, "getHints").mockResolvedValue(HINTS);
   });
 
   afterEach(() => {
@@ -118,12 +200,44 @@ describe("Settings / Coding Agent / Help", () => {
   });
 
   /** The saved agent is `claude`, so that is the card selected on open and the help that shows. */
-  it("shows the selected agent's instructions", async () => {
+  it("renders the daemon's hint for the selected agent", async () => {
     await renderSettings();
 
     expect(screen.getByTestId("agent-help-claude")).toBeInTheDocument();
-    expect(helpText()).toContain(AGENT_HELP.claude.install.command);
-    expect(helpText()).toContain(AGENT_HELP.claude.auth.command);
+    const claude = hintFor("claude");
+    expect(helpText()).toContain(claude.install.summary);
+    expect(helpText()).toContain(claude.install.commands[0].command);
+    expect(helpText()).toContain(claude.auth.commands[0].command);
+  });
+
+  /**
+   * Every documented route reaches the DOM, not just the first. The daemon sends them as separate
+   * commands rather than one newline-joined blob precisely so each copies as runnable shell, and a
+   * renderer that showed only `commands[0]` would quietly drop the Homebrew line and the headless
+   * route on half these cards.
+   */
+  it("renders the alternative routes, not only the first", async () => {
+    await renderSettings();
+
+    for (const route of hintFor("claude").install.commands) {
+      expect(helpText()).toContain(route.command);
+    }
+  });
+
+  /**
+   * Three of these CLIs have no sign-in subcommand: sign-in is a slash command typed at a running
+   * TUI. That is why the hint keeps `then` apart from `command` - rendering them as one line would
+   * produce `copilot /login`, which is a prompt, not a login - so the renderer has to keep them
+   * apart too.
+   */
+  it("shows a slash-command sign-in as something to type at the prompt, not as shell", async () => {
+    await renderSettings();
+    await clickCard("copilot");
+
+    const block = screen.getByTestId("agent-help-auth");
+    expect(within(block).getByTestId("agent-help-auth-then").textContent).toContain("/login");
+    // The shell line stands alone: nothing in the block offers `copilot /login` as a command.
+    expect(block.querySelector("pre")?.textContent).toBe("copilot");
   });
 
   /**
@@ -139,9 +253,9 @@ describe("Settings / Coding Agent / Help", () => {
     expect(screen.queryByTestId("agent-help-claude")).not.toBeInTheDocument();
 
     const text = helpText();
-    expect(text).toContain(AGENT_HELP.cursor.install.command);
-    expect(text).not.toContain(AGENT_HELP.claude.install.command);
-    expect(text).not.toContain(AGENT_HELP.codex.install.command);
+    expect(text).toContain(hintFor("cursor").install.commands[0].command);
+    expect(text).not.toContain(hintFor("claude").install.commands[0].command);
+    expect(text).not.toContain(hintFor("codex").install.commands[0].command);
   });
 
   /**
@@ -174,87 +288,46 @@ describe("Settings / Coding Agent / Help", () => {
     await act(async () => {
       fireEvent.click(screen.getByTestId("agent-help-auth-link"));
     });
-    expect(openUrl).toHaveBeenCalledWith(AGENT_HELP.anthropic_card.auth.url);
+    expect(openUrl).toHaveBeenCalledWith(hintFor("anthropic_card").auth.url);
   });
 
   /**
-   * The parity assertion. Every card in either grid is selectable, so every card must answer; an
-   * agent added to `CODING_AGENTS` with no `AGENT_HELP` row renders a Help section with nothing in it,
-   * and nothing else in the suite would notice.
+   * Supplementary help beside settings that work without it. A daemon that is down has already been
+   * reported at the top of the pane, and a second red box saying the same thing helps nobody - but a
+   * crash here would take the whole settings pane with it, which is the failure worth pinning.
    */
-  it("has an entry for every card in the picker", () => {
-    const cards = [...CODING_AGENTS.map((a) => a.id), ...BYO_CARDS.map((b) => b.key)];
-    expect(Object.keys(AGENT_HELP).sort()).toEqual([...cards].sort());
+  it("renders the rest of the pane when the daemon serves no hints", async () => {
+    vi.spyOn(agentsApi, "getHints").mockRejectedValue(new Error("daemon offline"));
+    await renderSettings();
+
+    expect(screen.queryByTestId("agent-help-block")).not.toBeInTheDocument();
+    expect(screen.getByTestId("agent-environment-block")).toBeInTheDocument();
   });
 
   /**
-   * An entry that exists but says nothing is the same blank section by another route. Each half must
-   * carry prose, and must carry either a command to run or a page to open - the exception being an
-   * install step for a provider with no CLI, which is honest about having nothing to run and says so
-   * in the summary rather than inventing a command.
-   */
-  it("gives every entry real content in both halves", () => {
-    for (const [card, help] of Object.entries(AGENT_HELP)) {
-      expect(help.install.summary.length, `${card} install summary`).toBeGreaterThan(20);
-      expect(help.auth.summary.length, `${card} auth summary`).toBeGreaterThan(20);
-      expect(
-        help.auth.command ?? help.auth.url,
-        `${card} auth names neither a command nor a console`,
-      ).toBeTruthy();
-      // A card with no binary is a BYO provider, which has nothing to install by design.
-      if (help.binary !== null) {
-        expect(help.install.command, `${card} install command`).toBeTruthy();
-      }
-    }
-  });
-
-  /**
-   * pnpm-only is a repo rule, and a settings pane that prints `npm install -g` teaches every operator
-   * who reads it the opposite. Every one of these CLIs has a Homebrew formula or a vendor script, so
-   * the rule costs nothing to keep.
-   */
-  it("recommends no npm commands", () => {
-    for (const [card, help] of Object.entries(AGENT_HELP)) {
-      for (const step of [help.install, help.auth]) {
-        expect(step.command ?? "", `${card} names npm`).not.toMatch(/\bnpm\b/);
-      }
-    }
-  });
-
-  /**
-   * Homebrew rejects `brew install <cask>` outright - "No available formula with the name" - so the
-   * cask/formula split is the difference between a command that works and one that errors in the
-   * operator's face. It is also invisible on a machine that already has the CLI, which is how three
-   * of these shipped wrong: the vendor docs say `brew install --cask copilot-cli` and the pane said
-   * `brew install copilot-cli`.
+   * The parity assertion, across the language boundary.
    *
-   * Verified against `brew info` on 2026-09-21: claude-code, codex and copilot-cli are casks;
-   * gemini-cli is a formula (deprecated upstream, disabling 2026-12-18) and must NOT take --cask.
+   * Every card in either grid is selectable, so every card must answer; an agent added to
+   * `CODING_AGENTS` that the daemon serves no hint for renders a Help section with nothing in it,
+   * and nothing on either side would notice - the pane cannot see `SIGN_IN_HINT_CARDS`, and
+   * `probe.rs`'s own parity test only checks that the cards it lists resolve, not that the list is
+   * the pane's. Reading the Rust source from a vitest run is the established shape here:
+   * `agent-roster-parity.test.ts` reads `catalog.rs` for exactly this reason.
    */
-  it("uses --cask for casks and a bare install for formulae", () => {
-    const CASKS = ["claude-code", "codex", "copilot-cli"];
-    const FORMULAE = ["gemini-cli"];
-
-    const brewLines = Object.entries(AGENT_HELP).flatMap(([card, help]) =>
-      [help.install, help.auth]
-        .flatMap((step) => (step.command ?? "").split("\n"))
-        .filter((line) => line.includes("brew install"))
-        .map((line) => ({ card, line })),
-    );
-    // Guard the guard: a refactor that drops every brew line must not leave this test vacuously green.
-    expect(brewLines.length).toBeGreaterThan(0);
-
-    for (const { card, line } of brewLines) {
-      for (const cask of CASKS) {
-        if (new RegExp(`\\b${cask}\\b`).test(line)) {
-          expect(line, `${card}: ${cask} is a cask, not a formula`).toContain("--cask");
-        }
-      }
-      for (const formula of FORMULAE) {
-        if (new RegExp(`\\b${formula}\\b`).test(line)) {
-          expect(line, `${card}: ${formula} is a formula, not a cask`).not.toContain("--cask");
-        }
-      }
+  it("serves a hint for every card in the picker", () => {
+    const probePath = path.resolve(__dirname, "../../../crates/tendril-core/src/agents/probe.rs");
+    const source = fs.readFileSync(probePath, "utf8");
+    const table = /const SIGN_IN_HINT_CARDS: &\[&str\] = &\[([\s\S]*?)\n\];/.exec(source);
+    if (!table) {
+      throw new Error(
+        `Could not find SIGN_IN_HINT_CARDS in ${probePath}. If it was renamed or restructured, ` +
+          `update this test -- do not delete it.`,
+      );
     }
+    const served = Array.from(table[1].matchAll(/"([^"]+)"/g)).map((m) => m[1]);
+    const cards = [...CODING_AGENTS.map((a) => a.id), ...BYO_CARDS.map((b) => b.key)];
+
+    expect(served.length).toBeGreaterThanOrEqual(cards.length);
+    expect([...served].sort()).toEqual([...cards].sort());
   });
 });

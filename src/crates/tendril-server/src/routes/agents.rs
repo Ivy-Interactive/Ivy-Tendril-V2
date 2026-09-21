@@ -6,8 +6,8 @@ use axum::Json;
 use serde::{Deserialize, Serialize};
 use tendril_core::agents::catalog::{all_agents_for_proxy_base_url, OPENAI_PROXY_AGENT_ID};
 use tendril_core::agents::probe::{
-    check_auth, check_install, validate_model, AgentAuthResult, AgentInstallStatus,
-    ProbeCredentials,
+    all_sign_in_hints, check_auth, check_install, validate_model, AgentAuthResult,
+    AgentInstallStatus, ProbeCredentials,
 };
 use tendril_core::agents::provider_models::{discover_provider_models, ModelValidation};
 use tendril_core::agents::resolution::normalize_agent_name;
@@ -23,6 +23,20 @@ pub async fn get_agents_handler(State(state): State<Arc<AppState>>) -> impl Into
     let snapshot = state.settings_snapshot();
     let proxy_base_url = openai_proxy_base_url(&snapshot.settings);
     Json(all_agents_for_proxy_base_url(proxy_base_url.as_deref()))
+}
+
+/// `GET /api/agents/hints` — how to install and sign in to every card the Coding Agent pane offers.
+///
+/// Static data, served from the daemon rather than kept in the webview, because the same facts are
+/// what a failed auth probe returns: `probe::sign_in_hint` is the one table, and both the pane's
+/// Help section and the Test Agent dialog's failure row render entries from it. Keeping a second
+/// copy in TypeScript is exactly what drifted — three hints named commands their CLI does not have,
+/// and the pane and the probe disagreed about all three.
+///
+/// A GET with no parameters: it launches nothing, reads no credential and is the same for every
+/// caller, which is what makes it cacheable and safe in a way `/test` deliberately is not.
+pub async fn get_agent_hints_handler() -> impl IntoResponse {
+    Json(all_sign_in_hints())
 }
 
 /// What the Coding Agent pane asks for when it wants the models an endpoint really serves.
