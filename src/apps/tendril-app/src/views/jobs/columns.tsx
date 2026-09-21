@@ -226,14 +226,16 @@ export function useJobColumns({
         name: "prompt",
         header: "Prompt",
         width: "250px",
-        // V1's free-text `[Prompt] contains "…"`, as a box. The daemon's column is
-        // `ReportedPlanTitle`, which is where the cell's text comes from.
-        filter: { kind: "text", column: "reportedPlanTitle" },
+        // V1's free-text `[Prompt] contains "…"`, as a box. The cell reads `ReportedPlanTitle` when the
+        // agent has reported a plan and the launch arguments otherwise, so the filter has to reach both
+        // columns or it silently misses whichever jobs took the other route — which for a batch of
+        // `CreatePlan`s imported from the Inbox is all of them.
+        filter: { kind: "text", column: "reportedPlanTitle", alsoColumns: ["args"] },
         accessor: (row) => row.prompt,
         // V1's Prompt cell action opens a `PromptSheet` with the untruncated prompt
-        // (`JobsApp.cs:51`), resolved from the job's typed args or the plan's `InitialPrompt`.
-        // Neither is on the DTO, so there is nothing longer to show than the cell already holds;
-        // the title carries it for a truncated one.
+        // (`JobsApp.cs:51`), resolved from the job's typed args or the plan's `InitialPrompt`. The
+        // typed-args half now reaches the DTO, but already truncated to V1's 500 characters, so there
+        // is still nothing longer to show than the cell holds; the title carries it for a truncated one.
         cell: (_value, row) => (
           <span className="text-sm text-foreground" title={row.prompt || undefined}>
             {row.prompt}

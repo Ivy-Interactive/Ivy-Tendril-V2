@@ -139,7 +139,9 @@ pub async fn query_jobs_handler(
 ///
 /// `JobItem` fields with no counterpart in `Job` — `planFile`, `args`, `typedArgs`, `provider`,
 /// `effort`, `priority`, `waitForJobIds`, `permissionDenials`, `cliCommand` and the rest — are not on
-/// these rows. `POST /api/tables/jobs/query` returns every column raw, and `GET /api/jobs/:id` returns
+/// these rows. `prompt` is the exception that proves it: not a field of either shape, but the operator's
+/// own words *derived* from `typedArgs`, because the Prompt cell has nothing else to show for a job
+/// that has not reported a plan yet. `POST /api/tables/jobs/query` returns every column raw, and `GET /api/jobs/:id` returns
 /// the whole `JobItem`, so neither is unreachable; they are simply not what a list window is for.
 const JOB_ROW_FIELDS: &[(&str, &str, &str)] = &[
     ("id", "id", "Id"),
@@ -148,6 +150,9 @@ const JOB_ROW_FIELDS: &[(&str, &str, &str)] = &[
     // paging: leaving them under the daemon's names is how a moved table renders two blank columns.
     ("planId", "reportedPlanId", "ReportedPlanId"),
     ("planTitle", "reportedPlanTitle", "ReportedPlanTitle"),
+    // The third source the Prompt cell reads, and the only one a job has before it has reported a
+    // plan. Computed rather than copied — see `job_row` — from `Args`, which is the column behind it.
+    ("prompt", "prompt", "Args"),
     ("project", "project", "Project"),
     ("status", "status", "Status"),
     ("statusMessage", "statusMessage", "StatusMessage"),
@@ -211,6 +216,16 @@ fn job_row(job: &JobItem, select: &[String]) -> serde_json::Value {
         // An absent or null source field stays absent, matching `JobDto`'s own
         // `skip_serializing_if = "Option::is_none"`: a job that reported no cost must not present
         // itself as one that cost nothing.
+        // `prompt` is the one field with no counterpart in the serialized `JobItem`: it is the
+        // operator's own words, read out of the typed args by `JobArgs::prompt_text`. Everything else
+        // is a rename or a straight copy.
+        if *field == "prompt" {
+            if let Some(prompt) = job.typed_args.as_ref().and_then(|args| args.prompt_text()) {
+                row.insert("prompt".to_string(), json!(prompt));
+            }
+            continue;
+        }
+
         let Some(value) = source.and_then(|object| object.get(*item_field)) else {
             continue;
         };
@@ -1133,6 +1148,83 @@ mod tests {
         }
         assert!(!listed.contains("Running"), "{listed}");
         assert!(!listed.contains("Queued"), "{listed}");
+    }
+
+    /// The Prompt cell's third source, on the wire.
+    ///
+    /// A `CreatePlan` has no plan until its agent reports one, so `reportedPlanId` and
+    /// `reportedPlanTitle` are both empty for its whole run — and for a batch imported from the Inbox
+    /// that is every row in the table. The words it was launched with were on the record throughout;
+    /// this projection is what puts them on the wire.
+    mod prompt_projection {
+        use super::*;
+        use tendril_core::models::{CreatePlanArgs, ExpandPlanArgs, JobArgs};
+
+        fn create_plan_job(description: &str) -> JobItem {
+            let mut job = JobItem::new(
+                "00001".to_string(),
+                "CreatePlan".to_string(),
+                String::new(),
+                "ivy-tendril".to_string(),
+            );
+            job.typed_args = Some(JobArgs::CreatePlan(CreatePlanArgs {
+                description: description.to_string(),
+                project: "ivy-tendril".to_string(),
+                priority: 0,
+                force: false,
+                source_path: None,
+                upload_session_id: None,
+            }));
+            job
+        }
+
+        #[test]
+        fn carries_the_launch_description_when_no_plan_has_been_reported() {
+            let job = create_plan_job("Task from GitHub Issue #2752: the timer never resets");
+            let row = job_row(&job, &[]);
+
+            assert_eq!(
+                row.get("prompt").and_then(|v| v.as_str()),
+                Some("Task from GitHub Issue #2752: the timer never resets")
+            );
+            // The two the cell used to read, and why it rendered blank.
+            assert!(row.get("planTitle").is_none());
+            assert!(row.get("planId").is_none());
+        }
+
+        /// A job type with no prose of its own leaves the field off entirely, matching every other
+        /// absent field on this row rather than presenting an empty string as an answer.
+        #[test]
+        fn omits_the_field_for_a_job_type_that_carries_no_prose() {
+            let mut job = JobItem::new(
+                "00002".to_string(),
+                "ExpandPlan".to_string(),
+                "00007-Something".to_string(),
+                "ivy-tendril".to_string(),
+            );
+            job.typed_args = Some(JobArgs::ExpandPlan(ExpandPlanArgs {
+                folder_path: "00007-Something".to_string(),
+            }));
+
+            assert!(job_row(&job, &[]).get("prompt").is_none());
+        }
+
+        /// `prompt` is not a column, so a caller selecting columns asks for `Args`, which is the one
+        /// behind it — the same contract `planId` and `planTitle` already have.
+        #[test]
+        fn is_selectable_by_the_column_behind_it() {
+            let job = create_plan_job("Reconcile stuck running jobs after an unexpected quit");
+
+            let selected = job_row(&job, &["Args".to_string()]);
+            assert_eq!(
+                selected.get("prompt").and_then(|v| v.as_str()),
+                Some("Reconcile stuck running jobs after an unexpected quit")
+            );
+
+            // And a projection that did not ask for it does not carry it.
+            let without = job_row(&job, &["Status".to_string()]);
+            assert!(without.get("prompt").is_none());
+        }
     }
 
     fn temp_home(label: &str) -> std::path::PathBuf {

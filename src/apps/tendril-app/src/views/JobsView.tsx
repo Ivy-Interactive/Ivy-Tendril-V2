@@ -58,6 +58,7 @@ export {
   buildJobRowActions,
   buildJobRows,
   buildStatusSegments,
+  promptDisplay,
   type BuildJobRowsOptions,
   type JobRow,
   type JobRowActionCapabilities,

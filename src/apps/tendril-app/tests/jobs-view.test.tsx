@@ -6,6 +6,7 @@ import {
   buildJobRows,
   buildStatusSegments,
   formatJobCost,
+  promptDisplay,
   truncatePrompt,
   jobStatusMessage,
   agentOutputLabel,
@@ -347,6 +348,93 @@ describe("cost and token cells", () => {
     expect(tokens).toHaveTextContent("1.4M");
     expect(tokens.getAttribute("title")).toContain("1,450,000");
     expect(tokens.getAttribute("title")).toContain("Cache read 1,400,000");
+  });
+});
+
+/**
+ * `JobsApp.Helpers.cs` `GetPromptDisplay`. The chain is plan title, then the operator's own words off
+ * the typed args, then the plan id - and the middle link is the one a `CreatePlan` imported from the
+ * Inbox has, because its plan does not exist until the agent has reported one.
+ */
+describe("the Prompt cell's fallback chain", () => {
+  /**
+   * The reported bug, from the user's own database: ten `CreatePlan` rows, `Type` and `Project`
+   * filled, `ReportedPlanId` and `ReportedPlanTitle` both empty, and the whole request sitting in
+   * `Args.description` the entire time.
+   */
+  it("shows what an Inbox import was launched with, before it has a plan", () => {
+    const [row] = buildJobRows([
+      job("00001", "Running", {
+        type: "CreatePlan",
+        planId: undefined,
+        planTitle: undefined,
+        prompt:
+          "Task from GitHub Issue #2752 (https://github.com/Ivy-Interactive/Ivy-Tendril/issues/2752): the timer never resets",
+      }),
+    ]);
+
+    expect(row.prompt).toBe(
+      "Task from GitHub Issue #2752 (https://github.com/Ivy-Interactive/Ivy-Tendril/issues/2752): the timer never resets",
+    );
+  });
+
+  it("prefers the plan's title once the agent has reported one", () => {
+    expect(
+      promptDisplay({
+        id: "00002",
+        type: "CreatePlan",
+        project: "ivy-tendril",
+        status: "Running",
+        planId: "00008",
+        planTitle: "Fix Stuck Chats on Subagent Execution",
+        prompt: "Task from GitHub Issue #2632: some chats appear stuck",
+      }),
+    ).toBe("Fix Stuck Chats on Subagent Execution");
+  });
+
+  it("falls back to the plan id when there is no prose at all", () => {
+    expect(
+      promptDisplay({
+        id: "00003",
+        type: "ExpandPlan",
+        project: "ivy-tendril",
+        status: "Running",
+        planId: "00006",
+      }),
+    ).toBe("00006");
+  });
+
+  /**
+   * An empty string is not a prompt. Taking one would stop the chain a step early and render the
+   * same blank cell the chain exists to fill.
+   */
+  it("steps over an empty title rather than accepting it", () => {
+    expect(
+      promptDisplay({
+        id: "00004",
+        type: "CreatePlan",
+        project: "ivy-tendril",
+        status: "Running",
+        planTitle: "   ",
+        prompt: "Reconcile stuck running jobs after an unexpected quit",
+      }),
+    ).toBe("Reconcile stuck running jobs after an unexpected quit");
+  });
+
+  it("renders the Inbox import's words in the table's Prompt cell", async () => {
+    renderJobs([
+      job("00001", "Running", {
+        type: "CreatePlan",
+        planId: undefined,
+        planTitle: undefined,
+        prompt: "Task from GitHub Issue #2752: the timer never resets",
+      }),
+    ]);
+
+    await waitForRows(1);
+    expect(
+      await screen.findByText("Task from GitHub Issue #2752: the timer never resets"),
+    ).toBeTruthy();
   });
 });
 

@@ -114,6 +114,30 @@ function tokenBreakdown(job: Job): string | null {
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
+/**
+ * The Prompt cell's text: `JobsApp.Helpers.cs` `GetPromptDisplay`.
+ *
+ * V1 walks the plan's own title, then `ReportedPlanTitle`, then the job's typed args, and only then
+ * gives up to the plan file. The daemon has already collapsed V1's first two steps into `planTitle`
+ * — it resolves the plan and reports the title onto the row — so the chain here is `planTitle`, then
+ * `prompt` (the operator's own words, from the typed args), then the plan id.
+ *
+ * The `prompt` step is the one that was missing. A `CreatePlan` has no plan until its agent has
+ * reported one, so `planTitle` and `planId` are both empty for its whole run — which for a batch
+ * imported from the Inbox is every row in the table, each showing a blank Prompt beside a filled
+ * Type and Project. The description those jobs were launched with was on the record the entire time.
+ *
+ * Empty strings are skipped rather than accepted: the daemon omits an absent field, but a row that
+ * arrived through a different path can carry `""`, and taking it would stop the chain one step early
+ * and render the same blank cell.
+ */
+export function promptDisplay(job: Job): string {
+  const source = [job.planTitle, job.prompt, job.planId].find(
+    (candidate) => candidate !== undefined && candidate !== null && candidate.trim() !== "",
+  );
+  return truncatePrompt(source);
+}
+
 export interface BuildJobRowsOptions {
   /** Wall clock for the Timer column. Injected so a test can pin it. */
   now?: number;
@@ -136,8 +160,7 @@ export interface BuildJobRowsOptions {
  * window's fifty rows inside an order the other windows were chosen by.
  *
  * V1's Prompt cell (`GetPromptDisplay`) walks the plan's title, then `ReportedPlanTitle`, then the
- * job's typed args. V2's DTO carries `planTitle` and nothing else of that chain, so the fallback
- * stops at the plan id.
+ * job's typed args, and the DTO now carries all three — see {@link promptDisplay}.
  */
 export function buildJobRows(jobs: readonly Job[], options: BuildJobRowsOptions = {}): JobRow[] {
   const now = options.now ?? Date.now();
@@ -151,7 +174,7 @@ export function buildJobRows(jobs: readonly Job[], options: BuildJobRowsOptions 
       // V1 derives this from `PlanFile` and falls back to `ReportedPlanId`; the daemon has already
       // resolved both into `planId` by the time it reaches here.
       planId: job.planId ?? "",
-      prompt: truncatePrompt(job.planTitle ?? job.planId),
+      prompt: promptDisplay(job),
       type: job.type,
       // `ProjectHelper.ParseProjects` then `string.Join(", ", ...)`: a job can name several.
       project: parseProjects(job.project).join(", "),

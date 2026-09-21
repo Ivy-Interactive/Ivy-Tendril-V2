@@ -295,6 +295,11 @@ pub struct JobDto {
     pub plan_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plan_title: Option<String>,
+    /// What the operator actually asked for, in their own words, when the daemon could say. The Jobs
+    /// table's Prompt cell reads plan title, then this — and for a `CreatePlan` imported from the
+    /// Inbox, whose plan does not exist yet, this is the only one of the two that is ever filled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
     pub project: String,
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
