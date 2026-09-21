@@ -1,53 +1,29 @@
 import type { Job } from "../../types/api";
+import { NO_VALUE, formatCost, formatTimeSpan, formatTokens } from "../../utils/format";
 
 /**
  * `JobsApp.Helpers.cs`' formatters, and the two placeholders they answer with. Each is a pure
  * function of a job field, which is why they sit apart from the table that renders them: {@link
  * JobRow} is built from these, the column cells call four of them directly, and the tests drive
  * them without mounting anything.
+ *
+ * The scalar half of this file moved to `utils/format.ts`, because `PullRequestsView` and the
+ * Dashboard's KPI builder each carried their own drifted copy of the token ladder and nothing under
+ * `utils/` may reach into `views/`. What stays here is what takes a `Job` and answers with a cell.
  */
 
 /** Ceiling on the Prompt cell, from `JobsApp.Helpers.cs` `PromptDisplayMaxLength`. */
 const PROMPT_DISPLAY_MAX_LENGTH = 500;
 
 /**
- * `JobsApp.Data.cs` / `JobCostSheet.cs` use this for "nothing recorded here", and `JobSessionView`
- * already does the same. Keeping the em dash rather than an empty cell is what stops a job that
- * reported no cost from reading as one that cost nothing: `—` and `$0.00` are different claims, and
- * a run on a subscription plan reports tokens and no charge at all.
- *
- * V1's cell is literally `""` there. The em dash is a deliberate deviation: V1's table draws a
- * visible grid, so an empty Cost cell under a `Cost` header is unambiguous, whereas V2's rows are
- * separated by whitespace and an empty cell reads as a figure that has not landed yet.
+ * Re-exported rather than re-homed. `columns.tsx`, `rows.tsx` and `JobsView`'s public surface all
+ * reach the Jobs table's vocabulary through this module, and which of its pieces happen to be shared
+ * with the Dashboard is an implementation detail those callers have no reason to track.
  */
-export const NO_VALUE = "—";
+export { NO_VALUE, formatTimeSpan, formatTokens };
 
 /** `FormatTimer` / `FormatTimestamp` both use this placeholder for "not applicable yet". */
 export const NO_TIME = "-";
-
-/** `JobsApp.Helpers.cs` `FormatTimeSpan`: hours drop the seconds, a sub-minute span is seconds only. */
-export function formatTimeSpan(totalSeconds: number): string {
-  const seconds = Math.max(0, Math.floor(totalSeconds));
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
-  if (hours >= 1) return `${hours}h ${String(minutes).padStart(2, "0")}m`;
-  if (minutes === 0) return `${secs}s`;
-  return `${minutes}m ${String(secs).padStart(2, "0")}s`;
-}
-
-/** `FormatHelper.FormatTokens`: millions to one decimal, thousands to none, and it keeps scaling. */
-export function formatTokens(tokens: number): string {
-  if (!Number.isFinite(tokens) || tokens < 0) return NO_VALUE;
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(0)}K`;
-  return String(tokens);
-}
-
-/** `FormatHelper.FormatCost`: two decimals, dollars. */
-function formatCost(cost: number): string {
-  return `$${cost.toFixed(2)}`;
-}
 
 /**
  * The Cost cell, `JobsApp.Data.cs` `FormatJobCost`.

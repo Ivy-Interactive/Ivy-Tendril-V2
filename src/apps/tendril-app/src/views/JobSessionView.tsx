@@ -5,6 +5,12 @@ import { X } from "lucide-react";
 import { describeBridgeError, type Job, type JobDetail } from "../types/api";
 import { isActiveStatus, jobsStore, type StreamEventItem } from "../state/jobsStore";
 import { JOB_STATUS_COLOR, UNMAPPED_COLOR, projectColor } from "../utils/jobStatus";
+import { NO_VALUE, formatTimeSpan, formatTokens } from "../utils/format";
+/* The Cost cell is the Jobs table's, not a second reading of the same field: this view is V1's
+   output *sheet over that table*, so a job's cost has to render identically in the row behind it and
+   in the header here. The two copies had already diverged once over the case of `costSource` and
+   been fixed twice; sharing the one function is what stops the third divergence. */
+import { formatJobCost } from "./jobs/format";
 import { ConfirmDialog } from "./dialogs";
 import { parseProjects } from "./PlansView";
 
@@ -23,17 +29,6 @@ interface JobSessionViewProps {
    * `"page"` is the older full-view framing, kept for any caller that still mounts this as a view.
    */
   layout?: "page" | "sheet";
-}
-
-/** `JobsApp.Helpers.cs` `FormatTimeSpan`: hours drop the seconds, a sub-minute span is seconds only. */
-function formatTimeSpan(totalSeconds: number): string {
-  const seconds = Math.max(0, Math.floor(totalSeconds));
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  const secs = seconds % 60;
-  if (hours >= 1) return `${hours}h ${String(minutes).padStart(2, "0")}m`;
-  if (minutes === 0) return `${secs}s`;
-  return `${minutes}m ${String(secs).padStart(2, "0")}s`;
 }
 
 /**
@@ -73,13 +68,6 @@ function formatTimestamp(job: Job): string {
 }
 
 /**
- * `JobsApp.Data.cs` and `JobCostSheet.cs` both use this for "nothing recorded here". Keeping V1's
- * em-dash rather than an empty string is what stops a job that reported no cost from reading as one
- * that cost nothing: `Cost —` and `Cost $0.00` are different claims.
- */
-const NO_VALUE = "—";
-
-/**
  * The default for `events`, hoisted so it is the *same* empty array on every render.
  *
  * `events = []` in the signature mints a new one each time, which the line cache below would read as
@@ -87,49 +75,9 @@ const NO_VALUE = "—";
  */
 const NO_EVENTS: StreamEventItem[] = [];
 
-/**
- * `FormatHelper.FormatTokens`: millions to one decimal, thousands to none.
- *
- * A million-plus count keeps scaling rather than saturating, so a 1.4-billion-token run reads
- * "1400.0M" exactly as V1's `(tokens / 1_000_000.0).ToString("F1")` does. A non-finite or negative
- * count is not a token count at all and is reported as absent rather than as "NaN".
- */
-function formatTokens(tokens: number): string {
-  if (!Number.isFinite(tokens) || tokens < 0) return NO_VALUE;
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(0)}K`;
-  return String(tokens);
-}
-
 /** `FormatHelper.FormatCount`: the exact figure, grouped, for the tooltip behind the short form. */
 function formatTokenCount(tokens: number): string {
   return tokens.toLocaleString("en-US");
-}
-
-/** `JobsApp.Data.cs` `FormatJobCost` via `FormatHelper.FormatCost`: two decimals, dollars. */
-function formatCost(cost: number): string {
-  return `$${cost.toFixed(2)}`;
-}
-
-/**
- * The Cost cell, `JobsApp.Data.cs` `FormatJobCost`.
- *
- * Returns `null` where V1 returns `""` - the job has no cost figure at all, which is the normal
- * state of a subscription-plan run: the agent reports tokens and no charge. The caller renders
- * {@link NO_VALUE} for that, so it cannot be mistaken for a charge of zero.
- *
- * An estimate derived from tokens times the price list carries V1's `"~"` prefix
- * (`JobCostSources.Estimated`), so a figure nobody was actually billed never presents itself as one.
- *
- * The comparison is case-insensitive because the value on the wire is lower case: V1 writes
- * `"estimated"` (`Services/Jobs/JobUsageSnapshot.cs:22`) and so does the daemon
- * (`jobs/manager.rs:2909`). This matched `"Estimated"` exactly, dating from when `costSource` was not
- * on the DTO at all and its casing was a guess, so the tilde never actually appeared on an estimate.
- */
-function formatJobCost(job: Job): string | null {
-  if (job.cost === undefined || job.cost === null || !Number.isFinite(job.cost)) return null;
-  const formatted = formatCost(job.cost);
-  return job.costSource?.toLowerCase() === "estimated" ? `~${formatted}` : formatted;
 }
 
 /**

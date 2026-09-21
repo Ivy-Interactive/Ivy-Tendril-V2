@@ -21,6 +21,7 @@ import type {
   ShippedFeatureDay,
 } from "../types/api";
 import { toDayNumber, todayDayNumber } from "./rollingAverage";
+import { NO_VALUE, formatTokensCompact } from "./format";
 
 /** Months plotted on the trend chart. The other 12 the daemon returns are the comparison year. */
 export const TREND_MONTHS = 12;
@@ -59,8 +60,14 @@ const monthKey = (year: number, month: number): string =>
 
 // --- formatting ---------------------------------------------------------------
 
-/** The dash an unknown value renders as. Never "$0.00", which would be a claim. */
-export const NO_VALUE = "—";
+/**
+ * The dash an unknown value renders as. Never "$0.00", which would be a claim.
+ *
+ * Re-exported rather than re-homed: `DashboardView` and `KpiBreakdown` take the whole dashboard
+ * vocabulary from this module, and the em dash being the same one the Jobs table draws is a fact
+ * about the app, not something either caller should have to know.
+ */
+export { NO_VALUE };
 
 export const formatCurrency = (value: number): string =>
   value >= 1000 ? `$${Math.round(value).toLocaleString("en-US")}` : `$${value.toFixed(2)}`;
@@ -147,11 +154,11 @@ export const RANGE_SEPARATOR = "\u00a0\u2013 ";
 
 const formatRange = (lower: string, upper: string): string => `${lower}${RANGE_SEPARATOR}${upper}`;
 
-export const formatTokens = (value: number): string => {
-  if (value >= 1_000_000) return `${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `${(value / 1_000).toFixed(1)}k`;
-  return String(value);
-};
+/**
+ * The Tokens Consumed KPI's figure. Shared with the Pull Requests table, which had copied this
+ * ladder and then lost its millions branch; see {@link formatTokensCompact}.
+ */
+export { formatTokensCompact };
 
 /** `null` when there is no baseline: a percentage change from zero is not a number. */
 const percentChange = (current: number, previous: number): number | null =>
@@ -360,7 +367,7 @@ export function buildKpis({
     {
       id: "tokensConsumed",
       label: "Tokens Consumed",
-      value: formatTokens(tokens),
+      value: formatTokensCompact(tokens),
       hint:
         forecast.subsidizedTokenPercent > 0
           ? `${forecast.subsidizedTokenPercent.toFixed(0)}% subsidized`

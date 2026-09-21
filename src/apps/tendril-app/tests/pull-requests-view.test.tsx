@@ -116,6 +116,39 @@ describe("PullRequestsView", () => {
     expect(screen.getByText("900")).toBeInTheDocument();
   });
 
+  /**
+   * The user-visible half of collapsing the four copies of `formatTokens` into `utils/format`.
+   *
+   * This column's own copy was documented as "the Dashboard's format, so the app has one token
+   * format rather than two" and had no millions branch, so a plan past a million tokens read
+   * `1400.0k` here and `1.4M` on the Dashboard card the format came from. Now it carries.
+   */
+  it("carries a million-token plan into millions rather than printing thousands of k", async () => {
+    vi.spyOn(bridge, "listPullRequests").mockResolvedValue([
+      prStatus({ planId: "00701", planTitle: "Long Run", cost: 42, tokens: 1_400_000 }),
+    ]);
+
+    renderView();
+
+    await waitFor(() => expect(screen.getByText(/Long Run/)).toBeInTheDocument());
+    expect(screen.getByText("1.4M")).toBeInTheDocument();
+    expect(screen.queryByText("1400.0k")).not.toBeInTheDocument();
+  });
+
+  // The other boundary the old copy got wrong: it tested `> 1000`, so exactly one thousand tokens
+  // skipped the ladder and printed the bare count.
+  it("enters the thousands ladder at exactly one thousand tokens", async () => {
+    vi.spyOn(bridge, "listPullRequests").mockResolvedValue([
+      prStatus({ planId: "00702", planTitle: "Round Thousand", cost: 1, tokens: 1_000 }),
+    ]);
+
+    renderView();
+
+    await waitFor(() => expect(screen.getByText(/Round Thousand/)).toBeInTheDocument());
+    expect(screen.getByText("1.0k")).toBeInTheDocument();
+    expect(screen.queryByText("1000")).not.toBeInTheDocument();
+  });
+
   it("leaves an empty cost or token total blank rather than printing zero", async () => {
     vi.spyOn(bridge, "listPullRequests").mockResolvedValue([
       prStatus({ planId: "00700", planTitle: "Unpriced Run", cost: 0, tokens: 0 }),
