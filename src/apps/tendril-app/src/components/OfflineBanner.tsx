@@ -18,7 +18,7 @@ export const OfflineBanner: React.FC<OfflineBannerProps> = ({ status, countdown,
       className="flex items-center justify-between border-b border-warning/40 bg-warning/10 px-4 py-2 text-xs text-warning backdrop-blur"
     >
       <div className="flex items-center space-x-2">
-        <span className="inline-block h-2 w-2 rounded-full bg-warning animate-ping" />
+        <span className="inline-block size-2 rounded-full bg-warning animate-ping" />
         <span className="font-semibold">
           {status === "reconnecting"
             ? `Tendril-Service disconnected. Auto-reconnecting in ${countdown}s...`

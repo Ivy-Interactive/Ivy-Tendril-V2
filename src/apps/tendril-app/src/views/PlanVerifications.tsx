@@ -220,7 +220,7 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
                     onChange={(e) =>
                       void handleStatusChange(v.name, e.target.checked ? "Pending" : "Skipped")
                     }
-                    className="h-4 w-4 accent-primary disabled:cursor-not-allowed disabled:opacity-60"
+                    className="size-4 accent-primary disabled:cursor-not-allowed disabled:opacity-60"
                   />
                   <span className={editable ? undefined : "text-muted-foreground"}>{v.name}</span>
                 </label>
