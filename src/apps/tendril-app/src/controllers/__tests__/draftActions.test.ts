@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { draftActions } from "../draft_actions";
+import { draftActions } from "../draftActions";
 import { planDetail } from "../../../tests/fixtures/plan.fixture";
 
 function availableIds(plan: Parameters<ReturnType<typeof draftActions>[0]["isAvailable"]>[0]) {

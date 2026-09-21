@@ -187,8 +187,9 @@ export const Collapsed: StoryObj = {
 };
 
 export const WidthHints: StoryObj = {
+  // Fixed 900px, not w-full: it fits the visual test runner's 1280x720 viewport, so the capture is not clipped.
   render: () => (
-    <div className="h-[420px] w-full overflow-hidden rounded-box border border-border">
+    <div className="h-[420px] w-[900px] overflow-hidden rounded-box border border-border">
       <BladeContainer
         aria-label="Width hints"
         root={{

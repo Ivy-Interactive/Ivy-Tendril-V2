@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
+import { NO_VALUE, formatTimeSpan, formatTokens } from "@ivy-interactive/components";
 import { AgentViewer } from "@ivy-interactive/components/tendril";
 import { Badge, Button, Callout, IconButton } from "@ivy-interactive/components/ui";
 import { X } from "lucide-react";
 import { describeBridgeError, type Job, type JobDetail } from "../types/api";
 import { isActiveStatus, jobsStore, type StreamEventItem } from "../state/jobsStore";
 import { JOB_STATUS_COLOR, UNMAPPED_COLOR, projectColor } from "../utils/jobStatus";
-import { NO_VALUE, formatTimeSpan, formatTokens } from "../utils/format";
 /* The Cost cell is the Jobs table's, not a second reading of the same field: this view is V1's
    output *sheet over that table*, so a job's cost has to render identically in the row behind it and
    in the header here. The two copies had already diverged once over the case of `costSource` and

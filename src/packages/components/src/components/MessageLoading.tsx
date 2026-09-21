@@ -45,5 +45,3 @@ export const MessageLoading: React.FC = () => {
     </svg>
   );
 };
-
-export default MessageLoading;

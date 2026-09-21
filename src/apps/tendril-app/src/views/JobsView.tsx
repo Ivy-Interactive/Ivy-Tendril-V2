@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
-import { EllipsisVertical, Loader2, Pause, Trash } from "lucide-react";
+import { EllipsisVertical, Pause, Trash } from "lucide-react";
 import {
   Button,
   DataTable,
@@ -13,6 +13,7 @@ import {
   SheetContent,
   SheetHeader,
   SheetTitle,
+  Spinner,
   StackedProgress,
   useRemoteDataTable,
   type RemoteTableFetcher,
@@ -672,7 +673,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
               <React.Suspense
                 fallback={
                   <div className="flex h-32 items-center justify-center text-muted-foreground">
-                    <Loader2 className="h-5 w-5 animate-spin text-success" aria-hidden="true" />
+                    <Spinner size="lg" className="text-success" aria-hidden="true" />
                   </div>
                 }
               >
@@ -709,7 +710,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
               <React.Suspense
                 fallback={
                   <div className="flex h-32 items-center justify-center text-muted-foreground">
-                    <Loader2 className="h-5 w-5 animate-spin text-success" aria-hidden="true" />
+                    <Spinner size="lg" className="text-success" aria-hidden="true" />
                   </div>
                 }
               >

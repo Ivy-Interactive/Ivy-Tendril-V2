@@ -13,8 +13,8 @@ import {
   markdownCodeCopyGutterLength,
   markdownTerminalBlockScrollClass,
 } from "@/components/ui/code-variant";
-import CopyToClipboardButton from "@/components/CopyToClipboardButton";
-import ErrorBoundary from "@/components/ErrorBoundary";
+import { CopyToClipboardButton } from "@/components/CopyToClipboardButton";
+import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { lazyWithRetry } from "@/lib/lazyWithRetry";
 
 const SyntaxHighlighter = lazyWithRetry(() =>
@@ -48,8 +48,12 @@ function CodeBlockChromeWithCopy({
   );
 }
 
-const MermaidRenderer = lazyWithRetry(() => import("../MermaidRenderer"));
-const GraphvizRenderer = lazyWithRetry(() => import("../GraphvizRenderer"));
+const MermaidRenderer = lazyWithRetry(() =>
+  import("../MermaidRenderer").then((m) => ({ default: m.MermaidRenderer })),
+);
+const GraphvizRenderer = lazyWithRetry(() =>
+  import("../GraphvizRenderer").then((m) => ({ default: m.GraphvizRenderer })),
+);
 
 interface MarkdownCodeBlockProps {
   className?: string;

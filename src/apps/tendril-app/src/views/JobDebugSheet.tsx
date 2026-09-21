@@ -1,5 +1,6 @@
 import React, { useState } from "react";
 import { ClipboardCopy } from "lucide-react";
+import { copyToClipboard } from "@ivy-interactive/components";
 import { Button, HeaderLayout } from "@ivy-interactive/components/ui";
 import type { JobDetail } from "../types/api";
 
@@ -140,7 +141,7 @@ export const JobDebugSheet: React.FC<JobDebugSheetProps> = ({ job }) => {
   const copy = async () => {
     setCopyError(null);
     try {
-      await navigator.clipboard.writeText(formatJobDebugDetails(fields));
+      await copyToClipboard(formatJobDebugDetails(fields));
       setCopied(true);
     } catch (err) {
       // A webview that refuses clipboard access is the one case worth a word: the whole point of the

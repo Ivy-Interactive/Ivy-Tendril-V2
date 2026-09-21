@@ -1,3 +1,5 @@
+import { isMac } from "../../lib/shortcut";
+
 export type IvyEventHandler = (eventName: string, widgetId: string, args: unknown[]) => void;
 
 export interface ShellWidgetProps {
@@ -44,8 +46,7 @@ export interface ShellTabDto {
   icon?: string;
 }
 
-export const isMac = (): boolean =>
-  typeof navigator !== "undefined" && /Mac|iP(hone|ad|od)/.test(navigator.platform);
+export { isMac };
 
 export const modKeyLabel = (): string => (isMac() ? "⌘" : "Ctrl");
 

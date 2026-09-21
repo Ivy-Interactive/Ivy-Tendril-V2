@@ -1,4 +1,4 @@
-import { PlanActionsController } from "./plan_actions";
+import { PlanActionsController } from "./planActions";
 import type { PlanDetail } from "../types/api";
 
 /**

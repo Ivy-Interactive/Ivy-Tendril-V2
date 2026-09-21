@@ -45,7 +45,7 @@ export const ServiceStatusBanner: React.FC<ServiceStatusBannerProps> = ({
           data-testid="service-health-badge"
           className={`inline-flex items-center space-x-1.5 rounded-full border px-2.5 py-0.5 font-medium ${badgeColor}`}
         >
-          <span className={`h-1.5 w-1.5 rounded-full ${dotColor}`} />
+          <span className={`size-1.5 rounded-full ${dotColor}`} />
           <span>{badge}</span>
         </span>
         <span className="text-muted-foreground">

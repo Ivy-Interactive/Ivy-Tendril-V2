@@ -5,5 +5,3 @@ export function App() {
   const { route, hash } = useLocation();
   return <DocsLayout route={route} hash={hash} />;
 }
-
-export default App;

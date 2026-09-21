@@ -1,7 +1,7 @@
 import React from "react";
 import ReactDOM from "react-dom/client";
 import { ThemeProvider } from "@ivy-interactive/components/theme";
-import App from "./App";
+import { App } from "./App";
 import { ProxyOriginProvider } from "./api/proxyOrigin";
 import "./index.css";
 

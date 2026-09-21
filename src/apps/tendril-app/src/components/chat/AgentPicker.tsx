@@ -423,5 +423,3 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
     </>
   );
 };
-
-export default AgentPicker;

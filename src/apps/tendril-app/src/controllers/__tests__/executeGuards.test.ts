@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { collectExecuteGuards, unansweredQuestions, unfoldedAnswerCount } from "../execute_guards";
+import { collectExecuteGuards, unansweredQuestions, unfoldedAnswerCount } from "../executeGuards";
 import type { RepoStatus } from "../../types/api";
 import { planDetail } from "../../../tests/fixtures/plan.fixture";
 

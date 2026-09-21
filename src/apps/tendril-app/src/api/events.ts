@@ -1,5 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { isTauri } from "../utils/tauri";
 
 export type EventUnsubscribe = () => void;
 
@@ -304,17 +305,6 @@ export function subscribeSse(url: string, options: SseSubscriptionOptions): Even
   };
 }
 
-/**
- * Whether the app is running inside the Tauri host.
- *
- * Duplicated from `api/bridge.ts` rather than imported: `bridge.ts` imports this module, and the
- * cycle would be resolved at load time by whichever side won, which for a module-scope `invoke`
- * lookup is not something to leave to chance.
- */
-function isTauriHost(): boolean {
-  return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
-}
-
 /** One frame of a job's event stream, as re-emitted by `service/job_events_bridge.rs`. */
 export interface JobStreamFrame {
   jobId: string;
@@ -360,7 +350,7 @@ export function subscribeToJobStream(
     token?: string;
   },
 ): EventUnsubscribe {
-  if (isTauriHost()) {
+  if (isTauri()) {
     return subscribeJobEventsViaTauri(jobId, options);
   }
   return subscribeJobEvents(options.httpBaseUrl, jobId, options.token, options);

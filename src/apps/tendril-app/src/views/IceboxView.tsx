@@ -146,7 +146,7 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
       {/* Filter Bar */}
       <div className="flex flex-wrap items-center gap-3">
         <div className="relative min-w-[220px] flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
           <input
             type="search"
             value={search}
@@ -267,7 +267,7 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
                         <span
                           key={i}
                           title={`${v.name}: ${v.status}`}
-                          className={`h-2 w-2 rounded-full ${VERIFICATION_DOT_CLASS[v.status] || "bg-muted-foreground/50"}`}
+                          className={`size-2 rounded-full ${VERIFICATION_DOT_CLASS[v.status] || "bg-muted-foreground/50"}`}
                         />
                       ))}
                     </div>
@@ -287,7 +287,7 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
                     onClick={() => setDeleting(plan)}
                     className="h-auto px-2.5 py-1 text-xs"
                   >
-                    <Trash2 className="h-3.5 w-3.5" />
+                    <Trash2 className="size-3.5" />
                     Delete
                   </Button>
                   <Button
@@ -298,7 +298,7 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
                     onClick={() => void thaw(plan)}
                     className="h-auto px-2.5 py-1 text-xs"
                   >
-                    <Flame className="h-3.5 w-3.5" />
+                    <Flame className="size-3.5" />
                     {pendingId === plan.id ? "Thawing..." : "Thaw"}
                   </Button>
                 </div>

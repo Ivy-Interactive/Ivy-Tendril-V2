@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { PlanActionsController } from "../src/controllers/plan_actions";
+import { PlanActionsController } from "../src/controllers/planActions";
 import { uiStore } from "../src/state/uiStore";
 import type { PlanDetail, PlanSummary } from "../src/types/api";
 import { planDetail } from "./fixtures/plan.fixture";

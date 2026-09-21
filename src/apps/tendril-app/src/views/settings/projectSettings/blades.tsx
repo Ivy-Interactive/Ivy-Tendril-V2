@@ -1,6 +1,6 @@
 import React from "react";
-import { Check, Loader2, X } from "lucide-react";
-import { Button, Input, Switch, useBlades } from "@ivy-interactive/components/ui";
+import { Check, X } from "lucide-react";
+import { Button, Input, Spinner, Switch, useBlades } from "@ivy-interactive/components/ui";
 import { bridge } from "../../../api/bridge";
 import { notificationsStore } from "../../../state/notificationsStore";
 import { describeBridgeError } from "../../../types/api";
@@ -497,11 +497,7 @@ export const ProjectNameEditor: React.FC<{
           data-testid="confirm-rename"
           onClick={() => void commit()}
         >
-          {isSaving ? (
-            <Loader2 className="size-4 animate-spin" aria-hidden />
-          ) : (
-            <Check className="size-4" aria-hidden />
-          )}
+          {isSaving ? <Spinner size="md" aria-hidden /> : <Check className="size-4" aria-hidden />}
         </Button>
         <Button
           type="button"

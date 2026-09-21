@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from "vitest";
 import { render, screen, fireEvent } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import "@testing-library/jest-dom/vitest";
 
 import { BadgeSelect, type BadgeSelectOption } from "./BadgeSelect";
@@ -92,6 +93,126 @@ describe("BadgeSelect actions", () => {
 
     expect(document.querySelector(".bselect-separator")).toBeNull();
     expect(document.querySelectorAll(".bselect-action").length).toBe(0);
+  });
+});
+
+describe("BadgeSelect keyboard support", () => {
+  it("closes on Escape and returns focus to the trigger", async () => {
+    const user = userEvent.setup();
+    render(<BadgeSelect id="bs-3" options={projectOptions} />);
+
+    const trigger = screen.getByRole("button", { name: /select/i });
+    await user.click(trigger);
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("navigates options with ArrowDown/ArrowUp", async () => {
+    const user = userEvent.setup();
+    render(<BadgeSelect id="bs-4" options={projectOptions} />);
+
+    await user.click(screen.getByRole("button", { name: /select/i }));
+    const options = screen.getAllByRole("option");
+
+    await user.keyboard("{ArrowDown}");
+    expect(options[0]).toHaveFocus();
+    await user.keyboard("{ArrowDown}");
+    expect(options[1]).toHaveFocus();
+    await user.keyboard("{ArrowUp}");
+    expect(options[0]).toHaveFocus();
+  });
+
+  it("closes on an outside click via the shared outside-click hook", async () => {
+    const user = userEvent.setup();
+    render(
+      <div>
+        <BadgeSelect id="bs-5" options={projectOptions} />
+        <button type="button">outside</button>
+      </div>,
+    );
+
+    await user.click(screen.getByRole("button", { name: /select/i }));
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "outside" }));
+
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  });
+});
+
+describe("BadgeSelect keyboard support (combobox trigger with a preselected value)", () => {
+  it("opens via ArrowDown, and a second ArrowDown moves focus into the list instead of closing it", async () => {
+    const user = userEvent.setup();
+    render(<BadgeSelect id="bs-6" options={projectOptions} value={["Tendril-Services"]} />);
+
+    const trigger = screen.getByRole("combobox");
+    trigger.focus();
+    await user.keyboard("{ArrowDown}");
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+
+    await user.keyboard("{ArrowDown}");
+
+    // The list must still be open and focus must have moved to the first option — a regression
+    // here means the trigger's own ArrowDown handler re-toggled the list shut instead of leaving
+    // navigation to useMenuKeyboard.
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    expect(screen.getAllByRole("option")[0]).toHaveFocus();
+  });
+
+  it("wraps ArrowDown/ArrowUp between options", async () => {
+    const user = userEvent.setup();
+    render(<BadgeSelect id="bs-7" options={projectOptions} value={["Tendril-Services"]} />);
+
+    const trigger = screen.getByRole("combobox");
+    trigger.focus();
+    await user.keyboard("{ArrowDown}");
+    const options = screen.getAllByRole("option");
+
+    await user.keyboard("{ArrowDown}");
+    expect(options[0]).toHaveFocus();
+    await user.keyboard("{ArrowDown}");
+    expect(options[1]).toHaveFocus();
+    await user.keyboard("{ArrowDown}");
+    expect(options[0]).toHaveFocus();
+    await user.keyboard("{ArrowUp}");
+    expect(options[1]).toHaveFocus();
+  });
+
+  it("closes on Escape and returns focus to the combobox trigger", async () => {
+    const user = userEvent.setup();
+    render(<BadgeSelect id="bs-8" options={projectOptions} value={["Tendril-Services"]} />);
+
+    const trigger = screen.getByRole("combobox");
+    trigger.focus();
+    await user.keyboard("{ArrowDown}");
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+
+    await user.keyboard("{Escape}");
+
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("still toggles open/closed with Enter and Space", async () => {
+    const user = userEvent.setup();
+    render(<BadgeSelect id="bs-9" options={projectOptions} value={["Tendril-Services"]} />);
+
+    const trigger = screen.getByRole("combobox");
+    trigger.focus();
+
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    await user.keyboard("{Enter}");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+
+    await user.keyboard(" ");
+    expect(screen.getByRole("listbox")).toBeInTheDocument();
+    await user.keyboard(" ");
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
 });
 

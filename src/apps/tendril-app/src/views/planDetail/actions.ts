@@ -1,7 +1,7 @@
 import { type PlanActionDto } from "@ivy-interactive/components/tendril";
 import type { Annotation, PlanDetail, PlanSummary } from "../../types/api";
-import { PlanActionsController } from "../../controllers/plan_actions";
-import { draftActions, type DraftAction } from "../../controllers/draft_actions";
+import { PlanActionsController } from "../../controllers/planActions";
+import { draftActions, type DraftAction } from "../../controllers/draftActions";
 
 /** What the action row is assembled from: the plan as the page believes it, and what is in flight. */
 export interface PlanActionsOptions {

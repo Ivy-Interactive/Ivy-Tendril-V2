@@ -1,5 +1,5 @@
+import { formatCost, formatTokens, formatTimeSpan, NO_VALUE } from "@ivy-interactive/components";
 import type { Job } from "../../types/api";
-import { NO_VALUE, formatCost, formatTimeSpan, formatTokens } from "../../utils/format";
 
 /**
  * `JobsApp.Helpers.cs`' formatters, and the two placeholders they answer with. Each is a pure
@@ -7,20 +7,15 @@ import { NO_VALUE, formatCost, formatTimeSpan, formatTokens } from "../../utils/
  * JobRow} is built from these, the column cells call four of them directly, and the tests drive
  * them without mounting anything.
  *
- * The scalar half of this file moved to `utils/format.ts`, because `PullRequestsView` and the
- * Dashboard's KPI builder each carried their own drifted copy of the token ladder and nothing under
- * `utils/` may reach into `views/`. What stays here is what takes a `Job` and answers with a cell.
+ * `formatCost`, `formatTokens`, `formatTimeSpan` and `NO_VALUE` are the shared, V1-parity
+ * implementations from `@ivy-interactive/components` (`lib/formatters.ts`); re-exported here so
+ * this module keeps its existing public names and {@link JobsView} does not have to change what it
+ * imports from it.
  */
+export { formatTimeSpan, formatTokens, NO_VALUE };
 
 /** Ceiling on the Prompt cell, from `JobsApp.Helpers.cs` `PromptDisplayMaxLength`. */
 const PROMPT_DISPLAY_MAX_LENGTH = 500;
-
-/**
- * Re-exported rather than re-homed. `columns.tsx`, `rows.tsx` and `JobsView`'s public surface all
- * reach the Jobs table's vocabulary through this module, and which of its pieces happen to be shared
- * with the Dashboard is an implementation detail those callers have no reason to track.
- */
-export { NO_VALUE, formatTimeSpan, formatTokens };
 
 /** `FormatTimer` / `FormatTimestamp` both use this placeholder for "not applicable yet". */
 export const NO_TIME = "-";

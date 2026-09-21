@@ -15,6 +15,18 @@ export default defineConfig({
   },
   lint: {
     ignorePatterns: ["dist/**", "node_modules/**"],
+    plugins: ["unicorn", "typescript", "oxc", "import"],
+    rules: {
+      "import/no-default-export": "error",
+    },
+    overrides: [
+      {
+        files: ["vite.config.ts", "vitest.config.ts"],
+        rules: {
+          "import/no-default-export": "off",
+        },
+      },
+    ],
     options: {
       typeAware: true,
     },

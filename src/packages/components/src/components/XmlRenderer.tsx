@@ -247,5 +247,3 @@ export const XmlRenderer = ({ data, initialExpanded }: XmlRendererProps) => {
     </div>
   );
 };
-
-export default XmlRenderer;

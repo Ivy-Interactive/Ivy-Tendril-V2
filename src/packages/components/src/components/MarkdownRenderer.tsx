@@ -27,7 +27,7 @@ import { remarkCustomEmojiPlugin } from "./custom-emojis/remarkCustomEmojiPlugin
 import { ImageOverlay } from "./markdown/ImageOverlay";
 import { MarkdownCodeBlock } from "./markdown/MarkdownCodeBlock";
 import { PopoverLink } from "./markdown/PopoverLink";
-import Icon from "@/components/Icon";
+import { Icon } from "@/components/Icon";
 import type { Components, Options } from "react-markdown";
 import { parseGitHubAlert, githubAlertStyles, extractTextContent } from "@/lib/markdown-utils";
 import { parse as parseYaml } from "yaml";
@@ -808,4 +808,3 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
 
 export { MarkdownRenderer };
 export type { MarkdownRendererProps };
-export default memo(MarkdownRenderer);

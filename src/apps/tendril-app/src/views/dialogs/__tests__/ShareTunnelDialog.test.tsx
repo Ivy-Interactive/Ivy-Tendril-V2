@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
+import { describe, it, expect, vi, afterEach, beforeEach, type MockInstance } from "vitest";
 import { render, screen, fireEvent, waitFor, act } from "@testing-library/react";
 import {
   ShareTunnelDialog,
@@ -6,6 +6,7 @@ import {
   type ShareTunnelApi,
   type ShareTunnelSnapshot,
 } from "../ShareTunnelDialog";
+import { notificationsStore } from "../../../state/notificationsStore";
 
 vi.mock("@tauri-apps/plugin-opener", () => ({ openUrl: vi.fn() }));
 // The dialog resolves its commands through `invoke`; every test injects a stub `api` instead, so this
@@ -45,10 +46,14 @@ async function renderDialog(api: ShareTunnelApi, props: Record<string, unknown> 
   });
 }
 
+/** V1's `client.Toast(...)`. Held as a local so an assertion never references it through the store. */
+let notifySuccess: MockInstance<typeof notificationsStore.notifySuccess>;
+
 beforeEach(() => {
   Object.assign(navigator, {
     clipboard: { writeText: vi.fn().mockResolvedValue(undefined) },
   });
+  notifySuccess = vi.spyOn(notificationsStore, "notifySuccess").mockImplementation(() => undefined);
 });
 
 afterEach(() => {
@@ -155,6 +160,29 @@ describe("ShareTunnelDialog", () => {
 
     fireEvent.click(screen.getByTestId("share-open"));
     expect(openUrl).toHaveBeenCalledWith("https://calm-otter.trycloudflare.com");
+  });
+
+  it("shows the copy error and fires no success toast when neither clipboard mechanism works", async () => {
+    const api = stubApi({ getStatus: vi.fn().mockResolvedValue(CONNECTED) });
+    Object.assign(navigator, {
+      clipboard: { writeText: vi.fn().mockRejectedValue(new Error("clipboard blocked")) },
+    });
+    // jsdom does not implement `execCommand`, but that is an environment gap, not a guarantee this
+    // test should lean on — make the "no working fallback" case explicit rather than relying on it.
+    document.execCommand = vi.fn(() => false);
+    await renderDialog(api);
+
+    await act(async () => {
+      fireEvent.click(screen.getByTestId("share-copy"));
+    });
+
+    expect(navigator.clipboard.writeText).toHaveBeenCalledWith(
+      "https://calm-otter.trycloudflare.com",
+    );
+    await waitFor(() =>
+      expect(screen.getByTestId("share-tunnel-error")).toHaveTextContent(/Could not copy the link/),
+    );
+    expect(notifySuccess).not.toHaveBeenCalledWith("Link Copied", expect.anything());
   });
 
   /** V1's `ShareTunnelModal(planFolderName, isReview)`: the link deep-links to the plan. */

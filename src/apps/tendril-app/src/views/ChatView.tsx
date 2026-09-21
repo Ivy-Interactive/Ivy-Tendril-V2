@@ -5,7 +5,7 @@ import {
   clipboardFiles,
   type VoiceStatus,
 } from "@ivy-interactive/components/tendril";
-import { IconButton, TooltipScope } from "@ivy-interactive/components/ui";
+import { IconButton, Spinner, TooltipScope } from "@ivy-interactive/components/ui";
 import { usePublishSidebarList } from "../state/sidebarListStore";
 import { chatStore, type ChatState, type ChatStore } from "../state/chatStore";
 import { chatLauncher } from "../state/chatLauncher";
@@ -25,18 +25,17 @@ import { ChatHeader, JobsMenu } from "./ChatHeader";
 import { AgentPicker } from "../components/chat/AgentPicker";
 import { ImageLightbox, type LightboxImage } from "../components/chat/ImageLightbox";
 import { ComposerAttachment } from "../components/chat/ComposerAttachment";
+import { ErrorBanner } from "../components/ErrorBanner";
 import { resolveJobState } from "../utils/jobStatus";
 import {
   ArrowDown,
   HelpCircle,
   ListPlus,
-  Loader2,
   Mic,
   Paperclip,
   SendHorizontal,
   Square,
   Upload,
-  X,
 } from "lucide-react";
 import { usePendingChatQuestions } from "../hooks/usePendingChatQuestions";
 import { useWireframeBaseUrl } from "../api/proxyOrigin";
@@ -677,6 +676,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         buttonSize: "md" as const,
         buttonRadius: "rounded-field",
         icon: "size-4",
+        iconSpinnerSize: "md" as const,
         attachOffset: "",
         tools: "gap-1.5",
       }
@@ -685,6 +685,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         buttonSize: "lg" as const,
         buttonRadius: "",
         icon: "size-5",
+        iconSpinnerSize: "lg" as const,
         attachOffset: "-ml-1.5",
         tools: "gap-3",
       };
@@ -769,7 +770,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
           )}
           {/* Error Banner */}
           {error && (
-            <div className="border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-xs text-destructive flex items-center justify-between">
+            <div
+              data-testid="chat-error"
+              className="flex items-center justify-between border-b border-destructive/40 bg-destructive/10 px-4 py-2 text-xs text-destructive"
+            >
               <span>{error}</span>
             </div>
           )}
@@ -892,7 +896,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   leading edge where the reply will appear. */}
                 {isGenerating && (
                   <div className="flex min-h-6 w-full items-center gap-2 text-muted-foreground">
-                    <Loader2 className="size-4 animate-spin" />
+                    <Spinner size="md" />
                     <span>Working...</span>
                   </div>
                 )}
@@ -936,7 +940,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   type="button"
                   data-testid="chat-scroll-tail-button"
                   onClick={() => scrollToTail(true)}
-                  className="pointer-events-auto flex cursor-pointer items-center gap-2 rounded-full border border-border bg-popover/90 px-3.5 py-1.5 text-xs font-medium text-foreground shadow-lg backdrop-blur transition-colors hover:bg-accent"
+                  className="pointer-events-auto flex cursor-pointer items-center gap-2 rounded-full border border-border bg-popover/90 px-3.5 py-1.5 text-xs font-medium text-foreground shadow-lg backdrop-blur transition-colors hover:bg-secondary/60"
                 >
                   <ArrowDown className="size-3.5 text-muted-foreground" />
                   {isGenerating ? (
@@ -975,23 +979,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 }`}
               >
                 {voiceError && (
-                  <div
-                    role="alert"
-                    className="flex items-center gap-2 rounded-field border border-destructive bg-destructive/10 px-2.5 py-1.5 text-xs font-medium text-destructive"
+                  <ErrorBanner
+                    data-testid="chat-voice-error"
+                    onDismiss={() => setVoiceError(null)}
+                    dismissLabel="Dismiss voice input error"
                   >
-                    <span className="min-w-0 flex-1">{voiceError}</span>
-                    {/* `text-current` so it stays the alert's destructive colour: `.tui-icon-btn`
-                      sets `color` in `@layer components`, which an unlayered utility outranks. */}
-                    <IconButton
-                      label="Dismiss voice input error"
-                      tooltip="Dismiss"
-                      size="xs"
-                      onClick={() => setVoiceError(null)}
-                      className="text-current"
-                    >
-                      <X className="size-3.5" />
-                    </IconButton>
-                  </div>
+                    {voiceError}
+                  </ErrorBanner>
                 )}
 
                 {attachments.length > 0 && (
@@ -1081,7 +1075,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       }`}
                     >
                       {voiceStatus === "connecting" || voiceStatus === "processing" ? (
-                        <Loader2 className={`${composerStyle.icon} animate-spin`} />
+                        <Spinner size={composerStyle.iconSpinnerSize} />
                       ) : voiceStatus === "recording" ? (
                         <Square className={composerStyle.icon} />
                       ) : (
@@ -1123,9 +1117,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
                           className={composerStyle.buttonRadius}
                         >
                           {isCancelling ? (
-                            <Loader2
+                            <Spinner
                               data-testid="composer-stop-spinner"
-                              className={`${composerStyle.icon} animate-spin`}
+                              size={composerStyle.iconSpinnerSize}
                             />
                           ) : (
                             <Square className="size-3 fill-current" />
@@ -1194,5 +1188,3 @@ export const ChatView: React.FC<ChatViewProps> = ({
     </TooltipScope>
   );
 };
-
-export default ChatView;

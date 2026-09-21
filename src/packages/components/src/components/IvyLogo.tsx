@@ -19,5 +19,3 @@ export function IvyLogo({ className, ...props }: IvyLogoProps) {
     </svg>
   );
 }
-
-export default IvyLogo;

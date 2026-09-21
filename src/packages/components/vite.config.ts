@@ -29,6 +29,24 @@ export default defineConfig({
     sourcemap: true,
   },
   lint: {
+    plugins: ["unicorn", "typescript", "oxc", "import"],
+    rules: {
+      "import/no-default-export": "error",
+    },
+    overrides: [
+      {
+        files: [
+          "**/*.stories.tsx",
+          "vite.config.ts",
+          ".storybook/**",
+          "tests/global-setup.ts",
+          "**/*.d.ts",
+        ],
+        rules: {
+          "import/no-default-export": "off",
+        },
+      },
+    ],
     options: {
       typeAware: true,
       typeCheck: true,

@@ -5,7 +5,8 @@ import {
   QuestionsDraftContext,
   QuestionsSubmitContext,
 } from "@ivy-interactive/components/tendril";
-import { CheckCheck, Loader2, Paperclip, Sparkles, XCircle } from "lucide-react";
+import { Spinner } from "@ivy-interactive/components/ui";
+import { CheckCheck, Paperclip, Sparkles, XCircle } from "lucide-react";
 import {
   isImageAttachment,
   resetAttachmentPreviewsForTesting,
@@ -231,7 +232,7 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
         ) : jobState === "failed" ? (
           <XCircle className={`size-4 shrink-0 ${tone}`} aria-hidden="true" />
         ) : jobState === "running" ? (
-          <Loader2 className={`size-4 shrink-0 animate-spin ${tone}`} aria-hidden="true" />
+          <Spinner size="md" className={`shrink-0 ${tone}`} aria-hidden="true" />
         ) : (
           <span
             className="mt-1.5 inline-block size-1.5 shrink-0 rounded-full bg-muted-foreground"
@@ -331,7 +332,7 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
                   data-testid="submitting-answer-indicator"
                   className="mt-2 flex min-h-6 items-center gap-1.5 text-xs text-muted-foreground"
                 >
-                  <Loader2 className="size-3.5 animate-spin" />
+                  <Spinner size="sm" />
                   <span>Submitting answer...</span>
                 </div>
               )}
@@ -360,5 +361,3 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
     </ChatBubble>
   );
 });
-
-export default ChatMessageRow;
