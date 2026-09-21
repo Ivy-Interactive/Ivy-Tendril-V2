@@ -5,6 +5,8 @@ import { IconButton } from "../ui/IconButton";
 import { TuiBadge } from "../ui/TuiBadge";
 import { VoiceRecorder, type VoiceStatus } from "./voice-recorder";
 import { clipboardFiles } from "../../lib/clipboard";
+import { useOutsideClick } from "../../hooks/use-outside-click";
+import { useMenuKeyboard } from "../../hooks/use-menu-keyboard";
 import "./content-input.css";
 
 type PdfJsLib = typeof import("pdfjs-dist");
@@ -254,6 +256,8 @@ export const ContentInput: React.FC<ContentInputProps> = ({
   const timerRef = useRef<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  const menuTriggerRef = useRef<HTMLButtonElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
   const filesRef = useRef(files);
   const textRef = useRef(text);
 
@@ -318,19 +322,13 @@ export const ContentInput: React.FC<ContentInputProps> = ({
     return null;
   };
 
-  // Close menu when clicking outside
-  useEffect(() => {
-    if (!menuOpen) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
-        setMenuOpen(false);
-      }
-    };
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => {
-      document.removeEventListener("mousedown", handleClickOutside);
-    };
-  }, [menuOpen]);
+  useOutsideClick(menuOpen, [menuRef], () => setMenuOpen(false));
+
+  useMenuKeyboard(menuOpen, {
+    containerRef: dropdownRef,
+    triggerRef: menuTriggerRef,
+    onClose: () => setMenuOpen(false),
+  });
 
   // Sync value prop to text and files state
   useEffect(() => {
@@ -988,23 +986,27 @@ export const ContentInput: React.FC<ContentInputProps> = ({
                   />
                 </button>
                 <button
+                  ref={menuTriggerRef}
                   className="civ-split-btn-arrow"
                   onClick={() => setMenuOpen(!menuOpen)}
                   disabled={!canSubmit}
                   type="button"
                   title="More options"
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen}
                 >
                   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                     <polyline points="6 9 12 15 18 9" />
                   </svg>
                 </button>
                 {menuOpen && (
-                  <div className="civ-dropdown-menu">
+                  <div ref={dropdownRef} className="civ-dropdown-menu" role="menu">
                     {menuOptions.map((option, idx) => (
                       <button
                         key={idx}
                         className="civ-dropdown-item"
                         type="button"
+                        role="menuitem"
                         onClick={() => {
                           setMenuOpen(false);
                           if (dispatchEvent) {

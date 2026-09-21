@@ -641,3 +641,39 @@
   padding: 0.75rem;
   box-shadow: 0 4px 12px rgb(0 0 0 / 0.15);
 }
+
+/* The comment textarea shared by WebViewer (.wvr-comment-input) and PlanMarkdown's annotation
+   popover (.pmv-popover-textarea) — both sit inside a .tui-popover-shell, so box-sizing already
+   comes from there; each widget keeps its own margin-top for layout. */
+.tui-comment-textarea {
+  width: 100%;
+  padding: 0.375rem 0.5rem;
+  border-radius: var(--radius-sm);
+  border: var(--border-width) solid var(--input);
+  background: var(--background);
+  color: inherit;
+  font-family: inherit;
+  font-size: var(--text-sm);
+  resize: none;
+  outline: none;
+}
+
+.tui-comment-textarea:focus {
+  box-shadow: 0 0 0 var(--border-width) var(--ring);
+}
+
+/* The row recipe shared by PlanWorkspace's menu (.pws-menu-item) and Shell's item menu
+   (.tsh-item-menu-item) — only the declarations identical across both; gap, width, font-size,
+   hover background and disabled/danger states differ and stay on the widget's own class. */
+.tui-menu-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 10px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--foreground);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}

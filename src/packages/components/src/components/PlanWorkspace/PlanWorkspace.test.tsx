@@ -105,6 +105,42 @@ describe("PlanWorkspace", () => {
     expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
+  it("closes the overflow menu on Escape and returns focus to its trigger", () => {
+    renderWorkspace();
+    const trigger = screen.getByRole("button", { name: "More actions" });
+    fireEvent.click(trigger);
+    expect(screen.getByRole("menu")).toBeInTheDocument();
+
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    expect(trigger).toHaveFocus();
+  });
+
+  it("moves focus between overflow menu items with ArrowDown/ArrowUp", () => {
+    const manyMenuItems = [
+      { tag: "Rename", label: "Rename", icon: "Pencil" },
+      { tag: "Duplicate", label: "Duplicate", icon: "Copy" },
+      { tag: "Delete", label: "Delete", icon: "Trash", danger: true },
+    ];
+    renderWorkspace(vi.fn(), { menuItems: manyMenuItems });
+    fireEvent.click(screen.getByRole("button", { name: "More actions" }));
+    const menu = screen.getByRole("menu");
+    const items = screen.getAllByRole("menuitem");
+    expect(items.map((el) => el.getAttribute("data-tag"))).toEqual([
+      "Rename",
+      "Duplicate",
+      "Delete",
+    ]);
+
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    expect(items[0]).toHaveFocus();
+    fireEvent.keyDown(menu, { key: "ArrowDown" });
+    expect(items[1]).toHaveFocus();
+    fireEvent.keyDown(menu, { key: "ArrowUp" });
+    expect(items[0]).toHaveFocus();
+  });
+
   it("marks the active icon action as pressed", () => {
     renderWorkspace();
     expect(screen.getByRole("button", { name: "Update" })).toHaveAttribute("aria-pressed", "true");
