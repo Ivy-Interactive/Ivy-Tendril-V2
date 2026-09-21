@@ -253,3 +253,47 @@ describe("planSearchRowBadges", () => {
     ]);
   });
 });
+
+/**
+ * A Draft/Blocked result delegates to `planRowBadges`, so the level badge it carries is coloured from
+ * `config.yaml`'s `levels` — V1's `GetLevelColor` mapping, not a palette of V2's own.
+ */
+describe("planSearchRowBadges level colours", () => {
+  const LEVEL_COLORS = {
+    Bug: "Red",
+    Feature: "Blue",
+    Epic: "Purple",
+    Chore: "Slate",
+    Nitpick: "Gray",
+  } as const;
+
+  it.each([
+    ["Bug", "Red"],
+    ["Feature", "Blue"],
+    ["Epic", "Purple"],
+    ["Chore", "Slate"],
+    ["Nitpick", "Gray"],
+  ])("gives a %s draft a %s level badge", (level, color) => {
+    expect(planSearchRowBadges(planSummary({ state: "Draft", level }), LEVEL_COLORS)).toEqual([
+      { label: "Tendril-App", kind: "project" },
+      { label: level, kind: "color", color },
+    ]);
+  });
+
+  it("falls back to V1's Gray for a level nothing configures", () => {
+    expect(
+      planSearchRowBadges(planSummary({ state: "Draft", level: "Spike" }), LEVEL_COLORS),
+    ).toEqual([
+      { label: "Tendril-App", kind: "project" },
+      { label: "Spike", kind: "color", color: "Gray" },
+    ]);
+  });
+
+  /** Without the colours read yet, the badge stays neutral rather than asserting a grey. */
+  it("leaves the level neutral until the configuration is known", () => {
+    expect(planSearchRowBadges(planSummary({ state: "Draft", level: "Bug" }))).toEqual([
+      { label: "Tendril-App", kind: "project" },
+      { label: "Bug", kind: "neutral" },
+    ]);
+  });
+});

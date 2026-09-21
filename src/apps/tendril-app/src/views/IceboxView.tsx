@@ -6,6 +6,7 @@ import { describeBridgeError, type PlanSummary } from "../types/api";
 import { VERIFICATION_DOT_CLASS } from "../utils/verificationStatus";
 import { NoContentView } from "../components/NoContentView";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { LevelBadge } from "../components/LevelBadge";
 import { DeletePlanDialog } from "./dialogs";
 import { formatPlanId, parseProjects, planStateBadgeVariant } from "./PlansView";
 
@@ -263,13 +264,19 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
                         {proj}
                       </Badge>
                     ))}
+
+                    {/* `SidebarView.BuildRowBadges` ends with the level, after the projects, and
+                        colours it from configuration. It used to be an uncoloured line in the card
+                        footer, which is the one thing that badge exists to say. */}
+                    <LevelBadge level={plan.level} density="Small" />
                   </div>
                 </div>
 
-                {/* Footer / Verifications */}
-                <div className="mt-4 flex items-center justify-between border-t border-border/50 pt-3 text-xs text-muted-foreground">
-                  <span>{plan.level || "Feature"}</span>
-                  {plan.verifications && plan.verifications.length > 0 && (
+                {/* Footer / Verifications. The level used to sit here as plain text and is now a
+                    coloured badge above, so with no verification dots there is nothing left to rule
+                    off — the border is drawn only when the row has content. */}
+                {plan.verifications && plan.verifications.length > 0 && (
+                  <div className="mt-4 flex items-center justify-end border-t border-border/50 pt-3 text-xs text-muted-foreground">
                     <div className="flex items-center gap-1">
                       {plan.verifications.map((v, i) => (
                         <span
@@ -279,8 +286,8 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
                         />
                       ))}
                     </div>
-                  )}
-                </div>
+                  </div>
+                )}
 
                 {/* V1's action bar order: Delete (outline), then Thaw (primary). */}
                 <div className="mt-3 flex items-center gap-2">

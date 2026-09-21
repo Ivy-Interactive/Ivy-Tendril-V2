@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { levelBadgeColor } from "../levelColor";
+import { levelBadgeColor, levelColorMap, resolveLevelColor } from "../levelColor";
 
 /**
  * The legal vocabulary is V1's `Colors` enum, because every V1 renderer of a level colour reads the
@@ -92,5 +92,90 @@ describe("levelBadgeColor", () => {
     expect(levelBadgeColor("")).toBeUndefined();
     expect(levelBadgeColor("   ")).toBeUndefined();
     expect(levelBadgeColor(undefined)).toBeUndefined();
+  });
+});
+
+/**
+ * `IConfigService.GetLevelColor` as V2 reads it, and the `?? Colors.Gray` the Icebox row applies on
+ * top (`Apps/Icebox/SidebarView.cs:25`). The point of these is the *mapping* — that Bug reaches Red
+ * and Epic reaches Purple rather than that some colour is produced — because a badge coloured by the
+ * wrong level is the same defect as one coloured by nothing.
+ */
+describe("levelColorMap", () => {
+  /** `default_levels()` verbatim, which is also V1's `ConfigService.cs:314-318`. */
+  const DEFAULT_LEVELS = [
+    { name: "Bug", color: "Red" },
+    { name: "Feature", color: "Blue" },
+    { name: "Epic", color: "Purple" },
+    { name: "Chore", color: "Slate" },
+    { name: "Nitpick", color: "Gray" },
+  ];
+
+  it("maps every shipped level to the colour it is configured with", () => {
+    expect(levelColorMap(DEFAULT_LEVELS)).toEqual({
+      Bug: "Red",
+      Feature: "Blue",
+      Epic: "Purple",
+      Chore: "Slate",
+      Nitpick: "Gray",
+    });
+  });
+
+  it("follows the configuration rather than any built-in palette", () => {
+    // An operator who recolours Bug gets a green Bug badge: nothing may hardcode Bug to Red.
+    expect(levelColorMap([{ name: "Bug", color: "Emerald" }])).toEqual({ Bug: "Emerald" });
+    // And a level V1 never shipped is coloured just the same.
+    expect(levelColorMap([{ name: "Spike", color: "Amber" }])).toEqual({ Spike: "Amber" });
+  });
+
+  it("normalises the stored casing, as `Enum.TryParse(..., ignoreCase: true)` does", () => {
+    expect(levelColorMap([{ name: "Bug", color: "red" }])).toEqual({ Bug: "Red" });
+  });
+
+  it("omits a level whose colour is not a colour, so it cannot be told from an unconfigured one", () => {
+    expect(
+      levelColorMap([
+        { name: "Bug", color: "Gary" },
+        { name: "Epic", color: "" },
+      ]),
+    ).toEqual({});
+  });
+});
+
+describe("resolveLevelColor", () => {
+  const colors = levelColorMap([
+    { name: "Bug", color: "Red" },
+    { name: "Feature", color: "Blue" },
+    { name: "Epic", color: "Purple" },
+    { name: "Chore", color: "Slate" },
+    { name: "Nitpick", color: "Gray" },
+  ]);
+
+  it.each([
+    ["Bug", "Red"],
+    ["Feature", "Blue"],
+    ["Epic", "Purple"],
+    ["Chore", "Slate"],
+    ["Nitpick", "Gray"],
+  ])("resolves %s to %s", (level, expected) => {
+    expect(resolveLevelColor(level, colors)).toBe(expected);
+  });
+
+  /** `config.GetLevelColor(plan.Level) ?? Colors.Gray` — the badge is drawn either way. */
+  it("falls back to V1's Gray for a level the configuration does not colour", () => {
+    expect(resolveLevelColor("Unconfigured", colors)).toBe("Gray");
+  });
+
+  /**
+   * Not the same as the fallback: until configuration has been read there is no colour to assert, and
+   * a grey badge that turns red a tick later is a flash of the wrong answer.
+   */
+  it("resolves nothing while the configuration is still unknown", () => {
+    expect(resolveLevelColor("Bug", undefined)).toBeUndefined();
+  });
+
+  it("resolves nothing for a plan with no level", () => {
+    expect(resolveLevelColor(undefined, colors)).toBeUndefined();
+    expect(resolveLevelColor("", colors)).toBeUndefined();
   });
 });

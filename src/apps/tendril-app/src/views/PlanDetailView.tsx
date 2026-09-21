@@ -38,6 +38,7 @@ import {
 } from "./PlansView";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { ProjectBadges } from "../components/ProjectBadges";
+import { LevelBadge } from "../components/LevelBadge";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
 import { CreateIssueDialog } from "./dialogs/CreateIssueDialog";
 import { CreatePrDialog } from "./dialogs/CreatePrDialog";
@@ -1057,13 +1058,10 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
               {effectivePlan.state}
             </Badge>,
             <ProjectBadges key="projects" project={plan.project} />,
-            ...(plan.level
-              ? [
-                  <Badge key="level" variant="outline">
-                    {plan.level}
-                  </Badge>,
-                ]
-              : []),
+            /* The level, coloured from `config.yaml`'s `levels` the way V1's Icebox row colours it
+               (`SidebarView.cs:25`). `LevelBadge` renders nothing without a level, so the guard the
+               outline badge needed is inside it now. */
+            <LevelBadge key="level" level={plan.level} />,
           ],
           /**
            * V1 leaves the `Toolbar` slot empty and reports refusals through toasts, which V2's shell
