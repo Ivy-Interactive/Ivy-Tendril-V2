@@ -54,8 +54,15 @@
   cursor: pointer;
 }
 
+/* The verification's name. `font-size` is load-bearing rather than tidy: nothing between `<body>`
+   and this span sets one, so without it the name inherits the UA's 16px default while `.svl-required`
+   beside it on the same row sits at `--text-sm`. V1 got 14px for free — its host renders this widget
+   inside the framework's `.text-body` chrome (`--text-body: 14px`, Ivy-Framework
+   `src/frontend/src/index.css`), which V2's own shell has no equivalent of, so the ramp has to be
+   stated here. The token is the same 0.875rem V1's `.svl-required` hard-coded. */
 .svl-name {
   flex: 1 1 auto;
+  font-size: var(--text-sm);
 }
 
 .svl-spacer {
