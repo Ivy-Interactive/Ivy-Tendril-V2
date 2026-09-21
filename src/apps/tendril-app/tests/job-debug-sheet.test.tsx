@@ -207,8 +207,13 @@ describe("JobDebugSheet", () => {
     render(<JobDebugSheet job={detail()} />);
     fireEvent.click(screen.getByTestId("job-debug-copy"));
 
+    // `copyToClipboard` tries the async Clipboard API and then an `execCommand` fallback before
+    // giving up, so by the time this rejects the message describes that both mechanisms failed
+    // rather than repeating `writeText`'s own error (which the helper keeps as `cause`, not text).
     // The whole point of the button is that the text left the app; a silent failure is worse than none.
-    await waitFor(() => expect(screen.getByRole("alert")).toHaveTextContent("clipboard blocked"));
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent("Could not copy to the clipboard"),
+    );
     expect(screen.getByTestId("job-debug-copy")).not.toHaveTextContent("Copied");
   });
 });
