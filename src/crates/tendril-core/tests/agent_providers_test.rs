@@ -358,3 +358,80 @@ fn agent_command_leaves_no_temp_files_behind() {
         scratch.display()
     );
 }
+
+/// A prompt file that could not be written never reaches the command line as a path.
+///
+/// The twin of `write_mcp_config_reports_a_failed_write_rather_than_naming_a_missing_file` above,
+/// for `write_temp_prompt`, and asserted through the two builders that call it because the writer
+/// itself is private. Each degrades differently, which is the point of pinning both:
+///
+/// - Antigravity's `--print @<file>` is the dangerous one. `agy` does not reject a missing path, it
+///   takes the literal `@/tmp/....md` as the prompt, so a swallowed write silently replaced the
+///   job's instructions with a file name. The text must go inline instead.
+/// - Claude's `--system-prompt-file` is the opposite failure: it exits on a path it cannot read. The
+///   flag has to be dropped, and the system prompt folded into the stdin prompt, which is where
+///   Cursor and OpenCode already put theirs.
+///
+/// `TMPDIR` is the lever for the same reason as the MCP test: `std::env::temp_dir` reads it, and a
+/// temp directory that is missing or unwritable is the real shape of this failure.
+#[test]
+fn a_failed_prompt_write_degrades_to_inline_text_rather_than_a_missing_path() {
+    let _temp_dir = temp_dir_lock();
+
+    let absent = std::env::temp_dir().join(format!(
+        "tendril-prompt-no-such-directory-{}",
+        std::process::id()
+    ));
+    let _ = std::fs::remove_dir_all(&absent);
+
+    let _tmpdir = EnvGuard::set("TMPDIR", &absent);
+    let _tmp = EnvGuard::set("TMP", &absent);
+
+    let config = AgentLaunchConfig {
+        prompt: "Fix the parser.".to_string(),
+        system_prompt: Some("You are a senior engineer".to_string()),
+        ..Default::default()
+    };
+
+    let agy = build_agent_spec("antigravity", &config);
+    assert!(
+        !agy.args.iter().any(|a| a.starts_with('@')),
+        "antigravity must not point --print at a file that was never written, got {:?}",
+        agy.args
+    );
+    assert!(
+        agy.temp_files.is_empty(),
+        "a file that was never created must not be queued for cleanup, got {:?}",
+        agy.temp_files
+    );
+    let last = agy
+        .args
+        .last()
+        .expect("antigravity always renders a prompt");
+    assert!(
+        last.contains("Fix the parser."),
+        "the prompt must survive inline, got {}",
+        last
+    );
+
+    let claude = build_agent_spec("claude", &config);
+    assert!(
+        !claude.args.iter().any(|a| a == "--system-prompt-file"),
+        "claude exits on an unreadable --system-prompt-file, so the flag must be dropped, got {:?}",
+        claude.args
+    );
+    assert!(
+        claude.temp_files.is_empty(),
+        "a file that was never created must not be queued for cleanup, got {:?}",
+        claude.temp_files
+    );
+    let stdin = claude
+        .stdin_content
+        .as_deref()
+        .expect("claude sends its prompt down stdin");
+    assert!(
+        stdin.contains("You are a senior engineer") && stdin.contains("Fix the parser."),
+        "the system prompt must fold into stdin rather than be dropped, got {}",
+        stdin
+    );
+}
