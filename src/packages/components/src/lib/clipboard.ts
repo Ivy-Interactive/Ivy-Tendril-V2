@@ -1,16 +1,37 @@
+/**
+ * Copies `text` to the clipboard, preferring the async Clipboard API and falling back to
+ * `document.execCommand("copy")` only when that API is missing or rejects (an iframe or a webview
+ * without clipboard permission, say).
+ *
+ * Rejects rather than resolving on a copy that did not happen: the fallback's `execCommand` return
+ * value is a real signal, not a formality, and swallowing a `false` here left every caller's error
+ * UX unreachable and its success UX (a "Copied" toast, a checkmark) firing on a failed copy.
+ */
 export async function copyToClipboard(text: string): Promise<void> {
   try {
     await navigator.clipboard.writeText(text);
-  } catch {
+    return;
+  } catch (writeTextError) {
+    const activeElement = document.activeElement;
     const textarea = document.createElement("textarea");
     textarea.value = text;
     textarea.style.cssText = "position: fixed; opacity: 0;";
     document.body.appendChild(textarea);
     textarea.select();
+
+    let copied: boolean;
     try {
-      document.execCommand("copy");
-    } finally {
+      copied = document.execCommand("copy");
+    } catch (execCommandError) {
       document.body.removeChild(textarea);
+      if (activeElement instanceof HTMLElement) activeElement.focus();
+      throw new Error("Could not copy to the clipboard.", { cause: execCommandError });
+    }
+
+    document.body.removeChild(textarea);
+    if (activeElement instanceof HTMLElement) activeElement.focus();
+    if (!copied) {
+      throw new Error("Could not copy to the clipboard.", { cause: writeTextError });
     }
   }
 }

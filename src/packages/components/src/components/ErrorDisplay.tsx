@@ -30,9 +30,14 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ title, message, stac
       .filter(Boolean)
       .join("\n\n");
 
-    void copyToClipboard(errorDetails);
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
+    copyToClipboard(errorDetails)
+      .then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      })
+      .catch((err: unknown) => {
+        console.error("Copy failed:", err);
+      });
   };
 
   return (
