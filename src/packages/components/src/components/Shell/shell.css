@@ -2,6 +2,11 @@
    Light values are the exact colors from the Figma prototype (claude-code-prototype);
    dark values map onto the Ivy theme tokens so the shell follows the host theme. */
 
+/* Theme tokens, on every root the shell paints. `.tsh-root` is the shell itself;
+   the other four render out of its tree - the two menus and the rail tooltip are
+   portaled to <body>, and `.tsh-section` is reused inside the portaled plan
+   search dialog - so each has to declare the tokens rather than inherit them.
+   Nothing here may depend on the sidebar's measured width: see below. */
 .tsh-root,
 .tsh-section,
 .tsh-rail-menu,
@@ -23,15 +28,12 @@
   );
   --tsh-badge-bg: color-mix(in srgb, var(--foreground) 8%, var(--tsh-bg));
   --tsh-badge-bg-active: color-mix(in srgb, var(--foreground) 14%, var(--tsh-bg));
-  --tsh-sidebar-width: 320px;
   --tsh-rail-width: 56px;
   /* Sidebar and row padding are the same at both widths, and every row lays its
      content out at the expanded width: collapsing only narrows the clip, so the
      icons never move and the labels slide out of sight behind the rail edge. */
   --tsh-sidebar-pad-x: 8px;
-  --tsh-sidebar-content: calc(var(--tsh-sidebar-width) - var(--tsh-sidebar-pad-x) * 2);
   --tsh-row-pad-x: 12px;
-  --tsh-row-content: calc(var(--tsh-sidebar-content) - var(--tsh-row-pad-x) * 2);
   /* A row clips at its padding box, so the label has to start a full row-padding
      past the icon: any smaller gap and its first glyph peeks out on the rail. */
   --tsh-row-gap: var(--tsh-row-pad-x);
@@ -39,6 +41,19 @@
 
   font-family: var(--font-sans);
   color: var(--foreground);
+}
+
+/* The width chain is `.tsh-root`'s alone, because the live dragged width arrives
+   as an inline `--tsh-sidebar-width` on that element and nowhere else
+   (`TendrilShell.tsx`). Declaring the chain on any descendant makes its own 320px
+   shadow the inherited inline value for that whole subtree, and the subtree stops
+   tracking the drag: `.tsh-section` used to be in the group above, which pinned
+   the Search button's `.tsh-row` at 280px while every sibling row resized (#207).
+   Redeclare these only on an element the drag handler also writes to. */
+.tsh-root {
+  --tsh-sidebar-width: 320px;
+  --tsh-sidebar-content: calc(var(--tsh-sidebar-width) - var(--tsh-sidebar-pad-x) * 2);
+  --tsh-row-content: calc(var(--tsh-sidebar-content) - var(--tsh-row-pad-x) * 2);
 }
 
 .dark .tsh-root,
