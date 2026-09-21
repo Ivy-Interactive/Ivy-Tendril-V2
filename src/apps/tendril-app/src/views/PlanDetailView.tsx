@@ -82,8 +82,14 @@ interface PlanDetailViewProps {
   onExecute?: (planId: string) => void | Promise<void>;
   /** A job one of the dialogs started, so the shell can open its session tab. */
   onJobStarted?: (response: StartJobResponse) => void;
-  /** The plan's state changed on the service; the caller should re-fetch it. */
+  /** The plan left the queue this page was opened from — Skipped, Icebox or a partial delivery. */
   onPlanChanged?: (planId: string) => void;
+  /**
+   * The plan went back to Draft, which is an arrival rather than a departure: it stays on screen and
+   * only its detail needs re-reading. Separate from {@link onPlanChanged} because that one advances
+   * past the plan, and Reset is the CTA that keeps the operator on it.
+   */
+  onPlanReset?: (planId: string) => void;
   onPlanDeleted?: (planId: string) => void;
 }
 
@@ -95,6 +101,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   onExecute,
   onJobStarted,
   onPlanChanged,
+  onPlanReset,
   onPlanDeleted,
 }) => {
   // V1's tab ids (`ContentView.PlanTab` / `DetailsTab` / `GitTab`), plus the three tabs V2
@@ -1214,11 +1221,15 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         onArchived={(planId) => onPlanChanged?.(planId)}
         onSkipped={(planId) => onPlanChanged?.(planId)}
       />
+      {/* Reset is the one dialog here that is not a queue departure: it puts the plan back at Draft,
+          which is where the operator works on it next, so the page stays on it and reloads it rather
+          than advancing past it. `onPlanChanged` moves on to the next plan in the queue, which for a
+          reset would close the plan the operator just asked to start over. */}
       <ResetToDraftDialog
         isOpen={activeDialog === "reset"}
         onClose={() => setActiveDialog(null)}
         plan={plan}
-        onReset={(planId) => onPlanChanged?.(planId)}
+        onReset={(planId) => onPlanReset?.(planId)}
       />
       <PartialDeliveryDialog
         isOpen={activeDialog === "partialDelivery"}

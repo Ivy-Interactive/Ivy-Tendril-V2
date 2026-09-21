@@ -3,7 +3,8 @@ import { render, screen, fireEvent, waitFor, within } from "@testing-library/rea
 import { PlanDetailView } from "../src/views/PlanDetailView";
 import { bridge } from "../src/api/bridge";
 import { chatApi } from "../src/api/chatApi";
-import { planDetail, planGit, verification } from "./fixtures/plan.fixture";
+import { plansStore } from "../src/state/plansStore";
+import { planDetail, planGit, planSummary, verification } from "./fixtures/plan.fixture";
 import type { Job, PlanDetail, RepoStatus } from "../src/types/api";
 
 /**
@@ -413,5 +414,76 @@ describe("a plan in Review", () => {
     fireEvent.click(screen.getByRole("menuitem", { name: /Reset to Draft/ }));
 
     expect(await screen.findByTestId("reset-to-draft-dialog")).toBeInTheDocument();
+  });
+
+  /**
+   * Reset is an arrival, not a departure, and this page reports it as one.
+   *
+   * Every other lifecycle answer here calls `onPlanChanged`, which the shell answers by opening the
+   * next plan in the queue — right for Skipped, Icebox and a partial delivery, and wrong for Reset,
+   * which puts the plan back at Draft so the operator can start it again. Routed through
+   * `onPlanChanged` it closed the plan the operator had just asked to work on.
+   */
+  it("reports a reset on its own callback rather than as a queue departure", async () => {
+    const resetPlan = vi.spyOn(bridge, "resetPlan").mockResolvedValue(undefined);
+    vi.spyOn(bridge, "listPlans").mockResolvedValue([]);
+    const onPlanReset = vi.fn();
+    const onPlanChanged = vi.fn();
+
+    render(
+      <PlanDetailView
+        plan={draft({ state: "Review" })}
+        onPlanReset={onPlanReset}
+        onPlanChanged={onPlanChanged}
+      />,
+    );
+    openWorkspaceMenu();
+    fireEvent.click(screen.getByRole("menuitem", { name: /Reset to Draft/ }));
+    const dialog = await screen.findByTestId("reset-to-draft-dialog");
+    fireEvent.click(within(dialog).getByTestId("dialog-confirm"));
+
+    await waitFor(() => expect(onPlanReset).toHaveBeenCalledWith("00021"));
+    expect(onPlanChanged).not.toHaveBeenCalled();
+    // And through the store, so the row is Draft in `state.plans` before any list read comes back.
+    expect(resetPlan).toHaveBeenCalledWith("00021");
+  });
+
+  /**
+   * The Complete path the user's "does not get removed instantly" report landed on. The dialog used
+   * to call `bridge.updatePlanField` itself, which left the store believing the plan was still in
+   * Review — so the review queue, its sidebar list and the nav badge all went on counting it.
+   */
+  it("completes a partial delivery through the store, so the row leaves the queue at once", async () => {
+    const updateField = vi.spyOn(bridge, "updatePlanField").mockResolvedValue(undefined);
+    // The store's own reconcile fires a list read, and the daemon has not finished committing: it
+    // still calls the plan Review. The pin is what has to outlast that, or the row goes back into the
+    // review queue a moment after leaving it.
+    vi.spyOn(bridge, "listPlans").mockResolvedValue([
+      planSummary({ id: "00021", state: "Review" }),
+    ]);
+    plansStore.setPlans([planSummary({ id: "00021", state: "Review" })]);
+
+    render(
+      <PlanDetailView
+        plan={draft({
+          state: "Review",
+          verifications: [verification("RustBuild", "Fail")],
+        })}
+      />,
+    );
+    // `AddPrimaryAction`'s Review set puts this beside Create PR as a secondary action, not in the
+    // overflow menu, and offers it only for a plan with a failing verification.
+    fireEvent.click(await screen.findByRole("button", { name: /Accept Partial Delivery/ }));
+    const dialog = await screen.findByTestId("partial-delivery-dialog");
+    fireEvent.click(within(dialog).getByTestId("dialog-confirm"));
+
+    // The flag the dialog exists to send still goes with it.
+    await waitFor(() =>
+      expect(updateField).toHaveBeenCalledWith("00021", "state", "Completed", true),
+    );
+    await waitFor(() =>
+      expect(plansStore.getState().plans.find((p) => p.id === "00021")?.state).toBe("Completed"),
+    );
+    plansStore.setPlans([]);
   });
 });

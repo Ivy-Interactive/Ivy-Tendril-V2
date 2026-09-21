@@ -10,7 +10,7 @@ import {
 } from "./state/sidebarListStore";
 import { seedChatSessionCount, useChatSessionCount } from "./state/chatSessionCount";
 import { toAddressArgs } from "./state/navigation";
-import { nextAfterRemoval, plansStore } from "./state/plansStore";
+import { isPlanId, nextAfterRemoval, plansStore } from "./state/plansStore";
 import { jobsStore } from "./state/jobsStore";
 import { notificationsStore } from "./state/notificationsStore";
 import { serviceStore } from "./state/serviceStore";
@@ -601,7 +601,16 @@ export const App: React.FC = () => {
    * @param queue the plan's own queue as it was *before* the action, newest first.
    */
   const advanceWithinQueue = (queue: PlanSummary[], planId: string, review: boolean) => {
-    const next = nextAfterRemoval(queue, planId);
+    /* Whether the plan was in that queue at all. Every CTA here takes a plan out of a queue, but not
+       every plan acted on is in one: a Completed or Skipped plan deleted from its own page is in
+       neither list, and a plan a Queued or Blocked job holds is filtered out of both by
+       `heldPlanIds`. `nextAfterRemoval` answers those with the newest plan in the queue — branch 3 of
+       `resolvePlanSelection`, right for a page resolving its own arrival selection and wrong here,
+       where it would drop the operator on an unrelated plan they never asked for. An index the queue
+       never held has no successor, so the queue's own page is the honest answer, the same one an
+       emptied queue gets below. */
+    const wasQueued = queue.some((plan) => isPlanId(plan, planId));
+    const next = wasQueued ? nextAfterRemoval(queue, planId) : null;
 
     /* The row, before the navigation. A sidebar list republishes itself on every render of the page
        that owns it, so on Plans or Review the shortened queue takes the row with it — but this path
@@ -914,18 +923,18 @@ export const App: React.FC = () => {
             plansStore.fetchPlans().catch(() => {});
             advancePastPlan(detail.id, detail.state);
           }}
-          /* Skipped, Icebox, Reset to Draft and a partial delivery: each one takes the plan out of
-             the queue this page was opened from, so each one opens the next plan in it.
-
-             The refetch stays, unlike `onPlanDeleted` below, because only two of the four go through
-             `plansStore` — `ResetToDraftDialog` and `PartialDeliveryDialog` still write through
-             `bridge`, so without this their plan keeps its old state in the list until the daemon's
-             plan watcher fires. It is safe beside the store's own reconcile now that a confirmed
-             transition is pinned until a list read agrees with it; before that, the second read could
-             answer from a snapshot taken before the write and put the row back. */
+          /* Skipped, Icebox and a partial delivery: each one takes the plan out of the queue this
+             page was opened from, so each one opens the next plan in it. No refetch, as with
+             `onPlanDeleted` below — all three go through `plansStore` now, so the row has already
+             moved in `state.plans` and the store is reconciling in the background. */
           onPlanChanged={(id) => {
-            plansStore.fetchPlans().catch(() => {});
             advancePastPlan(id, detail.state);
+          }}
+          /* Reset to Draft is the exception: it puts the plan *into* the Plans queue rather than
+             taking it out of one, so the page stays on the plan and just re-reads it. The store has
+             already patched the row to Draft; the detail is what this page renders from. */
+          onPlanReset={(id) => {
+            plansStore.fetchPlanDetail(id).catch(() => {});
           }}
           onPlanDeleted={(id) => {
             // A plan is a page, not a tab, so there is nothing to close — and nothing to refetch

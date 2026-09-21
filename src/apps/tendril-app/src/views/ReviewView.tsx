@@ -1153,6 +1153,9 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
             onSkipped={handlePlanLeftReview}
             onArchived={handlePlanLeftReview}
           />
+          {/* Reset advances here where it does not on a plan's own page: Draft is off this queue, so
+              a reset plan leaves Review exactly as a skip does, and the reviewer's next decision is
+              the next plan. On `plan-<id>` there is no queue to leave and the page stays put. */}
           <ResetToDraftDialog
             isOpen={activeDialog === "reset"}
             onClose={() => setActiveDialog(null)}

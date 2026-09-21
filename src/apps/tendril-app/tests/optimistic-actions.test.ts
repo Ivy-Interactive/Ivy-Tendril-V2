@@ -268,6 +268,41 @@ describe("plansStore transitions", () => {
 
     expect(plansStore.getState().plans.find((p) => p.id === "00031")?.state).toBe("Completed");
   });
+
+  /**
+   * Reset reaches the same place through its own route. `POST /plans/:id/reset` removes the plan's
+   * worktrees in the same request, so it cannot go through `updatePlanField` — but it is a queue
+   * departure like any other, and going around the store is what left a reset plan sitting in the
+   * review queue, the sidebar list and the nav badge until a list read happened to disagree.
+   */
+  it("patches a reset plan to Draft as soon as the daemon confirms", async () => {
+    vi.spyOn(bridge, "resetPlan").mockResolvedValue(undefined);
+    vi.spyOn(bridge, "listPlans").mockReturnValue(new Promise(() => {}));
+
+    await plansStore.resetPlanOptimistic("00031");
+
+    expect(plansStore.getState().plans.find((p) => p.id === "00031")?.state).toBe("Draft");
+  });
+
+  it("keeps a reset plan in its old state when the daemon refuses", async () => {
+    vi.spyOn(bridge, "resetPlan").mockRejectedValue(new Error("cancel the running job first"));
+
+    await expect(plansStore.resetPlanOptimistic("00031")).rejects.toThrow(
+      "cancel the running job first",
+    );
+
+    expect(plansStore.getState().plans.find((p) => p.id === "00031")?.state).toBe("Review");
+  });
+
+  it("does not let a stale list read put a reset plan back in the review queue", async () => {
+    vi.spyOn(bridge, "resetPlan").mockResolvedValue(undefined);
+    vi.spyOn(bridge, "listPlans").mockResolvedValue(queue.map((plan) => ({ ...plan })));
+
+    await plansStore.resetPlanOptimistic("00031");
+    await plansStore.fetchPlans();
+
+    expect(plansStore.getState().plans.find((p) => p.id === "00031")?.state).toBe("Draft");
+  });
 });
 
 /**

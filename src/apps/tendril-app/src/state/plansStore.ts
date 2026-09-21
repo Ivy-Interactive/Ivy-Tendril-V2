@@ -366,6 +366,22 @@ class PlansStore {
   ): Promise<void> {
     await bridge.updatePlanField(id, "state", state, allowFailed);
 
+    this.planTransitioned(id, state);
+
+    this.fetchPlans().catch(() => {});
+  }
+
+  /**
+   * The row as it stands once a transition the daemon **has already agreed to** is applied, with no
+   * bridge call and no fetch of its own.
+   *
+   * {@link transitionPlanOptimistic}'s second half, factored out for {@link resetPlanOptimistic},
+   * which reaches the same place through a different route. Pinning the state is the part that
+   * matters and the part that is easy to lose: `pendingStates` holds the row at the state the daemon
+   * confirmed until a list read agrees, so the refetch fired on the next line cannot answer from a
+   * snapshot taken before the write and put the plan back in the queue it just left.
+   */
+  private planTransitioned(id: string, state: PlanLifecycleState): void {
     this.plansBeforeChange = this.state.plans;
     this.pendingStates.set(id, state);
     this.invalidateInFlightPlanReads();
@@ -374,6 +390,25 @@ class PlansStore {
       this.state.selectedPlan = { ...this.state.selectedPlan, state };
     }
     this.notify();
+  }
+
+  /**
+   * Sends a plan back to Draft and patches the row the moment the daemon confirms it.
+   *
+   * {@link transitionPlanOptimistic} for the one CTA that cannot use it: `POST /plans/:id/reset` is
+   * not a field write — it removes the plan's worktrees in the same request, so it has its own route
+   * and its own bridge call — but the state it lands on is fixed. `reset_plan_handler` writes
+   * `PlanStatus::Draft` unconditionally, having already refused a Completed or Skipped plan with a
+   * 409, so the caller does not have to be told which state to pin.
+   *
+   * Reset is the one queue departure that is also an arrival: the plan leaves Review and joins the
+   * Plans queue. Both ends of that are this one patch, because every queue is derived from
+   * `state.plans` by state (`utils/planQueues`).
+   */
+  public async resetPlanOptimistic(id: string): Promise<void> {
+    await bridge.resetPlan(id);
+
+    this.planTransitioned(id, "Draft");
 
     this.fetchPlans().catch(() => {});
   }
