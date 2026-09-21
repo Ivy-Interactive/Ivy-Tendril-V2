@@ -48,10 +48,6 @@
   min-width: 0;
 }
 
-.wvr-tip-anchor {
-  display: inline-flex;
-}
-
 .tui-icon-btn[data-primary="true"] .wvr-badge {
   --tui-badge-primary-bg: var(--primary-foreground);
   --tui-badge-primary-fg: var(--primary);
@@ -151,23 +147,6 @@
     opacity: 1;
     transform: none;
   }
-}
-
-.wvr-tip {
-  z-index: var(--z-tooltip);
-  padding: 5px 10px;
-  border: var(--border-width) solid var(--border);
-  border-radius: var(--radius-selectors);
-  background: var(--popover);
-  color: var(--popover-foreground);
-  font-family: var(--font-sans);
-  font-size: var(--text-xs);
-  font-weight: var(--font-weight-medium);
-  line-height: 16px;
-  white-space: nowrap;
-  box-shadow: var(--wvr-shadow);
-  pointer-events: none;
-  animation: wvr-fade-in var(--duration-fast) var(--ease-emphasized);
 }
 
 .wvr-menu {
@@ -389,22 +368,7 @@
 }
 
 .wvr-comment-input {
-  width: 100%;
-  box-sizing: border-box;
   margin-top: 0.75rem;
-  padding: 0.375rem 0.5rem;
-  border-radius: var(--radius-sm);
-  border: var(--border-width) solid var(--input);
-  background: var(--background);
-  color: inherit;
-  font-family: inherit;
-  font-size: var(--text-sm);
-  resize: none;
-  outline: none;
-}
-
-.wvr-comment-input:focus {
-  box-shadow: 0 0 0 var(--border-width) var(--ring);
 }
 
 .wvr-comment-actions {
