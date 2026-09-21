@@ -129,3 +129,95 @@ async fn unbounded_graceful_shutdown_hangs_with_a_stream_open() {
         "an unbounded graceful shutdown is expected to wait forever for the open stream"
     );
 }
+
+/// The `dev:desktop` regression, on the real route rather than a fixture.
+///
+/// The deadline above is a safety net, and for a long time it was also the *normal* path: the desktop
+/// app holds `/api/changes/events` open for its whole life, nothing ever told that stream the daemon
+/// was leaving, so every shutdown waited out the full `SHUTDOWN_GRACE` and `dev-desktop.ts` — which
+/// only waits five seconds — SIGKILLed the daemon on every single run. A SIGKILL skips
+/// `MasterGuard::drop`, so it also left `.master` behind.
+///
+/// The grace here is deliberately long: an assertion that the server returned in a fraction of it is
+/// an assertion that the stream ended *itself*, not that a timer eventually fired.
+#[tokio::test]
+async fn change_stream_does_not_hold_the_daemon_open_at_shutdown() {
+    let tendril_home = std::env::temp_dir().join(format!(
+        "tendril-shutdown-stream-test-{}",
+        uuid::Uuid::new_v4().simple()
+    ));
+    std::fs::create_dir_all(tendril_home.join("Plans")).expect("create the test home");
+
+    let listener = TcpListener::bind("127.0.0.1:0").await.expect("bind");
+    let port = listener.local_addr().expect("addr").port();
+
+    let secret = tendril_core::config::generate_bearer_secret();
+    let state = std::sync::Arc::new(tendril_server::AppState::with_plans_dir(
+        tendril_home.clone(),
+        tendril_home.join("Plans"),
+        secret.clone(),
+    ));
+    let app = tendril_server::create_router(state.clone());
+
+    // Ten seconds, as the daemon itself uses. Riding it out is the bug; the assertion below is that
+    // we do not come close.
+    let grace = Duration::from_secs(10);
+    let (signal_tx, signal_rx) = tokio::sync::oneshot::channel::<()>();
+    let signalled_state = state.clone();
+    let server = tokio::spawn(tendril_server::serve_with_shutdown_deadline(
+        listener,
+        app,
+        async move {
+            let _ = signal_rx.await;
+            // Exactly what `run_server` does when the signal lands.
+            signalled_state.begin_shutdown();
+        },
+        grace,
+    ));
+
+    // A real subscriber on the real route, with the response head read so the stream is provably
+    // established and provably still attached when the signal arrives.
+    let mut response = reqwest::Client::new()
+        .get(format!("http://127.0.0.1:{port}/api/changes/events"))
+        .header(reqwest::header::AUTHORIZATION, format!("Bearer {secret}"))
+        .send()
+        .await
+        .expect("open the change stream");
+    assert_eq!(response.status(), reqwest::StatusCode::OK);
+    assert_eq!(
+        response
+            .headers()
+            .get(reqwest::header::CONTENT_TYPE)
+            .and_then(|v| v.to_str().ok())
+            .map(|v| v.starts_with("text/event-stream")),
+        Some(true),
+        "the fixture must be holding a real SSE stream open"
+    );
+
+    let signalled = Instant::now();
+    signal_tx.send(()).expect("deliver the shutdown signal");
+
+    let finished = tokio::time::timeout(grace * 2, server)
+        .await
+        .expect("the daemon must return with a change stream still attached")
+        .expect("server task panicked");
+    finished.expect("serving ended with an error");
+
+    let elapsed = signalled.elapsed();
+    assert!(
+        elapsed < grace / 2,
+        "the change stream must end itself rather than ride the grace out; \
+         returned after {elapsed:?} of a {grace:?} grace"
+    );
+
+    // And the client sees the stream close, rather than being left hanging on a dead socket.
+    let tail = tokio::time::timeout(Duration::from_secs(5), response.chunk())
+        .await
+        .expect("the stream must be closed, not left open");
+    assert!(
+        matches!(tail, Ok(None)) || tail.is_err(),
+        "the client's stream should have ended once the daemon shut down"
+    );
+
+    let _ = std::fs::remove_dir_all(&tendril_home);
+}

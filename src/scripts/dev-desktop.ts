@@ -85,6 +85,17 @@ async function freePortIfOccupied(p: number) {
 let serverProcess: ChildProcess | null = null;
 let appProcess: ChildProcess | null = null;
 let shuttingDown = false;
+/**
+ * Set the instant an interrupt arrives, and it outranks whatever exit code the children report.
+ *
+ * Ctrl+C reaches the whole foreground group, not just this process, so the Tauri CLI is interrupted
+ * at the same moment we are and exits 130 — and its `exit` listener below can win the race against
+ * our own signal handler. The old code forwarded that 130 as this script's status, which pnpm reports
+ * as `[ELIFECYCLE] Command failed with exit code 130`: a clean Ctrl+C rendered as a crash. A
+ * user-initiated interrupt is a normal exit however the children happen to phrase it, so the flag is
+ * recorded first and `shutdown` reads it rather than the child's code.
+ */
+let interrupted = false;
 /** Readline interfaces over the service's pipes. They hold the event loop open until closed. */
 const lineReaders: readline.Interface[] = [];
 
@@ -165,12 +176,20 @@ async function reapPort(p: number) {
  * A second Ctrl+C during the grace window skips straight to the forceful pass.
  */
 async function shutdown(exitCode = 0): Promise<void> {
+  // An interrupt is a normal exit, whatever status the interrupted children reported on their way
+  // out. See `interrupted`.
+  const finalCode = interrupted ? 0 : exitCode;
+
   if (shuttingDown) {
-    forceExit(exitCode);
+    forceExit(finalCode);
     return;
   }
   shuttingDown = true;
-  console.log("\n\x1b[33m[dev-desktop] Shutting down...\x1b[0m");
+  // `\r` first, so the terminal's own `^C` echo is overwritten rather than left sitting in front of
+  // this line. That stray `^[`-looking prefix in the shutdown output is the echo, not our escape
+  // codes, and it is what made the last line of a clean run look corrupted.
+  process.stdout.write("\r\x1b[K");
+  console.log("\x1b[33m[dev-desktop] Shutting down...\x1b[0m");
 
   const children: Array<{ label: string; proc: ChildProcess }> = [];
   if (appProcess) children.push({ label: "desktop app", proc: appProcess });
@@ -196,7 +215,7 @@ async function shutdown(exitCode = 0): Promise<void> {
   await reapPort(5173);
 
   for (const reader of lineReaders) reader.close();
-  forceExit(exitCode);
+  forceExit(finalCode);
 }
 
 /**
@@ -207,10 +226,17 @@ function forceExit(code: number): never {
   process.exit(code);
 }
 
-process.on("SIGINT", () => void shutdown(0));
-process.on("SIGTERM", () => void shutdown(0));
-// SIGHUP too: closing the terminal used to orphan the whole tree, daemon and all.
-process.on("SIGHUP", () => void shutdown(0));
+// Registered before anything is spawned, so the flag is already set by the time an interrupted
+// child's `exit` listener runs: the group signal reaches them and us at the same moment, and it is
+// a coin toss which callback the loop picks up first.
+for (const signal of ["SIGINT", "SIGTERM", "SIGHUP"] as const) {
+  // SIGHUP is here for the same reason as the other two: closing the terminal used to orphan the
+  // whole tree, daemon and all.
+  process.on(signal, () => {
+    interrupted = true;
+    void shutdown(0);
+  });
+}
 
 /**
  * Make sure both Tauri sidecars exist before `tauri dev` looks for them.

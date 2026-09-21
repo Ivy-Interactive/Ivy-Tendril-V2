@@ -32,6 +32,13 @@ const MAINTENANCE_INTERVAL: Duration = Duration::from_secs(60);
 /// graceful shutdown waits for *every* connection, so an unbounded plaintext server never exits
 /// while the desktop app is attached, and has to be SIGKILLed. A SIGKILL skips `MasterGuard::drop`,
 /// which is what leaves a stale `.master` behind on every restart.
+///
+/// It is a **safety net, not the normal path**. It used to be the normal path, and that was the bug:
+/// the desktop app holds `/api/changes/events` open for its whole life, so every single shutdown sat
+/// here for the full ten seconds — long enough that `dev-desktop.ts`'s own five-second patience ran
+/// out first and SIGKILLed the daemon on every run. The streams now end themselves the moment
+/// [`AppState::begin_shutdown`] fires, so reaching this deadline means something genuinely refused to
+/// close and is worth the `warn!` it logs.
 const SHUTDOWN_GRACE: Duration = Duration::from_secs(10);
 
 /// How often the master re-checks that `.master` still names it, and beats its heartbeat.
@@ -207,9 +214,19 @@ pub async fn run_server(
     // `into_make_service_with_connect_info` on both arms is what makes the socket peer address
     // available to `POST /api/auth/login`, which keys its rate limiter on it. Without it every login
     // would share one key, so one client's failures would back off everybody else.
+    // The signal, as the streams see it. `shutdown_signal` is awaited once and fanned out from here:
+    // the endless SSE routes end themselves off `AppState`'s watch channel, and only then is the
+    // server future asked to wind down. Ordering matters — a stream told to stop *after* graceful
+    // shutdown has begun has already been counted as a connection to wait for.
+    let signalled_state = state.clone();
+    let shutdown = async move {
+        shutdown_signal().await;
+        signalled_state.begin_shutdown();
+    };
+
     match tls_config {
         None => {
-            serve_with_shutdown_deadline(listener, app, shutdown_signal(), SHUTDOWN_GRACE).await?;
+            serve_with_shutdown_deadline(listener, app, shutdown, SHUTDOWN_GRACE).await?;
         }
         Some(config) => {
             // `axum::serve` has no TLS, and `axum_server` drives shutdown through a handle rather
@@ -217,7 +234,7 @@ pub async fn run_server(
             let handle = axum_server::Handle::new();
             let signalled = handle.clone();
             tokio::spawn(async move {
-                shutdown_signal().await;
+                shutdown.await;
                 signalled.graceful_shutdown(Some(SHUTDOWN_GRACE));
             });
 

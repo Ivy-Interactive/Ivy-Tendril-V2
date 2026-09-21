@@ -822,6 +822,7 @@ async fn pump_log_stream<P, F>(
     shape: StreamShape,
     mut terminal_status: P,
     poll: std::time::Duration,
+    mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
 ) where
     P: FnMut() -> F,
     F: std::future::Future<Output = Option<String>>,
@@ -831,6 +832,13 @@ async fn pump_log_stream<P, F>(
     loop {
         // Before any disk I/O: a reader dropped between ticks must cost one comparison, not a read.
         if tx.is_closed() {
+            return;
+        }
+
+        // A job that outlives the daemon keeps this stream open indefinitely, and an open stream is
+        // a connection axum's graceful shutdown waits on. The client is told nothing: there is no
+        // outcome yet to report, and it reconnects to the same log when the daemon is back.
+        if *shutdown_rx.borrow() {
             return;
         }
 
@@ -852,6 +860,7 @@ async fn pump_log_stream<P, F>(
         tokio::select! {
             // Noticed the moment it happens rather than up to a tick later.
             _ = tx.closed() => return,
+            _ = shutdown_rx.wait_for(|signalled| *signalled) => return,
             _ = tokio::time::sleep(poll) => {}
         }
     }
@@ -967,6 +976,7 @@ pub async fn stream_job_logs(
         shape,
         probe,
         LOG_POLL_INTERVAL,
+        state.shutdown_rx.clone(),
     ));
 
     let stream = futures_util::stream::poll_fn(move |cx| rx.poll_recv(cx));
@@ -1076,6 +1086,7 @@ pub async fn stream_job_events(
         shape,
         probe,
         LOG_POLL_INTERVAL,
+        state.shutdown_rx.clone(),
     ));
 
     let stream = futures_util::stream::poll_fn(move |cx| rx.poll_recv(cx));
@@ -1289,6 +1300,15 @@ mod tests {
         )
     }
 
+    /// A shutdown channel that never fires, for the cases that are about the job rather than the
+    /// daemon. Leaks the sender: holding it open is the whole point, and dropping it would resolve
+    /// `wait_for` and end the pump for the wrong reason.
+    fn no_shutdown() -> tokio::sync::watch::Receiver<bool> {
+        let (tx, rx) = tokio::sync::watch::channel(false);
+        std::mem::forget(tx);
+        rx
+    }
+
     /// The #132 regression. The hang-up check used to sit *inside* the "there is a line to send" loop,
     /// so a quiet long-running job never freed the task: an abandoned stream kept re-reading the whole
     /// log four times a second until the job ended, however long that took.
@@ -1314,6 +1334,7 @@ mod tests {
                 async { None }
             },
             Duration::from_millis(20),
+            no_shutdown(),
         ));
 
         // Let it deliver the backlog and settle into polling, then walk away.
@@ -1360,6 +1381,7 @@ mod tests {
             shape,
             || async { Some("Completed".to_string()) },
             Duration::from_millis(10),
+            no_shutdown(),
         )
         .await;
 
@@ -1411,6 +1433,7 @@ mod tests {
             shape,
             || async { Some("Failed".to_string()) },
             Duration::from_millis(10),
+            no_shutdown(),
         )
         .await;
 
@@ -1451,6 +1474,7 @@ mod tests {
             shape(),
             || async { Some("Stopped".to_string()) },
             Duration::from_millis(10),
+            no_shutdown(),
         )
         .await;
 

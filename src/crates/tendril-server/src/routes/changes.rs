@@ -15,12 +15,20 @@ use tokio::sync::broadcast::error::RecvError;
 /// does, because "the filesystem stopped changing" is not a state a client can act on.
 pub async fn stream_changes(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     let mut change_rx = state.change_tx.subscribe();
+    let mut shutdown_rx = state.shutdown_rx.clone();
 
     let (tx, mut rx) = tokio::sync::mpsc::channel::<Result<Event, std::convert::Infallible>>(64);
 
     tokio::spawn(async move {
         loop {
-            let event = match change_rx.recv().await {
+            let event = match tokio::select! {
+                // The daemon is leaving, so there is nothing more to stream. Without this arm the
+                // task sits on `recv` forever and the connection stays open, which is what made
+                // axum's graceful shutdown wait out the full deadline on every `dev:desktop` exit:
+                // the client is not gone, so nothing else ever ends this stream.
+                _ = shutdown_rx.wait_for(|signalled| *signalled) => break,
+                event = change_rx.recv() => event,
+            } {
                 Ok(event) => event,
                 // The client fell behind a burst. It cannot be told what it missed, so it is told to
                 // assume everything did: a full rescan is a slow refresh, a missed update is a lie.
