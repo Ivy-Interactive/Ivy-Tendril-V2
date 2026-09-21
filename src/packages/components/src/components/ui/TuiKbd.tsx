@@ -1,4 +1,5 @@
 import React from "react";
+import { isMac } from "../../lib/shortcut";
 import "./ui.css";
 
 export type KbdVariant = "bare" | "boxed" | "outline";
@@ -22,10 +23,6 @@ const MAC_PLATFORM_SYMBOLS: Record<string, string> = {
   option: "⌥",
   shift: "⇧",
 };
-
-/** Detects if the current platform is Mac/iOS. */
-const isMac = (): boolean =>
-  typeof navigator !== "undefined" && /Mac|iPod|iPhone|iPad/.test(navigator.userAgent);
 
 /** Maps a single key name to its platform symbol, or the key itself (uppercased if a single letter). */
 const labelForKey = (raw: string): string => {

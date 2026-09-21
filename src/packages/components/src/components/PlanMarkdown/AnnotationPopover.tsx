@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect, useCallback } from "react";
 import { createPortal } from "react-dom";
 import { getInitials, type MarkdownAnnotation } from "./annotationUtils";
+import { isMac } from "../../lib/shortcut";
 import { TuiBadge } from "../ui/TuiBadge";
 import { TuiKbd } from "../ui/TuiKbd";
 import { Tooltip } from "../ui/TuiTooltip";
@@ -247,8 +248,7 @@ interface SelectionToolbarProps {
   onAddComment: () => void;
 }
 
-const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
-const ADD_COMMENT_SHORTCUT = isMac ? "⌘⌥M" : "Ctrl+Alt+M";
+const ADD_COMMENT_SHORTCUT = isMac() ? "⌘⌥M" : "Ctrl+Alt+M";
 
 export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
   position,
