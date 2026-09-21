@@ -20,7 +20,7 @@ use crate::jobs::deliverable::{
     verify_deliverable, Cleanup, Deliverable,
 };
 use crate::jobs::denials::{describe_denials, extract_permission_denials, summarize_denials};
-use crate::jobs::failure_analysis::extract_failure_reason;
+use crate::jobs::failure_analysis::{agent_text, extract_failure_reason};
 use crate::jobs::firmware_values::is_auto_project;
 use crate::jobs::logger::{find_log_file, read_eventwire_log, read_raw_log};
 use crate::jobs::outcome::write_job_outcome_log;
@@ -104,6 +104,18 @@ pub(super) fn classify_outcome(
     }
 }
 
+/// Background task ids a run started and then never accounted for.
+///
+/// Only the agent's *own* words can open an accusation. [`agent_text`] lifts assistant prose out of
+/// either wire shape and refuses a tool result, and a line that is not JSON at all is prose too --
+/// that is exactly what [`EventWireNormalizer::normalize`](crate::agents::eventwire::EventWireNormalizer::normalize)
+/// makes of a provider's plain stdout. What a tool *returned* is not evidence of anything the agent
+/// did: job 00007 was asked to work on this very guard, `sed`-ed this file into a tool result, and
+/// the fixture string below matched -- so the run was failed for quoting the guard's own test data.
+/// A check that cannot tell who said something cannot be trusted to accuse anyone of it.
+///
+/// Exoneration is deliberately not held to that standard: a "task x finished" clears x wherever it
+/// appears. An accusation has to know who spoke; a retraction only has to be true.
 pub fn find_abandoned_background_tasks(lines: &[String]) -> Vec<String> {
     let start_re = regex::Regex::new(
         r"(?i)(?:was moved to the background|running in background with ID:?)\s*(?:\(?ID:?\s*)?(?<id>[a-z0-9_-]+)\)?"
@@ -125,9 +137,12 @@ pub fn find_abandoned_background_tasks(lines: &[String]) -> Vec<String> {
     let mut completed = std::collections::HashSet::new();
 
     for line in lines {
-        if let Some(caps) = start_re.captures(line) {
-            if let Some(id) = caps.name("id") {
-                started.insert(id.as_str().to_string());
+        // An agent's own turn is one text block, not one line, so every match in it counts.
+        if let Some(text) = authored_text(line) {
+            for caps in start_re.captures_iter(&text) {
+                if let Some(id) = caps.name("id") {
+                    started.insert(id.as_str().to_string());
+                }
             }
         }
         if let Some(caps) = complete_re.captures(line) {
@@ -153,6 +168,25 @@ pub fn find_abandoned_background_tasks(lines: &[String]) -> Vec<String> {
         .collect();
     abandoned.sort();
     abandoned
+}
+
+/// The words on this line that the *agent* wrote, or `None` when nobody can be shown to have.
+///
+/// Two streams are merged into the scan. The eventwire log is attributed, so [`agent_text`] answers
+/// it exactly. The raw log is the provider's own, and a line of it that is not a JSON object carries
+/// no authorship at all -- but the normalizer already rules on that case, turning bare stdout into a
+/// `text` event, and this agrees with it rather than inventing a second answer. A *structured* line
+/// that is not assistant prose -- a tool result, a step update, session metadata -- is never the
+/// agent talking, so it yields nothing here even though its payload is full of text.
+fn authored_text(line: &str) -> Option<String> {
+    let trimmed = line.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+    if !trimmed.starts_with('{') {
+        return Some(trimmed.to_string());
+    }
+    agent_text(line)
 }
 
 fn check_job_truncation(tendril_home: &Path, job: &JobItem) -> bool {
@@ -252,8 +286,6 @@ pub async fn finish_job(
     }
 
     let (mut effective_status, mut effective_msg) = if final_status == JobStatus::Completed {
-        let abandoned = find_abandoned_background_tasks(&output_lines);
-
         if let Some(reason) = &job.reported_failure_reason {
             (JobStatus::Failed, reason.clone())
         } else if check_job_truncation(tendril_home, &job) {
@@ -261,13 +293,6 @@ pub async fn finish_job(
                 JobStatus::Failed,
                 "Agent output truncated at maximum token limit or ended prematurely".to_string(),
             )
-        } else if !abandoned.is_empty() {
-            let reason = format!(
-                "Background task(s) still running when the turn ended ({}).",
-                abandoned.join(", ")
-            );
-            job.reported_failure_reason = Some(reason.clone());
-            (JobStatus::Failed, reason)
         } else {
             (final_status, msg)
         }
@@ -280,6 +305,11 @@ pub async fn finish_job(
     };
 
     // The deliverable check: the job says it succeeded, so ask what it produced.
+    //
+    // This runs *before* the abandoned-background-task guard below, and the order is the rule. Both
+    // are reasons to distrust an exit code of zero, but only one of them is an observation: the
+    // deliverable check reads the plan folder on disk, while the guard infers intent from prose. When
+    // the two disagree, what the job actually produced wins.
     let mut deliverable = Deliverable::Present;
     if effective_status == JobStatus::Completed {
         deliverable = verify_deliverable(plans_dir, &mut job, &output_lines);
@@ -304,6 +334,44 @@ pub async fn finish_job(
         // A CreatePlan that failed, timed out or was killed must not leave an empty folder behind
         // either — it would look like a real plan nobody ever wrote.
         cleanup_empty_create_plan(tendril_home, plans_dir, &mut job, &output_lines);
+    }
+
+    // The abandoned-background-task guard, deliberately last of the three that can distrust an exit
+    // code of zero -- and only for a run that claimed success, the way it has always been.
+    //
+    // The precedence, once the scan is scoped to what the agent itself said:
+    //
+    //   * produced its deliverable -> it stays `Completed`, with the dangling ids noted on the
+    //     message. A run that did the work it was asked for has not failed; leaving a task running is
+    //     a loose end an operator should see, not grounds to throw the work away. Job 00007 produced
+    //     plan 00004 and was marked `Failed` precisely because this ran first and answered alone.
+    //   * produced nothing -> already `Failed`, and the abandoned task is the better account of why
+    //     than "no plan revision was written": it names what the run was still waiting on.
+    //   * failed for some other reason (truncated output, a reason the promptware reported) -> that
+    //     reason is closer to the cause, so it stands and the ids are appended as context.
+    //
+    // So the guard can no longer *cause* a failure on its own. That is the point: it never observed a
+    // running process, only prose about one, and the deliverable check observes the disk.
+    if final_status == JobStatus::Completed {
+        let abandoned = find_abandoned_background_tasks(&output_lines);
+        if !abandoned.is_empty() {
+            let note = format!(
+                "Background task(s) still running when the turn ended ({}).",
+                abandoned.join(", ")
+            );
+            tracing::warn!(
+                "Job {} ({}) ended with background task(s) unaccounted for: {}",
+                job.id,
+                job.job_type,
+                abandoned.join(", ")
+            );
+            if matches!(deliverable, Deliverable::Missing { .. }) {
+                effective_msg = note.clone();
+                job.reported_failure_reason = Some(note);
+            } else {
+                effective_msg = format!("{} — {}", effective_msg, note);
+            }
+        }
     }
 
     let deliverable_present = matches!(deliverable, Deliverable::Present);
