@@ -66,7 +66,7 @@
 
 .diff-hunk-header-content {
   padding: 4px 8px;
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   border-top: 1px solid var(--border);
   border-bottom: 1px solid var(--border);
 }
@@ -127,7 +127,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  font-weight: 700;
+  font-weight: var(--font-weight-bold);
   font-size: var(--text-3xs);
   text-transform: uppercase;
   user-select: none;
@@ -340,7 +340,7 @@ td.diff-gutter-empty::after {
 }
 
 .diff-comment-markdown strong {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
 }
 
 .diff-comment-markdown em {
@@ -365,7 +365,7 @@ td.diff-gutter-empty::after {
 .diff-comment-markdown h2,
 .diff-comment-markdown h3,
 .diff-comment-markdown h4 {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   margin: 0.5rem 0 0.3rem;
 }
 
@@ -467,7 +467,7 @@ td.diff-gutter-empty::after {
 }
 
 .diff-comment-markdown th {
-  font-weight: 600;
+  font-weight: var(--font-weight-semibold);
   background: color-mix(in srgb, var(--muted) 40%, transparent);
 }
 
@@ -495,7 +495,7 @@ td.diff-gutter-empty::after {
 .diff-code .token.atrule,
 .diff-code .token.rule {
   color: var(--purple) !important;
-  font-weight: 500;
+  font-weight: var(--font-weight-medium);
 }
 
 .diff-code .token.string,
