@@ -128,6 +128,13 @@ function gitMergeBase(ref1: string, ref2: string): string {
   }).trim();
 }
 
+function gitDir(): string {
+  return execFileSync("git", ["rev-parse", "--absolute-git-dir"], {
+    cwd: repoRoot,
+    encoding: "utf8",
+  }).trim();
+}
+
 function gitRevList(range: string): string[] {
   const output = spawnSync("git", ["rev-list", "--merges", "--first-parent", range], {
     cwd: repoRoot,
@@ -601,7 +608,7 @@ function checkRange(ref: string): CommitFindingResult[] {
 }
 
 function checkInProgress(): Finding[] {
-  const mergeHeadPath = join(repoRoot, ".git", "MERGE_HEAD");
+  const mergeHeadPath = join(gitDir(), "MERGE_HEAD");
   if (!existsSync(mergeHeadPath)) {
     throw new Error("Not in a merge (no .git/MERGE_HEAD found)");
   }
