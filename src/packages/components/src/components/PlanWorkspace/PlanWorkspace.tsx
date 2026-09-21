@@ -469,7 +469,7 @@ export const PlanWorkspace: React.FC<PlanWorkspaceProps> = ({
             {hasToolbar && <div className="pws-toolbar">{slots?.Toolbar}</div>}
             {(tabs.length > 0 || hasVerifications || hasQuestions) && (
               <div className="pws-tabs-row">
-                <div className="pws-tabs" role="tablist">
+                <div className="pws-tabs hidden-scrollbar" role="tablist">
                   {tabs.map((tab) => (
                     <button
                       key={tab.id}

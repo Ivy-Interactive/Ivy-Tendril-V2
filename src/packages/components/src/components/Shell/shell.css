@@ -752,11 +752,6 @@
   min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
-  scrollbar-width: none;
-}
-
-.tsh-rail-list::-webkit-scrollbar {
-  display: none;
 }
 
 .tsh-rail-item {

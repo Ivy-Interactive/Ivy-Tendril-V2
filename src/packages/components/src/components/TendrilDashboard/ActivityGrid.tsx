@@ -52,7 +52,7 @@ export const ActivityGrid: React.FC<ActivityGridProps> = ({ months }) => {
 
   return (
     <div className="tdb-tip-wrap" ref={wrapRef}>
-      <div className="tdb-activity-scroll">
+      <div className="tdb-activity-scroll hidden-scrollbar">
         <div className="tdb-activity">
           {months.map((month, monthIndex) => {
             const starts = weekStartDates(month);

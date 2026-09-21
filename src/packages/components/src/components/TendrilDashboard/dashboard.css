@@ -547,12 +547,7 @@ button.tdb-kpi:focus-visible {
   width: 100%;
   max-width: 100%;
   overflow-x: auto;
-  scrollbar-width: none;
   padding-right: 4px;
-}
-
-.tdb-activity-scroll::-webkit-scrollbar {
-  display: none;
 }
 
 .tdb-activity {
@@ -728,15 +723,10 @@ button.tdb-kpi:focus-visible {
   flex: 1;
   min-height: 0;
   overflow-y: auto;
-  scrollbar-width: none;
   margin-top: 16px;
   display: flex;
   flex-direction: column;
   gap: 4px;
-}
-
-.tdb-jobs-list::-webkit-scrollbar {
-  display: none;
 }
 
 .tdb-job-row {
