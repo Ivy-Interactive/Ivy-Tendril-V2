@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from "react";
 import { Flame, Search, Trash2 } from "lucide-react";
 import { Badge, Button } from "@ivy-interactive/components/ui";
-import { bridge } from "../api/bridge";
+import { plansStore } from "../state/plansStore";
 import { describeBridgeError, type PlanSummary } from "../types/api";
 import { VERIFICATION_DOT_CLASS } from "../utils/verificationStatus";
 import { NoContentView } from "../components/NoContentView";
@@ -54,6 +54,11 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
    * The card has to disappear on the click that thawed it. Waiting for the plan watcher to fire and
    * the store to refetch leaves an Icebox card claiming to be a Draft, and a second Thaw on it would
    * be a second write to a plan that already moved.
+   *
+   * `plansStore` now applies the same removal to its own list the moment the daemon confirms one, so
+   * for a host that feeds `plans` from the store this is belt and braces. It is kept because the prop
+   * is a plain array and this view does not require it to come from there — a caller passing a static
+   * list still gets a card that disappears.
    */
   const [dismissed, setDismissed] = useState<ReadonlySet<string>>(new Set());
 
@@ -122,7 +127,10 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
     setPendingId(plan.id);
     setActionError(null);
     try {
-      await bridge.updatePlanField(plan.id, "state", "Draft");
+      // Through the store for the same reason every other transition is: the thawed plan has to leave
+      // the icebox — and join the Plans queue, and its nav badge — without waiting for a refetch. The
+      // store confirms before it applies, so the failure path below still keeps the card.
+      await plansStore.transitionPlanOptimistic(plan.id, "Draft");
       forget(plan.id);
     } catch (err) {
       setActionError(`Could not thaw plan ${formatPlanId(plan.id)}: ${describeBridgeError(err)}`);

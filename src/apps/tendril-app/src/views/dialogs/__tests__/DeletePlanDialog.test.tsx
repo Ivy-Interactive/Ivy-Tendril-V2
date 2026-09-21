@@ -79,7 +79,11 @@ describe("DeletePlanDialog", () => {
 
     fireEvent.click(screen.getByTestId("dialog-skip"));
 
-    await waitFor(() => expect(updateField).toHaveBeenCalledWith("00021", "state", "Skipped"));
+    // Four arguments because the write goes through `plansStore.transitionPlanOptimistic`, which
+    // passes `allowFailedVerifications` on for the callers that set it (`PartialDeliveryDialog`).
+    await waitFor(() =>
+      expect(updateField).toHaveBeenCalledWith("00021", "state", "Skipped", undefined),
+    );
     expect(deletePlan).not.toHaveBeenCalled();
     expect(onSkipped).toHaveBeenCalledWith("00021");
   });
@@ -93,7 +97,9 @@ describe("DeletePlanDialog", () => {
 
     fireEvent.click(screen.getByTestId("dialog-archive"));
 
-    await waitFor(() => expect(updateField).toHaveBeenCalledWith("00021", "state", "Icebox"));
+    await waitFor(() =>
+      expect(updateField).toHaveBeenCalledWith("00021", "state", "Icebox", undefined),
+    );
     expect(deletePlan).not.toHaveBeenCalled();
     expect(onArchived).toHaveBeenCalledWith("00021");
   });

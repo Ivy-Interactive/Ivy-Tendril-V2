@@ -1,6 +1,6 @@
 import * as React from "react";
 import { Button } from "@ivy-interactive/components/ui";
-import { bridge } from "../../api/bridge";
+import { plansStore } from "../../state/plansStore";
 import { describeBridgeError, type PlanDetail, type PlanSummary } from "../../types/api";
 import { ConfirmDialog } from "./ConfirmDialog";
 
@@ -30,9 +30,12 @@ export interface DeletePlanDialogProps {
  * every other delete in the app is a single click is the inconsistency the contract exists to
  * remove. The recoverability argument is answered instead by keeping focus on Cancel.
  *
- * Calls `bridge.deletePlan` directly and awaits it. On rejection the dialog stays
- * open with the backend's message — a plan that vanished from the list and then
- * came back is a lie the operator may act on.
+ * All four answers go through `plansStore`, which applies nothing until the daemon has agreed: on a
+ * rejection the dialog stays open with the backend's message, because a plan that vanished from the
+ * list and then came back is a lie the operator may act on. What the store adds over calling
+ * `bridge` here is the other half of that promise — once the daemon *has* agreed, the plan leaves
+ * the in-memory list immediately, so the row disappears from the sidebar on the click that answered
+ * the dialog rather than a `listPlans` round trip later.
  */
 export function DeletePlanDialog({
   isOpen,
@@ -56,7 +59,7 @@ export function DeletePlanDialog({
     setIsBusy(true);
     setError(null);
     try {
-      await bridge.deletePlan(plan.id);
+      await plansStore.removePlanOptimistic(plan.id);
       onDeleted?.(plan.id);
       onClose();
     } catch (err) {
@@ -71,7 +74,7 @@ export function DeletePlanDialog({
     setIsBusy(true);
     setError(null);
     try {
-      await bridge.updatePlanField(plan.id, "state", state);
+      await plansStore.transitionPlanOptimistic(plan.id, state);
       if (state === "Icebox") onArchived?.(plan.id);
       else onSkipped?.(plan.id);
       onClose();
