@@ -229,9 +229,7 @@ describe("the settings removal confirm follows Framework's shape", () => {
     // rendered text reads "Remove Ctrl \u21b5". See the same assertion in `DeletePlanDialog.test.tsx`.
     const buttons = [...footer.querySelectorAll("button")];
     expect(buttons).toHaveLength(2);
-    ["Cancel", "Remove"].forEach((name, i) =>
-      expect(buttons[i]).toHaveAccessibleName(name),
-    );
+    ["Cancel", "Remove"].forEach((name, i) => expect(buttons[i]).toHaveAccessibleName(name));
     expect(cancel).toHaveClass("border", "bg-background");
     expect(confirm).toHaveClass("bg-destructive");
     expect(confirm).toBeEnabled();
