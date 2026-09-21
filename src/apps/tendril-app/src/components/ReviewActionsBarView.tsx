@@ -225,7 +225,7 @@ export const ReviewActionsBarView: React.FC<ReviewActionsBarViewProps> = ({
             onClick={() => handleActionClick(action)}
             className={`inline-flex items-center gap-1.5 rounded-field border px-3 py-1.5 text-xs font-medium transition ${
               conditionMet !== false && !disabled
-                ? "border-border bg-card/80 text-foreground hover:border-ring hover:bg-accent"
+                ? "border-border bg-card/80 text-foreground hover:border-ring hover:bg-secondary/60"
                 : "cursor-not-allowed border-border bg-background text-muted-foreground/70 opacity-60"
             }`}
           >
