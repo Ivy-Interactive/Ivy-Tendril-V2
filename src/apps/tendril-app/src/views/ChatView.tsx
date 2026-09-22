@@ -273,8 +273,12 @@ export const ChatView: React.FC<ChatViewProps> = ({
       composerTextRef.current = text;
       setInputPrompt(text);
       store.setComposerDraft(composerSessionRef.current, text);
+      // The field's height is styled from its content, and the content arrives after this render.
+      if (typeof requestAnimationFrame !== "undefined") {
+        requestAnimationFrame(adjustTextareaHeight);
+      }
     },
-    [store],
+    [store, adjustTextareaHeight],
   );
 
   /**
@@ -499,7 +503,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
   const handleComposerChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     applyComposerText(e.target.value);
-    adjustTextareaHeight();
   };
 
   /**
@@ -539,7 +542,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
         const previous = composerTextRef.current;
         applyComposerText(previous ? `${previous} ${trimmed}` : trimmed);
         requestComposerFocus();
-        requestAnimationFrame(adjustTextareaHeight);
       },
       onError: (message: string) => setVoiceError(message),
     });
