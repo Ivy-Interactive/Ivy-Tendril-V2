@@ -1,5 +1,3 @@
-"use client";
-
 import { useErrorSheet } from "@/hooks/use-error-sheet";
 import {
   Sheet,

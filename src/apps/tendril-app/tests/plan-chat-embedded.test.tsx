@@ -264,11 +264,31 @@ describe("the embedded chat's global side effects", () => {
     expect(sidebarListStore.getState()?.title).toBe("Chats");
   });
 
-  it("registers no webview drop listener, where the page registers one", async () => {
+  it("registers a scoped webview drop listener on the embedded panel", async () => {
     render(<PlanChatPanel plan={plan()} />);
     await screen.findByTestId("embedded-chat-view");
 
-    expect(dragRegistrations).toHaveLength(0);
+    await waitFor(() => expect(dragRegistrations).toHaveLength(1));
+  });
+
+  it("accepts dropped files onto the embedded panel and adds attachment chips", async () => {
+    render(<PlanChatPanel plan={plan()} />);
+    await screen.findByTestId("embedded-chat-view");
+    await waitFor(() => expect(dragRegistrations).toHaveLength(1));
+
+    act(() => {
+      dragRegistrations[0]({
+        payload: {
+          type: "drop",
+          paths: ["/Users/me/screenshot.png"],
+          position: { x: 0, y: 0 } as never,
+        },
+      });
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("screenshot.png")).toBeInTheDocument();
+    });
   });
 
   it("still registers the webview drop listener on the standalone page", async () => {

@@ -325,6 +325,10 @@ fn cursor_folds_the_effort_into_the_model_id() {
     assert!(
         composed("claude-opus-5-thinking", "max").contains("--model claude-opus-5-thinking-max")
     );
+    assert!(composed("claude-opus-5-5", "max").contains("--model claude-opus-5-5-high"));
+    assert!(
+        composed("claude-opus-5-5-thinking", "max").contains("--model claude-opus-5-5-thinking-max")
+    );
     assert!(composed("gpt-5.6-terra", "low").contains("--model gpt-5.6-terra-low"));
 
     // The prompt goes down stdin, and the system prompt with it -- `--system-prompt` parses locally

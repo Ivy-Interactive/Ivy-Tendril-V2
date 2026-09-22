@@ -50,6 +50,7 @@ The profile is selected automatically based on the [plan's complexity level](../
 
 | Model            | ID                 | Context Window | Pricing (input / output per MTok) |
 | ---------------- | ------------------ | -------------- | --------------------------------- |
+| Claude Opus 5.5  | `claude-opus-5-5`  | 1M             | $5.00 / $25.00                    |
 | Claude Fable 5.1 | `claude-fable-5-1` | 1M             | $10.00 / $50.00                   |
 | Claude Opus 5    | `claude-opus-5`    | 1M             | $5.00 / $25.00                    |
 | Claude Opus      | `opus`             | 1M             | $5.00 / $25.00                    |

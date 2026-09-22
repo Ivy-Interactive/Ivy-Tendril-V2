@@ -29,6 +29,11 @@ fn test_exact_model_lookup() {
     assert_eq!(sonnet.context_window, 200_000);
     assert_eq!(sonnet.max_output_tokens, 64_000);
 
+    let opus55 = model_specs::find("claude-opus-5-5").expect("claude-opus-5-5 should be found");
+    assert_eq!(opus55.model_id, "claude-opus-5-5");
+    assert_eq!(opus55.context_window, 1_000_000);
+    assert_eq!(opus55.max_output_tokens, 128_000);
+
     let gpt4o = model_specs::find("gpt-4o").expect("gpt-4o should be found");
     assert_eq!(gpt4o.model_id, "gpt-4o");
     assert_eq!(gpt4o.context_window, 128_000);
@@ -50,6 +55,10 @@ fn test_prefix_stripping() {
         model_specs::find("eu.anthropic.claude-opus-5").expect("should strip eu.anthropic. prefix");
     assert_eq!(opus.model_id, "claude-opus-5");
 
+    let opus55 = model_specs::find("anthropic/claude-opus-5-5")
+        .expect("should strip anthropic/ prefix for opus 5.5");
+    assert_eq!(opus55.model_id, "claude-opus-5-5");
+
     let gpt4o = model_specs::find("openai/gpt-4o").expect("should strip openai/ prefix");
     assert_eq!(gpt4o.model_id, "gpt-4o");
 }
@@ -60,6 +69,11 @@ fn test_normalization() {
     let dot = model_specs::find("claude-3.5-sonnet").expect("dot model should be found");
     assert_eq!(dash, dot);
     assert_eq!(dash.model_id, "claude-3-5-sonnet");
+
+    let opus_dash = model_specs::find("claude-opus-5-5").expect("dash model should be found");
+    let opus_dot = model_specs::find("claude-opus-5.5").expect("dot model should be found");
+    assert_eq!(opus_dash, opus_dot);
+    assert_eq!(opus_dash.model_id, "claude-opus-5-5");
 
     let upper = model_specs::find("CLAUDE-3-5-SONNET").expect("uppercase should be normalized");
     assert_eq!(upper.model_id, "claude-3-5-sonnet");

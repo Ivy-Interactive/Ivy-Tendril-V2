@@ -118,8 +118,7 @@ const TRANSCRIPTION_URL = "wss://tendril-api.ivy.app/transcribe/ws";
  * | `store.subscribe` / `store.init()` | **kept** — it is the conversation. The panel's store is its own, so `init()` opens a second `chat-event` listener; unmount `destroy()`s it, so a visit leaks nothing. |
  * | `store.pruneEmptySessions()` on unmount | **off**. V1 prunes in `ChatApp`, not in `ContentView`, and an embedded prune would reach chats the panel does not own. |
  * | `usePublishSidebarList` | **off**, and the list is not even built. `PlanChatView` publishes none, which is exactly why V1's embedded chat shows no session list. |
- * | the Chats search dialog | **off**. Only the published list's `onSearch` opens it, so it is already unreachable; not rendering it keeps a second `Dialog` off the plan page. |
- * | `useWebviewFileDrop` | **off**. It listens on the *webview*, not on this subtree, so a second registration would answer drops made anywhere in the app. The React drag handlers stay — those are scoped — and the paperclip still opens the file dialog. |
+ * | `useWebviewFileDrop` | **kept** (scoped to container). In both standalone and embedded mode, it listens on the webview and uses `targetRef` to ensure drops made inside the chat area are accepted while drops elsewhere are ignored. |
  * | `ChatHeader` | **off**: V1 swaps the whole header for a right-aligned `JobsMenu` that appears only once the conversation has jobs. So no rename, no delete menu, and no new-chat button — `PlanChatView` passes `startNewChat: () => { }`. |
  * | composer keys, voice recorder, autoscroll, lightbox, `ResizeObserver` | **kept**: all of them are this instance's own DOM. |
  * | `jobsStore` / `plansStore` subscriptions | **kept**. Read-only, and `PlanChatView` subscribes to `JobsChanged` for the same reason — the jobs pill follows the live list. |
@@ -390,6 +389,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
     isGenerating,
   });
 
+  const mainRef = useRef<HTMLElement>(null);
+
   const {
     attachments,
     setAttachments,
@@ -405,7 +406,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
     handleDragEnter,
     handleDragLeave,
     handleDrop,
-  } = useChatAttachments({ activeSessionId: activeSession?.id, embedded });
+  } = useChatAttachments({
+    activeSessionId: activeSession?.id,
+    embedded,
+    targetRef: mainRef,
+  });
 
   /**
    * The bug this page was the centre of: this used to call `store.createSession` directly, so the
@@ -769,6 +774,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
       >
         {/* Main Chat Thread Area. A file may be dropped anywhere in it, not only on the composer. */}
         <main
+          ref={mainRef}
           className="relative flex flex-1 flex-col overflow-hidden"
           onDragOver={handleDragOver}
           onDragEnter={handleDragEnter}

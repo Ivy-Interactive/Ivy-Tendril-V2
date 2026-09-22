@@ -168,8 +168,8 @@
       "runAction": "{{name}} を実行",
       "runActionWithPorts": "{{name}} を実行（ポート：{{ports}}）",
       "port": "{{name}}: {{port}}",
-      "conditionError": "{{run}}。条件を評価できませんでした：{{reason}}",
-      "conditionNotEvaluated": "{{run}}。ここでは条件は評価されていません：{{condition}}",
+      "conditionError": "無効：条件を評価できませんでした：{{reason}}",
+      "conditionErrorWithCondition": "無効：条件を評価できませんでした ({{condition}})：{{reason}}",
       "starting": "{{name}} を開始中…",
       "checking": "条件を確認中：{{condition}}"
     }

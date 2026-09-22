@@ -171,8 +171,8 @@
       "runAction": "Запустить {{name}}",
       "runActionWithPorts": "Запустить {{name}} (порты: {{ports}})",
       "port": "{{name}}: {{port}}",
-      "conditionError": "{{run}}. Не удалось вычислить условие: {{reason}}",
-      "conditionNotEvaluated": "{{run}}. Условие здесь не вычисляется: {{condition}}",
+      "conditionError": "Недоступно: не удалось вычислить условие: {{reason}}",
+      "conditionErrorWithCondition": "Недоступно: не удалось вычислить условие ({{condition}}): {{reason}}",
       "starting": "Запуск {{name}}…",
       "checking": "Проверка условия: {{condition}}"
     }

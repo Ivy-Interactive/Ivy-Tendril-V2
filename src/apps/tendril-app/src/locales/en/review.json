@@ -169,8 +169,8 @@
       "runAction": "Run {{name}}",
       "runActionWithPorts": "Run {{name}} (ports: {{ports}})",
       "port": "{{name}}: {{port}}",
-      "conditionError": "{{run}}. Condition could not be evaluated: {{reason}}",
-      "conditionNotEvaluated": "{{run}}. Condition not evaluated here: {{condition}}",
+      "conditionError": "Disabled: Condition could not be evaluated: {{reason}}",
+      "conditionErrorWithCondition": "Disabled: Condition could not be evaluated ({{condition}}): {{reason}}",
       "starting": "Starting {{name}}…",
       "checking": "Checking the condition: {{condition}}"
     }

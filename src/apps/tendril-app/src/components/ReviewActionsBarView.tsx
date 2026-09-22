@@ -166,10 +166,22 @@ export function getReviewActionTooltip(
   reason?: string,
   t: TFunction<"review"> = reviewT,
 ): string {
+  const cond = action.condition?.trim();
+
   if (conditionMet === false) {
-    const cond = action.condition?.trim();
     return cond
-      ? t("actionsBar.tooltip.conditionNotMetWithCondition", { condition: action.condition })
+      ? t("actionsBar.tooltip.conditionNotMetWithCondition", { condition: cond })
+      : t("actionsBar.tooltip.conditionNotMet");
+  }
+
+  if (conditionMet === "unknown") {
+    if (reason) {
+      return cond
+        ? t("actionsBar.tooltip.conditionErrorWithCondition", { condition: cond, reason })
+        : t("actionsBar.tooltip.conditionError", { reason });
+    }
+    return cond
+      ? t("actionsBar.tooltip.conditionNotMetWithCondition", { condition: cond })
       : t("actionsBar.tooltip.conditionNotMet");
   }
 
@@ -180,22 +192,13 @@ export function getReviewActionTooltip(
   const withPorts = portKeys.length > 0;
 
   const cmd = action.command?.trim();
-  const run = cmd
+  return cmd
     ? withPorts
       ? t("actionsBar.tooltip.runCommandWithPorts", { command: action.command, ports })
       : t("actionsBar.tooltip.runCommand", { command: action.command })
     : withPorts
       ? t("actionsBar.tooltip.runActionWithPorts", { name: action.name, ports })
       : t("actionsBar.tooltip.runAction", { name: action.name });
-  // The reviewer is told the gate was skipped rather than silently given a button V1 might have
-  // disabled. The command itself is the check of last resort: it fails visibly in the terminal.
-  if (conditionMet !== "unknown") return run;
-  return reason
-    ? t("actionsBar.tooltip.conditionError", { run, reason })
-    : t("actionsBar.tooltip.conditionNotEvaluated", {
-        run,
-        condition: String(action.condition?.trim()),
-      });
 }
 
 export interface ReviewActionsBarViewProps {
@@ -261,14 +264,6 @@ function presentAction(
       busy: false,
     };
   }
-  if (verdict.state === false) {
-    return {
-      disabled: true,
-      tooltip: getReviewActionTooltip(action, false, undefined, undefined, t),
-      dimmed: true,
-      busy: false,
-    };
-  }
   if (options.executing) {
     return {
       disabled: true,
@@ -290,15 +285,23 @@ function presentAction(
       busy: true,
     };
   }
+  if (verdict.state === false || verdict.state === "unknown") {
+    return {
+      disabled: true,
+      tooltip: getReviewActionTooltip(
+        action,
+        verdict.state,
+        options.allocatedPorts,
+        verdict.reason,
+        t,
+      ),
+      dimmed: true,
+      busy: false,
+    };
+  }
   return {
     disabled: false,
-    tooltip: getReviewActionTooltip(
-      action,
-      verdict.state,
-      options.allocatedPorts,
-      verdict.reason,
-      t,
-    ),
+    tooltip: getReviewActionTooltip(action, true, options.allocatedPorts, undefined, t),
     dimmed: false,
     busy: false,
   };

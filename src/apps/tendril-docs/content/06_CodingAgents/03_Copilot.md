@@ -55,7 +55,7 @@ The default model for Copilot in Tendril is `gpt-5.4`.
 GitHub Copilot supports both OpenAI and Anthropic models through its runtime:
 
 - **[OpenAI](https://openai.com) Models**: `gpt-5.4` (default), `gpt-5.4-mini`, `gpt-5.3-codex`, `gpt-5.2-codex`, `gpt-5.2`, `gpt-5-mini`, `gpt-4.1` (reasoning effort: `low`, `medium`, `high`, `xhigh`).
-- **[Anthropic Claude](https://code.claude.com/docs) Models**: `claude-fable-5-1`, `claude-opus-5`, `claude-sonnet-5`, `claude-sonnet-4-6`, `claude-sonnet-4-5`, `claude-haiku-4-5` (reasoning effort: `low`, `medium`, `high`, `xhigh`, `max`).
+- **[Anthropic Claude](https://code.claude.com/docs) Models**: `claude-opus-5-5`, `claude-fable-5-1`, `claude-opus-5`, `claude-sonnet-5`, `claude-sonnet-4-6`, `claude-sonnet-4-5`, `claude-haiku-4-5` (reasoning effort: `low`, `medium`, `high`, `xhigh`, `max`).
 
 ## Installing Tendril Skills for GitHub Copilot
 

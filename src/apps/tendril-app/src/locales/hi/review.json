@@ -169,8 +169,8 @@
       "runAction": "{{name}} चलाएं",
       "runActionWithPorts": "{{name}} चलाएं (पोर्ट्स: {{ports}})",
       "port": "{{name}}: {{port}}",
-      "conditionError": "{{run}}। शर्त का मूल्यांकन नहीं किया जा सका: {{reason}}",
-      "conditionNotEvaluated": "{{run}}। शर्त का मूल्यांकन यहाँ नहीं किया गया: {{condition}}",
+      "conditionError": "अक्षम: शर्त का मूल्यांकन नहीं किया जा सका: {{reason}}",
+      "conditionErrorWithCondition": "अक्षम: शर्त का मूल्यांकन नहीं किया जा सका ({{condition}}): {{reason}}",
       "starting": "{{name}} शुरू हो रहा है…",
       "checking": "शर्त की जांच हो रही है: {{condition}}"
     }

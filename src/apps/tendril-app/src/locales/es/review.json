@@ -170,8 +170,8 @@
       "runAction": "Ejecutar {{name}}",
       "runActionWithPorts": "Ejecutar {{name}} (puertos: {{ports}})",
       "port": "{{name}}: {{port}}",
-      "conditionError": "{{run}}. No se pudo evaluar la condición: {{reason}}",
-      "conditionNotEvaluated": "{{run}}. La condición no se evalúa aquí: {{condition}}",
+      "conditionError": "Desactivado: no se pudo evaluar la condición: {{reason}}",
+      "conditionErrorWithCondition": "Desactivado: no se pudo evaluar la condición ({{condition}}): {{reason}}",
       "starting": "Iniciando {{name}}…",
       "checking": "Comprobando la condición: {{condition}}"
     }

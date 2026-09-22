@@ -169,8 +169,8 @@
       "runAction": "{{name}} ausführen",
       "runActionWithPorts": "{{name}} ausführen (Ports: {{ports}})",
       "port": "{{name}}: {{port}}",
-      "conditionError": "{{run}}. Die Bedingung konnte nicht ausgewertet werden: {{reason}}",
-      "conditionNotEvaluated": "{{run}}. Die Bedingung wird hier nicht ausgewertet: {{condition}}",
+      "conditionError": "Deaktiviert: Die Bedingung konnte nicht ausgewertet werden: {{reason}}",
+      "conditionErrorWithCondition": "Deaktiviert: Die Bedingung konnte nicht ausgewertet werden ({{condition}}): {{reason}}",
       "starting": "{{name}} wird gestartet…",
       "checking": "Bedingung wird geprüft: {{condition}}"
     }

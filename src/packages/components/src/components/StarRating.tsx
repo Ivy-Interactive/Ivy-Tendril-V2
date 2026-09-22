@@ -1,5 +1,3 @@
-"use client";
-
 import { useState, useCallback } from "react";
 import { Star } from "lucide-react";
 import { m, LazyMotion, domAnimation } from "framer-motion";

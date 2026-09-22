@@ -305,13 +305,13 @@ describe("ReviewActionsBarView undecidable conditions", () => {
     command: "pnpm dev:app",
   };
 
-  it("offers the action and says the condition was not checked", () => {
+  it("disables the action and says the condition was not matched", () => {
     render(<ReviewActionsBarView actions={[action]} />);
 
     const btn = screen.getByRole("button", { name: "Dev Server" });
-    expect(btn).toBeEnabled();
+    expect(btn).toBeDisabled();
     expect(btn).toHaveAccessibleDescription(
-      "Run: pnpm dev:app. Condition not evaluated here: Test-Path src/apps/tendril-app",
+      "Disabled: Condition not met (Test-Path src/apps/tendril-app)",
     );
   });
 
@@ -433,7 +433,7 @@ describe("ReviewActionsBarView disabled reasons", () => {
     }
   });
 
-  it("keeps an action the daemon could not evaluate enabled, and says why", () => {
+  it("disables an action the daemon could not evaluate, and says why", () => {
     render(
       <ReviewActionsBarView
         actions={[docs]}
@@ -444,9 +444,9 @@ describe("ReviewActionsBarView disabled reasons", () => {
     );
 
     const btn = screen.getByRole("button", { name: "Docs" });
-    expect(btn).toBeEnabled();
+    expect(btn).toBeDisabled();
     expect(btn).toHaveAccessibleDescription(
-      "Run: dotnet watch. Condition could not be evaluated: the condition timed out after 5s and was terminated",
+      'Disabled: Condition could not be evaluated (Test-Path "Worktrees/ivy-framework/src/Ivy.Docs"): the condition timed out after 5s and was terminated',
     );
   });
 
@@ -676,9 +676,9 @@ describe("ReviewView asks the daemon whether each condition holds", () => {
     render(<ReviewView plans={[samplePlan]} onSelectPlan={() => {}} />);
 
     const docs = await screen.findByRole("button", { name: "Docs" });
-    await waitFor(() => expect(docs).toBeEnabled());
+    await waitFor(() => expect(docs).toBeDisabled());
     expect(docs).toHaveAccessibleDescription(
-      'Run: dotnet watch. Condition not evaluated here: Test-Path "Worktrees/ivy-framework/src/Ivy.Docs"',
+      'Disabled: Condition not met (Test-Path "Worktrees/ivy-framework/src/Ivy.Docs")',
     );
   });
 });

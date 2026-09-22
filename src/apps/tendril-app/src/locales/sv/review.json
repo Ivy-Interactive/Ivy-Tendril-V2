@@ -169,8 +169,8 @@
       "runAction": "Kör {{name}}",
       "runActionWithPorts": "Kör {{name}} (portar: {{ports}})",
       "port": "{{name}}: {{port}}",
-      "conditionError": "{{run}}. Villkoret kunde inte utvärderas: {{reason}}",
-      "conditionNotEvaluated": "{{run}}. Villkoret utvärderas inte här: {{condition}}",
+      "conditionError": "Inaktiverad: villkoret kunde inte utvärderas: {{reason}}",
+      "conditionErrorWithCondition": "Inaktiverad: villkoret kunde inte utvärderas ({{condition}}): {{reason}}",
       "starting": "Startar {{name}}…",
       "checking": "Kontrollerar villkoret: {{condition}}"
     }

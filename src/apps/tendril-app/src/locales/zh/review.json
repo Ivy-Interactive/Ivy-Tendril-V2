@@ -168,8 +168,8 @@
       "runAction": "运行 {{name}}",
       "runActionWithPorts": "运行 {{name}}（端口：{{ports}}）",
       "port": "{{name}}：{{port}}",
-      "conditionError": "{{run}}。无法评估条件：{{reason}}",
-      "conditionNotEvaluated": "{{run}}。此处未评估条件：{{condition}}",
+      "conditionError": "已禁用：无法评估条件：{{reason}}",
+      "conditionErrorWithCondition": "已禁用：无法评估条件（{{condition}}）：{{reason}}",
       "starting": "正在启动 {{name}}…",
       "checking": "正在检查条件：{{condition}}"
     }

@@ -1267,6 +1267,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                     actionStates={conditionsAnswer?.verdicts ?? undefined}
                     conditionsPending={conditionsAnswer === null}
                     allocatedPorts={allocatedPorts}
+                    worktreePaths={gitData?.worktrees?.map((w) => w.path)}
                     onExecuteAction={handleExecuteReviewAction}
                   />
                 </div>
