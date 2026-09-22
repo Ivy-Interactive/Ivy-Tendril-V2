@@ -9,6 +9,7 @@ import { ThemeProvider } from "@ivy-interactive/components/theme";
 import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { App } from "../src/App";
 import { DocsLayout } from "../src/components/DocsLayout";
 
 function renderDocs(route: string, theme: "light" | "dark" | "system" = "light") {
@@ -191,5 +192,33 @@ describe("DocsLayout", () => {
     expect(within(menu).getByText("Русский")).toBeInTheDocument();
     expect(within(menu).getByText("Svenska")).toBeInTheDocument();
     expect(within(menu).getByText("हिन्दी")).toBeInTheDocument();
+  });
+
+  it("switches language and translates content when selecting a language from the docs page", async () => {
+    const user = userEvent.setup();
+    window.history.replaceState({}, "", "/docs/concepts/plans");
+
+    render(
+      <ThemeProvider defaultTheme="light" storageKey="tendril-docs-test-switcher">
+        <App />
+      </ThemeProvider>,
+    );
+    await screen.findByRole("heading", { level: 1, name: "Plans" });
+
+    const headerTrigger = screen.getAllByRole("button", { name: "Choose language" })[0];
+    await user.click(headerTrigger);
+
+    const esLink = screen.getByRole("link", { name: "Español" });
+    await user.click(esLink);
+
+    // After switching to Spanish, the heading becomes Planes and sidebar is localized
+    await screen.findByRole("heading", { level: 1, name: "Planes" });
+    const updatedTrigger = screen.getAllByRole("button", { name: "Elegir idioma" })[0];
+    expect(updatedTrigger).toHaveTextContent("Español");
+
+    const sidebar = screen.getByRole("navigation", { name: "Secciones de la documentación" });
+    expect(
+      within(sidebar).getByRole("link", { name: "Planes", current: "page" }),
+    ).toBeInTheDocument();
   });
 });

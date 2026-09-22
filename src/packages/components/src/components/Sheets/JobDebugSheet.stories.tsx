@@ -30,9 +30,10 @@ function job(overrides: Partial<JobDebugDetail> = {}): JobDebugDetail {
  * exists at each point in a job's life.
  */
 const meta: Meta<typeof JobDebugSheet> = {
-  title: "Dialogs/JobDebugSheet",
+  title: "Sheets/JobDebugSheet",
   component: JobDebugSheet,
-  parameters: { layout: "padded" },
+  parameters: { layout: "fullscreen" },
+  args: { isOpen: true, onClose: () => {} },
 };
 
 export default meta;

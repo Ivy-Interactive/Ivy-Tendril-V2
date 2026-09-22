@@ -42,6 +42,7 @@ export function getBaseSubpath(): string {
         return `/${first}`;
       }
     }
+    return "";
   }
   const viteBase = typeof import.meta !== "undefined" ? import.meta.env?.BASE_URL : undefined;
   if (viteBase && viteBase !== "/" && viteBase !== "./") {

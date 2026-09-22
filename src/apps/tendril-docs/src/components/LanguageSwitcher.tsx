@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Check, Globe } from "lucide-react";
 import {
   DropdownMenu,
@@ -29,6 +30,7 @@ export function LanguageSwitcher({
   hash: hashProp,
   onSelect,
 }: LanguageSwitcherProps) {
+  const [open, setOpen] = useState(false);
   const location = useLocation();
   const currentRoute = routeProp ?? location.route;
   const currentHash = hashProp ?? location.hash;
@@ -38,6 +40,7 @@ export function LanguageSwitcher({
   const t = getTranslations(activeCode);
 
   const handleSelect = (targetLocale: SiteLocale) => {
+    setOpen(false);
     const nextPath = localizePath(path, targetLocale);
     const targetUrl = `${nextPath}${currentHash || ""}`;
     navigate(targetUrl);
@@ -45,19 +48,19 @@ export function LanguageSwitcher({
   };
 
   return (
-    <DropdownMenu>
+    <DropdownMenu open={open} onOpenChange={setOpen}>
       <DropdownMenuTrigger
         type="button"
         aria-label={t.chooseLanguage}
         className={cn(
-          "inline-flex h-8 items-center gap-1.5 rounded-field border border-border px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer",
+          "inline-flex shrink-0 h-8 items-center gap-1.5 rounded-field border border-border px-2.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring cursor-pointer",
           className,
         )}
       >
         <Globe className="size-3.5 shrink-0" aria-hidden="true" />
         <span className="max-w-[110px] truncate">{activeLocale.label}</span>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48 max-h-[80vh] overflow-y-auto">
+      <DropdownMenuContent align="end" className="w-48 max-h-[80vh] overflow-y-auto z-50">
         {SITE_LOCALES.map((locale) => {
           const isActive = locale.code === activeCode;
           const targetHref = `${localizePath(path, locale.code)}${currentHash || ""}`;
@@ -67,6 +70,7 @@ export function LanguageSwitcher({
               key={locale.code}
               lang={locale.hreflang}
               aria-current={isActive ? "true" : undefined}
+              onSelect={() => handleSelect(locale.code)}
               onClick={() => handleSelect(locale.code)}
               className={cn(
                 "flex items-center justify-between cursor-pointer text-xs py-1.5",

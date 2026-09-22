@@ -31,6 +31,8 @@ export interface ResolvedUrls {
   siteRootUrl: string;
   docsBaseUrl: string;
   repoSubpath: string;
+  navRoot: string;
+  navDocs: string;
 }
 
 export function resolveSiteUrls(rawSiteUrl: string = CANONICAL_BASE_URL): ResolvedUrls {
@@ -42,27 +44,35 @@ export function resolveSiteUrls(rawSiteUrl: string = CANONICAL_BASE_URL): Resolv
   const docsBaseUrl = `${siteRootUrl}/docs`;
   const urlObj = new URL(siteRootUrl);
   const repoSubpath = urlObj.pathname.replace(/\/+$/, "");
-  return { siteRootUrl, docsBaseUrl, repoSubpath };
+  const navRoot = repoSubpath || "";
+  const navDocs = `${navRoot}/docs`;
+  return { siteRootUrl, docsBaseUrl, repoSubpath, navRoot, navDocs };
 }
 
-export function renderStaticNav(siteRootUrl: string, docsBaseUrl: string): string {
+export function renderStaticNav(
+  siteRootUrl: string,
+  _docsBaseUrl?: string,
+  currentLocale: string = "en",
+): string {
+  const { navRoot, navDocs } = resolveSiteUrls(siteRootUrl);
   const options = SITE_LOCALES.map((locale) => {
-    const isEn = locale.code === "en";
-    const href = isEn
-      ? `${docsBaseUrl}/gettingstarted/introduction`
-      : `${siteRootUrl}/${locale.code}/docs/gettingstarted/introduction`;
-    return `        <option value="${href}"${isEn ? " selected" : ""}>${locale.label}</option>`;
+    const isSelected = locale.code === currentLocale;
+    const href =
+      locale.code === "en"
+        ? `${navDocs}/gettingstarted/introduction`
+        : `${navRoot}/${locale.code}/docs/gettingstarted/introduction`;
+    return `        <option value="${href}"${isSelected ? " selected" : ""}>${locale.label}</option>`;
   }).join("\n");
 
   return `    <nav aria-label="Main Navigation">
-      <a href="${siteRootUrl}/">Home</a>
-      <a href="${siteRootUrl}/developers">Developer Portal</a>
-      <a href="${docsBaseUrl}/gettingstarted/introduction">Documentation</a>
-      <a href="${siteRootUrl}/about">About</a>
-      <a href="${siteRootUrl}/contact">Contact</a>
-      <a href="${siteRootUrl}/privacy">Privacy Policy</a>
-      <a href="${siteRootUrl}/llms.txt">llms.txt</a>
-      <a href="${siteRootUrl}/sitemap.xml">Sitemap</a>
+      <a href="${navRoot}/">Home</a>
+      <a href="${navRoot}/developers">Developer Portal</a>
+      <a href="${navDocs}/gettingstarted/introduction">Documentation</a>
+      <a href="${navRoot}/about">About</a>
+      <a href="${navRoot}/contact">Contact</a>
+      <a href="${navRoot}/privacy">Privacy Policy</a>
+      <a href="${navRoot}/llms.txt">llms.txt</a>
+      <a href="${navRoot}/sitemap.xml">Sitemap</a>
       <span style="display:inline-flex;align-items:center;margin-left:auto;gap:0.35rem">
         <label for="lang-select" style="font-size:0.875rem;font-weight:500;color:#6b7280">Language:</label>
         <select id="lang-select" onchange="window.location.href=this.value" style="padding:0.2rem 0.4rem;border:1px solid #d1d5db;border-radius:4px;font-size:0.85rem;background:#ffffff;color:#111827">
@@ -2132,20 +2142,13 @@ If you are an automated agent, please refer to the following canonical resources
 - Homepage: ${siteRootUrl}/
   </pre>
 </main>
-<footer>
-  <p>&copy; ${new Date().getFullYear()} Ivy Interactive AB. All rights reserved.</p>
 </footer>
-<script>
-  if (window.location.pathname.startsWith("/docs")) {
-    window.location.replace("/docs/");
-  }
-</script>
 </body>
 </html>`;
 }
 
 export function generateHomepageHtml(rawSiteUrl: string = CANONICAL_BASE_URL): string {
-  const { siteRootUrl, docsBaseUrl } = resolveSiteUrls(rawSiteUrl);
+  const { siteRootUrl, docsBaseUrl, navRoot, navDocs } = resolveSiteUrls(rawSiteUrl);
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2251,8 +2254,8 @@ ${renderStaticNav(siteRootUrl, docsBaseUrl)}
         Ivy Tendril replaces your traditional IDE with an autonomous coding factory engineered for parallel, unattended agent execution.
       </p>
       <p>
-        <a href="${docsBaseUrl}/gettingstarted/introduction" class="hero-btn">Explore Documentation &rarr;</a>
-        <a href="${siteRootUrl}/developers" class="hero-btn" style="background:#2563eb;margin-left:0.5rem">Developer Portal &rarr;</a>
+        <a href="${navDocs}/gettingstarted/introduction" class="hero-btn">Explore Documentation &rarr;</a>
+        <a href="${navRoot}/developers" class="hero-btn" style="background:#2563eb;margin-left:0.5rem">Developer Portal &rarr;</a>
       </p>
     </section>
 
@@ -2262,10 +2265,10 @@ ${renderStaticNav(siteRootUrl, docsBaseUrl)}
         Whether configuring coding agents or integrating Tendril into your CI/CD pipelines, start with our developer resources:
       </p>
       <ul>
-        <li><a href="${siteRootUrl}/developers">Developer Portal</a> — Quickstart, self-serve keys, sandbox daemon, and rate limits.</li>
-        <li><a href="${siteRootUrl}/openapi.json">OpenAPI 3.1.0 Specification</a> — Machine-readable REST API schema with typed RFC 9457 error models.</li>
-        <li><a href="${siteRootUrl}/.well-known/mcp.json">Model Context Protocol (MCP) Manifest</a> — Tools and Streamable HTTP endpoints.</li>
-        <li><a href="${siteRootUrl}/llms.txt">llms.txt</a> — Machine-readable guidance optimized for LLMs.</li>
+        <li><a href="${navRoot}/developers">Developer Portal</a> — Quickstart, self-serve keys, sandbox daemon, and rate limits.</li>
+        <li><a href="${navRoot}/openapi.json">OpenAPI 3.1.0 Specification</a> — Machine-readable REST API schema with typed RFC 9457 error models.</li>
+        <li><a href="${navRoot}/.well-known/mcp.json">Model Context Protocol (MCP) Manifest</a> — Tools and Streamable HTTP endpoints.</li>
+        <li><a href="${navRoot}/llms.txt">llms.txt</a> — Machine-readable guidance optimized for LLMs.</li>
       </ul>
     </section>
 
@@ -2300,14 +2303,14 @@ ${renderStaticNav(siteRootUrl, docsBaseUrl)}
     <section>
       <h2>Documentation Sections</h2>
       <ul>
-        <li><a href="${docsBaseUrl}/gettingstarted">Getting Started</a> — Installation, machine preparation, onboarding, and first plan walkthrough.</li>
-        <li><a href="${docsBaseUrl}/concepts">Core Concepts</a> — Plans, promptwares, and lifecycle management.</li>
-        <li><a href="${docsBaseUrl}/configuration">Configuration</a> — Project setup, danger zone management, and config schemas.</li>
-        <li><a href="${docsBaseUrl}/apps">Applications</a> — Dashboard, Review, Plans, Jobs, Icebox, PRs, and Recommendations views.</li>
-        <li><a href="${docsBaseUrl}/codingagents">Coding Agents</a> — Claude Code, OpenAI Codex, GitHub Copilot, OpenCode, and Google Gemini CLI integrations.</li>
-        <li><a href="${docsBaseUrl}/integrations">Integrations</a> — GitHub CLI, JamDev bug reporting, and OpenClaw capture.</li>
-        <li><a href="${docsBaseUrl}/modelproviders">Model Providers</a> — Berget, Evroc, Zai, Scaleway, Opper, OpenRouter, Cloudflare, NVIDIA, and Vercel.</li>
-        <li><a href="${docsBaseUrl}/advanced">Advanced Reference</a> — CLI commands, Axum REST & WebSocket APIs, and MCP server configuration.</li>
+        <li><a href="${navDocs}/gettingstarted">Getting Started</a> — Installation, machine preparation, onboarding, and first plan walkthrough.</li>
+        <li><a href="${navDocs}/concepts">Core Concepts</a> — Plans, promptwares, and lifecycle management.</li>
+        <li><a href="${navDocs}/configuration">Configuration</a> — Project setup, danger zone management, and config schemas.</li>
+        <li><a href="${navDocs}/apps">Applications</a> — Dashboard, Review, Plans, Jobs, Icebox, PRs, and Recommendations views.</li>
+        <li><a href="${navDocs}/codingagents">Coding Agents</a> — Claude Code, OpenAI Codex, GitHub Copilot, OpenCode, and Google Gemini CLI integrations.</li>
+        <li><a href="${navDocs}/integrations">Integrations</a> — GitHub CLI, JamDev bug reporting, and OpenClaw capture.</li>
+        <li><a href="${navDocs}/modelproviders">Model Providers</a> — Berget, Evroc, Zai, Scaleway, Opper, OpenRouter, Cloudflare, NVIDIA, and Vercel.</li>
+        <li><a href="${navDocs}/advanced">Advanced Reference</a> — CLI commands, Axum REST & WebSocket APIs, and MCP server configuration.</li>
       </ul>
     </section>
   </main>
@@ -2337,7 +2340,7 @@ ${renderStaticNav(siteRootUrl, docsBaseUrl)}
       });
     }
   </script>
-  <form toolname="tendril_search_docs" tooldescription="Search Ivy Tendril documentation and architecture guide" action="${docsBaseUrl}/gettingstarted/introduction" method="get" style="display:none">
+  <form toolname="tendril_search_docs" tooldescription="Search Ivy Tendril documentation and architecture guide" action="${navDocs}/gettingstarted/introduction" method="get" style="display:none">
     <input name="q" type="text" placeholder="Search Tendril docs..." />
   </form>
 </body>
