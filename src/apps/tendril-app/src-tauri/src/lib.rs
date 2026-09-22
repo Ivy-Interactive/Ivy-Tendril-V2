@@ -38,6 +38,29 @@ pub fn run() {
         // it reachable from the webview: without it `sendNotification` is refused at runtime, and
         // nothing about that shows up at build time.
         .plugin(tauri_plugin_notification::init())
+        .plugin(
+            tauri::plugin::Builder::<tauri::Wry>::new("external-link-interceptor")
+                .on_navigation(|webview, url| {
+                    let scheme = url.scheme();
+                    if scheme == "tauri" || scheme == "asset" || scheme == "data" || scheme == "blob" || scheme == "about" {
+                        return true;
+                    }
+                    let host = url.host_str().unwrap_or("");
+                    if (scheme == "http" || scheme == "https")
+                        && (host == "localhost" || host == "127.0.0.1" || host == "tauri.localhost")
+                    {
+                        return true;
+                    }
+
+                    use tauri_plugin_opener::OpenerExt;
+                    let _ = webview
+                        .app_handle()
+                        .opener()
+                        .open_url(url.as_str(), None::<&str>);
+                    false
+                })
+                .build(),
+        )
         .manage(ui_store)
         .setup(|app| {
             // Connect the WebSocket bridge, which re-emits daemon events to the frontend as
@@ -157,6 +180,8 @@ pub fn run() {
             cmd_cancel_job,
             cmd_delete_job,
             cmd_force_start_job,
+            cmd_relaunch_job,
+            cmd_retry_job,
             cmd_clear_jobs,
             cmd_subscribe_job_events,
             cmd_unsubscribe_job_events,
