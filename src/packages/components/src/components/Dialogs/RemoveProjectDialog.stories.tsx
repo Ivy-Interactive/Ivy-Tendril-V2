@@ -10,7 +10,7 @@ import { RemoveProjectDialog } from "./RemoveProjectDialog";
  * undo.
  */
 const meta: Meta<typeof RemoveProjectDialog> = {
-  title: "Dialogs/Confirms/RemoveProjectDialog",
+  title: "Dialogs/RemoveProjectDialog",
   component: RemoveProjectDialog,
   parameters: { layout: "fullscreen" },
   args: { isOpen: true, onClose: () => {}, onConfirm: () => {} },

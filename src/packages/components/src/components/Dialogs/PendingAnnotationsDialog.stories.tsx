@@ -11,7 +11,7 @@ import { PendingAnnotationsDialog } from "./PendingAnnotationsDialog";
  * say which is which.
  */
 const meta: Meta<typeof PendingAnnotationsDialog> = {
-  title: "Dialogs/Guards/PendingAnnotationsDialog",
+  title: "Dialogs/PendingAnnotationsDialog",
   component: PendingAnnotationsDialog,
   parameters: { layout: "fullscreen" },
   args: { isOpen: true, onClose: () => {}, onUpdatePlan: () => {}, onProceed: () => {} },

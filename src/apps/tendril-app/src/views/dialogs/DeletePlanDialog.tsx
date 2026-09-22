@@ -1,8 +1,7 @@
 import * as React from "react";
-import { Button } from "@ivy-interactive/components/ui";
-import { plansStore } from "../../state/plansStore";
+import { DeletePlanDialog as DeletePlanDialogView } from "@ivy-interactive/components/tendril";
 import { describeBridgeError, type PlanDetail, type PlanSummary } from "../../types/api";
-import { ConfirmDialog } from "@ivy-interactive/components/tendril";
+import { plansStore } from "../../state/plansStore";
 
 export interface DeletePlanDialogProps {
   isOpen: boolean;
@@ -17,25 +16,11 @@ export interface DeletePlanDialogProps {
 }
 
 /**
- * V1's `Apps/Plans/Dialogs/DeletePlanDialog`, in Framework's confirmation shape (see
- * `ConfirmDialog`): Cancel outline first, the destructive Delete last, nothing to type.
+ * The connected half of `DeletePlanDialog`.
  *
- * The two alternatives between them — Skipped and Icebox — are V1's, and are the reversible answers
- * to the same question, so they are read before the one with no recovery path. They are also the
- * app's only writes of those two states, so they carry information the two-button form would lose:
- * `IceboxView`'s Thaw is the way *out* of Icebox and this is the way in.
- *
- * There is deliberately no typed-id gate. Framework's confirm is armed as soon as it opens —
- * `WithConfirm` has no such affordance at all — and a second, stricter ritual for one delete while
- * every other delete in the app is a single click is the inconsistency the contract exists to
- * remove. The recoverability argument is answered instead by keeping focus on Cancel.
- *
- * All four answers go through `plansStore`, which applies nothing until the daemon has agreed: on a
- * rejection the dialog stays open with the backend's message, because a plan that vanished from the
- * list and then came back is a lie the operator may act on. What the store adds over calling
- * `bridge` here is the other half of that promise — once the daemon *has* agreed, the plan leaves
- * the in-memory list immediately, so the row disappears from the sidebar on the click that answered
- * the dialog rather than a `listPlans` round trip later.
+ * All three answers go through `plansStore` rather than the bridge directly, so the row leaves the
+ * list the moment the daemon agrees instead of waiting for a list round trip — that is what makes
+ * the removal look instant in the sidebar and the nav badge.
  */
 export function DeletePlanDialog({
   isOpen,
@@ -86,48 +71,15 @@ export function DeletePlanDialog({
   };
 
   return (
-    <ConfirmDialog
+    <DeletePlanDialogView
       isOpen={isOpen}
       onClose={onClose}
-      title="Delete Plan"
-      testId="delete-plan-dialog"
-      width="rem40"
-      confirmLabel="Delete"
-      confirmVariant="destructive"
+      planId={plan.id}
       onConfirm={handleDelete}
+      onSkip={() => moveTo("Skipped")}
+      onArchive={() => moveTo("Icebox")}
       isBusy={isBusy}
       error={error}
-      // Framework's body is the question plus its consequence; V1's `Icebox/Dialogs/DeletePlanDialog`
-      // words the same question as "Are you sure you want to permanently delete plan #{id}?". The
-      // second sentence is what V1's bare copy leaves the operator to guess, and the third names the
-      // reversible answers so the footer's four buttons are not a surprise.
-      body={
-        <p>
-          Are you sure you want to permanently delete plan #{plan.id}? This removes the plan folder,
-          all revisions and all verification reports, and cannot be undone. To keep the folder, move
-          the plan to Skipped or Icebox instead.
-        </p>
-      }
-      secondaryAction={
-        <>
-          <Button
-            variant="outline"
-            onClick={() => void moveTo("Skipped")}
-            data-testid="dialog-skip"
-            disabled={isBusy}
-          >
-            Move to Skipped
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => void moveTo("Icebox")}
-            data-testid="dialog-archive"
-            disabled={isBusy}
-          >
-            Move to Icebox
-          </Button>
-        </>
-      }
     />
   );
 }

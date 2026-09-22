@@ -10,7 +10,7 @@ import { question } from "./storyModels";
  * and a branch nobody renders is a branch nobody checks.
  */
 const meta: Meta<typeof UnansweredQuestionsDialog> = {
-  title: "Dialogs/Guards/UnansweredQuestionsDialog",
+  title: "Dialogs/UnansweredQuestionsDialog",
   component: UnansweredQuestionsDialog,
   parameters: { layout: "fullscreen" },
   args: { isOpen: true, onClose: () => {}, onUpdatePlan: () => {}, onProceed: () => {} },

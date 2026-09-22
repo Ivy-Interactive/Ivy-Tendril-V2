@@ -10,7 +10,7 @@ import { Button } from "../ui/button";
  * in combination.
  */
 const meta: Meta<typeof ConfirmDialog> = {
-  title: "Dialogs/Confirms/ConfirmDialog",
+  title: "Dialogs/ConfirmDialog",
   component: ConfirmDialog,
   parameters: { layout: "fullscreen" },
   args: {
