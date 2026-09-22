@@ -920,10 +920,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-auto py-4 pl-4">
-            <div className="space-y-10 pr-4">
-              {/* Sections draw no box of their own, as V1's draw none, so the gap between them is the
-                only thing separating one from the next - wider than the `space-y-6` that was only
-                ever spacing between two already-bordered boxes. */}
+            <div className="divide-y divide-border pr-4 [&>*]:py-10 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
               {isAddingProject && (
                 <AddProjectView
                   existingNames={projectNames}

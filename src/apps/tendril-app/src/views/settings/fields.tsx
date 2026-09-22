@@ -43,13 +43,14 @@ export const SETTINGS_CONTAINER = "min-w-0 max-w-170";
  * Diagnostics and Newsletter ran the full width of the pane while everything around them stopped at
  * the same column.
  *
- * It draws no box, because V1 draws none: every one of its setup views returns a bare
- * `Layout.Vertical()` whose first two children are that heading pair, and the only `new Card(...)`
- * anywhere in `Apps/Settings` is the agent tile in `CodingAgentSetupView` - a card because it is a
- * selectable thing, not because it is a section. This used to render
+ * It draws no box or rule of its own, because V1 draws none: every one of its setup views returns a
+ * bare `Layout.Vertical()` whose first two children are that heading pair, and the only
+ * `new Card(...)` anywhere in `Apps/Settings` is the agent tile in `CodingAgentSetupView` - a card
+ * because it is a selectable thing, not because it is a section. This used to render
  * `rounded-box border border-border bg-card/60 p-6` plus a rule under the header, which boxed every
- * section inside the pane that already frames them and made the screen read as a stack of widgets
- * rather than one settings page.
+ * section inside the pane that already frames them. The rule between sections now on screen is the
+ * container's, not this component's: `SettingsView`'s `divide-y` draws it between whichever sections
+ * render together, not this component drawing one under its own header.
  */
 export const SettingsSection: React.FC<{
   title: string;
