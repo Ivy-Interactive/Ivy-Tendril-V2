@@ -74,7 +74,6 @@ export function CreateIssueDialog({
   isBusy = false,
   error,
 }: CreateIssueDialogProps) {
-
   const [repo, setRepo] = React.useState(repos[0] ?? "");
   const [assignee, setAssignee] = React.useState("");
   const [labels, setLabels] = React.useState("");
@@ -131,17 +130,17 @@ export function CreateIssueDialog({
       .filter((entry) => entry !== "");
 
     void onSubmit({
-        repo,
-        assignee: assignee.trim() || undefined,
-        labels: labelList,
-        comment: comment.trim() || undefined,
-        ...(subject
-          ? {
-              titleOverride: title.trim(),
-              bodyOverride: body.trim() || undefined,
-              issueSource: subject.source,
-            }
-          : {}),
+      repo,
+      assignee: assignee.trim() || undefined,
+      labels: labelList,
+      comment: comment.trim() || undefined,
+      ...(subject
+        ? {
+            titleOverride: title.trim(),
+            bodyOverride: body.trim() || undefined,
+            issueSource: subject.source,
+          }
+        : {}),
     });
   };
 
@@ -154,7 +153,7 @@ export function CreateIssueDialog({
       }
       width="rem30"
       shortcut="Ctrl+Enter"
-      onShortcut={() => void handleSubmit()}
+      onShortcut={() => handleSubmit()}
       description={
         subject
           ? `CreateIssue opens this with \`gh\` in the selected repository. The issue is filed against plan #${planId}, but describes the ${subject.kind.toLowerCase()} rather than the plan's own work.`
@@ -174,7 +173,7 @@ export function CreateIssueDialog({
             Cancel
           </Button>
           <Button
-            onClick={() => void handleSubmit()}
+            onClick={() => handleSubmit()}
             data-testid="dialog-confirm"
             disabled={isBusy || repo === "" || (subject != null && title.trim() === "")}
           >

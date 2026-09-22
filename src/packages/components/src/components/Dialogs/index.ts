@@ -65,20 +65,9 @@ export {
   type CreateIssueSubject,
   type CreateIssueSubmit,
 } from "./CreateIssueDialog";
-export {
-  CreatePrDialog,
-  type CreatePrDialogProps,
-  type CreatePrOptions,
-} from "./CreatePrDialog";
-export {
-  SuggestChangesDialog,
-  type SuggestChangesDialogProps,
-} from "./SuggestChangesDialog";
-export {
-  formatChangeRequest,
-  readSource,
-  type AppComment,
-} from "./appComments";
+export { CreatePrDialog, type CreatePrDialogProps, type CreatePrOptions } from "./CreatePrDialog";
+export { SuggestChangesDialog, type SuggestChangesDialogProps } from "./SuggestChangesDialog";
+export { formatChangeRequest, readSource, type AppComment } from "./appComments";
 export {
   JobDebugSheet,
   buildJobDebugFields,

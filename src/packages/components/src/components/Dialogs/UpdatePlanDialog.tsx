@@ -86,7 +86,10 @@ export function UpdatePlanDialog({
           UpdatePlan is already running for this plan. Please wait…
         </Callout.Warning>
       )}
-      <label htmlFor="update-plan-instructions" className="mb-1 block text-xs text-muted-foreground">
+      <label
+        htmlFor="update-plan-instructions"
+        className="mb-1 block text-xs text-muted-foreground"
+      >
         Instructions
       </label>
       <Textarea

@@ -46,7 +46,6 @@ export interface SuggestChangesDialogProps {
   appUrl?: string;
 }
 
-
 /**
  * Port of `AppPreview.JobsToWaitFor`: everything unfinished on this plan, not only the retries. Two
  * agents rewriting one worktree at the same time is how a branch ends up with half of each. Ids that
@@ -126,7 +125,6 @@ export function SuggestChangesDialog({
   // open a while. Here both arrive as props from live state, so the value read at the click is
   // already the current one and the guard needs no second read.
 
-
   React.useEffect(() => {
     if (isOpen) {
       // Re-read on every open: a reviewer who cancels, leaves another comment and reopens should see
@@ -149,7 +147,7 @@ export function SuggestChangesDialog({
       ? typed || formatChangeRequest(appUrl ?? "", appComments ?? [])
       : typed || INLINE_ONLY_REQUEST;
     void onSubmit(request);
-    };
+  };
 
   // V1's whole alternate dialog for a plan that cannot take the request: one Close, and the comments
   // are explicitly kept rather than silently dropped.
@@ -170,8 +168,8 @@ export function SuggestChangesDialog({
         }
       >
         <p>
-          The plan is {planState}. A change request lands only while it is in Review, or while it
-          is already applying one.
+          The plan is {planState}. A change request lands only while it is in Review, or while it is
+          already applying one.
         </p>
         <p className="mt-2 text-muted-foreground">
           The {count} comment(s) are still here — send them once the plan is back in Review.
@@ -189,7 +187,7 @@ export function SuggestChangesDialog({
         title={`Update Plan #${planId}`}
         width="rem32"
         shortcut="Enter"
-        onShortcut={() => void handleSubmit()}
+        onShortcut={() => handleSubmit()}
         testId="suggest-changes-dialog"
         initialFocusRef={primaryRef}
         footer={
@@ -204,7 +202,7 @@ export function SuggestChangesDialog({
             </Button>
             <Button
               ref={primaryRef}
-              onClick={() => void handleSubmit()}
+              onClick={() => handleSubmit()}
               data-testid="dialog-confirm"
               disabled={!canSubmit}
             >
@@ -258,7 +256,7 @@ export function SuggestChangesDialog({
       title={`Request Changes for Plan #${planId}`}
       width="rem30"
       shortcut="Ctrl+Enter"
-      onShortcut={() => void handleSubmit()}
+      onShortcut={() => handleSubmit()}
       description="Provide suggestions or instructions for changes to the implementation. RetryPlan resumes in the existing worktree and applies them as a delta on the work already committed."
       testId="suggest-changes-dialog"
       initialFocusRef={textareaRef}
@@ -267,11 +265,7 @@ export function SuggestChangesDialog({
           <Button variant="outline" onClick={onClose} data-testid="dialog-cancel" disabled={isBusy}>
             Cancel
           </Button>
-          <Button
-            onClick={() => void handleSubmit()}
-            data-testid="dialog-confirm"
-            disabled={!canSubmit}
-          >
+          <Button onClick={() => handleSubmit()} data-testid="dialog-confirm" disabled={!canSubmit}>
             {isBusy
               ? "Starting…"
               : inlineCount > 0
