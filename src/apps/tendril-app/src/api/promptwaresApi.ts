@@ -14,6 +14,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { isTauri } from "../utils/tauri";
+import { i18n } from "../i18n";
 
 /** Which layer supplied the deployed `Program.md`. */
 export type PromptwareLayer = "shipped" | "overlay";
@@ -39,7 +40,7 @@ async function readError(response: Response, path: string): Promise<string> {
     .json()
     .then((payload: { error?: string }) => payload.error)
     .catch(() => undefined);
-  return detail ?? `Request to ${path} failed (${response.status})`;
+  return detail ?? i18n.t("common:errors.requestFailed", { path, status: response.status });
 }
 
 const httpReadProgram: PromptwareProgramTransport = async (name) => {

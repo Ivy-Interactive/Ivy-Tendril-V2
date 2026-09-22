@@ -16,6 +16,8 @@ import { NoContentView } from "../components/NoContentView";
 import { REC_IMPACT_CLASS } from "../components/RecommendationCard";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
 import { usePublishSidebarList, type ShellSidebarList } from "../state/sidebarListStore";
+import { Trans, useTranslation, type TFunction } from "../i18n";
+import { useEnumLabels } from "../i18n/enumLabels";
 import { formatPlanId } from "./PlansView";
 
 /**
@@ -45,17 +47,34 @@ const isActionableSource = (rec: CrossPlanRecommendation): boolean =>
 export const recommendationId = (rec: CrossPlanRecommendation): string =>
   `${rec.planId}::${rec.title}`;
 
+/** The catalog key for each impact the DTO names. */
+const IMPACT_KEYS = {
+  Small: "impact.small",
+  Medium: "impact.medium",
+  High: "impact.high",
+} as const satisfies Record<NonNullable<CrossPlanRecommendation["impact"]>, string>;
+
+/**
+ * An impact as the page shows it. The raw value keeps driving the colour and the badge kind; a
+ * value this build has no label for is shown as it is.
+ */
+const recommendationImpactLabel = (t: TFunction<"review">, impact: string): string =>
+  Object.hasOwn(IMPACT_KEYS, impact) ? t(IMPACT_KEYS[impact as keyof typeof IMPACT_KEYS]) : impact;
+
 /**
  * `RecommendationsApp.BuildRowBadges`, which deliberately mirrors the detail header's badge row
  * (Project + Impact) so each row is self-describing: High is Success, Medium is Warning, anything
  * else neutral.
  */
-const recommendationRowBadges = (rec: CrossPlanRecommendation): ShellBadgeDto[] => {
+const recommendationRowBadges = (
+  rec: CrossPlanRecommendation,
+  t: TFunction<"review">,
+): ShellBadgeDto[] => {
   const badges: ShellBadgeDto[] = [];
   if (rec.project) badges.push({ label: rec.project, kind: "project" });
   if (rec.impact) {
     badges.push({
-      label: rec.impact,
+      label: recommendationImpactLabel(t, rec.impact),
       kind: rec.impact === "High" ? "success" : rec.impact === "Medium" ? "warning" : "neutral",
     });
   }
@@ -72,14 +91,15 @@ export const buildRecommendationsSidebarList = (
   recommendations: CrossPlanRecommendation[],
   selectedId: string | null,
   select: (id: string) => void,
+  t: TFunction<"review">,
 ): ShellSidebarList => ({
   appId: "recommendations",
-  title: "Recommendations",
+  title: t("recommendationsPage.sidebarTitle"),
   items: recommendations.map((rec) => ({
     id: recommendationId(rec),
     title: rec.title,
     tag: formatPlanId(rec.planId),
-    badges: recommendationRowBadges(rec),
+    badges: recommendationRowBadges(rec, t),
   })),
   selectedId,
   buildSelectArgs: (id) => {
@@ -138,8 +158,11 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
   onJobStarted,
   projects = [],
 }) => {
+  const { t } = useTranslation("review");
+  const labels = useEnumLabels();
   const [recommendations, setRecommendations] = useState<CrossPlanRecommendation[]>([]);
   const [isLoading, setIsLoading] = useState(true);
+  /** The service's own account of why the list failed to load; the sentence around it is the page's. */
   const [error, setError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
 
@@ -179,7 +202,7 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
       setRecommendations(list);
       setError(null);
     } catch (err) {
-      setError(`Failed to load recommendations: ${describeBridgeError(err)}`);
+      setError(describeBridgeError(err));
     } finally {
       setIsLoading(false);
     }
@@ -216,8 +239,9 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
         pending,
         selected ? recommendationId(selected) : null,
         setSelectedId,
+        t,
       ),
-    [pending, selected],
+    [pending, selected, t],
   );
 
   /* Published on every render, which is what `ShellSidebarListSignal` documents the shell as
@@ -269,7 +293,12 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
     try {
       await bridge.setRecommendationState(rec.planId, rec.title, state, declineReason, notes);
     } catch (err) {
-      setActionError(`Failed to update recommendation "${rec.title}": ${describeBridgeError(err)}`);
+      setActionError(
+        t("recommendationsPage.errors.update", {
+          title: rec.title,
+          error: describeBridgeError(err),
+        }),
+      );
       setPendingId(null);
       return;
     }
@@ -300,8 +329,11 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
         // Named apart from a failed write, because the two need different things from the operator:
         // this one is accepted-but-not-started, which only a retry from the plan can fix.
         setActionError(
-          `Marked "${rec.title}" accepted, but the CreatePlan job did not start: ` +
-            `${describeBridgeError(err)}`,
+          t("recommendationsPage.errors.jobNotStarted", {
+            title: rec.title,
+            jobType: labels.jobType("CreatePlan"),
+            error: describeBridgeError(err),
+          }),
         );
       }
     }
@@ -326,6 +358,10 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
             // The identity `recommendationId` builds, which is also what the job's dedupe key uses
             // to tell two recommendations of one plan apart.
             source: recommendationId(issueRec),
+            // Left English on purpose: the dialog builds two sentences around this noun and
+            // lower-cases it for the second, so a translated noun would come out wrong ("die
+            // empfehlung"), and no single noun can take the case each sentence needs. Translating it
+            // is the dialog's job, by whole-sentence keys chosen from this kind.
             kind: "Recommendation",
           }
         : null,
@@ -343,7 +379,9 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
         <ErrorBanner onDismiss={() => setActionError(null)}>{actionError}</ErrorBanner>
       )}
 
-      {error && <ErrorBanner>{error}</ErrorBanner>}
+      {error !== null && (
+        <ErrorBanner>{t("recommendationsPage.errors.load", { error })}</ErrorBanner>
+      )}
 
       {!selected ? (
         <NoContentView
@@ -352,8 +390,8 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
           // here")`, with no `cta`: V1 hangs the process wallpaper off Plans and Review only. There
           // is no second "nothing matches your filter" case any more either - the page has no
           // filters, because V1's list is always exactly the pending recommendations.
-          title="No recommendations"
-          description="Recommendations from completed plans will appear here"
+          title={t("recommendationsPage.empty.title")}
+          description={t("recommendationsPage.empty.description")}
         />
       ) : (
         <>
@@ -377,14 +415,17 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
               )}
               {selected.impact && (
                 <span className={`rounded px-2 py-0.5 text-xs font-medium ${impactClass}`}>
-                  {selected.impact}
+                  {recommendationImpactLabel(t, selected.impact)}
                 </span>
               )}
               <span className="text-xs text-muted-foreground">
-                <span className="font-semibold text-foreground">
-                  {selectedIndex + 1}/{pending.length}
-                </span>{" "}
-                recommendations
+                <Trans
+                  ns="review"
+                  i18nKey="recommendationsPage.position"
+                  count={pending.length}
+                  values={{ index: selectedIndex + 1, total: pending.length }}
+                  components={{ highlight: <span className="font-semibold text-foreground" /> }}
+                />
               </span>
               {/* `outline` and the default fill are exactly what these two were drawing by hand;
                   only the `text-xs` is a call-site choice, because this bar sits above a dense
@@ -398,7 +439,7 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
                 className="text-xs"
               >
                 <X className="size-3.5" />
-                Decline
+                {t("recommendationsPage.decline")}
               </Button>
               <Button
                 type="button"
@@ -409,7 +450,9 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
                 className="text-xs"
               >
                 <Check className="size-3.5" />
-                {pendingId === recommendationId(selected) ? "Accepting..." : "Accept"}
+                {pendingId === recommendationId(selected)
+                  ? t("recommendationsPage.accepting")
+                  : t("recommendationsPage.accept")}
               </Button>
             </div>
           </div>
@@ -426,7 +469,7 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
               className="text-xs"
             >
               <CircleCheck className="size-3.5" />
-              Accept with Notes
+              {t("recommendationsPage.acceptWithNotes")}
             </Button>
             {/* V2-only, no V1 counterpart: `Apps/Recommendations/` has no issue button, so this is
                 new behaviour rather than drift from the C#. Issue #214.
@@ -448,7 +491,7 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
               {/* `size-3.5`, not `h-3.5 w-3.5`: upstream 98a09de1 converted every equal pair in
                   this app and left none behind, so a new one would be the only holdout. */}
               <Github className="size-3.5" />
-              Create Issue
+              {t("recommendationsPage.createIssue")}
             </Button>
             <Button
               type="button"
@@ -458,7 +501,7 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
               className="text-xs"
             >
               <ExternalLink className="size-3.5" />
-              View Plan
+              {t("recommendationsPage.viewPlan")}
             </Button>
             <Button
               type="button"
@@ -469,7 +512,7 @@ export const RecommendationsView: React.FC<RecommendationsViewProps> = ({
               className="bg-card text-xs"
             >
               <RefreshCw className={`size-3.5 ${isLoading ? "animate-spin" : ""}`} />
-              Refresh
+              {t("recommendationsPage.refresh")}
             </Button>
           </div>
 

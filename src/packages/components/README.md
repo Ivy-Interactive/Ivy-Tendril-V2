@@ -17,6 +17,7 @@
 - **`components-storybook/renderers`** — Rich content renderers (Markdown, JSON, XML, HTML, Code, Chat, ErrorBoundary)
 - **`components-storybook/diagrams`** — Diagram renderers (Mermaid, Graphviz) that lazy-load mermaid and @hpcc-js/wasm-graphviz on first render
 - **`components-storybook/tendril`** — Tendril execution widgets, Shell layout, diff inspection, and dashboard analytics
+- **`components-storybook/i18n`** — The translation runtime this package and the Tendril app share (i18next-format catalogs, `useTranslation`, `<Trans>`, `Intl` formatters) and the locale table; see `src/apps/tendril-app/docs/i18n.md`
 - **`components-storybook/styles/*`** — Design system tokens and stylesheets (`index.css`, `markdown-spacing.css`)
 
 ## Installation

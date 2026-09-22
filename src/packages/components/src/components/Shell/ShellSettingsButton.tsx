@@ -3,6 +3,7 @@ import { Inbox, type LucideIcon, Settings } from "lucide-react";
 import { useShell } from "./ShellContext.tsx";
 import type { ShellWidgetProps } from "./types.ts";
 import { ShellTooltip } from "./ShellTooltip.tsx";
+import { useTranslation } from "@/i18n/uiShell";
 import "./shell.css";
 
 interface ShellSettingsButtonProps
@@ -35,7 +36,7 @@ export const ShellSettingsButton = React.forwardRef<HTMLButtonElement, ShellSett
       id,
       events = [],
       eventHandler,
-      label = "Settings",
+      label: labelProp,
       icon = "Settings",
       showLabel = true,
       isActive = false,
@@ -44,6 +45,8 @@ export const ShellSettingsButton = React.forwardRef<HTMLButtonElement, ShellSett
     },
     ref,
   ) => {
+    const { t } = useTranslation("uiShell");
+    const label = labelProp ?? t("settingsButton.label");
     const { collapsed } = useShell();
     const Icon = footerIcons[icon] ?? Settings;
 

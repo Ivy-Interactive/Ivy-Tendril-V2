@@ -24,8 +24,15 @@ import type { Job } from "../types/api";
 import type { ChatMode } from "../state/appearance";
 import { NewChatModeButtons } from "../components/chat/NewChatModeButtons";
 import { isCompletedJob, isFailedJob, isRunningJob } from "../utils/jobStatus";
+import { useTranslation } from "../i18n";
+import { useEnumLabels } from "../i18n/enumLabels";
 
-const jobsLabel = (count: number) => `${count} job${count === 1 ? "" : "s"}`;
+/**
+ * The type a job is listed under when it has aged out of the live list and only its outcome is left
+ * in the transcript (`ChatView`'s `spawnedJobs`). It is a marker, not a label: the menu shows
+ * `jobsMenu.genericJobType` for it, and the agent-bound review summary names the job by it as is.
+ */
+export const SYNTHETIC_JOB_TYPE = "Job";
 
 export interface JobsMenuProps {
   jobs: Job[];
@@ -51,6 +58,8 @@ export const JobsMenu: React.FC<JobsMenuProps> = ({
   onOpenPlan,
   onReviewJobs,
 }) => {
+  const { t } = useTranslation("chat");
+  const enumLabels = useEnumLabels();
   const [open, setOpen] = useState(false);
 
   const runningCount = jobs.filter(isRunningJob).length;
@@ -64,9 +73,13 @@ export const JobsMenu: React.FC<JobsMenuProps> = ({
         <button
           type="button"
           data-testid="chat-jobs-badge"
-          aria-label="View running jobs"
+          aria-label={t("jobsMenu.triggerLabel")}
           aria-expanded={open}
-          title={runningCount > 0 ? `${runningCount} job(s) running` : "View jobs"}
+          title={
+            runningCount > 0
+              ? t("jobsMenu.triggerTitleRunning", { count: runningCount })
+              : t("jobsMenu.triggerTitle")
+          }
           className={`inline-flex h-8 select-none items-center gap-1.5 whitespace-nowrap rounded-selector bg-muted px-3 transition-colors hover:bg-secondary/60 ${
             failedCount > 0 && runningCount === 0 ? "text-destructive" : "text-foreground"
           }`}
@@ -74,7 +87,7 @@ export const JobsMenu: React.FC<JobsMenuProps> = ({
           {runningCount > 0 ? (
             <>
               <Spinner size="md" aria-hidden="true" />
-              <span>{runningCount} running</span>
+              <span>{t("jobsMenu.pillRunning", { count: runningCount })}</span>
               <span
                 className="inline-block size-1.5 shrink-0 animate-pulse rounded-full bg-current"
                 aria-hidden="true"
@@ -84,13 +97,16 @@ export const JobsMenu: React.FC<JobsMenuProps> = ({
             <>
               <XCircle className="size-4" aria-hidden="true" />
               <span>
-                {jobsLabel(jobs.length)} ({failedCount} failed)
+                {t("jobsMenu.pillWithFailures", {
+                  count: failedCount,
+                  jobs: t("jobsMenu.pillJobs", { count: jobs.length }),
+                })}
               </span>
             </>
           ) : (
             <>
               <Activity className="size-4" aria-hidden="true" />
-              <span>{jobsLabel(jobs.length)}</span>
+              <span>{t("jobsMenu.pillJobs", { count: jobs.length })}</span>
             </>
           )}
           <ChevronDown
@@ -100,31 +116,34 @@ export const JobsMenu: React.FC<JobsMenuProps> = ({
         </button>
       </PopoverTrigger>
 
-      <PopoverContent align="end" aria-label="Jobs" className="w-[360px] p-0">
+      <PopoverContent align="end" aria-label={t("jobsMenu.listLabel")} className="w-[360px] p-0">
         <div className="flex items-center justify-between gap-2 border-b border-border px-3 py-2">
           <div className="flex items-center gap-1.5 text-xs font-medium">
             <Cpu className="size-3.5" aria-hidden="true" />
             <span>
-              {spawned ? "Spawned Jobs" : "Running Jobs"} ({jobs.length})
+              {t("jobsMenu.title", {
+                count: jobs.length,
+                context: spawned ? "spawned" : undefined,
+              })}
             </span>
           </div>
           <div className="flex items-center gap-1.5">
             {runningCount > 0 && (
               <span className="inline-flex items-center gap-1 rounded-selector bg-muted px-1.5 py-0.5 text-2xs text-foreground">
                 <Spinner size={10} borderWidth="1.5px" aria-hidden="true" />
-                {runningCount} running
+                {t("jobsMenu.summaryRunning", { count: runningCount })}
               </span>
             )}
             {completedCount > 0 && (
               <span className="inline-flex items-center gap-1 rounded-selector bg-success/15 px-1.5 py-0.5 text-2xs text-success">
                 <Check className="size-2.5" aria-hidden="true" />
-                {completedCount} completed
+                {t("jobsMenu.summaryCompleted", { count: completedCount })}
               </span>
             )}
             {failedCount > 0 && (
               <span className="inline-flex items-center gap-1 rounded-selector bg-destructive/15 px-1.5 py-0.5 text-2xs text-destructive">
                 <X className="size-2.5" aria-hidden="true" />
-                {failedCount} failed
+                {t("jobsMenu.summaryFailed", { count: failedCount })}
               </span>
             )}
           </div>
@@ -157,7 +176,11 @@ export const JobsMenu: React.FC<JobsMenuProps> = ({
                 </span>
                 <span className="min-w-0 flex-1">
                   <span className="flex items-center gap-1.5 text-xs">
-                    <span className="font-medium">{job.type}</span>
+                    <span className="font-medium">
+                      {job.type === SYNTHETIC_JOB_TYPE
+                        ? t("jobsMenu.genericJobType")
+                        : enumLabels.jobType(job.type)}
+                    </span>
                     <span className="text-muted-foreground">{job.id}</span>
                     {job.planTitle && (
                       <span className="truncate text-muted-foreground" title={job.planTitle}>
@@ -188,7 +211,7 @@ export const JobsMenu: React.FC<JobsMenuProps> = ({
                 <button
                   key={job.id}
                   type="button"
-                  title="Open plan"
+                  title={t("jobsMenu.openPlan")}
                   onClick={() => {
                     setOpen(false);
                     onOpenPlan?.(planId);
@@ -219,7 +242,7 @@ export const JobsMenu: React.FC<JobsMenuProps> = ({
               className="flex w-full items-center justify-center gap-1.5 rounded-selector px-2 py-1.5 text-xs hover:bg-secondary/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
             >
               <Sparkles className="size-3.5" aria-hidden="true" />
-              <span>Ask agent to review outcomes</span>
+              <span>{t("jobsMenu.review")}</span>
             </button>
           </div>
         )}
@@ -265,6 +288,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
   onNewChat,
   agentPicker,
 }) => {
+  const { t } = useTranslation("chat");
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editingTitleText, setEditingTitleText] = useState("");
   const [menuOpen, setMenuOpen] = useState(false);
@@ -305,7 +329,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
         {isEditingTitle ? (
           <input
             type="text"
-            aria-label="Chat name"
+            aria-label={t("chatHeader.titleInputLabel")}
             data-testid="chat-title-input"
             value={editingTitleText}
             onChange={(e) => setEditingTitleText(e.target.value)}
@@ -337,7 +361,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
           {editable && (
             <div className="relative" ref={menuRef}>
               <IconButton
-                label="Chat options"
+                label={t("chatHeader.optionsLabel")}
                 size="lg"
                 aria-haspopup="menu"
                 aria-expanded={menuOpen}
@@ -348,7 +372,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
               {menuOpen && (
                 <div
                   role="menu"
-                  aria-label="Chat options"
+                  aria-label={t("chatHeader.optionsMenuLabel")}
                   className="absolute right-0 top-[calc(100%+4px)] z-100 flex min-w-[168px] flex-col rounded-box border border-border bg-popover p-1 text-popover-foreground shadow-lg"
                 >
                   <button
@@ -361,7 +385,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
                     className="flex items-center gap-2 whitespace-nowrap rounded-selector px-2.5 py-2 text-left hover:bg-secondary/60 hover:text-foreground"
                   >
                     <Pencil className="size-3.5" aria-hidden="true" />
-                    Edit name
+                    {t("chatHeader.editName")}
                   </button>
                   <button
                     type="button"
@@ -373,7 +397,7 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
                     className="flex items-center gap-2 whitespace-nowrap rounded-selector px-2.5 py-2 text-left text-destructive hover:bg-secondary/60"
                   >
                     <Trash2 className="size-3.5" aria-hidden="true" />
-                    Delete chat
+                    {t("chatHeader.deleteChat")}
                   </button>
                 </div>
               )}

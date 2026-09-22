@@ -19,6 +19,7 @@ import type {
   TestAgentResult,
 } from "../types/agents";
 import { isTauri } from "../utils/tauri";
+import { i18n } from "../i18n";
 
 /** Runs one Test Agent probe. Swapped in tests. */
 export type TestAgentTransport = (
@@ -34,7 +35,7 @@ async function readError(response: Response, path: string): Promise<string> {
     .json()
     .then((payload: { error?: string }) => payload.error)
     .catch(() => undefined);
-  return detail ?? `Request to ${path} failed (${response.status})`;
+  return detail ?? i18n.t("common:errors.requestFailed", { path, status: response.status });
 }
 
 const httpTestAgent: TestAgentTransport = async (agent, request) => {

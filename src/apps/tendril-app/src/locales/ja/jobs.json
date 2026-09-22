@@ -1,0 +1,227 @@
+{
+  "table": {
+    "columns": {
+      "id": {
+        "header": "ID"
+      },
+      "status": {
+        "header": "ステータス",
+        "filterPlaceholder": "すべて"
+      },
+      "planId": {
+        "header": "計画 ID",
+        "filterPlaceholder": "ID…"
+      },
+      "prompt": {
+        "header": "プロンプト"
+      },
+      "type": {
+        "header": "タイプ",
+        "filterPlaceholder": "すべて"
+      },
+      "project": {
+        "header": "プロジェクト",
+        "filterPlaceholder": "すべて"
+      },
+      "timer": {
+        "header": "タイマー",
+        "filterPlaceholder": "秒…"
+      },
+      "agentOutput": {
+        "header": "エージェント出力",
+        "filterPlaceholder": "日付…"
+      },
+      "cost": {
+        "header": "コスト",
+        "filterPlaceholder": "金額…"
+      },
+      "tokens": {
+        "header": "トークン",
+        "filterPlaceholder": "数…"
+      },
+      "timestamp": {
+        "header": "タイムスタンプ",
+        "filterPlaceholder": "日付…"
+      },
+      "statusMessage": {
+        "header": "ステータスメッセージ"
+      }
+    },
+    "detached": {
+      "label": "デタッチ済み",
+      "title": "デタッチ済み (PID {{pid}}) — 前回のデーモン再起動より前に開始されたアクティブなプロセスを監視しています",
+      "unknownPid": "不明"
+    },
+    "empty": {
+      "filtered": "現在のフィルターに一致するジョブはありません。",
+      "none": "ジョブはまだありません。計画の実行、再試行、PR の作成を行うとジョブが作成されます。"
+    },
+    "queryError": "ジョブテーブルを読み取れませんでした：{{error}}",
+    "statusProgress": {
+      "ariaLabel": "ステータス別のジョブ"
+    },
+    "headerMenu": {
+      "ariaLabel": "ジョブ一覧の操作",
+      "stopAllQueued": "キュー待機中のジョブをすべて停止 ({{count}})",
+      "stopAll": "すべてのジョブを停止 ({{count}})"
+    }
+  },
+  "actions": {
+    "menu": "ジョブの操作",
+    "stop": {
+      "label": "停止",
+      "tooltip": "このジョブを停止",
+      "busy": "停止中…"
+    },
+    "rerun": {
+      "label": "再実行",
+      "unavailable": "再実行できません：元の引数が保存されていません。"
+    },
+    "forceStart": {
+      "label": "強制開始",
+      "tooltip": "このブロック中のジョブを強制開始",
+      "busy": "開始中…"
+    },
+    "debug": {
+      "label": "デバッグ",
+      "tooltip": "このジョブのデバッグ詳細を表示"
+    },
+    "delete": {
+      "label": "削除",
+      "tooltip": "このジョブを削除"
+    }
+  },
+  "errors": {
+    "stopFailed": "停止に失敗しました：{{error}}",
+    "forceStartFailed": "強制開始に失敗しました：{{error}}",
+    "deleteFailed": "削除に失敗しました：{{error}}"
+  },
+  "deleteDialog": {
+    "title": "ジョブを削除",
+    "body": "このジョブを削除しますか？この操作は元に戻せません。"
+  },
+  "statusMessage": {
+    "blocked": "依存する計画の完了を待機しています。",
+    "failed": "ジョブの実行中にエラーが発生しました",
+    "timeout": "ジョブが設定されたタイムアウトを超過しました",
+    "queued": "ジョブスロットが空くのを待機しています",
+    "stopped": "ジョブは手動で停止されました",
+    "pending": "ジョブはキューに入り、開始を待機しています。"
+  },
+  "agentOutput": {
+    "starting": "開始中…",
+    "done": "完了"
+  },
+  "cost": {
+    "estimated": "約 {{cost}}",
+    "notReported": "このジョブのコストは報告されていません"
+  },
+  "tokens": {
+    "buckets": {
+      "input": "入力",
+      "output": "出力",
+      "cacheRead": "キャッシュ読み取り",
+      "cacheWrite": "キャッシュ書き込み",
+      "reasoning": "推論"
+    },
+    "breakdownEntry": "{{label}} {{tokens, number}}"
+  },
+  "outputSheet": {
+    "title": "{{type}} {{planId}}",
+    "fallbackTitle": "ジョブ出力"
+  },
+  "session": {
+    "detachedBadge": "デタッチ済み (PID {{pid}}) — アクティブなプロセスを監視中",
+    "tokens": "トークン {{tokens}}",
+    "cost": "コスト {{cost}}",
+    "closeTab": "セッションタブを閉じる",
+    "noOutput": "出力はありません。",
+    "statusCallout": {
+      "title": "ジョブ：{{status}}",
+      "title_pending": "ジョブ：保留中",
+      "title_queued": "ジョブ：キュー待機中",
+      "title_blocked": "ジョブ：ブロック中",
+      "title_failed": "ジョブ：失敗",
+      "title_timeout": "ジョブ：タイムアウト",
+      "title_stopped": "ジョブ：停止済み"
+    }
+  },
+  "costSheet": {
+    "title": "コストとトークン",
+    "titleWithPlan": "コストとトークン — {{planId}}",
+    "details": {
+      "model": "モデル",
+      "provider": "プロバイダー",
+      "type": "タイプ",
+      "profile": "プロファイル",
+      "agentCost": "エージェントが報告したコスト"
+    },
+    "notProvided": "未提供",
+    "noUsage": "このジョブにはトークンごとの内訳が記録されていません。",
+    "noUsage_total": "このジョブにはトークンごとの内訳が記録されておらず、合計 {{total}} トークンのみが記録されています。",
+    "breakdown": {
+      "title": "内訳",
+      "tokenType": "トークンの種類",
+      "tokens": "トークン",
+      "total": "合計"
+    },
+    "totalCost": "総コスト"
+  },
+  "promptSheet": {
+    "title": "完全なプロンプト",
+    "empty": "このジョブにはプロンプトテキストが記録されていません。"
+  },
+  "clear": {
+    "dialogTitle": "ジョブを消去",
+    "confirm": "消去",
+    "confirmCount": "{{count}} 件を消去",
+    "countFailed": "ジョブ数を取得できませんでした：{{error}}",
+    "failed": "消去に失敗しました：{{error}}",
+    "scopes": {
+      "completed": {
+        "label": "完了済みを消去",
+        "counting": "完了したジョブを数えています…",
+        "empty": "消去できる完了済みのジョブはありません。",
+        "confirm_other": "完了した {{count}} 件のジョブを削除しますか？ログと出力も一緒に削除され、この操作は元に戻せません。"
+      },
+      "failed": {
+        "label": "失敗を消去",
+        "counting": "失敗したジョブを数えています…",
+        "empty": "消去できる失敗したジョブはありません。",
+        "confirm_other": "失敗した {{count}} 件のジョブを削除しますか？ログと出力も一緒に削除され、この操作は元に戻せません。"
+      },
+      "timeout": {
+        "label": "タイムアウトを消去",
+        "counting": "タイムアウトしたジョブを数えています…",
+        "empty": "消去できるタイムアウトしたジョブはありません。",
+        "confirm_other": "タイムアウトした {{count}} 件のジョブを削除しますか？ログと出力も一緒に削除され、この操作は元に戻せません。"
+      },
+      "stopped": {
+        "label": "停止済みを消去",
+        "counting": "停止したジョブを数えています…",
+        "empty": "消去できる停止済みのジョブはありません。",
+        "confirm_other": "停止した {{count}} 件のジョブを削除しますか？ログと出力も一緒に削除され、この操作は元に戻せません。"
+      },
+      "all": {
+        "label": "終了済みをすべて消去",
+        "counting": "終了したジョブを数えています…",
+        "empty": "消去できる終了済みのジョブはありません。",
+        "confirm_other": "終了した {{count}} 件のジョブを削除しますか？ログと出力も一緒に削除され、この操作は元に戻せません。"
+      }
+    }
+  },
+  "notifications": {
+    "exit": {
+      "completed": "{{type}} が完了しました",
+      "failed": "{{type}} が失敗しました",
+      "timedOut": "{{type}} がタイムアウトしました",
+      "withReason": "{{subject}}：{{reason}}"
+    },
+    "summary": {
+      "title": "ジョブが終了しました",
+      "finished_other": "{{count}} 件のジョブが終了しました",
+      "finishedWithFailures_other": "{{count}} 件のジョブが終了しました（{{failures}}）",
+      "failedCount_other": "{{count}} 件失敗"
+    }
+  }
+}

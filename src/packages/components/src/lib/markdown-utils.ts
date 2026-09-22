@@ -1,4 +1,5 @@
 import React from "react";
+import { i18n } from "@/i18n/uiCommon";
 
 export type GitHubAlertType = "NOTE" | "TIP" | "IMPORTANT" | "WARNING" | "CAUTION";
 
@@ -6,7 +7,27 @@ export interface GitHubAlertStyle {
   icon: string;
   className: string;
   iconColor: string;
-  title: string;
+  /** The alert's heading, in the current language - read at render time, never at import. */
+  readonly title: string;
+}
+
+/**
+ * The heading an alert renders above its body: "Note", "Tip", … The `[!NOTE]` marker itself is
+ * GitHub's syntax and stays English; only this label is translated.
+ */
+export function githubAlertTitle(type: GitHubAlertType): string {
+  switch (type) {
+    case "NOTE":
+      return i18n.t("uiCommon:markdown.alerts.note");
+    case "TIP":
+      return i18n.t("uiCommon:markdown.alerts.tip");
+    case "IMPORTANT":
+      return i18n.t("uiCommon:markdown.alerts.important");
+    case "WARNING":
+      return i18n.t("uiCommon:markdown.alerts.warning");
+    case "CAUTION":
+      return i18n.t("uiCommon:markdown.alerts.caution");
+  }
 }
 
 export const githubAlertStyles: Record<GitHubAlertType, GitHubAlertStyle> = {
@@ -14,33 +35,43 @@ export const githubAlertStyles: Record<GitHubAlertType, GitHubAlertStyle> = {
     icon: "Info",
     className: "border-cyan/20 bg-cyan/10 text-foreground dark:border-cyan/30 dark:bg-cyan/10",
     iconColor: "",
-    title: "Note",
+    get title() {
+      return githubAlertTitle("NOTE");
+    },
   },
   TIP: {
     icon: "CircleCheck",
     className:
       "border-emerald/20 bg-emerald/10 text-foreground dark:border-emerald/30 dark:bg-emerald/10",
     iconColor: "text-emerald dark:text-emerald-light",
-    title: "Tip",
+    get title() {
+      return githubAlertTitle("TIP");
+    },
   },
   IMPORTANT: {
     icon: "CircleAlert",
     className: "border-amber/20 bg-amber/10 text-foreground dark:border-amber/30 dark:bg-amber/10",
     iconColor: "text-amber dark:text-amber-light",
-    title: "Important",
+    get title() {
+      return githubAlertTitle("IMPORTANT");
+    },
   },
   WARNING: {
     icon: "CircleAlert",
     className: "border-amber/20 bg-amber/10 text-foreground dark:border-amber/30 dark:bg-amber/10",
     iconColor: "text-amber dark:text-amber-light",
-    title: "Warning",
+    get title() {
+      return githubAlertTitle("WARNING");
+    },
   },
   CAUTION: {
     icon: "CircleAlert",
     className:
       "border-destructive/20 bg-destructive/10 text-foreground dark:border-destructive/30 dark:bg-destructive/10",
     iconColor: "text-destructive dark:text-destructive-light",
-    title: "Caution",
+    get title() {
+      return githubAlertTitle("CAUTION");
+    },
   },
 };
 

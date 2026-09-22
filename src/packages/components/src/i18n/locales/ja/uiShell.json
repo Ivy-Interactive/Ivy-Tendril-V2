@@ -1,0 +1,268 @@
+{
+  "agentButton": {
+    "label": "エージェント",
+    "newChatTooltip": "新しいチャット",
+    "flyout": {
+      "empty": "チャットはまだありません",
+      "newChat": "新しいチャット"
+    }
+  },
+  "newPlanButton": {
+    "label": "新規計画"
+  },
+  "settingsButton": {
+    "label": "設定"
+  },
+  "nav": {
+    "resizeAriaLabel": "ナビゲーションのサイズを変更"
+  },
+  "railFlyout": {
+    "previous": "前へ",
+    "next": "次へ"
+  },
+  "sectionItems": {
+    "state": {
+      "working": "作業中",
+      "completed": "完了"
+    },
+    "menu": {
+      "label": "{{title}} のオプション",
+      "tooltip": "オプション",
+      "pin": "チャットをピン留め",
+      "unpin": "チャットのピン留めを解除",
+      "rename": "名前を編集",
+      "delete": "削除"
+    },
+    "titleEditor": {
+      "ariaLabel": "項目名"
+    }
+  },
+  "sidebarHeader": {
+    "openSidebar": "サイドバーを開く",
+    "closeSidebar": "サイドバーを閉じる"
+  },
+  "sidebarSection": {
+    "searchLabel": "計画を検索",
+    "searchButton": "検索"
+  },
+  "tabs": {
+    "closeAriaLabel": "{{title}} を閉じる",
+    "newSession": "新しいエージェントセッション"
+  },
+  "shell": {
+    "toggleSidebarShortcut": "サイドバーの表示切り替え",
+    "resizer": {
+      "ariaLabel": "サイドバーのサイズを変更",
+      "title": "ドラッグでサイドバーのサイズを変更、ダブルクリックでリセット"
+    }
+  },
+  "agentStatus": {
+    "starting": "開始中…",
+    "completed": "完了",
+    "failed": "失敗",
+    "thinking": "思考中…",
+    "working": "作業中…",
+    "runningCommand": "コマンドを実行中",
+    "reading": "読み取り中",
+    "readingFile": "{{file}} を読み取り中",
+    "editing": "編集中",
+    "editingFile": "{{file}} を編集中",
+    "searching": "検索中",
+    "runningTool": "{{name}} を実行中"
+  },
+  "resultSummary": {
+    "errorTitle": "❌ エラー",
+    "terminated": "エージェントプロセスが終了したか、タイムアウトしました（終了コード {{code}}）。",
+    "terminatedUnknownCode": "エージェントプロセスが終了したか、タイムアウトしました（終了コード不明）。",
+    "cost": {
+      "billed": "コスト：{{cost}}",
+      "estimated": "コスト：約 {{cost}}",
+      "billedTooltip": "エージェントによる請求額",
+      "estimatedTooltip": "トークン数からこのモデルの定価で算出した金額です。契約中のプランやティアは考慮されません"
+    },
+    "duration": "所要時間：{{seconds}} 秒",
+    "tokens": "トークン：入力 {{input}} / 出力 {{output}}",
+    "cache": "キャッシュ：読み取り {{read}} / 書き込み {{write}}",
+    "premium": "プレミアム：{{value}}",
+    "exitCode": "終了コード：{{code}}",
+    "denied": "拒否：{{value}}"
+  },
+  "metrics": {
+    "elapsed": {
+      "label": "出力時間",
+      "reportedTooltip": "出力時間：エージェントが報告した所要時間",
+      "measuredTooltip": "出力時間：最初のイベントから最後のイベントまでの計測値",
+      "runningTooltip": "出力時間：最初のイベントからの計測値"
+    },
+    "tokens": {
+      "label": "トークン",
+      "estimatedTooltip": "トークン：これまでのストリームからの推定値です。完了時にエージェントが自身の集計値を報告します",
+      "reportedTooltip": "トークン：エージェントが報告した値"
+    },
+    "cost": {
+      "label": "コスト",
+      "estimatedTooltip": "コスト：トークン数からこのモデルの定価で算出した金額です。契約中のプランやティアは考慮されません",
+      "billedTooltip": "コスト：エージェントによる請求額"
+    }
+  },
+  "toolCard": {
+    "file": "ファイル：{{path}}",
+    "url": "URL：{{url}}",
+    "query": "クエリ：{{query}}",
+    "queryInPath": "クエリ：{{path}} 内の {{query}}",
+    "input": "入力",
+    "output": "出力"
+  },
+  "toolGroup": {
+    "count_other": "{{count}} 件のツール呼び出し"
+  },
+  "agentNode": {
+    "session": "セッション：{{session}}",
+    "sessionWithModel": "セッション：{{session}} ({{model}})",
+    "errorTitle": "❌ エラー"
+  },
+  "badgeSelect": {
+    "placeholder": "選択…",
+    "ariaLabel": "選択",
+    "remove": "{{label}} を削除"
+  },
+  "contentInput": {
+    "placeholder": "何をお手伝いしましょうか？",
+    "send": "送信",
+    "moreOptions": "その他のオプション",
+    "attachFiles": "ファイルを添付",
+    "voiceInput": "音声入力の文字起こし",
+    "dismissError": "エラーを閉じる",
+    "removeFile": "ファイルを削除",
+    "attachment": {
+      "document": "ドキュメント",
+      "lineCount_other": "{{count}} 行",
+      "sizeBytes": "{{size}} B",
+      "sizeKilobytes": "{{size}} KB",
+      "sizeMegabytes": "{{size}} MB"
+    },
+    "errors": {
+      "uploadStatus": "アップロードに失敗しました（ステータス {{status}}）",
+      "uploadFailed": "ファイルをアップロードできませんでした：{{error}}",
+      "readFailed": "ファイルを読み込めませんでした",
+      "emptyTranscription": "文字起こしの内容が不十分なため、プロンプトを生成できませんでした。もう一度、はっきりと話してお試しください。"
+    }
+  },
+  "voice": {
+    "errors": {
+      "insecureContext": "音声入力には安全な接続が必要です。HTTPS または localhost で Tendril を開いてから、もう一度お試しください。",
+      "mediaDevicesUnavailable": "このウィンドウでは音声入力を利用できません。macOS では、アップデート後に Ivy Tendril を終了して再度開き、求められたらマイクへのアクセスを許可してください。また、「{{command}}」を実行して、ブラウザーで音声入力を使用することもできます。",
+      "audioCaptureUnsupported": "このブラウザーでは音声入力用の音声をキャプチャできません。",
+      "captureInitFailed": "音声キャプチャの初期化に失敗しました：{{error}}",
+      "websocket": "文字起こしサービスへの接続中に WebSocket エラーが発生しました。",
+      "closedUnexpectedly": "WebSocket 接続が予期せず切断されました（コード {{code}}：{{reason}}）",
+      "closedUnexpectedlyNoReason": "WebSocket 接続が予期せず切断されました（コード {{code}}：理由不明）",
+      "connectionFailed": "マイクへのアクセスが拒否されたか、接続に失敗しました：{{error}}",
+      "microphoneDenied": "マイクへのアクセスが拒否されました。「システム設定 > プライバシーとセキュリティ > マイク」で Ivy Tendril のマイクへのアクセスを許可してから、もう一度お試しください。",
+      "microphoneNotFound": "マイクが見つかりません。入力デバイスを接続して、もう一度お試しください。"
+    }
+  },
+  "dashboard": {
+    "status": {
+      "plans": "計画",
+      "inProgress": "進行中",
+      "readyForReview": "レビュー待ち",
+      "completed": "完了",
+      "failed": "失敗"
+    },
+    "kpi": {
+      "breakdownAriaLabel": "{{label}} の計算内訳を表示",
+      "loadingAriaLabel": "指標を読み込み中"
+    },
+    "trend": {
+      "loading": "コストと計画の推移を読み込み中",
+      "costTab": "総コスト",
+      "plansTab": "計画の総数",
+      "currentName": "過去 4 週間",
+      "rollingLegend": "7 日間平均",
+      "plansValue_other": "{{count}} 件の計画"
+    },
+    "gitActivity": {
+      "title": "Git アクティビティ",
+      "loading": "Git アクティビティを読み込み中"
+    },
+    "pullRequests": {
+      "title": "プルリクエスト",
+      "weekTab": "週",
+      "monthTab": "月",
+      "loading": "マージ済みのプルリクエストを読み込み中"
+    },
+    "tunnel": {
+      "title": "トンネル"
+    },
+    "factory": {
+      "title": "ソフトウェアファクトリー"
+    },
+    "jobs": {
+      "title": "アクティブなジョブ",
+      "empty": "実行中のジョブはありません"
+    }
+  },
+  "trendChart": {
+    "axisDateWithYear": "'{{year}}年{{date}}",
+    "currentRow": "{{name}}：{{value}}",
+    "rollingRow": "7 日間平均：{{value}}"
+  },
+  "activityGrid": {
+    "empty": "マージ済みのプルリクエストはまだありません",
+    "weekOf": "{{date}} の週",
+    "merged_other": "{{count}} 件のプルリクエストがマージ済み"
+  },
+  "pullRequestBars": {
+    "empty": "マージ済みのプルリクエストはまだありません",
+    "weekOf": "{{date}} の週",
+    "barLabel": "{{period}}：{{merged}}",
+    "merged_other": "{{count}} 件のプルリクエストがマージ済み",
+    "tooltipMerged_other": "{{count}} 件の PR がマージ済み"
+  },
+  "processViewer": {
+    "newPlan": "新規計画",
+    "plans": "計画",
+    "review": "レビュー",
+    "creatingPr": "PR {{value}}"
+  },
+  "terminal": {
+    "loading": "読み込み中…"
+  },
+  "webViewer": {
+    "toolbar": {
+      "ariaLabel": "ブラウザーのコントロール",
+      "back": "戻る",
+      "forward": "進む",
+      "reload": "再読み込み",
+      "startSelecting": "コメントする要素を選択",
+      "stopSelecting": "選択を終了",
+      "viewport": "ビューポート：{{device}}",
+      "address": "アドレス",
+      "addressPlaceholder": "URL を入力"
+    },
+    "devices": {
+      "desktop": "デスクトップ",
+      "tablet": "タブレット",
+      "mobile": "モバイル"
+    },
+    "empty": "アドレスバーに URL を入力すると、ページが読み込まれます。",
+    "frameTitle": "Web コンテンツ",
+    "comment": {
+      "title": "コメント",
+      "title_tag": "<tag>{{tag}}</tag>にコメント",
+      "title_text": "<snippet>「{{text}}」</snippet>にコメント",
+      "title_tagText": "<tag>{{tag}}</tag><snippet>「{{text}}」</snippet>にコメント",
+      "sourceLabel": "ソース",
+      "resolvingSource": "ソースマップを解決中…",
+      "componentsLabel": "コンポーネント",
+      "xpathLabel": "XPath",
+      "selectorLabel": "セレクター",
+      "placeholder": "コメントを入力…（{{shortcut}} で送信）",
+      "delete": "削除",
+      "cancel": "キャンセル",
+      "save": "保存",
+      "add": "追加"
+    }
+  }
+}

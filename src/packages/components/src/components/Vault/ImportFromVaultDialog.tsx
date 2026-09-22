@@ -1,5 +1,6 @@
 import React from "react";
 import { Download, FolderGit2, GitMerge } from "lucide-react";
+import { useTranslation } from "@/i18n/uiVault";
 import { Badge } from "../ui/badge";
 import { Callout } from "../ui/callout";
 import { Checkbox } from "../ui/checkbox";
@@ -34,45 +35,22 @@ export interface ImportFromVaultDialogProps {
   isBusy?: boolean;
 }
 
+/* Each category's label, empty text and row badge are `uiVault` keys named after its `key`. */
 const CATEGORIES = [
-  {
-    key: "skills",
-    label: "Skills",
-    names: (item: VaultCatalogItem) => item.skillNames,
-    emptyText: "No custom skills in this vault project.",
-    itemBadge: "Skill",
-  },
-  {
-    key: "mcpServers",
-    label: "MCP Servers",
-    names: (item: VaultCatalogItem) => item.mcpServerNames,
-    emptyText: "No MCP servers in this vault project.",
-    itemBadge: "MCP",
-  },
-  {
-    key: "memories",
-    label: "Project Memories",
-    names: (item: VaultCatalogItem) => item.memoryFileNames,
-    emptyText: "No project memory markdown files in this vault project.",
-    itemBadge: "Memory",
-  },
-  {
-    key: "reviewActions",
-    label: "Review Actions",
-    names: (item: VaultCatalogItem) => item.reviewActionNames,
-    emptyText: "No review actions in this vault project.",
-    itemBadge: "Action",
-  },
-  {
-    key: "verifications",
-    label: "Verifications",
-    names: (item: VaultCatalogItem) => item.verificationNames,
-    emptyText: "No verifications in this vault project.",
-    itemBadge: "Verification",
-  },
+  { key: "skills", names: (item: VaultCatalogItem) => item.skillNames },
+  { key: "mcpServers", names: (item: VaultCatalogItem) => item.mcpServerNames },
+  { key: "memories", names: (item: VaultCatalogItem) => item.memoryFileNames },
+  { key: "reviewActions", names: (item: VaultCatalogItem) => item.reviewActionNames },
+  { key: "verifications", names: (item: VaultCatalogItem) => item.verificationNames },
 ] as const;
 
 type CategoryKey = (typeof CATEGORIES)[number]["key"];
+
+/** The name the user asked for, and the free one to suggest instead, when it is taken. */
+interface NameCollision {
+  name: string;
+  suggestion: string;
+}
 
 export const ImportFromVaultDialog: React.FC<ImportFromVaultDialogProps> = ({
   open,
@@ -87,6 +65,7 @@ export const ImportFromVaultDialog: React.FC<ImportFromVaultDialogProps> = ({
   error,
   isBusy = false,
 }) => {
+  const { t } = useTranslation("uiVault");
   /* Merge keeps the vault's name — that name *is* the link to the local project. */
   const suggestedName = mergeMode ? item.name : suggestLocalProjectName(item.name, existingNames);
   const localMatch = React.useMemo(
@@ -108,7 +87,7 @@ export const ImportFromVaultDialog: React.FC<ImportFromVaultDialogProps> = ({
     verifications: [...item.verificationNames],
   }));
   const [importPermissions, setImportPermissions] = React.useState(true);
-  const [collision, setCollision] = React.useState<string | null>(null);
+  const [collision, setCollision] = React.useState<NameCollision | null>(null);
 
   const effectiveName = name.trim() === "" ? suggestedName : name.trim();
   const existingPathSet = new Set(existingPaths ?? []);
@@ -125,9 +104,10 @@ export const ImportFromVaultDialog: React.FC<ImportFromVaultDialogProps> = ({
       item.syncStatus !== "UpdateAvailable" &&
       isLocalProjectNameTaken(effectiveName, existingNames)
     ) {
-      setCollision(
-        `A local project named '${effectiveName}' already exists. Please pick a different name (e.g. ${suggestLocalProjectName(effectiveName, existingNames)}).`,
-      );
+      setCollision({
+        name: effectiveName,
+        suggestion: suggestLocalProjectName(effectiveName, existingNames),
+      });
       return;
     }
 
@@ -153,11 +133,13 @@ export const ImportFromVaultDialog: React.FC<ImportFromVaultDialogProps> = ({
       open={open}
       onClose={onClose}
       title={
-        mergeMode ? `Merge '${item.name}' with Local Project` : `Import '${item.name}' from Vault`
+        mergeMode
+          ? t("importDialog.mergeTitle", { name: item.name })
+          : t("importDialog.title", { name: item.name })
       }
       testId={mergeMode ? "merge-vault-dialog" : "import-vault-dialog"}
-      error={collision ?? error}
-      submitLabel={mergeMode ? "Link & Merge" : "Import Project"}
+      error={collision ? t("importDialog.collision", { ...collision }) : error}
+      submitLabel={mergeMode ? t("importDialog.mergeSubmit") : t("importDialog.submit")}
       submitIcon={
         mergeMode ? (
           <GitMerge className="mr-1.5 size-3.5" aria-hidden="true" />
@@ -170,22 +152,19 @@ export const ImportFromVaultDialog: React.FC<ImportFromVaultDialogProps> = ({
     >
       {mergeMode ? (
         <Callout.Info data-testid="merge-vault-callout">
-          Merging will link this vault project with your existing local project &apos;{item.name}
-          &apos;. Local repository paths and unconflicted settings will be preserved while selected
-          vault assets (verifications, actions, skills, MCPs, memories) will be integrated.
+          {t("importDialog.mergeCallout", { name: item.name })}
         </Callout.Info>
       ) : (
         nameWasTaken &&
         effectiveName !== item.name && (
           <Callout.Info data-testid="import-vault-rename-notice">
-            A local project named &apos;{item.name}&apos; already exists. We&apos;ve suggested
-            &apos;{effectiveName}&apos; for this import to avoid conflicts.
+            {t("importDialog.renameNotice", { name: item.name, suggestion: effectiveName })}
           </Callout.Info>
         )
       )}
 
       <div className="space-y-1.5">
-        <Label htmlFor="import-vault-name">Local Project Name</Label>
+        <Label htmlFor="import-vault-name">{t("importDialog.name.label")}</Label>
         <Input
           id="import-vault-name"
           value={mergeMode ? item.name : name}
@@ -197,21 +176,20 @@ export const ImportFromVaultDialog: React.FC<ImportFromVaultDialogProps> = ({
       </div>
 
       <p className="flex items-center gap-2 text-xs font-semibold text-foreground">
-        Vault Source: {item.name}
+        {t("importDialog.source", { name: item.name })}
         <Badge variant="secondary">v{item.remoteVersion}</Badge>
       </p>
       {item.description && <p className="text-xs text-muted-foreground">{item.description}</p>}
       {item.latestChangelog && (
-        <p className="text-xs text-muted-foreground">Changelog: {item.latestChangelog}</p>
+        <p className="text-xs text-muted-foreground">
+          {t("importDialog.changelog", { changelog: item.latestChangelog })}
+        </p>
       )}
 
       {item.repos.length > 0 && (
         <section className="space-y-2" data-testid="import-vault-repos">
-          <p className="text-xs font-semibold text-foreground">Repositories</p>
-          <p className="text-xs text-muted-foreground">
-            Will link to existing local folders on disk or auto-clone missing repositories from
-            GitHub.
-          </p>
+          <p className="text-xs font-semibold text-foreground">{t("importDialog.repos.heading")}</p>
+          <p className="text-xs text-muted-foreground">{t("importDialog.repos.description")}</p>
           <ul className="space-y-2">
             {item.repos.map((repo) => {
               const key = vaultRepoKey(repo);
@@ -223,11 +201,13 @@ export const ImportFromVaultDialog: React.FC<ImportFromVaultDialogProps> = ({
                     <FolderGit2 className="size-3.5" aria-hidden="true" />
                     <span className="font-semibold text-foreground">{key}</span>
                     <Badge variant={exists ? "secondary" : "outline"}>
-                      {exists ? "✓ Existing Local Folder" : "Will Clone from GitHub"}
+                      {exists
+                        ? t("importDialog.repos.existing")
+                        : t("importDialog.repos.willClone")}
                     </Badge>
                   </span>
                   <Input
-                    aria-label={`Local path for ${key}`}
+                    aria-label={t("importDialog.repos.pathAriaLabel", { repo: key })}
                     className="font-mono"
                     value={path}
                     onChange={(event) =>
@@ -242,16 +222,16 @@ export const ImportFromVaultDialog: React.FC<ImportFromVaultDialogProps> = ({
       )}
 
       <section className="space-y-3">
-        <p className="text-xs font-semibold text-foreground">Assets to Import</p>
+        <p className="text-xs font-semibold text-foreground">{t("importDialog.assets.heading")}</p>
         {CATEGORIES.map((category) => (
           <AssetChecklist
             key={category.key}
-            label={category.label}
+            label={t(`assetCategories.${category.key}.label`)}
             category={category.key}
             items={[...category.names(item)]}
             selected={selections[category.key]}
-            emptyText={category.emptyText}
-            itemBadge={category.itemBadge}
+            emptyText={t(`importDialog.assets.empty.${category.key}`)}
+            itemBadge={t(`assetCategories.${category.key}.badge`)}
             onChange={(next) => setSelections((current) => ({ ...current, [category.key]: next }))}
           />
         ))}
@@ -264,7 +244,7 @@ export const ImportFromVaultDialog: React.FC<ImportFromVaultDialogProps> = ({
             checked={importPermissions}
             onCheckedChange={(checked) => setImportPermissions(checked === true)}
           />
-          Import Security &amp; Permissions Policies
+          {t("importDialog.permissions")}
         </label>
       </section>
     </VaultDialogShell>

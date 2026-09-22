@@ -3,6 +3,7 @@ import { ArrowLeft, ArrowRight, Plus, X } from "lucide-react";
 import { Button, Callout, Input, Spinner } from "@ivy-interactive/components/ui";
 import { jobsStore } from "../../state/jobsStore";
 import { describeBridgeError } from "../../types/api";
+import { i18n, useTranslation } from "../../i18n";
 import type { ProjectEntry } from "./projectConfig";
 import { SaveError, SettingsSection, SubSection, TextField } from "./fields";
 import {
@@ -77,12 +78,15 @@ export interface AddProjectViewProps {
   onReloadConfig: () => Promise<void>;
 }
 
-/** `InputSanitizer.DescribeProjectNameError`: blank, and the characters a directory name cannot hold. */
+/**
+ * `InputSanitizer.DescribeProjectNameError`: blank, and the characters a directory name cannot hold.
+ * Translated when it is called, in the language current at that moment.
+ */
 export function describeProjectNameError(name: string): string | null {
   const trimmed = name.trim();
-  if (trimmed === "") return "A project needs a name.";
+  if (trimmed === "") return i18n.t("onboarding:addProject.nameRequired");
   if (/[/\\:*?"<>|]/.test(trimmed)) {
-    return 'A project name cannot contain / \\ : * ? " < > or |.';
+    return i18n.t("onboarding:addProject.nameInvalidChars");
   }
   return null;
 }
@@ -103,6 +107,7 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
   onFinish,
   onReloadConfig,
 }) => {
+  const { t } = useTranslation("onboarding");
   const [step, setStep] = React.useState<Step>("input");
   const [name, setName] = React.useState("");
   const [repos, setRepos] = React.useState<string[]>([]);
@@ -118,7 +123,7 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
   const nameError =
     describeProjectNameError(name) ??
     (existingNames.some((existing) => existing.toLowerCase() === trimmed.toLowerCase())
-      ? `A project named '${trimmed}' already exists.`
+      ? t("addProject.nameExists", { name: trimmed })
       : null);
 
   /**
@@ -132,7 +137,7 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
     setRepoError(null);
 
     if (!isValidRepoPath(path)) {
-      setRepoError("Invalid repository path.");
+      setRepoError(t("repoPicker.invalidPath"));
       return;
     }
 
@@ -165,7 +170,7 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
       // record of where. `AddProject` inspects them on disk, so it gets those, not the URLs.
       resolved = await onCreate(trimmed, repos);
     } catch (err) {
-      setError(`Failed to create project: ${describeBridgeError(err)}`);
+      setError(t("addProject.createFailed", { error: describeBridgeError(err) }));
       setIsCreating(false);
       return;
     }
@@ -185,10 +190,7 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
       }
       setStep("agent");
     } catch (err) {
-      setError(
-        `Project created, but the setup agent could not start: ${describeBridgeError(err)}. ` +
-          "The project is registered and can be configured from its own row.",
-      );
+      setError(t("addProject.setupNotStarted", { error: describeBridgeError(err) }));
       // The project exists, so there is no going back to the input step - forward to the harness,
       // which will simply show it unconfigured.
       setStep("harness");
@@ -202,8 +204,8 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
   if (step === "input") {
     return (
       <SettingsSection
-        title="Add a Project"
-        hint="Name the project and point it at one or more Git repositories. Tendril then inspects them and configures the review harness."
+        title={t("addProject.title")}
+        hint={t("addProject.hint")}
         testId="add-project-card"
       >
         <form
@@ -214,14 +216,14 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
           }}
         >
           <div className="space-y-2">
-            <p className="text-xs font-medium text-foreground">Add one or more Git repositories</p>
+            <p className="text-xs font-medium text-foreground">{t("repoPicker.label")}</p>
             {repos.map((path, index) => (
               <div key={path} className="flex items-center gap-2 rounded-selector bg-muted/50 p-2">
                 <span className="min-w-0 flex-1 truncate font-mono text-xs text-primary">
                   {path}
                   {classifyRepoPath(path) !== "local" && (
                     <span className="ml-2 font-sans text-muted-foreground">
-                      will be cloned on Create Project
+                      {t("repoPicker.willClone")}
                     </span>
                   )}
                 </span>
@@ -229,7 +231,7 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
                   type="button"
                   variant="outline"
                   size="sm"
-                  aria-label={`Remove ${path}`}
+                  aria-label={t("repoPicker.remove", { path })}
                   onClick={() => setRepos((prev) => prev.filter((_, i) => i !== index))}
                 >
                   <X className="size-4" aria-hidden />
@@ -238,9 +240,9 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
             ))}
             <div className="flex flex-wrap items-center gap-2">
               <Input
-                aria-label="Repository URL or Local Path"
+                aria-label={t("repoPicker.inputLabel")}
                 value={repoDraft}
-                placeholder="Repository URL or Local Path"
+                placeholder={t("repoPicker.placeholder")}
                 className="min-w-60 flex-1"
                 onChange={(e) => setRepoDraft(e.target.value)}
               />
@@ -251,7 +253,7 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
                 onClick={addRepo}
               >
                 <Plus className="size-4" aria-hidden />
-                Add Repository
+                {t("repoPicker.add")}
               </Button>
             </div>
             {repoError && (
@@ -263,9 +265,9 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
 
           <TextField
             id="new-project-name"
-            label="Name"
+            label={t("addProject.nameLabel")}
             value={name}
-            placeholder="Project name..."
+            placeholder={t("addProject.namePlaceholder")}
             error={name === "" ? null : nameError}
             onChange={setName}
           />
@@ -277,7 +279,7 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
               way to start the run without holding the blade open and nothing about it is unfinished. */}
           <div className="flex flex-wrap items-center gap-2">
             <Button type="submit" disabled={!canContinue || isCreating}>
-              {isCreating ? "Creating..." : "Create Project"}
+              {isCreating ? t("addProject.creating") : t("actions.createProject")}
               <ArrowRight className="size-4" aria-hidden />
             </Button>
             <Button
@@ -287,7 +289,7 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
               onClick={() => void create(true)}
               data-testid="add-project-background"
             >
-              Create in Background
+              {t("addProject.createInBackground")}
             </Button>
           </div>
         </form>
@@ -298,8 +300,8 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
   if (step === "agent") {
     return (
       <SettingsSection
-        title="Setting up your project"
-        hint="Tendril is detecting your tech stack and configuring your agentic harness. This takes a few minutes."
+        title={t("agentRun.title")}
+        hint={t("addProject.agentHint")}
         testId="add-project-agent-step"
       >
         <div className="space-y-4">
@@ -333,7 +335,7 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
               disabled={!agentFinished}
               data-testid="add-project-agent-next"
             >
-              Next
+              {t("actions.next")}
               <ArrowRight className="size-4" aria-hidden />
             </Button>
             <Button
@@ -342,7 +344,7 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
               onClick={() => setStep("harness")}
               data-testid="add-project-agent-skip"
             >
-              Skip
+              {t("actions.skip")}
             </Button>
           </div>
         </div>
@@ -360,23 +362,21 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
 
   return (
     <SettingsSection
-      title="Review Harness"
-      hint="What the setup agent configured for your project. Everything here is editable from the project's own screen."
+      title={t("harness.title")}
+      hint={t("harness.description")}
       testId="add-project-harness-step"
     >
       <div className="space-y-6">
         <SaveError message={error} />
 
         <SubSection
-          title="Verifications"
-          hint="The steps run after each plan execution to validate changes."
+          title={t("harness.verifications.title")}
+          hint={t("harness.verifications.hint")}
           count={verifications.length}
           testId="add-project-verifications"
         >
           {verifications.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
-              No verifications were configured. Add them from the project&apos;s settings.
-            </p>
+            <p className="text-xs text-muted-foreground">{t("addProject.noVerifications")}</p>
           ) : (
             <ul className="space-y-1">
               {verifications.map((verification) => (
@@ -385,7 +385,11 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
                   className="flex items-center gap-2 rounded-selector bg-muted/50 px-2 py-1.5 text-xs"
                 >
                   <span className="font-medium text-foreground">{verification.name}</span>
-                  {verification.required && <span className="text-muted-foreground">required</span>}
+                  {verification.required && (
+                    <span className="text-muted-foreground">
+                      {t("addProject.verificationRequired")}
+                    </span>
+                  )}
                 </li>
               ))}
             </ul>
@@ -393,15 +397,13 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
         </SubSection>
 
         <SubSection
-          title="Review Actions"
-          hint="Commands that make it easy to start your project for manual testing."
+          title={t("harness.reviewActions.title")}
+          hint={t("harness.reviewActions.hint")}
           count={reviewActions.length}
           testId="add-project-review-actions"
         >
           {reviewActions.length === 0 ? (
-            <p className="text-xs text-muted-foreground">
-              No review actions were configured. Add them from the project&apos;s settings.
-            </p>
+            <p className="text-xs text-muted-foreground">{t("addProject.noReviewActions")}</p>
           ) : (
             <ul className="space-y-1">
               {reviewActions.map((action) => (
@@ -418,22 +420,21 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
 
         {verifications.length === 0 && reviewActions.length === 0 && (
           <Callout.Info data-testid="add-project-harness-empty">
-            The project is registered. If the setup agent is still running, its results appear here
-            once it finishes - reopen the project from the Projects row to see them.
+            {t("addProject.harnessEmpty")}
           </Callout.Info>
         )}
 
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" onClick={() => setStep("agent")}>
             <ArrowLeft className="size-4" aria-hidden />
-            Back
+            {t("actions.back")}
           </Button>
           <Button
             type="button"
             onClick={() => onFinish("created", trimmed)}
             data-testid="add-project-finish"
           >
-            Finish
+            {t("actions.finish")}
           </Button>
         </div>
       </div>

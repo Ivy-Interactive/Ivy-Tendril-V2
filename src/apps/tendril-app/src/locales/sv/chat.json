@@ -1,0 +1,258 @@
+{
+  "agentPicker": {
+    "tooltip": "Agent, modell och ansträngning",
+    "triggerLabel": "Agent: {{agent}}",
+    "menuLabel": "Agenter",
+    "optionsTooltip": "Modell och ansträngning",
+    "optionsLabel": "Alternativ för {{agent}}",
+    "settingsLabel": "Inställningar för {{agent}}",
+    "model": "Modell",
+    "effort": "Ansträngningsnivå",
+    "unlistedValue": "Standard",
+    "effortLevels": {
+      "default": "Standard",
+      "none": "Ingen",
+      "low": "Låg",
+      "medium": "Medel",
+      "high": "Hög",
+      "xhigh": "Extra hög",
+      "max": "Max"
+    }
+  },
+  "composerAttachment": {
+    "remove": "Ta bort {{name}}"
+  },
+  "lightbox": {
+    "fallbackTitle": "Förhandsvisning av bild",
+    "fallbackAlt": "Förhandsvisning av bilaga",
+    "closeLabel": "Stäng förhandsvisningen"
+  },
+  "newChatButtons": {
+    "label": "Ny chatt",
+    "tooltip": "Ny chatt",
+    "tooltip_terminal": "Ny chatt (terminal)",
+    "override_chat": "Ny session i chattvyn",
+    "override_terminal": "Ny terminalchatt"
+  },
+  "planChat": {
+    "headline": "Be Tendril att ändra vad som helst"
+  },
+  "systemEvent": {
+    "linked": {
+      "completed": "{{type}} <plan>{{plan}}</plan> slutfördes.",
+      "completed_plan": "Planen <plan>{{plan}}</plan> slutfördes.",
+      "completed_pullRequest": "Pull requesten <plan>{{plan}}</plan> slutfördes.",
+      "failed": "{{type}} <plan>{{plan}}</plan> misslyckades.",
+      "failed_plan": "Planen <plan>{{plan}}</plan> misslyckades.",
+      "failed_pullRequest": "Pull requesten <plan>{{plan}}</plan> misslyckades.",
+      "timeout": "{{type}} <plan>{{plan}}</plan> fick timeout.",
+      "timeout_plan": "Planen <plan>{{plan}}</plan> fick timeout.",
+      "timeout_pullRequest": "Pull requesten <plan>{{plan}}</plan> fick timeout.",
+      "cancelled": "{{type}} <plan>{{plan}}</plan> avbröts.",
+      "cancelled_plan": "Planen <plan>{{plan}}</plan> avbröts.",
+      "cancelled_pullRequest": "Pull requesten <plan>{{plan}}</plan> avbröts.",
+      "unknown": "{{status}}: {{type}} <plan>{{plan}}</plan>.",
+      "unknown_plan": "{{status}}: planen <plan>{{plan}}</plan>.",
+      "unknown_pullRequest": "{{status}}: pull requesten <plan>{{plan}}</plan>."
+    },
+    "quoted": {
+      "completed": "{{type}} ”{{subject}}” slutfördes",
+      "completed_plan": "Planen ”{{subject}}” slutfördes",
+      "completed_pullRequest": "Pull requesten ”{{subject}}” slutfördes",
+      "failed": "{{type}} ”{{subject}}” misslyckades",
+      "failed_plan": "Planen ”{{subject}}” misslyckades",
+      "failed_pullRequest": "Pull requesten ”{{subject}}” misslyckades",
+      "timeout": "{{type}} ”{{subject}}” fick timeout",
+      "timeout_plan": "Planen ”{{subject}}” fick timeout",
+      "timeout_pullRequest": "Pull requesten ”{{subject}}” fick timeout",
+      "cancelled": "{{type}} ”{{subject}}” avbröts",
+      "cancelled_plan": "Planen ”{{subject}}” avbröts",
+      "cancelled_pullRequest": "Pull requesten ”{{subject}}” avbröts",
+      "unknown": "{{status}}: {{type}} ”{{subject}}”",
+      "unknown_plan": "{{status}}: planen ”{{subject}}”",
+      "unknown_pullRequest": "{{status}}: pull requesten ”{{subject}}”"
+    },
+    "started": "Planen ”{{plan}}” startades",
+    "fullStop": "{{sentence}}.",
+    "openPlan": "Öppna plan"
+  },
+  "terminal": {
+    "untitled": "Agent",
+    "newChat": "Ny chatt",
+    "starting": "Startar {{agent}}…",
+    "startingUnknown": "Startar agenten…"
+  },
+  "jobsMenu": {
+    "triggerLabel": "Visa jobb som körs",
+    "triggerTitle": "Visa jobb",
+    "triggerTitleRunning_one": "{{count}} jobb körs",
+    "triggerTitleRunning_other": "{{count}} jobb körs",
+    "pillRunning_one": "{{count}} körs",
+    "pillRunning_other": "{{count}} körs",
+    "pillJobs_one": "{{count}} jobb",
+    "pillJobs_other": "{{count}} jobb",
+    "pillWithFailures_one": "{{jobs}} ({{count}} misslyckat)",
+    "pillWithFailures_other": "{{jobs}} ({{count}} misslyckade)",
+    "listLabel": "Jobb",
+    "title": "Jobb som körs ({{count}})",
+    "title_spawned": "Startade jobb ({{count}})",
+    "summaryRunning_one": "{{count}} körs",
+    "summaryRunning_other": "{{count}} körs",
+    "summaryCompleted_one": "{{count}} slutfört",
+    "summaryCompleted_other": "{{count}} slutförda",
+    "summaryFailed_one": "{{count}} misslyckat",
+    "summaryFailed_other": "{{count}} misslyckade",
+    "genericJobType": "Jobb",
+    "openPlan": "Öppna plan",
+    "review": "Be agenten granska resultaten"
+  },
+  "chatHeader": {
+    "titleInputLabel": "Chattnamn",
+    "optionsLabel": "Chattalternativ",
+    "optionsMenuLabel": "Chattalternativ",
+    "editName": "Redigera namn",
+    "deleteChat": "Ta bort chatt"
+  },
+  "messageRow": {
+    "openAttachment": "Öppna {{name}}",
+    "submittingAnswer": "Skickar svar…"
+  },
+  "view": {
+    "dropOverlay": "Släpp filer här för att bifoga dem till meddelandet",
+    "noActiveChat": "Ingen aktiv chatt",
+    "working": "Arbetar…",
+    "jumpToQuestion_down": "Gå till väntande fråga ↓",
+    "jumpToQuestion_up": "Gå till väntande fråga ↑",
+    "scrollToStreamingTail": "Rulla till slutet av det strömmande svaret",
+    "scrollToBottom": "Rulla längst ned"
+  },
+  "composer": {
+    "attach": "Bifoga fil",
+    "promptLabel": "Chattprompt",
+    "placeholder": "Fråga Tendril vad som helst…",
+    "voice": "Röstinmatning",
+    "voiceErrorDismiss": "Stäng felet för röstinmatning",
+    "nothingTranscribed": "Inget transkriberades. Försök igen.",
+    "clearAttachments": "Rensa alla",
+    "queue": "Lägg meddelandet i kö",
+    "stop": "Stoppa agenten",
+    "stopping": "Stoppar agenten",
+    "stopTooltip": "Stoppa agenten",
+    "stoppingTooltip": "Stoppar agenten…",
+    "send": "Skicka meddelande"
+  },
+  "emptyState": {
+    "headline": "Vad ska vi producera i dag?"
+  },
+  "greeting": {
+    "morning": "God morgon!",
+    "afternoon": "God eftermiddag!",
+    "evening": "God kväll!"
+  },
+  "deleteSession": {
+    "title": "Ta bort session",
+    "body": "Vill du ta bort ”{{title}}”? Det går inte att ångra.",
+    "bodyUntitled": "Vill du ta bort den här chattsessionen? Det går inte att ångra."
+  },
+  "jobsReview": {
+    "prompt": "Granska resultaten av jobben som den här konversationen startade och berätta vad som ändrades:\n{{jobs}}"
+  },
+  "search": {
+    "title": "Sök i chattar",
+    "inputLabel": "Sök i chattar",
+    "placeholder": "Sök i chattar",
+    "empty": "Inga chattar hittades."
+  },
+  "queue": {
+    "title": "Köade meddelanden",
+    "hint": "Skickas när agenten är klar",
+    "collapse": "Dölj köade meddelanden",
+    "expand": "Visa köade meddelanden",
+    "editInputLabel": "Redigera köad prompt",
+    "save": "Spara köad prompt",
+    "cancelEdit": "Avbryt redigering",
+    "attachments_one": "{{count}} bilaga",
+    "attachments_other": "{{count}} bilagor",
+    "sendNow": "Skicka nu",
+    "edit": "Redigera köad prompt",
+    "remove": "Ta bort från kön"
+  },
+  "samplePrompts": {
+    "chat": {
+      "review": {
+        "label_one": "Granska {{count}} väntande plan",
+        "label_other": "Granska de {{count}} väntande planerna",
+        "prompt_one": "{{count}} plan väntar på granskning: {{plans}}. Sammanfatta vad den levererar och säg om jag ska slå samman den.",
+        "prompt_other": "{{count}} planer väntar på granskning: {{plans}}. Sammanfatta vad var och en levererar och säg vilken jag ska slå samman först."
+      },
+      "failed": {
+        "label": "Varför misslyckades #{{id}}?",
+        "prompt": "Planen #{{id}} {{title}} misslyckades. Läs dess loggar och verifieringsrapporter och förklara vad som gick fel."
+      },
+      "blocked": {
+        "label": "Vad blockerar #{{id}}?",
+        "prompt": "Planen #{{id}} {{title}} är blockerad. Lista planerna den beror på och vad var och en fortfarande behöver."
+      },
+      "jobs": {
+        "label": "Vad gör mina jobb?",
+        "prompt_one": "{{count}} jobb körs. Sammanfatta vad det arbetar med.",
+        "prompt_other": "{{count}} jobb körs. Sammanfatta vad vart och ett arbetar med."
+      },
+      "addProject": {
+        "label": "Lägg till ett nytt projekt",
+        "prompt": "Lägg till ett nytt projekt i min Tendril"
+      },
+      "editVerifications": {
+        "label": "Redigera verifieringar",
+        "prompt": "Redigera verifieringarna för mina projekt"
+      },
+      "teamVault": {
+        "label": "Skapa ett teamvalv",
+        "prompt": "Skapa ett delat teamvalv"
+      },
+      "nextWork": {
+        "label": "Vad ska jag arbeta med härnäst?",
+        "prompt": "Gå igenom mina planer i Utkast i alla projekt och rekommendera vilka två jag ska exekvera härnäst, med motivering."
+      },
+      "shipped": {
+        "label": "Vad levererades den här veckan?",
+        "prompt": "Sammanfatta planerna som nådde tillståndet {{state}} de senaste sju dagarna, grupperade per projekt."
+      }
+    },
+    "plan": {
+      "failedVerification": {
+        "label": "Varför misslyckades {{name}}?",
+        "prompt": "Verifieringen {{name}} misslyckades för den här planen. Läs rapporten i {{report}} och förklara felet och hur det kan åtgärdas."
+      },
+      "prFeedback": {
+        "label": "Sammanfatta återkopplingen på PR:en",
+        "prompt": "Läs granskningskommentarerna på {{pr}} och lista de ändringar som efterfrågas."
+      },
+      "blocked": {
+        "label": "Vad blockerar den här?",
+        "prompt": "Planen blockeras av {{dependencies}}. Berätta vad varje beroende fortfarande behöver."
+      },
+      "tightenScope": {
+        "label": "Skärp omfattningen",
+        "prompt": "Läs den senaste revisionen av planen och peka ut allt som ligger utanför omfattningen eller är för vagt specificerat."
+      },
+      "explainSolution": {
+        "label": "Förklara lösningen",
+        "prompt": "Förklara avsnittet {{section}} i planen med enkla ord och lista alla filer som den kommer att röra."
+      },
+      "risks": {
+        "label": "Vad kan gå fel?",
+        "prompt": "Vilka är de mest riskfyllda delarna av planen, och vad bör jag kontrollera vid granskningen?"
+      }
+    }
+  },
+  "sidebar": {
+    "title": "Chattar",
+    "searchLabel": "Sök i chattar",
+    "newLabel": "Ny chatt",
+    "untitled": "Ny chatt"
+  },
+  "attachments": {
+    "pickerTitle": "Välj filer att bifoga"
+  }
+}

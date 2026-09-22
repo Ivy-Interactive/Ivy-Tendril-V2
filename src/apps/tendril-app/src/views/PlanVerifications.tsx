@@ -11,6 +11,25 @@ import {
 } from "../types/api";
 import { VERIFICATION_BADGE_VARIANT } from "../utils/verificationStatus";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { useTranslation, type TFunction } from "../i18n";
+
+/** Each verification outcome's label key. The outcome itself stays the raw value in every comparison. */
+const VERIFICATION_STATUS_KEYS = {
+  Pass: "verificationStatus.pass",
+  Fail: "verificationStatus.fail",
+  Pending: "verificationStatus.pending",
+  Skipped: "verificationStatus.skipped",
+} as const satisfies Record<VerificationStatus, string>;
+
+/**
+ * A verification outcome as the operator reads it. English is the raw value, which is what every
+ * surface showed before; an outcome this build does not know is shown as it is.
+ */
+export function verificationStatusLabel(t: TFunction<"plans">, status: string): string {
+  return Object.hasOwn(VERIFICATION_STATUS_KEYS, status)
+    ? t(VERIFICATION_STATUS_KEYS[status as VerificationStatus])
+    : status;
+}
 
 interface PlanVerificationsProps {
   planId: string;
@@ -76,6 +95,7 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
   onVerificationChange,
   onOpenReport,
 }) => {
+  const { t } = useTranslation("plans");
   const [localVerifications, setLocalVerifications] = useState<PlanVerification[]>(verifications);
   const [reports, setReports] = useState<Record<string, VerificationReport>>({});
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -185,14 +205,14 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
       onVerificationChange?.(name, newStatus);
     } catch (err) {
       setLocalVerifications(previous);
-      setError(`Failed to update verification ${name}: ${describeBridgeError(err)}`);
+      setError(t("verifications.updateFailed", { name, error: describeBridgeError(err) }));
     }
   };
 
   if (verificationCount === 0) {
     return (
       <p data-testid="no-verifications" className="text-sm text-muted-foreground">
-        No verifications
+        {t("verifications.empty")}
       </p>
     );
   }
@@ -242,7 +262,9 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
                         }
                       }
                     }}
-                    title={report ? `View ${v.name} report` : undefined}
+                    title={
+                      report ? t("verifications.viewReportTooltip", { name: v.name }) : undefined
+                    }
                   >
                     {v.name}
                   </span>
@@ -262,9 +284,11 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
                         }
                       }
                     }}
-                    title={report ? `View ${v.name} report` : undefined}
+                    title={
+                      report ? t("verifications.viewReportTooltip", { name: v.name }) : undefined
+                    }
                   >
-                    {terminal}
+                    {verificationStatusLabel(t, terminal)}
                   </Badge>
                 )}
                 {report?.date && (
@@ -287,10 +311,12 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
                   aria-expanded={isOpen}
                   className="h-auto bg-muted px-2.5 py-1 text-xs text-muted-foreground"
                 >
-                  {isOpen ? "Hide report" : "View report"}
+                  {isOpen ? t("verifications.hideReport") : t("verifications.viewReport")}
                 </Button>
               ) : (
-                <span className="text-xs text-muted-foreground/70">No report yet</span>
+                <span className="text-xs text-muted-foreground/70">
+                  {t("verifications.noReport")}
+                </span>
               )}
             </div>
 

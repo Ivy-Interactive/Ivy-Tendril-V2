@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Button } from "@ivy-interactive/components/ui";
 import { bridge } from "../api/bridge";
+import { useTranslation } from "../i18n";
 import { describeBridgeError } from "../types/api";
 
 const EMAIL_PATTERN = /^[^@\s]+@[^@\s]+\.[^@\s]+$/i;
@@ -18,6 +19,7 @@ export interface NewsletterSignupProps {
 type Status = "idle" | "sending" | "subscribed";
 
 export function NewsletterSignup({ className }: NewsletterSignupProps) {
+  const { t } = useTranslation("settings");
   const [email, setEmail] = useState("");
   const [status, setStatus] = useState<Status>("idle");
   const [error, setError] = useState<string | null>(null);
@@ -48,12 +50,12 @@ export function NewsletterSignup({ className }: NewsletterSignupProps) {
     <div data-testid="newsletter-signup" className={className}>
       {status === "subscribed" ? (
         <p data-testid="newsletter-success" className="text-sm font-medium text-success">
-          Subscribed!
+          {t("newsletter.subscribed")}
         </p>
       ) : (
         <form onSubmit={handleSubmit} className="space-y-2">
           <label htmlFor="newsletter-email" className="sr-only">
-            Email address
+            {t("newsletter.emailLabel")}
           </label>
           <div className="flex gap-2">
             <input
@@ -67,7 +69,7 @@ export function NewsletterSignup({ className }: NewsletterSignupProps) {
               className="w-full rounded-field border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
             />
             <Button type="submit" data-testid="newsletter-submit" disabled={!canSubmit}>
-              {status === "sending" ? "Subscribing…" : "Subscribe"}
+              {status === "sending" ? t("newsletter.subscribing") : t("newsletter.subscribe")}
             </Button>
           </div>
           {error && (

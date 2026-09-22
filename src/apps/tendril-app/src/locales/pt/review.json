@@ -1,0 +1,212 @@
+{
+  "sidebar": {
+    "title": "Revisão",
+    "badges": {
+      "verified": "Verificado",
+      "unverified": "Não Verificado"
+    }
+  },
+  "shortcuts": {
+    "previousPlan": "Plano anterior",
+    "nextPlan": "Próximo plano"
+  },
+  "empty": {
+    "title": "Nenhum plano para revisar",
+    "description": "Os planos concluídos aparecerão aqui para revisão"
+  },
+  "workspace": {
+    "meta_one": "{{index}}/{{total}} plano",
+    "meta_many": "{{index}}/{{total}} planos",
+    "meta_other": "{{index}}/{{total}} planos",
+    "sourceLabel": {
+      "pr": "PR",
+      "issue": "Issue"
+    }
+  },
+  "actions": {
+    "requestChanges": "Solicitar Alterações",
+    "resetToDraft": "Redefinir para Rascunho",
+    "deletePlan": "Excluir Plano",
+    "openPlanPage": "Abrir Especificação Completa e Diff",
+    "partialDelivery": "Aceitar Entrega Parcial"
+  },
+  "primary": {
+    "updatePr": "Atualizar PR",
+    "createPr": "Criar PR",
+    "deletePlan": "Excluir Plano",
+    "completePlan": "Concluir Plano",
+    "completing": "Concluindo…",
+    "pushing": "Enviando…",
+    "unavailable": "{{action}} indisponível: {{reason}}"
+  },
+  "completionBlocked": {
+    "title": "Nenhuma Alteração Necessária",
+    "body": "A validação antes da execução concluiu que nenhuma alteração é necessária, pois a issue ou solicitação já está resolvida. Você pode excluir este plano ou movê-lo para Ignorados ou para o Icebox."
+  },
+  "errors": {
+    "markRecommendation": "Não foi possível marcar \"{{title}}\" como {{state}}: {{error}}",
+    "nothingSelected": "Selecione pelo menos uma recomendação para implementar.",
+    "noLongerPending": "As recomendações selecionadas não estão mais pendentes. Atualize e tente novamente.",
+    "implementFailed": "Não foi possível implementar as recomendações selecionadas: {{error}}",
+    "reviewActionFailed": "A ação de revisão \"{{name}}\" falhou: {{error}}",
+    "completeFailed": "Não foi possível concluir o plano {{planId}}: {{error}}",
+    "updatePrFailed": "Não foi possível atualizar o PR do plano {{planId}}: {{error}}"
+  },
+  "recommendationState": {
+    "pending": "pendente",
+    "accepted": "aceita",
+    "acceptedWithNotes": "aceita com notas",
+    "declined": "recusada"
+  },
+  "tabs": {
+    "summary": "Resumo",
+    "plan": "Plano",
+    "details": "Detalhes",
+    "git": "Git",
+    "changes": "Alterações",
+    "artifacts": "Artefatos",
+    "recommendations": "Recomendações"
+  },
+  "verifications": {
+    "none": "Nenhuma verificação",
+    "viewReport": "Ver relatório de {{name}}"
+  },
+  "verificationStatus": {
+    "pending": "Pendente",
+    "pass": "Aprovado",
+    "fail": "Falha",
+    "skipped": "Ignorado"
+  },
+  "summary": {
+    "loading": "Carregando resumo…",
+    "fallback": {
+      "heading": "Resumo",
+      "body": "Nenhum resumo foi encontrado para este plano. Confira as verificações para mais informações.",
+      "retry": "Use `{{resetToDraft}}` ou `{{requestChanges}}` para tentar o plano novamente."
+    }
+  },
+  "plan": {
+    "noSpecification": "Nenhuma especificação de plano disponível."
+  },
+  "details": {
+    "copyToClipboard": "Copiar para a área de transferência",
+    "fields": {
+      "planId": "ID do Plano",
+      "folder": "Pasta",
+      "initialPrompt": "Prompt Inicial",
+      "revision": "Revisão",
+      "profile": "Perfil",
+      "relatedPlans": "Planos Relacionados",
+      "dependsOn": "Depende de",
+      "issue": "Issue",
+      "created": "Criado em",
+      "level": "Nível",
+      "project": "Projeto",
+      "state": "Estado"
+    },
+    "repositories": {
+      "heading": "Repositórios",
+      "empty": "Nenhum repositório especificado"
+    },
+    "commits": {
+      "heading": "Commits",
+      "empty": "Nenhum commit ainda"
+    },
+    "verifications": {
+      "heading": "Verificações ({{n}})",
+      "empty": "Nenhuma verificação"
+    }
+  },
+  "git": {
+    "loading": "Carregando o estado do git…"
+  },
+  "changes": {
+    "loading": "Carregando alterações…",
+    "empty": "Nenhuma alteração de arquivo registrada para este plano."
+  },
+  "artifacts": {
+    "heading": "Artefatos do Plano",
+    "description": "Saídas, arquivos de exemplo e capturas de tela obtidos durante a execução.",
+    "loading": "Carregando artefatos…",
+    "empty": "Nenhum artefato encontrado para este plano.",
+    "screenshots": "Capturas de Tela ({{n}})",
+    "otherFiles": "Outros Arquivos de Artefatos ({{n}})",
+    "copyPath": "Copiar caminho",
+    "open": "Abrir",
+    "openTitle": "Abrir em um painel lateral"
+  },
+  "recommendations": {
+    "empty": "Nenhuma recomendação.",
+    "implement": "Implementar",
+    "starting": "Iniciando…",
+    "implementHint": "Aceita as recomendações marcadas e tenta o plano novamente usando-as como solicitação de alteração.",
+    "select": "Selecionar {{title}}"
+  },
+  "noteDialog": {
+    "submit": "Enviar",
+    "accept": {
+      "title": "Aceitar Recomendação",
+      "ariaLabel": "Aceitar Recomendação",
+      "noteLabel": "Nota do Operador (opcional):",
+      "noteAriaLabel": "Nota opcional",
+      "placeholder": "Insira notas opcionais..."
+    },
+    "decline": {
+      "title": "Recusar Recomendação",
+      "ariaLabel": "Recusar Recomendação",
+      "noteLabel": "Motivo da Recusa:",
+      "noteAriaLabel": "Motivo da recusa",
+      "placeholder": "Informe o motivo da recusa..."
+    }
+  },
+  "actionsBar": {
+    "tooltip": {
+      "barDisabled": "Desativado: {{reason}}",
+      "barDisabledDefault": "Desativado: as ações de revisão estão indisponíveis no momento",
+      "conditionNotMet": "Desativado: condição não atendida",
+      "conditionNotMetWithCondition": "Desativado: condição não atendida ({{condition}})",
+      "runCommand": "Executar: {{command}}",
+      "runCommandWithPorts": "Executar: {{command}} (portas: {{ports}})",
+      "runAction": "Executar {{name}}",
+      "runActionWithPorts": "Executar {{name}} (portas: {{ports}})",
+      "port": "{{name}}: {{port}}",
+      "conditionError": "Desativado: não foi possível avaliar a condição: {{reason}}",
+      "conditionErrorWithCondition": "Desativado: não foi possível avaliar a condição ({{condition}}): {{reason}}",
+      "starting": "Iniciando {{name}}…",
+      "checking": "Verificando a condição: {{condition}}"
+    }
+  },
+  "actionView": {
+    "sendComments_one": "Enviar {{count}} comentário ao agente como solicitação de alteração",
+    "sendComments_many": "Enviar {{count}} comentários ao agente como solicitação de alteração",
+    "sendComments_other": "Enviar {{count}} comentários ao agente como solicitação de alteração",
+    "starting": "Iniciando {{name}}…"
+  },
+  "recommendationsPage": {
+    "sidebarTitle": "Recomendações",
+    "empty": {
+      "title": "Nenhuma recomendação",
+      "description": "As recomendações de planos concluídos aparecerão aqui"
+    },
+    "position_one": "<highlight>{{index}}/{{total}}</highlight> recomendação",
+    "position_many": "<highlight>{{index}}/{{total}}</highlight> recomendações",
+    "position_other": "<highlight>{{index}}/{{total}}</highlight> recomendações",
+    "decline": "Recusar",
+    "accept": "Aceitar",
+    "accepting": "Aceitando...",
+    "acceptWithNotes": "Aceitar com Notas",
+    "createIssue": "Criar Issue",
+    "viewPlan": "Ver Plano",
+    "refresh": "Atualizar",
+    "errors": {
+      "load": "Falha ao carregar as recomendações: {{error}}",
+      "update": "Falha ao atualizar a recomendação \"{{title}}\": {{error}}",
+      "jobNotStarted": "Recomendação \"{{title}}\" marcada como aceita, mas a tarefa {{jobType}} não foi iniciada: {{error}}"
+    }
+  },
+  "impact": {
+    "small": "Baixo",
+    "medium": "Médio",
+    "high": "Alto"
+  }
+}

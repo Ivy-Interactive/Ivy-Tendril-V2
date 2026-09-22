@@ -1,3 +1,5 @@
+import { i18n } from "@/i18n/uiVault";
+
 /**
  * Readiness gating for the vault actions — the pure port of the original app's
  * `UsePreflightCheck` hook: check what an action needs *before* offering it, and say why when it is
@@ -24,12 +26,25 @@ export interface VaultGate {
 /**
  * The gate reasons, verbatim: they are the tooltip a user reads on a control that will not click, so
  * they are asserted on rather than reworded per call site.
+ *
+ * Each one is translated when it is read, never at import, so a reason always comes out in the
+ * language current at that moment: `computeVaultGate` runs on every render of the view that shows it.
  */
-export const VAULT_GATE_REASONS = {
-  github: "Sign in to GitHub to create or connect a vault",
-  vault: "Connect a vault first",
-  busy: "Action already in progress",
-} as const;
+export const VAULT_GATE_REASONS: {
+  readonly github: string;
+  readonly vault: string;
+  readonly busy: string;
+} = {
+  get github() {
+    return i18n.t("uiVault:gate.github");
+  },
+  get vault() {
+    return i18n.t("uiVault:gate.vault");
+  },
+  get busy() {
+    return i18n.t("uiVault:gate.busy");
+  },
+};
 
 /**
  * Requirements are checked before business: a missing prerequisite outranks "already in progress",

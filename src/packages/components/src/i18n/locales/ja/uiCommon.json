@@ -1,0 +1,248 @@
+{
+  "blade": {
+    "back": "戻る",
+    "backTo": "{{title}} に戻る",
+    "close": "{{title}} を閉じる",
+    "refresh": "{{title}} を更新"
+  },
+  "bladeContainer": {
+    "ariaLabel": "ブレード"
+  },
+  "calendar": {
+    "dayButton": {
+      "selected": "{{date}}、選択済み",
+      "today": "今日、{{date}}",
+      "todaySelected": "今日、{{date}}、選択済み"
+    },
+    "gridcell": {
+      "today": "今日、{{date}}"
+    },
+    "monthDropdown": "月を選択",
+    "monthPlaceholder": "月",
+    "navLabel": "{{label}} のナビゲーション",
+    "nextMonth": "次の月へ",
+    "previousMonth": "前の月へ",
+    "weekNumber": "第 {{week}} 週",
+    "weekNumberHeader": "週番号",
+    "yearDropdown": "年を選択",
+    "yearPlaceholder": "年"
+  },
+  "callout": {
+    "dismiss": "閉じる"
+  },
+  "charts": {
+    "axis": {
+      "billions": "{{value}}B",
+      "millions": "{{value}}M",
+      "thousands": "{{value}}K"
+    },
+    "radarDefaultSeries": "データ",
+    "scatterLineSeries": "{{name}} の線"
+  },
+  "chatMessageList": {
+    "scrollToBottom": "一番下までスクロール"
+  },
+  "clipboard": {
+    "copyFailed": "クリップボードにコピーできませんでした。"
+  },
+  "copyToClipboard": {
+    "ariaLabel": "クリップボードにコピー",
+    "copied": "コピーしました"
+  },
+  "dataTable": {
+    "columnHeader": {
+      "clearSort": "{{column}} の並べ替えを解除",
+      "reorder": "列を並べ替え",
+      "reorderAt": "列を並べ替え（{{total}} 列中 {{position}} 番目）",
+      "resize": "列のサイズを変更",
+      "sortAscending": "{{column}} で昇順に並べ替え",
+      "sortDescending": "{{column}} で降順に並べ替え"
+    },
+    "columnOptions": "列のオプション",
+    "editCell": "{{column}} を編集",
+    "empty": "結果がありません。",
+    "filter": {
+      "clear": "クリア",
+      "clearAriaLabel": "フィルターをクリア",
+      "errors": {
+        "afterIs": "「{{keyword}}」の後には「{{blank}}」「{{notBlank}}」「{{null}}」「{{notNull}}」のいずれかが必要です。",
+        "afterNot": "「{{keyword}}」の後には「{{contains}}」「{{in}}」「{{equals}}」のいずれかが必要です。",
+        "expectedColumn": "位置 {{position}} に列名が必要ですが、「{{text}}」が見つかりました。",
+        "expectedValue": "位置 {{position}} に引用符で囲んだ値が必要です（例：{{example}}）。「{{text}}」が見つかりました。",
+        "expectedWord": "「{{after}}」の後には「{{word}}」が必要です。",
+        "inNeedsList": "「{{keyword}}」にはリストを指定します：{{example}}。",
+        "incomplete": "式が完結する前に終わっています。",
+        "needsComparison": "「{{column}}」には比較が必要です（例：{{equalsExample}}、{{containsExample}}）。",
+        "noFilterableColumn": "このテーブルにはフィルターできる列がありません。",
+        "unclosedBracket": "位置 {{position}} の「[」が閉じられていません。",
+        "unclosedGroup": "「(」が閉じられていません。各グループには対応する「)」が必要です。",
+        "unclosedList": "「{{keyword}}」リストの「(」が閉じられていません。",
+        "unclosedQuote": "位置 {{position}} の引用符が閉じられていません。",
+        "unexpectedCharacter": "位置 {{position}} に予期しない「{{text}}」があります。",
+        "unexpectedSymbol": "位置 {{position}} に予期しない「{{text}}」があります。",
+        "unexpectedToken": "位置 {{position}} に予期しない「{{text}}」があります。条件は {{and}} または {{or}} で結合してください。",
+        "unknownColumn": "不明な列「{{text}}」です。フィルターできる列：{{names}}。",
+        "unknownComparison": "位置 {{position}} の比較「{{text}}」は不明です。{{operators}} または {{last}} を使用してください。"
+      },
+      "filterableColumns": "フィルターできる列",
+      "help": "1 つの式を Enter で確定します。条件は <code>{{and}}</code> / <code>{{or}}</code> で結合し、括弧でグループ化します。",
+      "input": "フィルター式",
+      "noFilterableColumns": "フィルターできる列がありません",
+      "syntax": "フィルター構文",
+      "syntaxTitle": "フィルターできる項目と方法",
+      "toggle": "フィルター",
+      "toggleTitle": "テーブルのデータをフィルター"
+    },
+    "loadingMore": "さらに読み込み中…",
+    "pagination": {
+      "ariaLabel": "テーブルのページ移動",
+      "firstPage": "最初のページへ",
+      "lastPage": "最後のページへ",
+      "nextPage": "次のページへ",
+      "noRows": "行がありません",
+      "page": "{{page}} / {{pageCount}} ページ",
+      "previousPage": "前のページへ",
+      "rowsPerPage": "1 ページあたりの行数",
+      "showing": "{{total}} 件中 {{start}}–{{end}} 件を表示"
+    },
+    "rowActions": "行の操作",
+    "selectAllRows": "すべての行を選択",
+    "selectRow": "行 {{id}} を選択"
+  },
+  "dialog": {
+    "close": "閉じる"
+  },
+  "diagram": {
+    "invalidGraphviz": "Graphviz DOT の構文が無効です",
+    "invalidMermaid": "Mermaid 図の構文が無効です",
+    "loading": "図を読み込み中…",
+    "loadingGraphviz": "Graphviz を読み込み中…",
+    "loadingMermaid": "Mermaid を読み込み中…",
+    "renderFailed": "図をレンダリングできませんでした"
+  },
+  "errorDisplay": {
+    "copyDetails": "詳細をコピー",
+    "message": "メッセージ",
+    "stackTrace": "スタックトレース",
+    "type": "タイプ"
+  },
+  "errorSheet": {
+    "description": "アプリケーションでエラーが発生しました。詳細は以下のとおりです。",
+    "title": "問題が発生しました"
+  },
+  "format": {
+    "bytes": {
+      "b": "{{value}} B",
+      "gb": "{{value}} GB",
+      "kb": "{{value}} KB",
+      "mb": "{{value}} MB",
+      "pb": "{{value}} PB",
+      "tb": "{{value}} TB"
+    },
+    "duration": {
+      "hoursMinutes": "{{hours}} 時間 {{minutes}} 分",
+      "minutesSeconds": "{{minutes}} 分 {{seconds}} 秒",
+      "seconds": "{{seconds}} 秒"
+    },
+    "tokenCount": {
+      "millions": "{{value}}M",
+      "thousands": "{{value}}k"
+    },
+    "tokens": {
+      "millions": "{{value}}M",
+      "thousands": "{{value}}K"
+    }
+  },
+  "imageOverlay": {
+    "ariaLabel": "画像オーバーレイ",
+    "close": "閉じる",
+    "next": "次の画像",
+    "position": "{{current}} / {{total}}",
+    "previous": "前の画像"
+  },
+  "invalidIcon": {
+    "ariaLabel": "入力エラー"
+  },
+  "jsonRenderer": {
+    "invalid": "無効な JSON 文字列です"
+  },
+  "loading": {
+    "ariaLabel": "読み込み中",
+    "text": "読み込み中…"
+  },
+  "madeWithIvy": {
+    "label": "MADE WITH"
+  },
+  "markdown": {
+    "alerts": {
+      "caution": "注意",
+      "important": "重要",
+      "note": "メモ",
+      "tip": "ヒント",
+      "warning": "警告"
+    },
+    "footnotes": {
+      "backToReference": "参照 {{ref}} に戻る",
+      "backToReferenceRepeat": "参照 {{ref}}-{{reref}} に戻る",
+      "label": "脚注"
+    },
+    "taskCompleted": "完了したタスク",
+    "taskPending": "未完了のタスク"
+  },
+  "multiselect": {
+    "bulkSelection": "一括選択",
+    "clearAll": "すべてクリア",
+    "empty": "選択肢がありません",
+    "placeholder": "オプションを選択…",
+    "remove": "削除",
+    "selectAll": "すべて選択",
+    "toggleDropdown": "ドロップダウンを切り替え"
+  },
+  "pagination": {
+    "ariaLabel": "ページ移動",
+    "morePages": "その他のページ",
+    "next": "次へ",
+    "nextAriaLabel": "次のページへ",
+    "previous": "前へ",
+    "previousAriaLabel": "前のページへ"
+  },
+  "progress": {
+    "ariaLabel": "進捗"
+  },
+  "sheet": {
+    "close": "閉じる"
+  },
+  "sidebar": {
+    "toggle": "サイドバーを切り替え"
+  },
+  "slider": {
+    "ariaLabel": "スライダー"
+  },
+  "stackedProgress": {
+    "indeterminate": "不確定",
+    "segmentFallback": "セグメント {{number}}",
+    "select": "{{label}} を選択",
+    "tooltip": "{{label}}：{{value}}",
+    "total": "合計：{{total}}",
+    "valueText": "{{label}}：{{total}} 中 {{value}}"
+  },
+  "starRating": {
+    "rate_other": "{{count}} つ星で評価"
+  },
+  "statusLine": {
+    "estimatedTooltip": "これまでのストリームからの推定値",
+    "tokensAbbreviated": "{{value}} トークン",
+    "tokensAbbreviatedEstimated": "約 {{value}} トークン",
+    "tokensEstimated_other": "約 {{value}} トークン",
+    "tokens_other": "{{value}} トークン"
+  },
+  "toolbar": {
+    "moreActions": "その他の操作"
+  },
+  "tuiBadge": {
+    "remove": "削除"
+  },
+  "xmlRenderer": {
+    "invalid": "無効な XML 文字列です"
+  }
+}

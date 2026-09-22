@@ -1,4 +1,6 @@
 import { formatCost, formatTokens, formatTimeSpan, NO_VALUE } from "@ivy-interactive/components";
+import { formatDateTime } from "@ivy-interactive/components/i18n";
+import { i18n, type TFunction } from "../../i18n";
 import type { Job } from "../../types/api";
 
 /**
@@ -13,6 +15,14 @@ import type { Job } from "../../types/api";
  * imports from it.
  */
 export { formatTimeSpan, formatTokens, NO_VALUE };
+
+/**
+ * The `jobs` namespace's `t` for the helpers in this folder, which run outside React. It translates
+ * into the language current at each call, so it is safe to hold at module level; a component that
+ * memoizes one of these helpers' output passes its own `t` instead, so the memo recomputes when the
+ * language changes.
+ */
+export const jobsT: TFunction<"jobs"> = i18n.getFixedT(null, "jobs");
 
 /** Ceiling on the Prompt cell, from `JobsApp.Helpers.cs` `PromptDisplayMaxLength`. */
 const PROMPT_DISPLAY_MAX_LENGTH = 500;
@@ -32,10 +42,15 @@ export const NO_TIME = "-";
  * `"Estimated"` never fires and silently drops the tilde. `JobSessionView` had exactly that bug and
  * is fixed alongside this.
  */
-export function formatJobCost(job: Pick<Job, "cost" | "costSource">): string | null {
+export function formatJobCost(
+  job: Pick<Job, "cost" | "costSource">,
+  t: TFunction<"jobs"> = jobsT,
+): string | null {
   if (job.cost === undefined || job.cost === null || !Number.isFinite(job.cost)) return null;
   const formatted = formatCost(job.cost);
-  return job.costSource?.toLowerCase() === "estimated" ? `~${formatted}` : formatted;
+  return job.costSource?.toLowerCase() === "estimated"
+    ? t("cost.estimated", { cost: formatted })
+    : formatted;
 }
 
 /** `JobsApp.Helpers.cs` `CleanPromptText`: newlines become spaces and runs of space collapse. */
@@ -65,19 +80,23 @@ export function truncatePrompt(text: string | undefined): string {
  * leaves that cell empty. `JobSessionView` does give Pending a line, because the sheet it replaced
  * (`OutputSheet.cs:42-47`) has one; the table is the surface being ported here, so it does not.
  */
-export function jobStatusMessage(job: Pick<Job, "status" | "statusMessage">): string {
+export function jobStatusMessage(
+  job: Pick<Job, "status" | "statusMessage">,
+  t: TFunction<"jobs"> = jobsT,
+): string {
+  // The daemon's own message is shown as it came: it is the daemon's text, in the daemon's language.
   if (job.statusMessage) return job.statusMessage;
   switch (job.status) {
     case "Blocked":
-      return "Waiting for dependency plans to complete.";
+      return t("statusMessage.blocked");
     case "Failed":
-      return "Job encountered an error during execution";
+      return t("statusMessage.failed");
     case "Timeout":
-      return "Job exceeded the configured timeout";
+      return t("statusMessage.timeout");
     case "Queued":
-      return "Waiting for a job slot to become available";
+      return t("statusMessage.queued");
     case "Stopped":
-      return "Job was manually stopped";
+      return t("statusMessage.stopped");
     default:
       return "";
   }
@@ -96,6 +115,9 @@ export type AgentOutputState = "running" | "done" | "idle";
 /**
  * V1's label when a running job has produced no output yet — `FormatAgentOutput`'s own fallback for a
  * null `LastOutputAt`, which is the state a job is in between its launch and its first line.
+ *
+ * The English text, which is what the tests hold the cell to. What the cell shows is
+ * `jobs:agentOutput.starting`, in the current language; this constant is never rendered.
  */
 export const AGENT_OUTPUT_STARTING = "Starting...";
 
@@ -111,22 +133,42 @@ export const AGENT_OUTPUT_STARTING = "Starting...";
  * five seconds short of the true silence. That is the whole reason the column is affordable: the
  * alternative is one SQLite write per output line.
  */
-export function agentOutputLabel(job: Pick<Job, "status" | "lastOutputAt">, now: number): string {
+export function agentOutputLabel(
+  job: Pick<Job, "status" | "lastOutputAt">,
+  now: number,
+  t: TFunction<"jobs"> = jobsT,
+): string {
   if (job.status === "Running") {
     const lastOutput = job.lastOutputAt ? Date.parse(job.lastOutputAt) : NaN;
-    if (Number.isNaN(lastOutput)) return AGENT_OUTPUT_STARTING;
+    if (Number.isNaN(lastOutput)) return t("agentOutput.starting");
     return formatTimeSpan((now - lastOutput) / 1000);
   }
-  if (job.status === "Completed") return "Done";
+  if (job.status === "Completed") return t("agentOutput.done");
   return NO_TIME;
 }
 
-/** `JobsApp.Helpers.cs` `TimestampFormat`: `"MM-dd HH:mm"`, local time. */
+/**
+ * The month, day and 24-hour time, two digits each, in the order and with the separators of the
+ * current language: "03/04, 15:04" in English, "04.03., 15:04" in German, "03/04 15:04" in Japanese.
+ */
+const MONTH_DAY_TIME: Intl.DateTimeFormatOptions = {
+  month: "2-digit",
+  day: "2-digit",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+};
+
+/**
+ * `JobsApp.Helpers.cs` `TimestampFormat` (`"MM-dd HH:mm"`, local time), in the current language's
+ * own field order and separators. The Timestamp cell and the job session header both show it.
+ *
+ * No `Intl` option reproduces V1's `MM-dd HH:mm` exactly, so English now reads "03/04, 15:04" (the
+ * guide's rule: no English-only formatting path). Most other languages write the day first, where a
+ * fixed "03-04" would read as the 3rd of April.
+ */
 export function formatMonthDayTime(epochMs: number): string {
   const date = new Date(epochMs);
   if (Number.isNaN(date.getTime())) return NO_TIME;
-  const pad = (value: number) => String(value).padStart(2, "0");
-  return `${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(
-    date.getMinutes(),
-  )}`;
+  return formatDateTime(date, MONTH_DAY_TIME);
 }

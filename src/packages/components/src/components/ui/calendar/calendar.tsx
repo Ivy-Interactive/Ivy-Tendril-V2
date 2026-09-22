@@ -1,6 +1,14 @@
 import * as React from "react";
 import { ChevronDownIcon, ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
-import { DayButton, DayPicker, useDayPicker, getDefaultClassNames } from "react-day-picker";
+import {
+  DayButton,
+  DayPicker,
+  useDayPicker,
+  getDefaultClassNames,
+  DateLib,
+  type DateLibOptions,
+  type Modifiers,
+} from "react-day-picker";
 import { parse } from "date-fns";
 
 import { cn } from "@/lib/utils";
@@ -14,6 +22,12 @@ import {
 } from "./calendar-variant";
 import { Densities } from "@/types/density";
 import { useDensityScale } from "@/contexts/density-context";
+import { useFormatters, useLocale, useTranslation } from "@/i18n/uiCommon";
+import { dateFnsLocale } from "@/lib/formatters";
+
+/** The caption as react-day-picker's `enUS` default writes it, for `MonthYearInput` to parse. */
+const englishCaption = (month: Date, timeZone?: string) =>
+  new DateLib({ timeZone }).formatMonthYear(month);
 
 export function Calendar({
   className,
@@ -31,10 +45,40 @@ export function Calendar({
   density?: Densities;
 }) {
   const { density: effectiveDensity } = useDensityScale(density);
+  const { t } = useTranslation("uiCommon");
+  const format = useFormatters();
+  const { language } = useLocale();
   const defaultClassNames = getDefaultClassNames();
+  const navLabel = props["aria-label"];
+  const timeZone = props.timeZone;
+
+  // react-day-picker writes its labels in English and formats its dates through date-fns in the
+  // locale it is given, `enUS` by default. So it is given the UI language's date-fns locale (weekday
+  // names, first day of the week, the "PPPP" dates in the labels - English is still "Su" and
+  // "Tuesday, September 22nd, 2026") and every label's words come from the catalog.
+  // `formatCaption` stays in English: the caption is never shown (`MonthYearInput` renders M / YYYY
+  // inputs in its place) and only carries the month to it, which parses it back as "MMMM yyyy".
+  const locale = dateFnsLocale(language);
+  const fullDate = (date: Date, dateLib?: DateLib) =>
+    (dateLib ?? new DateLib({ locale, timeZone })).format(date, "PPPP");
+  const dayButtonLabel = (
+    date: Date,
+    modifiers: Modifiers,
+    _options?: DateLibOptions,
+    dateLib?: DateLib,
+  ) => {
+    const day = fullDate(date, dateLib);
+    if (modifiers.today && modifiers.selected) {
+      return t("calendar.dayButton.todaySelected", { date: day });
+    }
+    if (modifiers.today) return t("calendar.dayButton.today", { date: day });
+    if (modifiers.selected) return t("calendar.dayButton.selected", { date: day });
+    return day;
+  };
 
   return (
     <DayPicker
+      locale={locale}
       showOutsideDays={showOutsideDays}
       className={cn(
         calendarVariant({ density: effectiveDensity }),
@@ -44,11 +88,24 @@ export function Calendar({
       )}
       captionLayout={captionLayout}
       formatters={{
-        formatMonthDropdown: (date) => date.toLocaleString("default", { month: "short" }),
+        formatMonthDropdown: (date) => format.date(date, { month: "short", timeZone }),
+        formatCaption: (month) => englishCaption(month, timeZone),
         ...formatters,
       }}
       labels={{
-        ...(props["aria-label"] ? { labelNav: () => `${props["aria-label"]} navigation` } : {}),
+        labelPrevious: () => t("calendar.previousMonth"),
+        labelNext: () => t("calendar.nextMonth"),
+        labelMonthDropdown: () => t("calendar.monthDropdown"),
+        labelYearDropdown: () => t("calendar.yearDropdown"),
+        labelWeekNumber: (week) => t("calendar.weekNumber", { week }),
+        labelWeekNumberHeader: () => t("calendar.weekNumberHeader"),
+        labelGrid: (date) => format.date(date, { month: "long", year: "numeric", timeZone }),
+        labelGridcell: (date, modifiers, _options, dateLib) =>
+          modifiers?.today
+            ? t("calendar.gridcell.today", { date: fullDate(date, dateLib) })
+            : fullDate(date, dateLib),
+        labelDayButton: dayButtonLabel,
+        ...(navLabel ? { labelNav: () => t("calendar.navLabel", { label: navLabel }) } : {}),
         ...labels,
       }}
       classNames={{
@@ -162,6 +219,7 @@ export function Calendar({
 }
 
 function MonthYearInput({ displayMonth, title }: { displayMonth?: Date; title?: React.ReactNode }) {
+  const { t } = useTranslation("uiCommon");
   const [state, setState] = React.useState({ monthStr: "", yearStr: "" });
   const { goToMonth } = useDayPicker();
 
@@ -220,7 +278,7 @@ function MonthYearInput({ displayMonth, title }: { displayMonth?: Date; title?: 
         onBlur={handleCommit}
         onKeyDown={onKeyDown}
         className={inputClass}
-        placeholder="M"
+        placeholder={t("calendar.monthPlaceholder")}
       />
       <span className="text-muted-foreground text-xs">/</span>
       <input
@@ -231,7 +289,7 @@ function MonthYearInput({ displayMonth, title }: { displayMonth?: Date; title?: 
         onBlur={handleCommit}
         onKeyDown={onKeyDown}
         className={cn(inputClass, "w-10")}
-        placeholder="YYYY"
+        placeholder={t("calendar.yearPlaceholder")}
       />
     </div>
   );

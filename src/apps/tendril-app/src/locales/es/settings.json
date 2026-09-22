@@ -1,0 +1,382 @@
+{
+  "shared": {
+    "toastSaved": "Guardado",
+    "saving": "Guardando...",
+    "saveFailed": "Error al guardar: {{error}}",
+    "outOfRange": "{{key}} debe estar entre {{min}} y {{max}}; se recibió {{value}}.",
+    "notInteger": "{{key}} debe ser un número entero; se recibió \"{{value}}\"."
+  },
+  "sections": {
+    "codingAgent": "Agente de código",
+    "plans": "Planes",
+    "appearance": "Apariencia",
+    "projects": "Proyectos",
+    "vault": "Team Vault",
+    "promptwares": "Agentes de flujo de trabajo",
+    "levels": "Niveles",
+    "notifications": "Notificaciones",
+    "security": "Seguridad y túneles",
+    "advanced": "Avanzado",
+    "newsletter": "Boletín informativo",
+    "fallback": "Configuración"
+  },
+  "nav": {
+    "ariaLabel": "Secciones de configuración",
+    "mobilePickerLabel": "Sección de configuración",
+    "addProject": "Añadir proyecto",
+    "openConfig": "Abrir config.yaml"
+  },
+  "projectToasts": {
+    "jobStartedTitle": "Trabajo iniciado",
+    "backgroundJob": "Se ha creado un trabajo en segundo plano para el proyecto \"{{name}}\"",
+    "addedTitle": "Correcto",
+    "added": "El proyecto \"{{name}}\" se ha añadido correctamente",
+    "removedTitle": "Quitado",
+    "removed": "Se ha quitado el proyecto \"{{name}}\". Sus archivos siguen en el disco.",
+    "deletedTitle": "Eliminado",
+    "deleted": "Se ha eliminado el proyecto \"{{name}}\" y sus datos"
+  },
+  "plans": {
+    "title": "Planes",
+    "hint": "Configura la plantilla de plan predeterminada que se usa al crear planes nuevos.",
+    "templateLabel": "Plantilla de plan",
+    "templatePlaceholder": "Plantilla de plan...",
+    "saved": "Plantilla de plan guardada"
+  },
+  "vaultSection": {
+    "title": "Team Vault",
+    "hint": "Comparte y sincroniza proyectos de Tendril, skills personalizadas, servidores MCP y reglas de seguridad con tu equipo mediante un repositorio Git con control de versiones."
+  },
+  "notifications": {
+    "title": "Notificaciones",
+    "hint": "Configura cómo te avisa Tendril de trabajos finalizados, fallos y otros eventos.",
+    "desktopLabel": "Activar notificaciones de escritorio",
+    "saved": "Ajustes de notificaciones guardados"
+  },
+  "advanced": {
+    "title": "Avanzado",
+    "hint": "Configura los tiempos de espera y los límites de concurrencia.",
+    "timeoutsHeading": "Tiempos de espera",
+    "jobTimeout": "Tiempo de espera del trabajo",
+    "staleOutputTimeout": "Tiempo de espera sin salida",
+    "maxConcurrentJobs": "Máximo de trabajos simultáneos",
+    "minutesSuffix": "min",
+    "betaHeading": "Funciones beta",
+    "betaLabel": "Activar las funciones beta",
+    "restartNote": "Es necesario reiniciar Tendril para que los cambios surtan efecto.",
+    "saved": "Ajustes guardados y aplicados"
+  },
+  "diagnostics": {
+    "title": "Diagnósticos del daemon",
+    "ping": "Probar latencia (ping)",
+    "pinging": "Haciendo ping...",
+    "pong": "¡Pong! Respuesta en {{elapsed}} ms",
+    "pingFailed": "Error en el ping: {{error}}",
+    "connectionState": "Estado de la conexión:",
+    "hostPort": "Host y puerto del daemon:",
+    "pid": "PID del proceso:",
+    "tendrilHome": "{{name}}:",
+    "secret": "Seguridad / secreto:",
+    "secretValue": "Gestionado de forma nativa (oculto al almacenamiento del webview)",
+    "capabilities": "Capacidades:",
+    "noCapabilities": "No se ha informado de ninguna",
+    "notAvailable": "N/D",
+    "states": {
+      "connected": "Conectado",
+      "disconnected": "Desconectado",
+      "unauthenticated": "No autenticado",
+      "notRunning": "No iniciado",
+      "foreignMaster": "Maestro ajeno"
+    }
+  },
+  "newsletterSection": {
+    "title": "Boletín informativo",
+    "hint": "Suscríbete al boletín de Ivy y Tendril para recibir novedades, funciones destacadas y notas de la versión."
+  },
+  "promptwares": {
+    "title": "Agentes de flujo de trabajo",
+    "hint": "Lee el prompt de cada agente y configura el perfil de agente de código y los permisos de herramientas con los que se ejecuta.",
+    "agentLabel": "Agente",
+    "defaultOption": "{{key}} (todos los agentes)",
+    "notConfigured": "Aún no está configurado. Al guardar se crea la entrada.",
+    "profileLabel": "Perfil",
+    "profileDefault": "Predeterminado (sin definir)",
+    "profileTiers": {
+      "deep": "Profundo",
+      "balanced": "Equilibrado",
+      "quick": "Rápido"
+    },
+    "profileHint": "Prevalece el último que se aplica: {{key}}, después este agente y después una sustitución por plan o de la CLI.",
+    "allowedLabel": "Herramientas permitidas",
+    "allowedHint": "Se añaden al conjunto base de herramientas, una regla por línea. Nunca lo sustituyen.",
+    "deniedLabel": "Herramientas denegadas",
+    "deniedHint": "Se restan de la lista de permitidas combinada y se suman a las de {{key}} en lugar de restringirlas.",
+    "reset": "Restablecer",
+    "addLabel": "Añadir agente",
+    "addPlaceholder": "Nombre del agente (p. ej., {{example}})...",
+    "add": "Añadir",
+    "saved": "Agente guardado",
+    "saveFailed": "Error al guardar el agente: {{error}}",
+    "program": {
+      "title": "Prompt",
+      "hintOverlay": "Procede de tu directorio de superposición, que sustituye al prompt incluido.",
+      "hintDeployed": "El prompt desplegado que ejecuta este agente. Solo lectura: modifícalo desde tu directorio de superposición.",
+      "defaultKey": "{{key}} es la configuración de respaldo que se aplica a todos los agentes, no un agente propio, así que no tiene prompt. Selecciona un agente para leer el suyo.",
+      "loading": "Cargando prompt..."
+    }
+  },
+  "appearance": {
+    "language": {
+      "title": "Idioma",
+      "hint": "Elige el idioma que usa Tendril. Predeterminado del sistema sigue el idioma de tu sistema operativo.",
+      "label": "Idioma",
+      "system": "Predeterminado del sistema",
+      "saved": "Idioma cambiado a {{language}}",
+      "loadFailed": "No se pudo cargar {{language}}. Tendril se mantiene en el idioma que tenía."
+    },
+    "title": "Apariencia",
+    "hint": "Elige cómo se ve Tendril. Sistema sigue el ajuste de tu sistema operativo.",
+    "themeMode": {
+      "light": "Claro",
+      "dark": "Oscuro",
+      "system": "Sistema",
+      "saved_light": "Apariencia cambiada a Claro",
+      "saved_dark": "Apariencia cambiada a Oscuro",
+      "saved_system": "Apariencia cambiada a Sistema"
+    },
+    "theme": {
+      "title": "Tema",
+      "hint": "Elige un preajuste de esquema de colores para Tendril.",
+      "label": "Tema",
+      "vaultOption": "{{name}} (Vault: {{vault}})",
+      "vaultFallback": "Equipo",
+      "vaultBadge": "Team Vault",
+      "saved": "Tema cambiado a {{name}}"
+    },
+    "sidebar": {
+      "title": "Barra lateral principal",
+      "hint": "Elige el estado predeterminado de la barra lateral principal para las nuevas sesiones de cliente.",
+      "expanded": "Expandida",
+      "collapsed": "Contraída",
+      "saved_expanded": "Barra lateral expandida de forma predeterminada",
+      "saved_collapsed": "Barra lateral contraída de forma predeterminada"
+    },
+    "chatMode": {
+      "title": "Chat",
+      "hint": "Elige cómo se comunica el botón Chat con tu agente de código: la vista de chat o la propia terminal del agente.",
+      "chat": "Chat",
+      "terminal": "Terminal",
+      "saved_chat": "Chat se abre como chat",
+      "saved_terminal": "Chat se abre como terminal"
+    },
+    "vaultThemesNote": "Los temas publicados por un Team Vault no aparecen: el subsistema de temas de vault no forma parte de esta compilación, así que solo se ofrecen los preajustes incluidos."
+  },
+  "levels": {
+    "title": "Niveles de prioridad",
+    "hint": "Define los niveles de prioridad que se usan para clasificar los planes.",
+    "addButton": "Añadir nivel",
+    "columns": {
+      "name": "Nombre",
+      "color": "Color"
+    },
+    "unsetColor": "sin definir",
+    "editAction": "Editar",
+    "empty": "No hay niveles definidos.",
+    "editor": {
+      "addTitle": "Añadir nivel",
+      "editTitle": "Editar nivel",
+      "nameLabel": "Nombre",
+      "namePlaceholder": "Nombre del nivel...",
+      "colorLabel": "Color",
+      "colorPlaceholder": "p. ej., {{example}}",
+      "colorHint": "Un nombre de color de Ivy, tal como lo guarda config.yaml ({{examples}}...).",
+      "add": "Añadir"
+    },
+    "saved": "Nivel guardado",
+    "deleted": "Nivel \"{{name}}\" eliminado",
+    "saveFailed": "Error al guardar el nivel: {{error}}",
+    "removeConsequence": "Los planes ya clasificados con este nivel conservan el nombre en su plan.yaml; simplemente deja de ser uno de los niveles disponibles.",
+    "noEffect": "Los niveles se guardan en config.yaml y se anuncian por MCP, pero nada en esta aplicación los lee todavía, así que editarlos aquí no cambia ningún comportamiento visible."
+  },
+  "removal": {
+    "title": "Quitar {{kind}}",
+    "title_level": "Quitar nivel",
+    "title_repository": "Quitar repositorio",
+    "title_reviewAction": "Quitar acción de revisión",
+    "title_environmentFile": "Quitar archivo de entorno",
+    "title_mcpServer": "Quitar servidor MCP",
+    "title_customSkill": "Quitar skill personalizada",
+    "body": "¿Quitar {{kind}} <name>{{name}}</name> de esta configuración?",
+    "body_level": "¿Quitar el nivel <name>{{name}}</name> de esta configuración?",
+    "body_repository": "¿Quitar el repositorio <name>{{name}}</name> de esta configuración?",
+    "body_reviewAction": "¿Quitar la acción de revisión <name>{{name}}</name> de esta configuración?",
+    "body_environmentFile": "¿Quitar el archivo de entorno <name>{{name}}</name> de esta configuración?",
+    "body_mcpServer": "¿Quitar el servidor MCP <name>{{name}}</name> de esta configuración?",
+    "body_customSkill": "¿Quitar la skill personalizada <name>{{name}}</name> de esta configuración?",
+    "confirm": "Quitar"
+  },
+  "fields": {
+    "colorsLabel": "Colores",
+    "chooseColor": "Elegir color",
+    "defaultOption": "Predeterminado"
+  },
+  "configEditor": {
+    "samplePrompts": {
+      "explain": {
+        "label": "Explicar un ajuste",
+        "prompt": "Explica qué controla cada clave de nivel superior de mi config.yaml."
+      },
+      "addProject": {
+        "label": "Añadir un proyecto",
+        "prompt": "Añade un proyecto nuevo a config.yaml y dime qué campos me quedan por rellenar."
+      },
+      "check": {
+        "label": "Revisar mi configuración",
+        "prompt": "Revisa mi config.yaml en busca de ajustes que parezcan incorrectos o a los que les falte un valor predeterminado razonable."
+      }
+    },
+    "saved": "config.yaml guardado y recargado",
+    "maskedNote_one": "{{count}} valor secreto se muestra como {{mask}}. Deja el marcador tal cual para conservar el valor guardado; escribe encima para establecer uno nuevo.",
+    "maskedNote_many": "{{count}} valores secretos se muestran como {{mask}}. Deja un marcador tal cual para conservar el valor guardado; escribe encima para establecer uno nuevo.",
+    "maskedNote_other": "{{count}} valores secretos se muestran como {{mask}}. Deja un marcador tal cual para conservar el valor guardado; escribe encima para establecer uno nuevo.",
+    "conflictReload": "Recargar desde el disco",
+    "reload": "Recargar desde el disco",
+    "discard": {
+      "title": "Descartar cambios sin guardar",
+      "confirm": "Descartar y recargar",
+      "body": "Al recargar, el contenido del editor se sustituye por el archivo del disco. Se perderán las ediciones que no hayas guardado."
+    }
+  },
+  "security": {
+    "title": "Seguridad y túneles",
+    "hint": "Exige una contraseña para acceder a Tendril y expón esta instancia mediante un túnel público.",
+    "cloudflared": {
+      "intro": "Los dos túneles de abajo usan <code>cloudflared</code> de Cloudflare. Todavía no está instalado en la máquina que ejecuta Tendril.",
+      "configuredPathTitle": "Ruta configurada",
+      "installingTitle": "Instalando",
+      "downloadingPercent": "Descargando {{asset}} — {{percent, percent}}",
+      "downloadingSize": "Descargando {{asset}} — {{size}}",
+      "verifying": "Comprobando la descarga con el SHA-256 publicado por Cloudflare",
+      "installing": "Instalando",
+      "resolving": "Buscando la versión más reciente",
+      "cancelledTitle": "Cancelado",
+      "cancelledBody": "La descarga se ha cancelado y no se ha instalado nada. Puedes volver a iniciarla o instalar cloudflared por tu cuenta.",
+      "failedTitle": "Error en la instalación",
+      "retry": "Inténtalo de nuevo",
+      "install": "Instalar cloudflared",
+      "manualSummary": "Instalarlo por tu cuenta",
+      "manualPackages": "macOS: <code>{{brew}}</code>. Linux: consulta <code>{{url}}</code>.",
+      "manualDownload": "O descarga <code>{{asset}}</code> desde <code>{{url}}</code> y guárdalo como <code>{{path}}</code>."
+    },
+    "session": {
+      "heading": "Protección de sesión",
+      "blurb": "Exige una contraseña para acceder a la interfaz de Tendril.",
+      "enableLabel": "Activar protección con contraseña",
+      "currentLabel": "Contraseña actual",
+      "currentPlaceholder": "Contraseña actual...",
+      "newLabel": "Nueva contraseña",
+      "newPlaceholder": "Nueva contraseña...",
+      "confirmLabel": "Confirmar contraseña",
+      "confirmPlaceholder": "Confirma la contraseña...",
+      "mismatch": "Las contraseñas no coinciden",
+      "disabledToast": "Protección con contraseña desactivada",
+      "enabledToast": "Protección con contraseña activada"
+    },
+    "tunnel": {
+      "full": {
+        "heading": "Túnel",
+        "blurb": "Expón tu instancia de Tendril a internet mediante un túnel de Cloudflare. Útil para acceder a Tendril desde dispositivos móviles o compartirlo con otras personas.",
+        "startingTitle": "Iniciando túnel",
+        "activeTitle": "Túnel activo",
+        "activeBody": "Tu túnel está en ejecución y es accesible en la URL de abajo.",
+        "startingBody": "Iniciando el túnel y esperando a que sea accesible. Suele tardar entre 15 y 30 segundos.",
+        "stoppedToast": "Túnel detenido",
+        "copiedToast": "URL del túnel copiada al portapapeles",
+        "startFailed": "No se pudo iniciar el túnel: {{error}}",
+        "stopFailed": "No se pudo detener el túnel: {{error}}"
+      },
+      "share": {
+        "heading": "Túnel de uso compartido",
+        "blurb": "Expón una versión de Tendril de solo lectura y solo comentarios para que los miembros de tu equipo revisen planes y borradores.",
+        "startingTitle": "Iniciando túnel de uso compartido",
+        "activeTitle": "Túnel de uso compartido activo",
+        "activeBody": "Tu túnel de uso compartido está en ejecución y es accesible en la URL de abajo.",
+        "startingBody": "Iniciando el túnel de uso compartido y esperando a que sea accesible. Suele tardar entre 15 y 30 segundos.",
+        "stoppedToast": "Túnel de uso compartido detenido",
+        "copiedToast": "URL del túnel de uso compartido copiada al portapapeles",
+        "startFailed": "No se pudo iniciar el túnel de uso compartido: {{error}}",
+        "stopFailed": "No se pudo detener el túnel de uso compartido: {{error}}"
+      },
+      "warningTitle": "Esto lo publica todo",
+      "warningBody": "Un túnel de acceso total pone toda esta instancia de Tendril en una URL pública. Cualquiera que tenga la dirección y la contraseña de sesión puede usarla como si estuviera sentado delante de esta máquina, por lo que se necesita una contraseña para poder iniciarlo. El túnel de uso compartido de abajo es la opción de solo lectura.",
+      "deactivatedTitle": "Desactivado",
+      "copiedTitle": "URL copiada",
+      "copyFailed": "No se pudo copiar la URL: {{error}}",
+      "deactivate": "Desactivar",
+      "copyUrl": "Copiar URL",
+      "openInBrowser": "Abrir en el navegador",
+      "activate": "Activar"
+    }
+  },
+  "vault": {
+    "errors": {
+      "listVaults": "No se pudieron listar los vaults: {{error}}",
+      "status": "No se pudo leer el estado del vault: {{error}}",
+      "catalog": "No se pudo leer el catálogo del vault: {{error}}",
+      "failure": "El servicio de vault informó de un error."
+    },
+    "createdPr": "PR creada: {{url}}",
+    "createdBranch": "Rama {{branch}} creada",
+    "createdDeletionBranch": "Rama de eliminación {{branch}} creada",
+    "done": "Hecho.",
+    "activeVault": "Vault activo",
+    "selectVault": "Seleccionar vault",
+    "refresh": "Actualizar",
+    "sync": "Sincronizar",
+    "openPr": "Abrir una PR",
+    "connect": "Conectar vault",
+    "create": "Crear vault",
+    "sharedProjects": "Proyectos compartidos",
+    "displayNameFallback": "Team Vault"
+  },
+  "modelCatalog": {
+    "title": "Catálogo de modelos",
+    "hint": "Tendril combina la tabla de modelos curada con una instantánea de models.dev almacenada en caché en el disco.",
+    "refresh": "Actualizar ahora",
+    "refreshing": "Actualizando…",
+    "refreshed_one": "Actualizado: {{count}} modelo de models.dev",
+    "refreshed_many": "Actualizado: {{count}} modelos de models.dev",
+    "refreshed_other": "Actualizado: {{count}} modelos de models.dev",
+    "show": "Mostrar el estado y los ajustes del catálogo",
+    "hide": "Ocultar el estado y los ajustes del catálogo",
+    "sourceLabel": "Origen:",
+    "liveTitle": "El catálogo se completa con datos de models.dev",
+    "live": "En vivo (models.dev)",
+    "staticTitle": "El catálogo usa la tabla estática de respaldo",
+    "static": "Respaldo estático",
+    "modelsLabel": "Modelos:",
+    "modelSplit": "{{dynamic}} enriquecidos / {{static}} curados",
+    "cacheUpdatedLabel": "Caché actualizada:",
+    "cacheFileLabel": "Archivo de caché:",
+    "age": {
+      "never": "Nunca (no hay archivo de caché)",
+      "justNow": "Ahora mismo",
+      "marked_stale": "{{age}} (obsoleta)",
+      "marked_expired": "{{age}} (caducada, se usa la tabla curada)",
+      "marked_staleExpired": "{{age}} (obsoleta) (caducada, se usa la tabla curada)"
+    },
+    "enrichLabel": "Completar el catálogo con datos de models.dev",
+    "intervalLabel": "Intervalo de actualización",
+    "intervalHint": "Horas entre actualizaciones en segundo plano. Con 0 se actualiza una vez al iniciar y nunca más.",
+    "warnAgeLabel": "Antigüedad de aviso de la caché",
+    "warnAgeHint": "Días tras los cuales la caché se sigue usando, pero se marca como obsoleta. Con 0 nunca se avisa.",
+    "maxAgeLabel": "Antigüedad máxima de la caché",
+    "maxAgeHint": "Días tras los cuales se ignora la caché y se usa en su lugar la tabla curada. Con 0 nunca caduca."
+  },
+  "newsletter": {
+    "subscribed": "¡Suscripción confirmada!",
+    "emailLabel": "Correo electrónico",
+    "subscribing": "Suscribiendo…",
+    "subscribe": "Suscribirse"
+  }
+}

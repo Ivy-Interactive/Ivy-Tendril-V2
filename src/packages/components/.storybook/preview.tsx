@@ -5,8 +5,26 @@ import "@fontsource-variable/geist";
 import "@fontsource-variable/geist-mono";
 import "../src/styles/globals.css";
 import { DensityProvider } from "../src/contexts/density-context";
+import { i18n } from "../src/i18n/uiCommon";
+import { DEFAULT_LOCALE, LOCALES, SITE_LOCALES, type SiteLocale } from "../src/i18n/locales";
 import { Densities } from "../src/types/density";
 import { readStoryGlobals, type StorybookGlobals } from "./globals";
+
+/**
+ * Renders a story in the toolbar's language. The i18n store is a module singleton, so switching it
+ * here reaches every component in the story with no provider. A layout effect, so English - loaded
+ * statically, and what every visual baseline is taken in - never renders a frame in anything else;
+ * another language loads its chunk and re-renders the story when it arrives. `<html lang>` follows,
+ * which is what the accessibility pass reads.
+ */
+function StoryLocale({ locale, children }: { locale: SiteLocale; children: React.ReactNode }) {
+  React.useLayoutEffect(() => {
+    void i18n.changeLanguage(locale);
+    document.documentElement.lang = LOCALES[locale].hreflang;
+    document.documentElement.dir = LOCALES[locale].dir;
+  }, [locale]);
+  return <>{children}</>;
+}
 
 const preview: Preview = {
   parameters: {
@@ -31,7 +49,11 @@ const preview: Preview = {
   },
   decorators: [
     (Story: React.ComponentType, context: { globals?: StorybookGlobals; viewMode?: string }) => {
-      const { theme = "light", density = Densities.Medium } = readStoryGlobals(context);
+      const {
+        theme = "light",
+        density = Densities.Medium,
+        locale = DEFAULT_LOCALE,
+      } = readStoryGlobals(context);
       const densityValue = density as Densities;
       // `min-h-screen` gives a story its own canvas to lay out against, which is right in story
       // view where the iframe *is* the viewport. A docs page inlines every story into one scrolling
@@ -50,7 +72,9 @@ const preview: Preview = {
           }
         >
           <DensityProvider density={densityValue}>
-            <Story />
+            <StoryLocale locale={locale}>
+              <Story />
+            </StoryLocale>
           </DensityProvider>
         </div>
       );
@@ -62,6 +86,7 @@ const preview: Preview = {
     backgrounds: { value: "light" },
     theme: "light",
     density: "Medium",
+    locale: DEFAULT_LOCALE,
   },
   globalTypes: {
     theme: {
@@ -85,6 +110,19 @@ const preview: Preview = {
           { value: "Medium", title: "Medium (Default)" },
           { value: "Large", title: "Large (Relaxed)" },
         ],
+      },
+    },
+    locale: {
+      name: "Locale",
+      description: "Language the components' own strings render in",
+      toolbar: {
+        icon: "globe",
+        items: SITE_LOCALES.map((locale) => ({
+          value: locale.code,
+          title: locale.label,
+          right: locale.englishLabel,
+        })),
+        dynamicTitle: true,
       },
     },
   },

@@ -3,6 +3,7 @@ import * as DialogPrimitive from "@radix-ui/react-dialog";
 import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/i18n/uiCommon";
 
 const Dialog = DialogPrimitive.Root;
 
@@ -52,23 +53,26 @@ type DialogHeaderProps = React.HTMLAttributes<HTMLDivElement> & {
   hideCloseButton?: boolean;
 };
 
-const DialogHeader = ({ className, children, hideCloseButton, ...props }: DialogHeaderProps) => (
-  <div
-    className={cn(
-      "sticky top-0 z-10 bg-background p-6 pb-4 flex-shrink-0 flex items-center justify-between",
-      className,
-    )}
-    {...props}
-  >
-    <div className="flex-1">{children}</div>
-    {!hideCloseButton && (
-      <DialogPrimitive.Close className="p-1 rounded-selector text-muted-foreground hover:bg-secondary/60 hover:text-foreground transition-colors focus:outline-none cursor-pointer">
-        <X className="size-4" />
-        <span className="sr-only">Close</span>
-      </DialogPrimitive.Close>
-    )}
-  </div>
-);
+const DialogHeader = ({ className, children, hideCloseButton, ...props }: DialogHeaderProps) => {
+  const { t } = useTranslation("uiCommon");
+  return (
+    <div
+      className={cn(
+        "sticky top-0 z-10 bg-background p-6 pb-4 flex-shrink-0 flex items-center justify-between",
+        className,
+      )}
+      {...props}
+    >
+      <div className="flex-1">{children}</div>
+      {!hideCloseButton && (
+        <DialogPrimitive.Close className="p-1 rounded-selector text-muted-foreground hover:bg-secondary/60 hover:text-foreground transition-colors focus:outline-none cursor-pointer">
+          <X className="size-4" />
+          <span className="sr-only">{t("dialog.close")}</span>
+        </DialogPrimitive.Close>
+      )}
+    </div>
+  );
+};
 DialogHeader.displayName = "DialogHeader";
 
 const DialogFooter = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (

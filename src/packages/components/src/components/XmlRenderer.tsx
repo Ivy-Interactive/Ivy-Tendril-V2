@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { ChevronRight, ChevronDown } from "lucide-react";
+import { useTranslation } from "@/i18n/uiCommon";
 
 interface XmlRendererProps {
   data: string;
@@ -147,6 +148,7 @@ function collectAllXmlPaths(node: XmlNode, path: string): string[] {
 }
 export type { XmlRendererProps };
 export const XmlRenderer = ({ data, initialExpanded }: XmlRendererProps) => {
+  const { t } = useTranslation("uiCommon");
   const parseXml = (xmlString: string): XmlNode | null => {
     try {
       const parser = new DOMParser();
@@ -231,7 +233,7 @@ export const XmlRenderer = ({ data, initialExpanded }: XmlRendererProps) => {
   };
 
   if (!parsedXml) {
-    return <div className="text-destructive">Invalid XML string</div>;
+    return <div className="text-destructive">{t("xmlRenderer.invalid")}</div>;
   }
 
   return (

@@ -1,0 +1,274 @@
+{
+  "plansView": {
+    "newPlanShortcut": "新規計画",
+    "empty": {
+      "title": "計画なし",
+      "description": "作成した計画がここに表示されます"
+    },
+    "noSelection": "サイドバーから計画を選択してください"
+  },
+  "sidebar": {
+    "title": "計画"
+  },
+  "searchBadges": {
+    "verified": "検証済み",
+    "unverified": "未検証"
+  },
+  "detail": {
+    "tabs": {
+      "plan": "計画",
+      "details": "詳細",
+      "diff": "差分ビュー",
+      "recommendations": "レコメンデーション ({{n}})",
+      "git": "Git",
+      "gitCount": "Git ({{n}})",
+      "gitAtRisk_other": "Git ({{n}}) · リスクあり {{count}} 件",
+      "gitAtRiskUncounted_other": "Git · リスクあり {{count}} 件"
+    },
+    "questions": {
+      "label": "質問",
+      "labelUnanswered_other": "質問（未回答 {{count}} 件）"
+    },
+    "sourceLabel": {
+      "pr": "PR",
+      "issue": "Issue"
+    },
+    "meta": {
+      "position_other": "計画 {{position}}/{{count}}",
+      "dependsOn": "{{plans}} に依存"
+    },
+    "errors": {
+      "saveAnswer": "回答を保存できませんでした：{{error}}",
+      "saveAnnotation": "注釈を保存できませんでした：{{error}}",
+      "updateRecommendation": "レコメンデーション「{{title}}」を更新できませんでした：{{error}}",
+      "completePlan": "計画 {{id}} を完了できませんでした：{{error}}"
+    },
+    "runActionFailed": {
+      "executePlan": "「計画を実行」に失敗しました：{{error}}",
+      "updatePlan": "「計画を更新」に失敗しました：{{error}}",
+      "expandPlan": "「計画を具体化」に失敗しました：{{error}}",
+      "splitPlan": "「計画を分割」に失敗しました：{{error}}",
+      "copyPlanId": "「計画 ID をコピー」に失敗しました：{{error}}",
+      "copyFolderPath": "「フォルダーパスをコピー」に失敗しました：{{error}}",
+      "openFolder": "「フォルダーを開く」に失敗しました：{{error}}"
+    },
+    "discussDraft": {
+      "outcome": "この計画を完了する前に、その結果について相談したいです。実施された内容を要約し、詳しく確認すべき点があれば指摘してください。",
+      "plan": "この計画を実行する前に相談したいです。計画を要約し、変更したほうがよい点があれば指摘してください。"
+    }
+  },
+  "actions": {
+    "discussWithAgent": "エージェントと相談",
+    "updatePlan": "計画を更新",
+    "checking": "確認中…",
+    "starting": "開始中…",
+    "createPr": "PR を作成",
+    "completePlan": "計画を完了",
+    "retryPlan": "計画を再試行",
+    "acceptPartialDelivery": "部分的納品として承認",
+    "resetToDraft": "下書きに戻す…"
+  },
+  "draftActions": {
+    "execute": "計画を実行",
+    "update": "計画を更新…",
+    "expand": "計画を具体化",
+    "split": "計画を分割",
+    "createIssue": "Issue を作成…",
+    "copyId": "計画 ID をコピー",
+    "copyPath": "フォルダーパスをコピー",
+    "openFolder": "フォルダーを開く",
+    "delete": "計画を削除…"
+  },
+  "failureCallout": {
+    "title": "実行失敗",
+    "verification": "<bold>{{name}}</bold>：{{status}}。詳細は検証レポートを参照してください",
+    "noDetails": "詳細はありません。ジョブログを確認してください。"
+  },
+  "questionsPanel": {
+    "answered_other": "{{count}} 件中 {{answered}} 件回答済み",
+    "optional": "{{label}}（任意）",
+    "saving": "保存中…"
+  },
+  "planPane": {
+    "writing": "エージェントがこの計画を作成中です。ジョブが最初のリビジョンを書き込むと、本文がここに表示されます。",
+    "neverWritten": "この計画にはリビジョンがありません。フォルダーは作成されましたが、計画を作成していたジョブがリビジョンを書き込まなかったため、表示する本文がありません。",
+    "neverWrittenUpdate": "計画を更新",
+    "unreadable_other": "この計画にはディスク上に {{count}} 件のリビジョンが記録されていますが、最新のリビジョンが空でした。ファイルを読み取れない可能性があります。"
+  },
+  "recommendationsTab": {
+    "title": "計画のレコメンデーション",
+    "description": "実行中に見つかったスコープ外のフォローアップと改善点。",
+    "empty": "{{jobType}} はこの計画にレコメンデーションを登録しませんでした。"
+  },
+  "gitTab": {
+    "loading": "Git の状態を読み込み中…"
+  },
+  "details": {
+    "planId": "計画 ID",
+    "folder": "フォルダー",
+    "initialPrompt": "初期プロンプト",
+    "revision": "リビジョン",
+    "profile": "プロファイル",
+    "relatedPlans": "関連計画",
+    "dependsOn": "依存関係",
+    "issue": "Issue",
+    "created": "作成日",
+    "level": "レベル",
+    "project": "プロジェクト",
+    "state": "状態",
+    "copyPlanIdTooltip": "クリップボードにコピー",
+    "copyFolderTooltip": "クリップボードにコピー",
+    "repositories": "リポジトリ",
+    "noRepositories": "リポジトリが指定されていません",
+    "commits": "コミット",
+    "noCommits": "コミットはまだありません"
+  },
+  "verificationStatus": {
+    "pass": "合格",
+    "fail": "不合格",
+    "pending": "保留中",
+    "skipped": "スキップ"
+  },
+  "verifications": {
+    "empty": "検証なし",
+    "updateFailed": "検証 {{name}} を更新できませんでした：{{error}}",
+    "viewReportTooltip": "{{name}} のレポートを表示",
+    "viewReport": "レポートを表示",
+    "hideReport": "レポートを非表示",
+    "noReport": "レポートはまだありません"
+  },
+  "reportSheet": {
+    "title": "検証レポート",
+    "description": "{{name}} の検証レポートの詳細",
+    "descriptionFallback": "計画の検証レポートの詳細",
+    "loading": "検証レポートを読み込み中…",
+    "notFound": "「{{name}}」の検証レポートファイルが見つかりません。",
+    "empty": "{{name}} のレポートはありません。"
+  },
+  "artifactSheet": {
+    "thumbnail": {
+      "openLabel": "{{fileName}} を開く",
+      "noPreview": "プレビューなし",
+      "loadingLabel": "{{fileName}} を読み込み中"
+    },
+    "fallbackTitle": "成果物",
+    "noPreviewTitle": "プレビューなし",
+    "showInFolder": "フォルダーに表示",
+    "loadingLabel": "{{fileName}} を読み込み中",
+    "imageFailed": "Tendril はこの画像を読み込めませんでした。",
+    "imageFailedWithError": "Tendril はこの画像を読み込めませんでした：{{error}}",
+    "binary": "{{fileName}} はテキストファイルではない（{{size}}）ため、ここではプレビューできません。",
+    "tooLarge": "{{fileName}} は {{size}} あり、ここでプレビューするには大きすぎます。",
+    "plainNotice": "プレーンテキストで表示しています：{{fileName}} は {{size}} あり、ハイライト表示するには大きすぎます。",
+    "plainNotice_markdown": "プレーンテキストで表示しています：{{fileName}} は {{size}} あり、Markdown としてレンダリングするには大きすぎます。",
+    "copyPath": "パスをコピー",
+    "revealLabel": "フォルダーに表示"
+  },
+  "pullRequests": {
+    "title": "プルリクエスト",
+    "refresh": "更新",
+    "refreshing": "更新中…",
+    "unreachable": "次のリポジトリで GitHub に接続できませんでした：{{repos}}",
+    "syncInProgress": "同期はすでに実行中です。完了するとステータスが更新されます。",
+    "checked": "{{when}} に確認",
+    "checkedJustNow": "たった今確認",
+    "empty": "作成された PR はありません",
+    "state": {
+      "open": "オープン",
+      "closed": "クローズ済み",
+      "merged": "マージ済み",
+      "unknown": "不明"
+    }
+  },
+  "revisionDiff": {
+    "singleRevision": "この計画にはリビジョンが 1 件しかないため、まだ比較できるものがありません。{{createPlan}} または {{retryPlan}} が新しいリビジョンを書き込むと、差分が表示されます。",
+    "compare": "<oldLabel><text>比較元のリビジョン</text><oldSelect/></oldLabel><newLabel><text>比較先</text><newSelect/></newLabel>",
+    "oldRevisionLabel": "比較元のリビジョン",
+    "newRevisionLabel": "比較先のリビジョン",
+    "onDisk_other": "ディスク上に {{count}} 件のリビジョン",
+    "loading": "リビジョン {{from}} と {{to}} を読み込み中…",
+    "identical": "リビジョン {{from}} と {{to}} は同一です。"
+  },
+  "icebox": {
+    "title": "アイスボックス",
+    "description": "アーカイブまたは先送りにして、一時的に止めてある計画。",
+    "searchPlaceholder": "アイスボックスの計画を検索…",
+    "projectFilterLabel": "プロジェクト",
+    "allProjects": "すべてのプロジェクト",
+    "levelFilterLabel": "レベル",
+    "allLevels": "すべてのレベル",
+    "empty": {
+      "title": "アイスボックスは空です",
+      "description": "アイスボックスに移動した計画がここに表示されます"
+    },
+    "noMatch": {
+      "title": "一致する計画はありません",
+      "description": "現在のフィルターに一致するアイスボックスの計画はありません。"
+    },
+    "card": {
+      "priority": "P{{priority}}",
+      "verificationTooltip": "{{name}}：{{status}}",
+      "deleteLabel": "計画 {{id}} を削除",
+      "thawLabel": "計画 {{id}} を解凍",
+      "thaw": "解凍",
+      "thawing": "解凍中…"
+    },
+    "thawFailed": "計画 {{id}} を解凍できませんでした：{{error}}"
+  },
+  "newPlan": {
+    "title": "新規計画を作成",
+    "closeLabel": "モーダルを閉じる",
+    "projectPickerLabel": "対象プロジェクト",
+    "autoProject": "自動",
+    "addProject": "+ 新しいプロジェクトを追加",
+    "submit": "作成",
+    "placeholder": "タスクの説明を入力…",
+    "emptyDescription": "新規計画の説明を入力してください。"
+  },
+  "planActions": {
+    "canExecute": {
+      "alreadyCompleted": "計画はすでに完了しています。",
+      "executing": "計画は現在実行中です。",
+      "blockedByDependency": "依存する計画「{{dependency}}」が「{{state}}」状態のため、ブロックされています（完了が必要です）。"
+    },
+    "canCreatePr": {
+      "wrongState": "PR を作成できるのは、計画がレビュー待ちまたは失敗の状態の場合のみです（現在：{{state}}）。",
+      "verificationsFailed": "PR を作成できません：検証が不合格です（{{names}}）。",
+      "verificationsPending": "PR を作成できません：検証がまだ保留中です（{{names}}）。"
+    },
+    "canRetry": {
+      "wrongState": "再試行できるのは、レビュー待ちまたは失敗の状態の計画のみです（現在：{{state}}）。"
+    },
+    "canRefine": {
+      "wrongState": "計画の改善（具体化 / 更新 / 分割）は、下書きの計画でのみ可能です（現在：{{state}}）。"
+    },
+    "canDelete": {
+      "inFlight": "計画が {{state}} の間は削除できません。先にジョブをキャンセルしてください。"
+    },
+    "canReset": {
+      "terminal": "計画は {{state}} のため、下書きに戻せません。",
+      "inFlight": "計画が {{state}} の間は下書きに戻せません。先にジョブをキャンセルしてください。",
+      "wrongState": "下書きに戻せるのは、レビュー待ち、失敗、ブロック中のいずれかの状態の計画のみです（現在：{{state}}）。"
+    },
+    "canCompletePartial": {
+      "wrongState": "部分的納品が可能なのは、計画がレビュー待ちまたは失敗の状態の場合のみです（現在：{{state}}）。",
+      "noFailures": "不合格の検証はありません。代わりに通常どおり計画を完了してください。"
+    },
+    "canComplete": {
+      "alreadyCompleted": "計画はすでに完了しています。",
+      "inFlight": "計画が {{state}} の間は完了できません。先にジョブをキャンセルしてください。"
+    },
+    "errors": {
+      "completeBlocked": "計画を完了できません",
+      "executeBlocked": "実行できません",
+      "retryBlocked": "再試行できません",
+      "createPrBlocked": "PR を作成できません",
+      "refineBlocked": "改善できません",
+      "repositoryRequired": "Issue を作成するにはリポジトリが必要です。"
+    }
+  },
+  "store": {
+    "rollbackField": "ロールバック：{{field}} を更新できませんでした：{{error}}",
+    "rollbackVerification": "検証の更新をロールバックしました：{{error}}"
+  }
+}

@@ -16,6 +16,7 @@ import {
 import { CopyToClipboardButton } from "@/components/CopyToClipboardButton";
 import { ErrorBoundary } from "@/components/ErrorBoundary";
 import { lazyWithRetry } from "@/lib/lazyWithRetry";
+import { useTranslation } from "@/i18n/uiCommon";
 
 const SyntaxHighlighter = lazyWithRetry(() =>
   import("react-syntax-highlighter").then((mod) => ({ default: mod.Prism })),
@@ -73,6 +74,7 @@ export const MarkdownCodeBlock = memo(
     hasMermaid,
     hasGraphviz,
   }: MarkdownCodeBlockProps) => {
+    const { t } = useTranslation("uiCommon");
     const match = /language-(\w+)/.exec(className || "");
     const content = extractTextContent(children).replace(/\n$/, "");
     const isTerminal = match && match[1] === "terminal";
@@ -91,7 +93,7 @@ export const MarkdownCodeBlock = memo(
                 <div className="rounded-md border bg-background p-4">
                   <div className="flex items-center justify-center p-8 text-muted-foreground">
                     <Spinner size="xl" color="var(--primary)" />
-                    <span className="ml-2 text-sm">Loading Mermaid...</span>
+                    <span className="ml-2 text-sm">{t("diagram.loadingMermaid")}</span>
                   </div>
                 </div>
               }
@@ -111,7 +113,7 @@ export const MarkdownCodeBlock = memo(
                 <div className="rounded-md border bg-background p-4">
                   <div className="flex items-center justify-center p-8 text-muted-foreground">
                     <Spinner size="xl" color="var(--primary)" />
-                    <span className="ml-2 text-sm">Loading Graphviz...</span>
+                    <span className="ml-2 text-sm">{t("diagram.loadingGraphviz")}</span>
                   </div>
                 </div>
               }

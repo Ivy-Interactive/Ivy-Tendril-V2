@@ -1,6 +1,9 @@
 import React from "react";
 import { formatTokens, NO_VALUE } from "@ivy-interactive/components";
+import { useFormatters, type Formatters } from "@ivy-interactive/components/i18n";
 import { Callout } from "@ivy-interactive/components/ui";
+import { useTranslation, type TFunction } from "../i18n";
+import { useEnumLabels } from "../i18n/enumLabels";
 import type { Job, JobDetail } from "../types/api";
 
 /**
@@ -25,9 +28,13 @@ function dash(value: string | undefined | null): string {
   return value === undefined || value === null || value.trim() === "" ? NO_VALUE : value;
 }
 
+/** A token bucket's id, and its label's key under `jobs:tokens.buckets`. */
+export type JobCostBucketKind = "input" | "output" | "cacheRead" | "cacheWrite" | "reasoning";
+
 /** One token bucket: V1's `UsageRow`, minus the two rate-derived columns V2 cannot compute. */
 export interface JobCostBucket {
-  kind: string;
+  /** A stable id - the row's React key - rather than the label, which changes with the language. */
+  kind: JobCostBucketKind;
   tokens: number;
 }
 
@@ -42,19 +49,40 @@ export function buildJobCostBuckets(
     "inputTokens" | "outputTokens" | "cacheReadTokens" | "cacheWriteTokens" | "reasoningTokens"
   >,
 ): JobCostBucket[] {
-  const candidates: Array<[string, number | undefined]> = [
-    ["Input", job.inputTokens],
-    ["Output", job.outputTokens],
-    ["Cache read", job.cacheReadTokens],
-    ["Cache write", job.cacheWriteTokens],
-    ["Reasoning", job.reasoningTokens],
+  const candidates: Array<[JobCostBucketKind, number | undefined]> = [
+    ["input", job.inputTokens],
+    ["output", job.outputTokens],
+    ["cacheRead", job.cacheReadTokens],
+    ["cacheWrite", job.cacheWriteTokens],
+    ["reasoning", job.reasoningTokens],
   ];
   return candidates
     .filter(
-      (entry): entry is [string, number] =>
+      (entry): entry is [JobCostBucketKind, number] =>
         typeof entry[1] === "number" && Number.isFinite(entry[1]),
     )
     .map(([kind, tokens]) => ({ kind, tokens }));
+}
+
+/** Four decimal places and no grouping: V1's `$1234.5000`. */
+const COST_DIGITS: Intl.NumberFormatOptions = {
+  minimumFractionDigits: 4,
+  maximumFractionDigits: 4,
+  useGrouping: false,
+};
+
+/**
+ * V1's four-decimal dollar figure (`$${cost.toFixed(4)}`, "$4.2100"), with the current language's
+ * decimal separator and currency placement. Four places because a single run's cost is often a
+ * fraction of a cent, which two would round away.
+ *
+ * Rounded by `toFixed` first, so English stays V1's figure exactly: `Intl` rounds a halfway value on
+ * its decimal form (0.00015 → "0.0002") where `toFixed` rounds the binary one (→ "0.0001"). Once
+ * rounded, the value has exactly four places for `Intl` to print. (A negative cost, which the daemon
+ * never reports, would read "-$0.5000" rather than V1's "$-0.5000".)
+ */
+function formatSheetCost(cost: number, format: Formatters): string {
+  return format.currency(Number(cost.toFixed(4)), "USD", COST_DIGITS);
 }
 
 /**
@@ -62,21 +90,31 @@ export function buildJobCostBuckets(
  * that predates cost-source tracking, no charge at all — comes to the same thing for a reader: the
  * agent gave no figure.
  */
-function agentReportedCost(job: Pick<Job, "cost" | "costSource">): string {
+function agentReportedCost(
+  job: Pick<Job, "cost" | "costSource">,
+  t: TFunction<"jobs">,
+  format: Formatters,
+): string {
   if (job.costSource?.toLowerCase() === "agent" && typeof job.cost === "number") {
-    return `$${job.cost.toFixed(4)}`;
+    return formatSheetCost(job.cost, format);
   }
-  return "Not Provided";
+  return t("costSheet.notProvided");
 }
 
 /**
  * V1's `TotalCost`, prefixed `~` when the charge is Tendril's arithmetic rather than a figure anyone
  * quoted — the same tilde the Cost cell carries, for the same reason.
  */
-function totalCost(job: Pick<Job, "cost" | "costSource">): string {
+function totalCost(
+  job: Pick<Job, "cost" | "costSource">,
+  t: TFunction<"jobs">,
+  format: Formatters,
+): string {
   if (typeof job.cost !== "number" || !Number.isFinite(job.cost)) return NO_VALUE;
-  const formatted = `$${job.cost.toFixed(4)}`;
-  return job.costSource?.toLowerCase() === "estimated" ? `~${formatted}` : formatted;
+  const formatted = formatSheetCost(job.cost, format);
+  return job.costSource?.toLowerCase() === "estimated"
+    ? t("cost.estimated", { cost: formatted })
+    : formatted;
 }
 
 export interface JobCostSheetProps {
@@ -91,6 +129,9 @@ export interface JobCostSheetProps {
  * reader has to notice is missing.
  */
 export const JobCostSheet: React.FC<JobCostSheetProps> = ({ job }) => {
+  const { t } = useTranslation("jobs");
+  const labels = useEnumLabels();
+  const format = useFormatters();
   const detail = job as JobDetail;
   const buckets = buildJobCostBuckets(job);
   const bucketTotal = buckets.reduce((sum, bucket) => sum + bucket.tokens, 0);
@@ -98,19 +139,20 @@ export const JobCostSheet: React.FC<JobCostSheetProps> = ({ job }) => {
   // a job with a full breakdown, and on one without the total is all there is to show.
   const total = buckets.length > 0 ? bucketTotal : job.tokens;
 
-  const details: Array<[string, string]> = [
-    ["Model", dash(job.model)],
-    ["Provider", dash(detail.provider)],
-    ["Type", dash(job.type)],
-    ["Profile", dash(detail.executionProfile)],
-    ["Cost Reported by Agent", agentReportedCost(job)],
+  // `[id, label, value]`: the id is the row's React key, so it stays put when the label is translated.
+  const details: Array<[string, string, string]> = [
+    ["model", t("costSheet.details.model"), dash(job.model)],
+    ["provider", t("costSheet.details.provider"), dash(detail.provider)],
+    ["type", t("costSheet.details.type"), dash(job.type && labels.jobType(job.type))],
+    ["profile", t("costSheet.details.profile"), dash(detail.executionProfile)],
+    ["agentCost", t("costSheet.details.agentCost"), agentReportedCost(job, t, format)],
   ];
 
   return (
     <div className="flex flex-col gap-4" data-testid="job-cost-sheet">
       <dl className="grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4 gap-y-2 text-xs">
-        {details.map(([label, value]) => (
-          <React.Fragment key={label}>
+        {details.map(([id, label, value]) => (
+          <React.Fragment key={id}>
             <dt className="text-muted-foreground">{label}</dt>
             <dd className="min-w-0 truncate font-mono text-foreground" title={value}>
               {value}
@@ -123,26 +165,26 @@ export const JobCostSheet: React.FC<JobCostSheetProps> = ({ job }) => {
         /* V1's `NoUsageReason` branch: the details still render, and the breakdown says why it is
            absent instead of showing an empty table. */
         <Callout.Info data-testid="job-cost-no-usage">
-          No per-token breakdown was recorded for this job
           {typeof job.tokens === "number"
-            ? `, only a total of ${formatTokens(job.tokens)} tokens`
-            : ""}
-          .
+            ? t("costSheet.noUsage", { context: "total", total: formatTokens(job.tokens) })
+            : t("costSheet.noUsage")}
         </Callout.Info>
       ) : (
         <div className="flex flex-col gap-2">
-          <h4 className="text-sm font-medium text-foreground">Breakdown</h4>
+          <h4 className="text-sm font-medium text-foreground">{t("costSheet.breakdown.title")}</h4>
           <table className="w-full text-xs" data-testid="job-cost-breakdown">
             <thead>
               <tr className="border-b border-border text-muted-foreground">
-                <th className="py-1 text-left font-medium">Token type</th>
-                <th className="py-1 text-right font-medium">Tokens</th>
+                <th className="py-1 text-left font-medium">{t("costSheet.breakdown.tokenType")}</th>
+                <th className="py-1 text-right font-medium">{t("costSheet.breakdown.tokens")}</th>
               </tr>
             </thead>
             <tbody>
               {buckets.map((bucket) => (
                 <tr key={bucket.kind} className="border-b border-border/50">
-                  <td className="py-1 text-left text-foreground">{bucket.kind}</td>
+                  <td className="py-1 text-left text-foreground">
+                    {t(`tokens.buckets.${bucket.kind}`)}
+                  </td>
                   <td className="py-1 text-right font-mono text-foreground">
                     {formatTokens(bucket.tokens)}
                   </td>
@@ -151,7 +193,7 @@ export const JobCostSheet: React.FC<JobCostSheetProps> = ({ job }) => {
             </tbody>
             <tfoot>
               <tr className="font-medium">
-                <td className="py-1 text-left text-foreground">Total</td>
+                <td className="py-1 text-left text-foreground">{t("costSheet.breakdown.total")}</td>
                 <td className="py-1 text-right font-mono text-foreground">
                   {typeof total === "number" ? formatTokens(total) : NO_VALUE}
                 </td>
@@ -162,8 +204,8 @@ export const JobCostSheet: React.FC<JobCostSheetProps> = ({ job }) => {
       )}
 
       <dl className="grid grid-cols-[minmax(8rem,auto)_1fr] gap-x-4 gap-y-2 border-t border-border pt-3 text-xs">
-        <dt className="text-muted-foreground">Total cost</dt>
-        <dd className="min-w-0 font-mono text-foreground">{totalCost(job)}</dd>
+        <dt className="text-muted-foreground">{t("costSheet.totalCost")}</dt>
+        <dd className="min-w-0 font-mono text-foreground">{totalCost(job, t, format)}</dd>
       </dl>
     </div>
   );

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
+import { useTranslation } from "@/i18n/uiCommon";
 
 const SHAPES = [
   undefined,
@@ -16,6 +17,7 @@ const PAUSE_DURATION_MS = 1000;
 export interface LogoLoadingProps {}
 
 export function LogoLoading(_props?: LogoLoadingProps) {
+  const { t } = useTranslation("uiCommon");
   const initialMatrix = useMemo(
     () => [
       [2, 0, 0],
@@ -149,7 +151,7 @@ export function LogoLoading(_props?: LogoLoadingProps) {
   }, [isPaused, performStep]); // STEP_INTERVAL_MS is a const, not needed here if defined outside component scope
 
   return (
-    <div className="grid grid-cols-5 gap-0 w-fit" role="status" aria-label="Loading">
+    <div className="grid grid-cols-5 gap-0 w-fit" role="status" aria-label={t("loading.ariaLabel")}>
       {current.map((item, index) => {
         const [shapeIndex, colorIndex, rotation] = item;
         const shape = SHAPES[shapeIndex];

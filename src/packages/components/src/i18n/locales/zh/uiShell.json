@@ -1,0 +1,268 @@
+{
+  "agentButton": {
+    "label": "智能体",
+    "newChatTooltip": "新建聊天",
+    "flyout": {
+      "empty": "暂无聊天",
+      "newChat": "新建聊天"
+    }
+  },
+  "newPlanButton": {
+    "label": "新建计划"
+  },
+  "settingsButton": {
+    "label": "设置"
+  },
+  "nav": {
+    "resizeAriaLabel": "调整导航栏大小"
+  },
+  "railFlyout": {
+    "previous": "上一个",
+    "next": "下一个"
+  },
+  "sectionItems": {
+    "state": {
+      "working": "工作中",
+      "completed": "已完成"
+    },
+    "menu": {
+      "label": "{{title}} 选项",
+      "tooltip": "选项",
+      "pin": "置顶聊天",
+      "unpin": "取消置顶聊天",
+      "rename": "编辑名称",
+      "delete": "删除"
+    },
+    "titleEditor": {
+      "ariaLabel": "条目名称"
+    }
+  },
+  "sidebarHeader": {
+    "openSidebar": "打开侧边栏",
+    "closeSidebar": "关闭侧边栏"
+  },
+  "sidebarSection": {
+    "searchLabel": "搜索计划",
+    "searchButton": "搜索"
+  },
+  "tabs": {
+    "closeAriaLabel": "关闭 {{title}}",
+    "newSession": "新建智能体会话"
+  },
+  "shell": {
+    "toggleSidebarShortcut": "切换侧边栏",
+    "resizer": {
+      "ariaLabel": "调整侧边栏大小",
+      "title": "拖动以调整侧边栏大小，双击以重置"
+    }
+  },
+  "agentStatus": {
+    "starting": "正在启动…",
+    "completed": "已完成",
+    "failed": "失败",
+    "thinking": "正在思考…",
+    "working": "正在处理…",
+    "runningCommand": "正在运行命令",
+    "reading": "正在读取",
+    "readingFile": "正在读取 {{file}}",
+    "editing": "正在编辑",
+    "editingFile": "正在编辑 {{file}}",
+    "searching": "正在搜索",
+    "runningTool": "正在运行 {{name}}"
+  },
+  "resultSummary": {
+    "errorTitle": "❌ 错误",
+    "terminated": "智能体进程已被终止或超时（退出代码 {{code}}）。",
+    "terminatedUnknownCode": "智能体进程已被终止或超时（退出代码未知）。",
+    "cost": {
+      "billed": "成本：{{cost}}",
+      "estimated": "成本：~{{cost}}",
+      "billedTooltip": "由智能体计费",
+      "estimatedTooltip": "根据 Token 数量按此模型的标价估算，无法反映您的套餐或等级"
+    },
+    "duration": "时长：{{seconds}} 秒",
+    "tokens": "Token：输入 {{input}} / 输出 {{output}}",
+    "cache": "缓存：读取 {{read}} / 写入 {{write}}",
+    "premium": "高级请求：{{value}}",
+    "exitCode": "退出代码：{{code}}",
+    "denied": "已拒绝：{{value}}"
+  },
+  "metrics": {
+    "elapsed": {
+      "label": "输出时间",
+      "reportedTooltip": "输出时间：智能体报告的时长",
+      "measuredTooltip": "输出时间：从第一个事件到最后一个事件的测量值",
+      "runningTooltip": "输出时间：从第一个事件开始测量"
+    },
+    "tokens": {
+      "label": "Token",
+      "estimatedTooltip": "Token：根据目前的流式输出估算；智能体完成时会报告其自身统计的数量",
+      "reportedTooltip": "Token：由智能体报告"
+    },
+    "cost": {
+      "label": "成本",
+      "estimatedTooltip": "成本：根据 Token 数量按此模型的标价估算，无法反映您的套餐或等级",
+      "billedTooltip": "成本：由智能体计费"
+    }
+  },
+  "toolCard": {
+    "file": "文件：{{path}}",
+    "url": "URL：{{url}}",
+    "query": "查询：{{query}}",
+    "queryInPath": "查询：在 {{path}} 中查找 {{query}}",
+    "input": "输入",
+    "output": "输出"
+  },
+  "toolGroup": {
+    "count_other": "{{count}} 次工具调用"
+  },
+  "agentNode": {
+    "session": "会话：{{session}}",
+    "sessionWithModel": "会话：{{session}}（{{model}}）",
+    "errorTitle": "❌ 错误"
+  },
+  "badgeSelect": {
+    "placeholder": "选择…",
+    "ariaLabel": "选择",
+    "remove": "移除 {{label}}"
+  },
+  "contentInput": {
+    "placeholder": "今天有什么可以帮您？",
+    "send": "发送",
+    "moreOptions": "更多选项",
+    "attachFiles": "附加文件",
+    "voiceInput": "语音输入转写",
+    "dismissError": "关闭错误提示",
+    "removeFile": "移除文件",
+    "attachment": {
+      "document": "文档",
+      "lineCount_other": "{{count}} 行",
+      "sizeBytes": "{{size}} B",
+      "sizeKilobytes": "{{size}} KB",
+      "sizeMegabytes": "{{size}} MB"
+    },
+    "errors": {
+      "uploadStatus": "上传失败，状态码 {{status}}",
+      "uploadFailed": "上传文件失败：{{error}}",
+      "readFailed": "读取文件失败",
+      "emptyTranscription": "转写内容的信息不足，无法生成提示词。请重试并清晰地说话。"
+    }
+  },
+  "voice": {
+    "errors": {
+      "insecureContext": "语音输入需要安全连接。请通过 HTTPS 或在 localhost 上打开 Tendril，然后重试。",
+      "mediaDevicesUnavailable": "此窗口中无法使用语音输入。在 macOS 上，请在更新后退出并重新打开 Ivy Tendril，然后在出现提示时允许访问麦克风。您也可以运行“{{command}}”，并在浏览器中使用语音输入。",
+      "audioCaptureUnsupported": "此浏览器无法为语音输入采集音频。",
+      "captureInitFailed": "音频采集初始化失败：{{error}}",
+      "websocket": "连接转写服务时发生 WebSocket 错误。",
+      "closedUnexpectedly": "WebSocket 连接意外关闭（代码 {{code}}：{{reason}}）",
+      "closedUnexpectedlyNoReason": "WebSocket 连接意外关闭（代码 {{code}}：未提供原因）",
+      "connectionFailed": "麦克风访问被拒绝或连接失败：{{error}}",
+      "microphoneDenied": "麦克风访问被拒绝。请在“系统设置 > 隐私与安全性 > 麦克风”中允许 Ivy Tendril 访问麦克风，然后重试。",
+      "microphoneNotFound": "未找到麦克风。请连接输入设备后重试。"
+    }
+  },
+  "dashboard": {
+    "status": {
+      "plans": "计划",
+      "inProgress": "进行中",
+      "readyForReview": "待审查",
+      "completed": "已完成",
+      "failed": "失败"
+    },
+    "kpi": {
+      "breakdownAriaLabel": "查看 {{label}} 的计算明细",
+      "loadingAriaLabel": "正在加载指标"
+    },
+    "trend": {
+      "loading": "正在加载成本与计划趋势",
+      "costTab": "总成本",
+      "plansTab": "计划总数",
+      "currentName": "最近 4 周",
+      "rollingLegend": "7 日平均",
+      "plansValue_other": "{{count}} 个计划"
+    },
+    "gitActivity": {
+      "title": "Git 活动",
+      "loading": "正在加载 Git 活动"
+    },
+    "pullRequests": {
+      "title": "Pull Requests",
+      "weekTab": "周",
+      "monthTab": "月",
+      "loading": "正在加载已合并的 Pull Request"
+    },
+    "tunnel": {
+      "title": "隧道"
+    },
+    "factory": {
+      "title": "软件工厂"
+    },
+    "jobs": {
+      "title": "活动任务",
+      "empty": "没有运行中的任务"
+    }
+  },
+  "trendChart": {
+    "axisDateWithYear": "{{year}}年{{date}}",
+    "currentRow": "{{name}}：{{value}}",
+    "rollingRow": "7 日平均：{{value}}"
+  },
+  "activityGrid": {
+    "empty": "暂无已合并的 Pull Request",
+    "weekOf": "{{date}} 当周",
+    "merged_other": "已合并 {{count}} 个 Pull Request"
+  },
+  "pullRequestBars": {
+    "empty": "暂无已合并的 Pull Request",
+    "weekOf": "{{date}} 当周",
+    "barLabel": "{{period}}：{{merged}}",
+    "merged_other": "已合并 {{count}} 个 Pull Request",
+    "tooltipMerged_other": "已合并 {{count}} 个 PR"
+  },
+  "processViewer": {
+    "newPlan": "新建计划",
+    "plans": "计划",
+    "review": "审查",
+    "creatingPr": "PR {{value}}"
+  },
+  "terminal": {
+    "loading": "正在加载…"
+  },
+  "webViewer": {
+    "toolbar": {
+      "ariaLabel": "浏览器控件",
+      "back": "后退",
+      "forward": "前进",
+      "reload": "重新加载",
+      "startSelecting": "选择要评论的元素",
+      "stopSelecting": "停止选择",
+      "viewport": "视口：{{device}}",
+      "address": "地址",
+      "addressPlaceholder": "输入 URL"
+    },
+    "devices": {
+      "desktop": "桌面",
+      "tablet": "平板",
+      "mobile": "手机"
+    },
+    "empty": "在地址栏中输入 URL 以加载页面。",
+    "frameTitle": "网页内容",
+    "comment": {
+      "title": "评论",
+      "title_tag": "评论<tag>{{tag}}</tag>",
+      "title_text": "评论<snippet>“{{text}}”</snippet>",
+      "title_tagText": "评论<tag>{{tag}}</tag><snippet>“{{text}}”</snippet>",
+      "sourceLabel": "源码",
+      "resolvingSource": "正在解析 source map…",
+      "componentsLabel": "组件",
+      "xpathLabel": "xpath",
+      "selectorLabel": "选择器",
+      "placeholder": "输入评论…（{{shortcut}} 提交）",
+      "delete": "删除",
+      "cancel": "取消",
+      "save": "保存",
+      "add": "添加"
+    }
+  }
+}

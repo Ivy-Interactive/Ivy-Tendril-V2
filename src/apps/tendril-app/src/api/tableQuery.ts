@@ -41,6 +41,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type { Job } from "../types/api";
 import { isTauri } from "../utils/tauri";
+import { i18n } from "../i18n";
 
 /**
  * The daemon's `TableQuery`. `signal` and other client-only concerns are stripped before sending.
@@ -132,7 +133,9 @@ const httpTransport: TableQueryTransport = async (path, body, signal) => {
       .json()
       .then((payload: { error?: string }) => payload.error)
       .catch(() => undefined);
-    throw new Error(detail ?? `Request to ${path} failed (${response.status})`);
+    throw new Error(
+      detail ?? i18n.t("common:errors.requestFailed", { path, status: response.status }),
+    );
   }
   return (await response.json()) as unknown;
 };

@@ -1,0 +1,209 @@
+{
+  "sidebar": {
+    "title": "Review",
+    "badges": {
+      "verified": "Verified",
+      "unverified": "Unverified"
+    }
+  },
+  "shortcuts": {
+    "previousPlan": "Previous plan",
+    "nextPlan": "Next plan"
+  },
+  "empty": {
+    "title": "No plans to review",
+    "description": "Completed plans will appear here for review"
+  },
+  "workspace": {
+    "meta_one": "{{index}}/{{total}} plans",
+    "meta_other": "{{index}}/{{total}} plans",
+    "sourceLabel": {
+      "pr": "PR",
+      "issue": "Issue"
+    }
+  },
+  "actions": {
+    "requestChanges": "Request Changes",
+    "resetToDraft": "Reset to Draft",
+    "deletePlan": "Delete Plan",
+    "openPlanPage": "Open Full Spec & Diff",
+    "partialDelivery": "Accept Partial Delivery"
+  },
+  "primary": {
+    "updatePr": "Update PR",
+    "createPr": "Create PR",
+    "deletePlan": "Delete Plan",
+    "completePlan": "Complete Plan",
+    "completing": "Completing…",
+    "pushing": "Pushing…",
+    "unavailable": "{{action}} is unavailable: {{reason}}"
+  },
+  "completionBlocked": {
+    "title": "No Changes Needed",
+    "body": "Pre-execution validation found no changes needed because the issue or task is already resolved. You can delete this plan, or move it to Skipped or Icebox."
+  },
+  "errors": {
+    "markRecommendation": "Could not mark \"{{title}}\" as {{state}}: {{error}}",
+    "nothingSelected": "Select at least one recommendation to implement.",
+    "noLongerPending": "Selected recommendations are no longer pending. Refresh and try again.",
+    "implementFailed": "Could not implement the selected recommendations: {{error}}",
+    "reviewActionFailed": "Review action \"{{name}}\" failed: {{error}}",
+    "completeFailed": "Could not complete plan {{planId}}: {{error}}",
+    "updatePrFailed": "Could not update the PR for plan {{planId}}: {{error}}"
+  },
+  "recommendationState": {
+    "pending": "Pending",
+    "accepted": "Accepted",
+    "acceptedWithNotes": "AcceptedWithNotes",
+    "declined": "Declined"
+  },
+  "tabs": {
+    "summary": "Summary",
+    "plan": "Plan",
+    "details": "Details",
+    "git": "Git",
+    "changes": "Changes",
+    "artifacts": "Artifacts",
+    "recommendations": "Recommendations"
+  },
+  "verifications": {
+    "none": "No verifications",
+    "viewReport": "View {{name}} report"
+  },
+  "verificationStatus": {
+    "pending": "Pending",
+    "pass": "Pass",
+    "fail": "Fail",
+    "skipped": "Skipped"
+  },
+  "summary": {
+    "loading": "Loading summary…",
+    "fallback": {
+      "heading": "Summary",
+      "body": "No summary is found for this plan. Please check the verifications for more information.",
+      "retry": "`{{resetToDraft}}` or `{{requestChanges}}` to retry the plan."
+    }
+  },
+  "plan": {
+    "noSpecification": "No plan specification available."
+  },
+  "details": {
+    "copyToClipboard": "Copy to clipboard",
+    "fields": {
+      "planId": "Plan ID",
+      "folder": "Folder",
+      "initialPrompt": "Initial Prompt",
+      "revision": "Revision",
+      "profile": "Profile",
+      "relatedPlans": "Related Plans",
+      "dependsOn": "Depends On",
+      "issue": "Issue",
+      "created": "Created",
+      "level": "Level",
+      "project": "Project",
+      "state": "State"
+    },
+    "repositories": {
+      "heading": "Repositories",
+      "empty": "No repositories specified"
+    },
+    "commits": {
+      "heading": "Commits",
+      "empty": "No commits yet"
+    },
+    "verifications": {
+      "heading": "Verifications ({{n}})",
+      "empty": "No verifications"
+    }
+  },
+  "git": {
+    "loading": "Loading git state…"
+  },
+  "changes": {
+    "loading": "Loading changes…",
+    "empty": "No file changes recorded for this plan."
+  },
+  "artifacts": {
+    "heading": "Plan Artifacts",
+    "description": "Outputs, sample files, and screenshots captured during execution.",
+    "loading": "Loading artifacts…",
+    "empty": "No artifacts found for this plan.",
+    "screenshots": "Screenshots ({{n}})",
+    "otherFiles": "Other Artifact Files ({{n}})",
+    "copyPath": "Copy path",
+    "open": "Open",
+    "openTitle": "Open in a side panel"
+  },
+  "recommendations": {
+    "empty": "No recommendations.",
+    "implement": "Implement",
+    "starting": "Starting…",
+    "implementHint": "Accepts the ticked recommendations and retries the plan with them as the change request.",
+    "select": "Select {{title}}"
+  },
+  "noteDialog": {
+    "submit": "Submit",
+    "accept": {
+      "title": "Accept Recommendation",
+      "ariaLabel": "Accept Recommendation",
+      "noteLabel": "Optional Operator Note:",
+      "noteAriaLabel": "Optional note",
+      "placeholder": "Enter optional notes..."
+    },
+    "decline": {
+      "title": "Decline Recommendation",
+      "ariaLabel": "Decline Recommendation",
+      "noteLabel": "Decline Reason:",
+      "noteAriaLabel": "Decline reason",
+      "placeholder": "Enter reason for declining..."
+    }
+  },
+  "actionsBar": {
+    "tooltip": {
+      "barDisabled": "Disabled: {{reason}}",
+      "barDisabledDefault": "Disabled: review actions are unavailable right now",
+      "conditionNotMet": "Disabled: Condition not met",
+      "conditionNotMetWithCondition": "Disabled: Condition not met ({{condition}})",
+      "runCommand": "Run: {{command}}",
+      "runCommandWithPorts": "Run: {{command}} (ports: {{ports}})",
+      "runAction": "Run {{name}}",
+      "runActionWithPorts": "Run {{name}} (ports: {{ports}})",
+      "port": "{{name}}: {{port}}",
+      "conditionError": "Disabled: Condition could not be evaluated: {{reason}}",
+      "conditionErrorWithCondition": "Disabled: Condition could not be evaluated ({{condition}}): {{reason}}",
+      "starting": "Starting {{name}}…",
+      "checking": "Checking the condition: {{condition}}"
+    }
+  },
+  "actionView": {
+    "sendComments_one": "Send {{count}} comment to the agent as a change request",
+    "sendComments_other": "Send {{count}} comments to the agent as a change request",
+    "starting": "Starting {{name}}…"
+  },
+  "recommendationsPage": {
+    "sidebarTitle": "Recommendations",
+    "empty": {
+      "title": "No recommendations",
+      "description": "Recommendations from completed plans will appear here"
+    },
+    "position_one": "<highlight>{{index}}/{{total}}</highlight> recommendations",
+    "position_other": "<highlight>{{index}}/{{total}}</highlight> recommendations",
+    "decline": "Decline",
+    "accept": "Accept",
+    "accepting": "Accepting...",
+    "acceptWithNotes": "Accept with Notes",
+    "createIssue": "Create Issue",
+    "viewPlan": "View Plan",
+    "refresh": "Refresh",
+    "errors": {
+      "load": "Failed to load recommendations: {{error}}",
+      "update": "Failed to update recommendation \"{{title}}\": {{error}}",
+      "jobNotStarted": "Marked \"{{title}}\" accepted, but the {{jobType}} job did not start: {{error}}"
+    }
+  },
+  "impact": {
+    "small": "Small",
+    "medium": "Medium",
+    "high": "High"
+  }
+}

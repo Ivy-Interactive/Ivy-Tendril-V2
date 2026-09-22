@@ -7,6 +7,7 @@ import {
   BladeContainer,
 } from "@ivy-interactive/components/ui";
 import type { BladeDescriptor } from "@ivy-interactive/components/ui";
+import { useTranslation } from "../i18n";
 
 /**
  * The Dashboard's KPI drill-down, on the shared `ui/sheet.tsx` — same side, header and close
@@ -21,6 +22,7 @@ export interface DashboardKpiSheetProps {
 }
 
 export const DashboardKpiSheet: React.FC<DashboardKpiSheetProps> = ({ blade, onClose }) => {
+  const { t } = useTranslation("dashboard");
   return (
     <Sheet
       open={blade !== null}
@@ -33,7 +35,7 @@ export const DashboardKpiSheet: React.FC<DashboardKpiSheetProps> = ({ blade, onC
         className="inset-y-0 flex w-full flex-col overflow-hidden p-0 sm:w-3/4 sm:max-w-none lg:w-3/4 xl:w-3/5"
       >
         <SheetHeader className="sr-only">
-          <SheetTitle>{blade?.title ?? "KPI breakdown"}</SheetTitle>
+          <SheetTitle>{blade?.title ?? t("kpiSheet.title")}</SheetTitle>
         </SheetHeader>
         {blade && (
           <BladeContainer

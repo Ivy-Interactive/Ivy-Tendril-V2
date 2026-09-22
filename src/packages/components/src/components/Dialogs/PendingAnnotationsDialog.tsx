@@ -1,5 +1,6 @@
 import * as React from "react";
 import { Button } from "../ui/button";
+import { useTranslation, type TFunction } from "@/i18n/uiDialogs";
 import { DialogShell, DialogShortcutHint } from "./DialogShell";
 
 export interface PendingAnnotationsDialogProps {
@@ -32,31 +33,24 @@ export interface PendingAnnotationsDialogProps {
  * the same UpdatePlan job, so they share one dialog, but they are not discarded alike and the copy
  * has to say so.
  */
-function splitMessage(annotationCount: number, answeredQuestionCount: number): string {
-  const annotations = `${annotationCount} ${annotationCount === 1 ? "annotation" : "annotations"}`;
-  const answers = `${answeredQuestionCount} answered ${
-    answeredQuestionCount === 1 ? "question" : "questions"
-  }`;
-
+function splitMessage(
+  t: TFunction,
+  annotationCount: number,
+  answeredQuestionCount: number,
+): string {
   if (annotationCount > 0 && answeredQuestionCount > 0) {
-    return (
-      `This plan has ${annotations} and ${answers} that haven't been incorporated yet. ` +
-      "Executing now would ignore the annotations, and the agent would read the answers as they " +
-      "stand rather than as part of the plan."
-    );
+    // Two counts in one sentence: each is its own plural phrase, and the sentence places them.
+    return t("pendingAnnotations.description.both", {
+      annotations: t("pendingAnnotations.description.annotationCount", { count: annotationCount }),
+      answers: t("pendingAnnotations.description.answerCount", { count: answeredQuestionCount }),
+    });
   }
 
   if (answeredQuestionCount > 0) {
-    return (
-      `This plan has ${answers} that haven't been incorporated yet. Executing now means the agent ` +
-      "reads them as they stand rather than as part of the plan."
-    );
+    return t("pendingAnnotations.description.answers", { count: answeredQuestionCount });
   }
 
-  return (
-    `This plan has ${annotations} that haven't been incorporated yet. Executing now would ignore ` +
-    "them."
-  );
+  return t("pendingAnnotations.description.annotations", { count: annotationCount });
 }
 
 /**
@@ -83,6 +77,7 @@ export function PendingAnnotationsDialog({
   onProceed,
   onUpdateAndExecute,
 }: PendingAnnotationsDialogProps) {
+  const { t } = useTranslation("uiDialogs");
   const cancelRef = React.useRef<HTMLButtonElement>(null);
 
   const knowsSplit = answeredQuestionCount !== undefined;
@@ -91,23 +86,21 @@ export function PendingAnnotationsDialog({
 
   const title = knowsSplit
     ? hasAnnotations && hasAnswers
-      ? "Unincorporated Changes"
+      ? t("pendingAnnotations.title.changes")
       : hasAnswers
-        ? "Unincorporated Answers"
-        : "Unincorporated Annotations"
-    : "Unincorporated Changes";
+        ? t("pendingAnnotations.title.answers")
+        : t("pendingAnnotations.title.annotations")
+    : t("pendingAnnotations.title.changes");
 
   const description = knowsSplit
-    ? `⚠ ${splitMessage(annotationCount, answeredQuestionCount ?? 0)}`
-    : `⚠ This plan has ${annotationCount} item${
-        annotationCount === 1 ? "" : "s"
-      } that no UpdatePlan run has incorporated yet.`;
+    ? splitMessage(t, annotationCount, answeredQuestionCount ?? 0)
+    : t("pendingAnnotations.description.items", { count: annotationCount });
 
   const declineLabel = knowsSplit
     ? hasAnnotations
-      ? "Discard Annotations & Execute"
-      : "Execute Without Updating"
-    : "Execute Anyway";
+      ? t("pendingAnnotations.decline.discardAnnotations")
+      : t("pendingAnnotations.decline.withoutUpdating")
+    : t("pendingAnnotations.decline.anyway");
 
   return (
     <DialogShell
@@ -125,10 +118,10 @@ export function PendingAnnotationsDialog({
       footer={
         <>
           <Button ref={cancelRef} variant="outline" onClick={onClose} data-testid="dialog-cancel">
-            Cancel
+            {t("actions.cancel")}
           </Button>
           <Button variant="outline" onClick={onUpdatePlan} data-testid="guard-update-plan">
-            Update Plan
+            {t("pendingAnnotations.updatePlan")}
           </Button>
           <Button variant="outline" onClick={onProceed} data-testid="guard-proceed">
             {declineLabel}
@@ -141,17 +134,14 @@ export function PendingAnnotationsDialog({
               warning. */}
           {onUpdateAndExecute && (
             <Button onClick={onUpdateAndExecute} data-testid="guard-update-and-execute">
-              Update Plan &amp; Execute
+              {t("pendingAnnotations.updateAndExecute")}
               <DialogShortcutHint shortcut="Ctrl+Enter" />
             </Button>
           )}
         </>
       }
     >
-      <p className="text-sm text-muted-foreground">
-        Executing now runs the plan as written, so those notes will not shape what the agent does.
-        Running UpdatePlan first folds them into the plan body.
-      </p>
+      <p className="text-sm text-muted-foreground">{t("pendingAnnotations.body")}</p>
     </DialogShell>
   );
 }

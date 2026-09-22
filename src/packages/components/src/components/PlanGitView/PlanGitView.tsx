@@ -2,6 +2,7 @@ import React, { useCallback } from "react";
 import { Copy, GitBranchPlus, GitCommitHorizontal } from "lucide-react";
 import { Card } from "../ui/card";
 import { IconButton } from "../ui/IconButton";
+import { Trans, useTranslation, type TFunction } from "@/i18n/uiPlanWorkspace";
 
 /**
  * Whether a ref still holds a commit the plan recorded, in the repo it was made in.
@@ -57,10 +58,9 @@ export interface PlanGitViewProps {
   onOpenUrl?: (url: string) => void;
 }
 
-/** `1 commit is` / `3 commits are`, so a sentence built from a count still reads as English. */
-function count(n: number): string {
-  return n === 1 ? "1 commit is" : `${n} commits are`;
-}
+/** The commands the at-risk banner quotes. Commands, so never translated. */
+const GC_COMMAND = "git gc";
+const RECOVER_COMMAND = "git branch recover/<name> <hash>";
 
 /** Worktree paths are stored as git reports them, so a Windows plan carries backslashes. */
 function normalizePath(path: string): string {
@@ -71,17 +71,17 @@ function normalizePath(path: string): string {
  * Why a plan has no worktrees, which depends entirely on where the plan got to. A completed plan
  * losing its worktrees is housekeeping; a plan still executing without one is a problem.
  */
-function noWorktreesReason(planState: string | undefined): string {
+function noWorktreesReason(planState: string | undefined, t: TFunction): string {
   switch (planState) {
     case "Completed":
     case "Skipped":
     case "Icebox":
-      return "The worktrees were removed after the plan reached its final state.";
+      return t("gitView.worktrees.emptyFinished");
     case "Failed":
     case "Draft":
-      return "The worktrees were never created, or were reclaimed by the stale reaper once the plan sat idle past its window.";
+      return t("gitView.worktrees.emptyNeverCreated");
     default:
-      return "The worktrees were removed, or were never created.";
+      return t("gitView.worktrees.emptyUnknown");
   }
 }
 
@@ -103,66 +103,88 @@ function extractRepo(prUrl: string): string {
   return prUrl;
 }
 
-const AT_RISK_BADGE: Partial<Record<CommitRefStatus, string>> = {
-  unreachable: "unreachable",
-  missing: "not found",
-};
+/** The badge an at-risk row carries; a reachable row has none. */
+function atRiskBadge(status: CommitRefStatus, t: TFunction): string | undefined {
+  switch (status) {
+    case "unreachable":
+      return t("gitView.atRisk.badge.unreachable");
+    case "missing":
+      return t("gitView.atRisk.badge.missing");
+    default:
+      return undefined;
+  }
+}
 
-const Hashes: React.FC<{ rows: PlanCommitRow[] }> = ({ rows }) => (
-  <>
-    {rows.map((row, i) => (
-      <React.Fragment key={row.hash}>
-        {i > 0 && ", "}
-        <code className="font-mono">{row.shortHash}</code>
-      </React.Fragment>
-    ))}
-  </>
-);
+/**
+ * The at-risk hashes, as code. The separator is the language's (Japanese and Chinese use "、"):
+ * the hashes are elements, so the `list` format cannot join them.
+ */
+const Hashes: React.FC<{ rows: PlanCommitRow[] }> = ({ rows }) => {
+  const { t } = useTranslation("uiPlanWorkspace");
+  const separator = t("gitView.atRisk.hashSeparator");
+  return (
+    <>
+      {rows.map((row, i) => (
+        <React.Fragment key={row.hash}>
+          {i > 0 && separator}
+          <code className="font-mono">{row.shortHash}</code>
+        </React.Fragment>
+      ))}
+    </>
+  );
+};
 
 /** One row of a commit table: short hash, subject, file count. */
 const CommitTable: React.FC<{
   rows: PlanCommitRow[];
   statusOf?: (hash: string) => CommitRefStatus | undefined;
-}> = ({ rows, statusOf }) => (
-  <table className="mt-3 w-full text-left text-sm">
-    <thead>
-      <tr className="text-xs uppercase tracking-wide text-muted-foreground/70">
-        <th scope="col" className="py-1 pr-3 font-medium">
-          Commit
-        </th>
-        <th scope="col" className="py-1 pr-3 font-medium">
-          Message
-        </th>
-        <th scope="col" className="w-16 py-1 text-right font-medium">
-          Files
-        </th>
-      </tr>
-    </thead>
-    <tbody>
-      {rows.map((row) => {
-        const badge = statusOf ? AT_RISK_BADGE[statusOf(row.hash) ?? "reachable"] : undefined;
-        return (
-          <tr key={row.hash} className="border-t border-border/50">
-            <td className="py-1 pr-3 align-top font-mono text-xs text-muted-foreground">
-              <span title={row.hash}>{row.shortHash}</span>
-            </td>
-            <td className="py-1 pr-3 align-top text-foreground">
-              {row.title || <span className="text-muted-foreground/70">(unresolved commit)</span>}
-              {badge && (
-                <span className="ml-2 rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide text-destructive">
-                  {badge}
-                </span>
-              )}
-            </td>
-            <td className="w-16 py-1 text-right align-top text-xs text-muted-foreground/70">
-              {row.fileCount === null || row.fileCount === undefined ? "–" : row.fileCount}
-            </td>
-          </tr>
-        );
-      })}
-    </tbody>
-  </table>
-);
+}> = ({ rows, statusOf }) => {
+  const { t } = useTranslation("uiPlanWorkspace");
+  return (
+    <table className="mt-3 w-full text-left text-sm">
+      <thead>
+        <tr className="text-xs uppercase tracking-wide text-muted-foreground/70">
+          <th scope="col" className="py-1 pr-3 font-medium">
+            {t("gitView.commitTable.commit")}
+          </th>
+          <th scope="col" className="py-1 pr-3 font-medium">
+            {t("gitView.commitTable.message")}
+          </th>
+          <th scope="col" className="w-16 py-1 text-right font-medium">
+            {t("gitView.commitTable.files")}
+          </th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map((row) => {
+          const badge = statusOf ? atRiskBadge(statusOf(row.hash) ?? "reachable", t) : undefined;
+          return (
+            <tr key={row.hash} className="border-t border-border/50">
+              <td className="py-1 pr-3 align-top font-mono text-xs text-muted-foreground">
+                <span title={row.hash}>{row.shortHash}</span>
+              </td>
+              <td className="py-1 pr-3 align-top text-foreground">
+                {row.title || (
+                  <span className="text-muted-foreground/70">
+                    {t("gitView.commitTable.unresolved")}
+                  </span>
+                )}
+                {badge && (
+                  <span className="ml-2 rounded-full border border-destructive/40 bg-destructive/10 px-2 py-0.5 text-2xs font-semibold uppercase tracking-wide text-destructive">
+                    {badge}
+                  </span>
+                )}
+              </td>
+              <td className="w-16 py-1 text-right align-top text-xs text-muted-foreground/70">
+                {row.fileCount === null || row.fileCount === undefined ? "–" : row.fileCount}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  );
+};
 
 const DetailRow: React.FC<{ label: string; value: string }> = ({ label, value }) => (
   <div className="flex gap-2">
@@ -189,6 +211,7 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
   planState,
   onOpenUrl,
 }) => {
+  const { t } = useTranslation("uiPlanWorkspace");
   const statusOf = useCallback(
     (hash: string): CommitRefStatus | undefined => data.unassociatedCommitRefStatus[hash],
     [data.unassociatedCommitRefStatus],
@@ -214,23 +237,33 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
           data-testid="commits-at-risk"
           className="space-y-2 rounded-lg border border-destructive/40 bg-destructive/10 p-4 text-xs text-destructive"
         >
-          <p className="text-sm font-semibold uppercase tracking-wide">Commits at risk</p>
+          <p className="text-sm font-semibold uppercase tracking-wide">
+            {t("gitView.atRisk.title")}
+          </p>
 
           {unreachable.length > 0 && (
             <p>
-              {count(unreachable.length)} reachable from no branch, tag or remote:{" "}
-              <Hashes rows={unreachable} />. They exist only as loose objects, so the next{" "}
-              <code className="font-mono">git gc</code> in the repo destroys them. Give one a ref to
-              keep it:{" "}
-              <code className="font-mono">git branch recover/&lt;name&gt; &lt;hash&gt;</code>.
+              <Trans
+                ns="uiPlanWorkspace"
+                i18nKey="gitView.atRisk.unreachable"
+                count={unreachable.length}
+                values={{ gcCommand: GC_COMMAND, recoverCommand: RECOVER_COMMAND }}
+                components={{
+                  hashes: <Hashes rows={unreachable} />,
+                  code: <code className="font-mono" />,
+                }}
+              />
             </p>
           )}
 
           {missing.length > 0 && (
             <p>
-              {count(missing.length)} not found in the plan's repos at all:{" "}
-              <Hashes rows={missing} />. Either the object was already pruned, or the repo it was
-              made in is not one of the plan's repos.
+              <Trans
+                ns="uiPlanWorkspace"
+                i18nKey="gitView.atRisk.missing"
+                count={missing.length}
+                components={{ hashes: <Hashes rows={missing} /> }}
+              />
             </p>
           )}
         </div>
@@ -238,13 +271,13 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
 
       <section>
         <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Worktrees
+          {t("gitView.worktrees.heading")}
         </h4>
 
         {data.worktrees.length === 0 ? (
           <Card className="mt-2 flex flex-col items-center gap-1 p-4 text-center">
             <GitBranchPlus className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-            <p className="text-sm text-muted-foreground/70">{noWorktreesReason(planState)}</p>
+            <p className="text-sm text-muted-foreground/70">{noWorktreesReason(planState, t)}</p>
           </Card>
         ) : (
           <div className="mt-2 space-y-8">
@@ -253,7 +286,7 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
                 <div className="flex items-center justify-between gap-2">
                   <span className="text-sm font-semibold text-foreground">{worktree.name}</span>
                   <IconButton
-                    label={`Copy path to ${worktree.name}`}
+                    label={t("gitView.worktrees.copyPath", { name: worktree.name })}
                     tooltip={false}
                     size="xs"
                     variant="outline"
@@ -266,11 +299,14 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
 
                 <dl className="mt-2 space-y-1 text-xs">
                   {worktree.parentRepoPath && (
-                    <DetailRow label="Repository" value={normalizePath(worktree.parentRepoPath)} />
+                    <DetailRow
+                      label={t("gitView.worktrees.repository")}
+                      value={normalizePath(worktree.parentRepoPath)}
+                    />
                   )}
                   {worktree.baseBranch && (
                     <DetailRow
-                      label="Base"
+                      label={t("gitView.worktrees.base")}
                       value={
                         worktree.baseShortHash
                           ? `${worktree.baseBranch}@${worktree.baseShortHash}`
@@ -278,17 +314,19 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
                       }
                     />
                   )}
-                  <DetailRow label="Worktree" value={normalizePath(worktree.path)} />
                   <DetailRow
-                    label="Head"
-                    value={`${worktree.branch || "detached HEAD"}@${worktree.shortHash}`}
+                    label={t("gitView.worktrees.worktree")}
+                    value={normalizePath(worktree.path)}
+                  />
+                  <DetailRow
+                    label={t("gitView.worktrees.head")}
+                    value={`${worktree.branch || t("gitView.worktrees.detachedHead")}@${worktree.shortHash}`}
                   />
                 </dl>
 
                 {worktree.hasUncommittedChanges && (
                   <p className="mt-2 rounded-md border border-warning/40 bg-warning/10 px-2 py-1 text-xs text-warning">
-                    This worktree has uncommitted changes. They belong to no commit, so nothing at
-                    all is keeping them.
+                    {t("gitView.worktrees.uncommittedChanges")}
                   </p>
                 )}
 
@@ -300,7 +338,9 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
                       className="h-4 w-4 text-muted-foreground"
                       aria-hidden="true"
                     />
-                    <p className="text-sm text-muted-foreground/70">(no commits)</p>
+                    <p className="text-sm text-muted-foreground/70">
+                      {t("gitView.worktrees.noCommits")}
+                    </p>
                   </Card>
                 )}
               </div>
@@ -312,11 +352,10 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
       {data.unassociatedCommits.length > 0 && (
         <section>
           <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Commits
+            {t("gitView.commits.heading")}
           </h4>
           <p className="mt-1 text-xs text-muted-foreground/70">
-            Recorded on the plan but reached from no worktree the plan still has — usually because
-            the worktree was removed once the PR merged.
+            {t("gitView.commits.description")}
           </p>
           <CommitTable rows={data.unassociatedCommits} statusOf={statusOf} />
         </section>
@@ -325,16 +364,16 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
       {prs.length > 0 && (
         <section>
           <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-            Pull Requests
+            {t("gitView.pullRequests.heading")}
           </h4>
           <table className="mt-2 w-full text-left text-sm">
             <thead>
               <tr className="text-xs uppercase tracking-wide text-muted-foreground/70">
                 <th scope="col" className="py-1 pr-3 font-medium">
-                  Repository
+                  {t("gitView.pullRequests.repository")}
                 </th>
                 <th scope="col" className="py-1 font-medium">
-                  PR
+                  {t("gitView.pullRequests.pr")}
                 </th>
               </tr>
             </thead>
@@ -360,11 +399,7 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
         </section>
       )}
 
-      {isEmpty && (
-        <p className="text-sm text-muted-foreground/70">
-          This plan has no worktrees, commits, or pull requests yet.
-        </p>
-      )}
+      {isEmpty && <p className="text-sm text-muted-foreground/70">{t("gitView.empty")}</p>}
     </div>
   );
 };

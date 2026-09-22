@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Callout } from "../ui/callout";
 import { Input } from "../ui/input";
+import { Trans, useTranslation } from "@/i18n/uiDialogs";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 export interface DeleteProjectDialogProps {
@@ -73,6 +74,7 @@ export function DeleteProjectDialog({
   isBusy,
   error,
 }: DeleteProjectDialogProps) {
+  const { t } = useTranslation("uiDialogs");
   const [typed, setTyped] = React.useState("");
 
   React.useEffect(() => {
@@ -93,10 +95,10 @@ export function DeleteProjectDialog({
     <ConfirmDialog
       isOpen={isOpen}
       onClose={onClose}
-      title="Delete Project"
+      title={t("deleteProject.title")}
       testId="delete-project-dialog"
       width="rem40"
-      confirmLabel="Delete Project"
+      confirmLabel={t("deleteProject.confirm")}
       confirmVariant="destructive"
       onConfirm={handleDelete}
       isBusy={isBusy}
@@ -105,25 +107,30 @@ export function DeleteProjectDialog({
       body={
         <>
           <p>
-            This permanently deletes project <span className="text-foreground">{projectName}</span>{" "}
-            and everything it owns on disk. It cannot be undone.
+            <Trans
+              ns="uiDialogs"
+              i18nKey="deleteProject.intro"
+              values={{ name: projectName }}
+              components={{ name: <span className="text-foreground" /> }}
+            />
           </p>
           <ul className="list-disc space-y-1 pl-5 text-muted-foreground">
-            <li>Every plan of this project, with its revisions and verification reports.</li>
+            <li>{t("deleteProject.plans")}</li>
             <li>
-              <code>{"<TENDRIL_HOME>/Projects/"}</code>
-              <code>{projectName}</code> — its cloned repositories, skills, MCP definitions and
-              memories, including any commit that was never pushed.
+              {/* The home placeholder travels as a value: inside the string it would read as a tag. */}
+              <Trans
+                ns="uiDialogs"
+                i18nKey="deleteProject.folder"
+                values={{ root: "<TENDRIL_HOME>/Projects/", name: projectName }}
+                components={{ code: <code /> }}
+              />
             </li>
-            <li>Its plans, jobs and recommendations in Tendril&apos;s database.</li>
-            <li>Its entry in config.yaml.</li>
+            <li>{t("deleteProject.database")}</li>
+            <li>{t("deleteProject.config")}</li>
           </ul>
-          <p className="text-muted-foreground">
-            Job logs are kept: they are stored by job id rather than by project.
-          </p>
+          <p className="text-muted-foreground">{t("deleteProject.logsKept")}</p>
           <Callout.Warning data-testid="delete-project-data-warning">
-            To remove the project from Tendril without touching anything on disk, cancel and use
-            Remove Project instead.
+            {t("deleteProject.removeInstead")}
           </Callout.Warning>
         </>
       }
@@ -133,11 +140,16 @@ export function DeleteProjectDialog({
           htmlFor="delete-project-confirm"
           className="mb-1 block text-xs text-muted-foreground"
         >
-          Type <span className="font-mono text-foreground">{projectName}</span> to confirm
+          <Trans
+            ns="uiDialogs"
+            i18nKey="deleteProject.typeToConfirm"
+            values={{ name: projectName }}
+            components={{ name: <span className="font-mono text-foreground" /> }}
+          />
         </label>
         <Input
           id="delete-project-confirm"
-          aria-label={`Type ${projectName} to confirm`}
+          aria-label={t("deleteProject.typeToConfirmAriaLabel", { name: projectName })}
           value={typed}
           onChange={(event) => setTyped(event.target.value)}
           placeholder={projectName}

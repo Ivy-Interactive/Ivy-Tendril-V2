@@ -1,4 +1,7 @@
+import { formatList } from "@ivy-interactive/components/i18n";
 import { bridge } from "../api/bridge";
+import { i18n } from "../i18n";
+import { planStateLabel } from "../i18n/enumLabels";
 import type {
   CreateIssueFields,
   CreatePrOptions,
@@ -18,6 +21,16 @@ const IN_FLIGHT_STATES = ["Executing", "Creating", "Updating"];
 /** States a plan is finished in. */
 const TERMINAL_STATES = ["Completed", "Skipped"];
 
+/**
+ * The reasons below are shown to the operator - as a disabled action's tooltip, or as the error a
+ * refused dispatch throws - so they are translated, into the language current when they are asked
+ * for. The state they name is the plan's raw state, labelled; the gates themselves compare raw values.
+ */
+const t = i18n.getFixedT(null, "plans");
+
+/** A list of verification names, `A, B` in English - the separator the reasons always used. */
+const nameList = (names: string[]) => formatList(names, { type: "unit", style: "short" });
+
 export class PlanActionsController {
   /**
    * Check if a plan can be executed (ExecutePlan).
@@ -31,10 +44,10 @@ export class PlanActionsController {
     dependencyPlans: PlanSummary[] = [],
   ): ActionGatingResult {
     if (plan.state === "Completed") {
-      return { allowed: false, reason: "Plan is already completed." };
+      return { allowed: false, reason: t("planActions.canExecute.alreadyCompleted") };
     }
     if (plan.state === "Executing") {
-      return { allowed: false, reason: "Plan is currently executing." };
+      return { allowed: false, reason: t("planActions.canExecute.executing") };
     }
 
     const dependsOn = "dependsOn" in plan && plan.dependsOn ? plan.dependsOn : [];
@@ -48,7 +61,10 @@ export class PlanActionsController {
           if (match.state !== "Completed") {
             return {
               allowed: false,
-              reason: `Blocked by dependency '${dep}' which is in state '${match.state}' (requires Completed).`,
+              reason: t("planActions.canExecute.blockedByDependency", {
+                dependency: dep,
+                state: planStateLabel(match.state),
+              }),
             };
           }
         }
@@ -68,7 +84,7 @@ export class PlanActionsController {
     if (plan.state !== "Review" && plan.state !== "Failed") {
       return {
         allowed: false,
-        reason: `Create PR is only allowed when plan is in Review or Failed (current: ${plan.state}).`,
+        reason: t("planActions.canCreatePr.wrongState", { state: planStateLabel(plan.state) }),
       };
     }
 
@@ -77,7 +93,9 @@ export class PlanActionsController {
     if (failingVerifications.length > 0) {
       return {
         allowed: false,
-        reason: `Cannot create PR: verifications failed (${failingVerifications.map((v) => v.name).join(", ")}).`,
+        reason: t("planActions.canCreatePr.verificationsFailed", {
+          names: nameList(failingVerifications.map((v) => v.name)),
+        }),
       };
     }
 
@@ -85,7 +103,9 @@ export class PlanActionsController {
     if (pendingVerifications.length > 0) {
       return {
         allowed: false,
-        reason: `Cannot create PR: verifications still pending (${pendingVerifications.map((v) => v.name).join(", ")}).`,
+        reason: t("planActions.canCreatePr.verificationsPending", {
+          names: nameList(pendingVerifications.map((v) => v.name)),
+        }),
       };
     }
 
@@ -102,7 +122,7 @@ export class PlanActionsController {
     }
     return {
       allowed: false,
-      reason: `Retry is only allowed on plans in Review or Failed state (current: ${plan.state}).`,
+      reason: t("planActions.canRetry.wrongState", { state: planStateLabel(plan.state) }),
     };
   }
 
@@ -116,7 +136,7 @@ export class PlanActionsController {
     }
     return {
       allowed: false,
-      reason: `Plan refinement (Expand/Update/Split) is only allowed on Draft plans (current: ${plan.state}).`,
+      reason: t("planActions.canRefine.wrongState", { state: planStateLabel(plan.state) }),
     };
   }
 
@@ -129,7 +149,7 @@ export class PlanActionsController {
     if (IN_FLIGHT_STATES.includes(plan.state)) {
       return {
         allowed: false,
-        reason: `Cannot delete a plan while it is ${plan.state} — cancel the job first.`,
+        reason: t("planActions.canDelete.inFlight", { state: planStateLabel(plan.state) }),
       };
     }
     return { allowed: true };
@@ -144,13 +164,13 @@ export class PlanActionsController {
     if (TERMINAL_STATES.includes(plan.state)) {
       return {
         allowed: false,
-        reason: `Plan is ${plan.state} and cannot be reset to Draft.`,
+        reason: t("planActions.canReset.terminal", { state: planStateLabel(plan.state) }),
       };
     }
     if (IN_FLIGHT_STATES.includes(plan.state)) {
       return {
         allowed: false,
-        reason: `Cannot reset a plan while it is ${plan.state} — cancel the job first.`,
+        reason: t("planActions.canReset.inFlight", { state: planStateLabel(plan.state) }),
       };
     }
     if (plan.state === "Review" || plan.state === "Failed" || plan.state === "Blocked") {
@@ -158,7 +178,7 @@ export class PlanActionsController {
     }
     return {
       allowed: false,
-      reason: `Reset to Draft is only allowed on plans in Review, Failed or Blocked (current: ${plan.state}).`,
+      reason: t("planActions.canReset.wrongState", { state: planStateLabel(plan.state) }),
     };
   }
 
@@ -171,14 +191,16 @@ export class PlanActionsController {
     if (plan.state !== "Review" && plan.state !== "Failed") {
       return {
         allowed: false,
-        reason: `Partial delivery is only allowed when plan is in Review or Failed (current: ${plan.state}).`,
+        reason: t("planActions.canCompletePartial.wrongState", {
+          state: planStateLabel(plan.state),
+        }),
       };
     }
     const failing = (plan.verifications || []).filter((v) => v.status === "Fail");
     if (failing.length === 0) {
       return {
         allowed: false,
-        reason: "No verifications failed — complete the plan normally instead.",
+        reason: t("planActions.canCompletePartial.noFailures"),
       };
     }
     return { allowed: true };
@@ -190,12 +212,12 @@ export class PlanActionsController {
    */
   public static canComplete(plan: PlanDetail | PlanSummary): ActionGatingResult {
     if (plan.state === "Completed") {
-      return { allowed: false, reason: "Plan is already completed." };
+      return { allowed: false, reason: t("planActions.canComplete.alreadyCompleted") };
     }
     if (IN_FLIGHT_STATES.includes(plan.state)) {
       return {
         allowed: false,
-        reason: `Cannot complete a plan while it is ${plan.state} — cancel the job first.`,
+        reason: t("planActions.canComplete.inFlight", { state: planStateLabel(plan.state) }),
       };
     }
     return { allowed: true };
@@ -213,7 +235,7 @@ export class PlanActionsController {
   ): Promise<StartJobResponse | void> {
     const check = this.canComplete(plan);
     if (!check.allowed) {
-      throw new Error(check.reason || "Complete plan blocked");
+      throw new Error(check.reason || t("planActions.errors.completeBlocked"));
     }
 
     let commits = "commits" in plan && Array.isArray(plan.commits) ? plan.commits : [];
@@ -253,7 +275,7 @@ export class PlanActionsController {
   ): Promise<StartJobResponse> {
     const check = this.canExecute(plan, dependencyPlans);
     if (!check.allowed) {
-      throw new Error(check.reason || "Execution blocked");
+      throw new Error(check.reason || t("planActions.errors.executeBlocked"));
     }
 
     return bridge.startJob({
@@ -272,7 +294,7 @@ export class PlanActionsController {
   ): Promise<StartJobResponse> {
     const check = this.canRetry(plan);
     if (!check.allowed) {
-      throw new Error(check.reason || "Retry blocked");
+      throw new Error(check.reason || t("planActions.errors.retryBlocked"));
     }
 
     return bridge.startJob({
@@ -295,7 +317,7 @@ export class PlanActionsController {
   ): Promise<StartJobResponse> {
     const check = this.canCreatePr(plan);
     if (!check.allowed) {
-      throw new Error(check.reason || "Create PR blocked");
+      throw new Error(check.reason || t("planActions.errors.createPrBlocked"));
     }
 
     return bridge.startJob({
@@ -316,7 +338,7 @@ export class PlanActionsController {
     fields: CreateIssueFields,
   ): Promise<StartJobResponse> {
     if (!fields.repo) {
-      throw new Error("A repository is required to create an issue.");
+      throw new Error(t("planActions.errors.repositoryRequired"));
     }
 
     return bridge.startJob({
@@ -338,7 +360,7 @@ export class PlanActionsController {
   public static async expandPlan(plan: PlanDetail | PlanSummary): Promise<StartJobResponse> {
     const check = this.canRefine(plan);
     if (!check.allowed) {
-      throw new Error(check.reason || "Refine blocked");
+      throw new Error(check.reason || t("planActions.errors.refineBlocked"));
     }
 
     return bridge.startJob({
@@ -356,7 +378,7 @@ export class PlanActionsController {
   ): Promise<StartJobResponse> {
     const check = this.canRefine(plan);
     if (!check.allowed) {
-      throw new Error(check.reason || "Refine blocked");
+      throw new Error(check.reason || t("planActions.errors.refineBlocked"));
     }
 
     return bridge.startJob({
@@ -372,7 +394,7 @@ export class PlanActionsController {
   public static async splitPlan(plan: PlanDetail | PlanSummary): Promise<StartJobResponse> {
     const check = this.canRefine(plan);
     if (!check.allowed) {
-      throw new Error(check.reason || "Refine blocked");
+      throw new Error(check.reason || t("planActions.errors.refineBlocked"));
     }
 
     return bridge.startJob({

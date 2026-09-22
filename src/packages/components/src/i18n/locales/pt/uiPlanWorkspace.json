@@ -1,0 +1,237 @@
+{
+  "workspace": {
+    "moreActions": {
+      "label": "Mais ações",
+      "tooltip": "Mais",
+      "menuAriaLabel": "Mais ações"
+    },
+    "source": "Origem",
+    "verifications": "Verificações",
+    "questions": "Perguntas",
+    "resizer": {
+      "tooltip": "Arraste para redimensionar, clique duas vezes para redefinir",
+      "ariaLabel": "Redimensionar chat"
+    },
+    "chatAriaLabel": "Chat do plano"
+  },
+  "diffView": {
+    "empty": "Nenhum diff para exibir",
+    "fileCount_one": "{{count}} arquivo",
+    "fileCount_many": "{{count}} arquivos",
+    "fileCount_other": "{{count}} arquivos",
+    "jumpToFile": {
+      "ariaLabel": "Ir para o arquivo",
+      "placeholder": "Ir para o arquivo…"
+    },
+    "untitledFile": "Diff {{index}}",
+    "untitledPath": "Diff",
+    "viewed": "Visualizado",
+    "commentToggle": {
+      "noneTooltip": "Nenhum comentário neste arquivo",
+      "showTooltip_one": "Mostrar {{count}} comentário",
+      "showTooltip_many": "Mostrar {{count}} comentários",
+      "showTooltip_other": "Mostrar {{count}} comentários",
+      "hideTooltip_one": "Ocultar {{count}} comentário",
+      "hideTooltip_many": "Ocultar {{count}} comentários",
+      "hideTooltip_other": "Ocultar {{count}} comentários",
+      "showAriaLabel": "Mostrar comentários",
+      "hideAriaLabel": "Ocultar comentários"
+    },
+    "comment": {
+      "draftAuthor": "Instrução para o Agente (Rascunho)",
+      "resolvedBadge": "✓ Resolvido",
+      "edit": "Editar",
+      "reopenTooltip": "Reabrir comentário",
+      "resolveTooltip": "Marcar comentário como resolvido",
+      "unresolve": "Desfazer Resolução",
+      "resolve": "Resolver",
+      "deleteTooltip": "Excluir comentário",
+      "deleteAriaLabel": "Excluir comentário",
+      "delete": "Excluir"
+    },
+    "commentForm": {
+      "title": "Instrução para o Agente",
+      "editTitle": "Editar Instrução para o Agente",
+      "placeholder": "Digite uma instrução para o agente nesta linha...",
+      "cancel": "Cancelar",
+      "add": "Adicionar Comentário",
+      "update": "Atualizar Comentário"
+    }
+  },
+  "changesView": {
+    "empty": "Nenhuma alteração de arquivo.",
+    "treeAriaLabel": "Arquivos alterados",
+    "fileCount_one": "{{count}} arquivo",
+    "fileCount_many": "{{count}} arquivos",
+    "fileCount_other": "{{count}} arquivos",
+    "jumpToFile": {
+      "ariaLabel": "Ir para o arquivo",
+      "placeholder": "Ir para o arquivo…"
+    }
+  },
+  "gitView": {
+    "atRisk": {
+      "title": "Commits em risco",
+      "unreachable_one": "{{count}} commit não é alcançável a partir de nenhuma branch, tag ou remote: <hashes/>. Ele existe apenas como objeto solto, então o próximo <code>{{gcCommand}}</code> no repositório o destrói. Dê uma ref a ele para mantê-lo: <code>{{recoverCommand}}</code>.",
+      "unreachable_many": "{{count}} commits não são alcançáveis a partir de nenhuma branch, tag ou remote: <hashes/>. Eles existem apenas como objetos soltos, então o próximo <code>{{gcCommand}}</code> no repositório os destrói. Dê uma ref a um deles para mantê-lo: <code>{{recoverCommand}}</code>.",
+      "unreachable_other": "{{count}} commits não são alcançáveis a partir de nenhuma branch, tag ou remote: <hashes/>. Eles existem apenas como objetos soltos, então o próximo <code>{{gcCommand}}</code> no repositório os destrói. Dê uma ref a um deles para mantê-lo: <code>{{recoverCommand}}</code>.",
+      "missing_one": "{{count}} commit não foi encontrado em nenhum dos repositórios do plano: <hashes/>. Ou o objeto já foi removido pelo prune, ou o repositório em que ele foi criado não é um dos repositórios do plano.",
+      "missing_many": "{{count}} commits não foram encontrados em nenhum dos repositórios do plano: <hashes/>. Ou os objetos já foram removidos pelo prune, ou o repositório em que foram criados não é um dos repositórios do plano.",
+      "missing_other": "{{count}} commits não foram encontrados em nenhum dos repositórios do plano: <hashes/>. Ou os objetos já foram removidos pelo prune, ou o repositório em que foram criados não é um dos repositórios do plano.",
+      "hashSeparator": ", ",
+      "badge": {
+        "unreachable": "inalcançável",
+        "missing": "não encontrado"
+      }
+    },
+    "commitTable": {
+      "commit": "Commit",
+      "message": "Mensagem",
+      "files": "Arquivos",
+      "unresolved": "(commit não resolvido)"
+    },
+    "worktrees": {
+      "heading": "Worktrees",
+      "emptyFinished": "As worktrees foram removidas depois que o plano chegou ao estado final.",
+      "emptyNeverCreated": "As worktrees nunca foram criadas, ou foram recuperadas pela limpeza de inativas depois que o plano ficou parado além do prazo.",
+      "emptyUnknown": "As worktrees foram removidas ou nunca foram criadas.",
+      "copyPath": "Copiar caminho de {{name}}",
+      "repository": "Repositório",
+      "base": "Base",
+      "worktree": "Worktree",
+      "head": "Head",
+      "detachedHead": "HEAD desanexado",
+      "uncommittedChanges": "Esta worktree tem alterações não commitadas. Elas não pertencem a nenhum commit, então nada as preserva.",
+      "noCommits": "(nenhum commit)"
+    },
+    "commits": {
+      "heading": "Commits",
+      "description": "Registrados no plano, mas não alcançáveis a partir de nenhuma worktree que o plano ainda tenha — geralmente porque a worktree foi removida quando o PR foi mesclado."
+    },
+    "pullRequests": {
+      "heading": "Pull Requests",
+      "repository": "Repositório",
+      "pr": "PR"
+    },
+    "empty": "Este plano ainda não tem worktrees, commits nem pull requests."
+  },
+  "alert": {
+    "note": "Nota",
+    "tip": "Dica",
+    "important": "Importante",
+    "warning": "Aviso",
+    "caution": "Cuidado"
+  },
+  "diagram": {
+    "loading": "Carregando diagrama...",
+    "invalidGraphviz": "Sintaxe DOT do Graphviz inválida",
+    "invalidMermaid": "Sintaxe de diagrama Mermaid inválida"
+  },
+  "codeBlock": {
+    "copy": "Copiar para a área de transferência"
+  },
+  "image": {
+    "loadFailed": "Falha ao carregar a imagem",
+    "close": "Fechar"
+  },
+  "search": {
+    "placeholder": "Localizar no documento...",
+    "ariaLabel": "Localizar no documento",
+    "noMatches": "Nenhuma correspondência",
+    "position": "{{current}} de {{total}}",
+    "previous": "Correspondência anterior",
+    "next": "Próxima correspondência",
+    "close": "Fechar busca"
+  },
+  "annotation": {
+    "quote": "“{{text}}”",
+    "quoteTruncated": "“{{text}}...”",
+    "add": {
+      "placeholder": "Adicione um comentário...",
+      "cancel": "Cancelar",
+      "submit": "Adicionar"
+    },
+    "edit": {
+      "resolvedBadge": "✓ Resolvida",
+      "placeholder": "Editar comentário...",
+      "reopenTooltip": "Reabrir anotação",
+      "resolveTooltip": "Marcar anotação como resolvida",
+      "unresolve": "Desfazer Resolução",
+      "resolve": "Resolver",
+      "deleteTooltip": "Excluir anotação",
+      "delete": "Excluir",
+      "cancel": "Cancelar",
+      "save": "Salvar"
+    },
+    "selectionToolbar": {
+      "addComment": "Adicionar Comentário"
+    }
+  },
+  "wireframe": {
+    "invalid": "Este bloco de wireframe não é válido.",
+    "placeholder": "Wireframe: <strong>{{name}}</strong>. Abra o plano para visualizá-lo.",
+    "lastGoodBuild": "Mostrando a última versão que compilou",
+    "paused": "Atualizações ao vivo pausadas",
+    "openFullSize": "Abrir em Tamanho Real",
+    "building": "Compilando wireframe...",
+    "missing": "Este plano não tem nenhum wireframe chamado <strong>{{name}}</strong>.",
+    "buildFailed": "Este wireframe não compila.",
+    "unavailable": "A pré-visualização do wireframe não está disponível no momento.",
+    "retry": "Tentar Novamente",
+    "close": "Fechar",
+    "errors": {
+      "empty": "O bloco não nomeia nenhum wireframe. Adicione uma linha como `{{example}}`.",
+      "notYaml": "O bloco não é um YAML válido.",
+      "notMapping": "Escreva o bloco como `{{example}}`, opcionalmente com {{height}} e {{viewport}}.",
+      "unknownKey": "Chave desconhecida \"{{key}}\". Use {{name}}, {{height}} ou {{viewport}}.",
+      "badName": "{{name}} deve ser um slug em minúsculas, como {{example}}.",
+      "badHeight": "{{height}} deve ser um número inteiro de pixels entre 1 e {{max}}.",
+      "badViewport": "{{viewport}} deve ser {{desktop}}, {{tablet}} ou {{mobile}}."
+    }
+  },
+  "questions": {
+    "recommended": "Recomendado",
+    "optional": "Opcional",
+    "selectAll": "Selecione todas as opções aplicáveis",
+    "other": "Outro",
+    "otherPlaceholder": "Digite sua resposta",
+    "otherAriaLabel": "Outra resposta para {{question}}",
+    "notAnswered": {
+      "skipped": "Sem resposta (não obrigatória)",
+      "agentDecided": "Sem resposta (o agente decidiu)"
+    },
+    "clear": "Limpar",
+    "clearAllAriaLabel": "Limpar todas as respostas deste bloco",
+    "clearOneAriaLabel": "Limpar resposta",
+    "submit": "Enviar resposta",
+    "submitNote": {
+      "noAnswers": "Responda a uma pergunta para enviar.",
+      "oneUnanswered": "Sem resposta: \"{{title}}\". Ao enviar, deixo a decisão comigo.",
+      "manyUnanswered_one": "{{count}} pergunta sem resposta. Ao enviar, deixo a decisão comigo.",
+      "manyUnanswered_many": "{{count}} perguntas sem resposta. Ao enviar, deixo a decisão comigo.",
+      "manyUnanswered_other": "{{count}} perguntas sem resposta. Ao enviar, deixo a decisão comigo."
+    }
+  },
+  "answersCard": {
+    "ariaLabel": "Respostas enviadas",
+    "title": "Respostas",
+    "notAnswered": {
+      "skipped": "Sem resposta (não obrigatória)",
+      "agentDecided": "Sem resposta (o agente decidiu)"
+    }
+  },
+  "verificationList": {
+    "dragHandle": "Alça de arrastar",
+    "required": "Obrigatória",
+    "a11y": {
+      "roleDescription": "ordenável",
+      "instructions": "Para pegar um item arrastável, pressione a barra de espaço. Enquanto arrasta, use as teclas de seta para mover o item. Pressione espaço novamente para soltar o item na nova posição ou pressione Esc para cancelar.",
+      "pickedUp": "O item arrastável {{active}} foi pego.",
+      "movedOver": "O item arrastável {{active}} foi movido sobre a área de soltura {{over}}.",
+      "movedAway": "O item arrastável {{active}} não está mais sobre uma área de soltura.",
+      "droppedOver": "O item arrastável {{active}} foi solto sobre a área de soltura {{over}}",
+      "dropped": "O item arrastável {{active}} foi solto.",
+      "cancelled": "O arraste foi cancelado. O item arrastável {{active}} foi solto."
+    }
+  }
+}

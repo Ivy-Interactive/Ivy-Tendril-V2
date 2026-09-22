@@ -1,0 +1,209 @@
+{
+  "sidebar": {
+    "title": "Granskning",
+    "badges": {
+      "verified": "Verifierad",
+      "unverified": "Ej verifierad"
+    }
+  },
+  "shortcuts": {
+    "previousPlan": "Föregående plan",
+    "nextPlan": "Nästa plan"
+  },
+  "empty": {
+    "title": "Inga planer att granska",
+    "description": "Slutförda planer visas här för granskning"
+  },
+  "workspace": {
+    "meta_one": "{{index}}/{{total}} plan",
+    "meta_other": "{{index}}/{{total}} planer",
+    "sourceLabel": {
+      "pr": "PR",
+      "issue": "Ärende"
+    }
+  },
+  "actions": {
+    "requestChanges": "Begär ändringar",
+    "resetToDraft": "Återställ till utkast",
+    "deletePlan": "Ta bort plan",
+    "openPlanPage": "Öppna fullständig spec och diff",
+    "partialDelivery": "Acceptera delleverans"
+  },
+  "primary": {
+    "updatePr": "Uppdatera PR",
+    "createPr": "Skapa PR",
+    "deletePlan": "Ta bort plan",
+    "completePlan": "Slutför plan",
+    "completing": "Slutför…",
+    "pushing": "Pushar…",
+    "unavailable": "{{action}} är inte tillgänglig: {{reason}}"
+  },
+  "completionBlocked": {
+    "title": "Inga ändringar behövs",
+    "body": "Valideringen före exekvering visade att inga ändringar behövs eftersom ärendet eller uppgiften redan är löst. Du kan ta bort planen, markera den som överhoppad eller lägga den på is."
+  },
+  "errors": {
+    "markRecommendation": "Det gick inte att markera ”{{title}}” som {{state}}: {{error}}",
+    "nothingSelected": "Välj minst en rekommendation att implementera.",
+    "noLongerPending": "De valda rekommendationerna väntar inte längre. Uppdatera och försök igen.",
+    "implementFailed": "Det gick inte att implementera de valda rekommendationerna: {{error}}",
+    "reviewActionFailed": "Granskningsåtgärden ”{{name}}” misslyckades: {{error}}",
+    "completeFailed": "Det gick inte att slutföra plan {{planId}}: {{error}}",
+    "updatePrFailed": "Det gick inte att uppdatera PR:en för plan {{planId}}: {{error}}"
+  },
+  "recommendationState": {
+    "pending": "väntande",
+    "accepted": "accepterad",
+    "acceptedWithNotes": "accepterad med anteckningar",
+    "declined": "avvisad"
+  },
+  "tabs": {
+    "summary": "Sammanfattning",
+    "plan": "Plan",
+    "details": "Detaljer",
+    "git": "Git",
+    "changes": "Ändringar",
+    "artifacts": "Artefakter",
+    "recommendations": "Rekommendationer"
+  },
+  "verifications": {
+    "none": "Inga verifieringar",
+    "viewReport": "Visa rapporten för {{name}}"
+  },
+  "verificationStatus": {
+    "pending": "Väntar",
+    "pass": "Godkänd",
+    "fail": "Underkänd",
+    "skipped": "Överhoppad"
+  },
+  "summary": {
+    "loading": "Läser in sammanfattning…",
+    "fallback": {
+      "heading": "Sammanfattning",
+      "body": "Ingen sammanfattning hittades för den här planen. Se verifieringarna för mer information.",
+      "retry": "Välj `{{resetToDraft}}` eller `{{requestChanges}}` för att göra ett nytt försök med planen."
+    }
+  },
+  "plan": {
+    "noSpecification": "Ingen planspecifikation tillgänglig."
+  },
+  "details": {
+    "copyToClipboard": "Kopiera till urklipp",
+    "fields": {
+      "planId": "Plan-ID",
+      "folder": "Mapp",
+      "initialPrompt": "Ursprunglig prompt",
+      "revision": "Revision",
+      "profile": "Profil",
+      "relatedPlans": "Relaterade planer",
+      "dependsOn": "Beror på",
+      "issue": "Ärende",
+      "created": "Skapad",
+      "level": "Nivå",
+      "project": "Projekt",
+      "state": "Tillstånd"
+    },
+    "repositories": {
+      "heading": "Arkiv",
+      "empty": "Inga arkiv angivna"
+    },
+    "commits": {
+      "heading": "Commits",
+      "empty": "Inga commits än"
+    },
+    "verifications": {
+      "heading": "Verifieringar ({{n}})",
+      "empty": "Inga verifieringar"
+    }
+  },
+  "git": {
+    "loading": "Läser in Git-status…"
+  },
+  "changes": {
+    "loading": "Läser in ändringar…",
+    "empty": "Inga filändringar har registrerats för den här planen."
+  },
+  "artifacts": {
+    "heading": "Planartefakter",
+    "description": "Utdata, exempelfiler och skärmdumpar som samlats in under exekveringen.",
+    "loading": "Läser in artefakter…",
+    "empty": "Inga artefakter hittades för den här planen.",
+    "screenshots": "Skärmdumpar ({{n}})",
+    "otherFiles": "Övriga artefaktfiler ({{n}})",
+    "copyPath": "Kopiera sökväg",
+    "open": "Öppna",
+    "openTitle": "Öppna i en sidopanel"
+  },
+  "recommendations": {
+    "empty": "Inga rekommendationer.",
+    "implement": "Implementera",
+    "starting": "Startar…",
+    "implementHint": "Accepterar de markerade rekommendationerna och gör ett nytt försök med planen med dem som ändringsförfrågan.",
+    "select": "Välj {{title}}"
+  },
+  "noteDialog": {
+    "submit": "Skicka",
+    "accept": {
+      "title": "Acceptera rekommendation",
+      "ariaLabel": "Acceptera rekommendation",
+      "noteLabel": "Valfri operatörsanteckning:",
+      "noteAriaLabel": "Valfri anteckning",
+      "placeholder": "Ange valfria anteckningar…"
+    },
+    "decline": {
+      "title": "Avvisa rekommendation",
+      "ariaLabel": "Avvisa rekommendation",
+      "noteLabel": "Anledning till avvisning:",
+      "noteAriaLabel": "Anledning till avvisning",
+      "placeholder": "Ange anledning till avvisningen…"
+    }
+  },
+  "actionsBar": {
+    "tooltip": {
+      "barDisabled": "Inaktiverad: {{reason}}",
+      "barDisabledDefault": "Inaktiverad: granskningsåtgärder är inte tillgängliga just nu",
+      "conditionNotMet": "Inaktiverad: villkoret är inte uppfyllt",
+      "conditionNotMetWithCondition": "Inaktiverad: villkoret är inte uppfyllt ({{condition}})",
+      "runCommand": "Kör: {{command}}",
+      "runCommandWithPorts": "Kör: {{command}} (portar: {{ports}})",
+      "runAction": "Kör {{name}}",
+      "runActionWithPorts": "Kör {{name}} (portar: {{ports}})",
+      "port": "{{name}}: {{port}}",
+      "conditionError": "Inaktiverad: villkoret kunde inte utvärderas: {{reason}}",
+      "conditionErrorWithCondition": "Inaktiverad: villkoret kunde inte utvärderas ({{condition}}): {{reason}}",
+      "starting": "Startar {{name}}…",
+      "checking": "Kontrollerar villkoret: {{condition}}"
+    }
+  },
+  "actionView": {
+    "sendComments_one": "Skicka {{count}} kommentar till agenten som en ändringsförfrågan",
+    "sendComments_other": "Skicka {{count}} kommentarer till agenten som en ändringsförfrågan",
+    "starting": "Startar {{name}}…"
+  },
+  "recommendationsPage": {
+    "sidebarTitle": "Rekommendationer",
+    "empty": {
+      "title": "Inga rekommendationer",
+      "description": "Rekommendationer från slutförda planer visas här"
+    },
+    "position_one": "<highlight>{{index}}/{{total}}</highlight> rekommendation",
+    "position_other": "<highlight>{{index}}/{{total}}</highlight> rekommendationer",
+    "decline": "Avvisa",
+    "accept": "Acceptera",
+    "accepting": "Accepterar…",
+    "acceptWithNotes": "Acceptera med anteckningar",
+    "createIssue": "Skapa ärende",
+    "viewPlan": "Visa plan",
+    "refresh": "Uppdatera",
+    "errors": {
+      "load": "Det gick inte att läsa in rekommendationerna: {{error}}",
+      "update": "Det gick inte att uppdatera rekommendationen ”{{title}}”: {{error}}",
+      "jobNotStarted": "”{{title}}” markerades som accepterad, men jobbet {{jobType}} startade inte: {{error}}"
+    }
+  },
+  "impact": {
+    "small": "Liten",
+    "medium": "Medel",
+    "high": "Hög"
+  }
+}

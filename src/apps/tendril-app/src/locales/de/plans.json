@@ -1,0 +1,281 @@
+{
+  "plansView": {
+    "newPlanShortcut": "Neuer Plan",
+    "empty": {
+      "title": "Keine Pläne",
+      "description": "Von Ihnen erstellte Pläne erscheinen hier"
+    },
+    "noSelection": "Wählen Sie einen Plan in der Seitenleiste aus"
+  },
+  "sidebar": {
+    "title": "Pläne"
+  },
+  "searchBadges": {
+    "verified": "Verifiziert",
+    "unverified": "Nicht verifiziert"
+  },
+  "detail": {
+    "tabs": {
+      "plan": "Plan",
+      "details": "Details",
+      "diff": "Diff-Ansicht",
+      "recommendations": "Empfehlungen ({{n}})",
+      "git": "Git",
+      "gitCount": "Git ({{n}})",
+      "gitAtRisk_one": "Git ({{n}}) · {{count}} gefährdet",
+      "gitAtRisk_other": "Git ({{n}}) · {{count}} gefährdet",
+      "gitAtRiskUncounted_one": "Git · {{count}} gefährdet",
+      "gitAtRiskUncounted_other": "Git · {{count}} gefährdet"
+    },
+    "questions": {
+      "label": "Fragen",
+      "labelUnanswered_one": "Fragen ({{count}} unbeantwortet)",
+      "labelUnanswered_other": "Fragen ({{count}} unbeantwortet)"
+    },
+    "sourceLabel": {
+      "pr": "PR",
+      "issue": "Issue"
+    },
+    "meta": {
+      "position_one": "{{position}}/{{count}} Plan",
+      "position_other": "{{position}}/{{count}} Pläne",
+      "dependsOn": "Abhängig von {{plans}}"
+    },
+    "errors": {
+      "saveAnswer": "Antwort konnte nicht gespeichert werden: {{error}}",
+      "saveAnnotation": "Annotation konnte nicht gespeichert werden: {{error}}",
+      "updateRecommendation": "Empfehlung „{{title}}“ konnte nicht aktualisiert werden: {{error}}",
+      "completePlan": "Plan {{id}} konnte nicht abgeschlossen werden: {{error}}"
+    },
+    "runActionFailed": {
+      "executePlan": "„Plan ausführen“ fehlgeschlagen: {{error}}",
+      "updatePlan": "„Plan aktualisieren“ fehlgeschlagen: {{error}}",
+      "expandPlan": "„Plan erweitern“ fehlgeschlagen: {{error}}",
+      "splitPlan": "„Plan aufteilen“ fehlgeschlagen: {{error}}",
+      "copyPlanId": "„Plan-ID kopieren“ fehlgeschlagen: {{error}}",
+      "copyFolderPath": "„Ordnerpfad kopieren“ fehlgeschlagen: {{error}}",
+      "openFolder": "„Ordner öffnen“ fehlgeschlagen: {{error}}"
+    },
+    "discussDraft": {
+      "outcome": "Ich möchte das Ergebnis dieses Plans besprechen, bevor ich ihn abschließe. Fassen Sie zusammen, was erledigt wurde, und weisen Sie auf alles hin, was einen genaueren Blick verdient.",
+      "plan": "Ich möchte diesen Plan besprechen, bevor ich ihn ausführe. Fassen Sie ihn zusammen und weisen Sie auf alles hin, was Sie ändern würden."
+    }
+  },
+  "actions": {
+    "discussWithAgent": "Mit dem Agenten besprechen",
+    "updatePlan": "Plan aktualisieren",
+    "checking": "Wird geprüft…",
+    "starting": "Wird gestartet…",
+    "createPr": "PR erstellen",
+    "completePlan": "Plan abschließen",
+    "retryPlan": "Plan erneut versuchen",
+    "acceptPartialDelivery": "Teilauslieferung annehmen",
+    "resetToDraft": "Auf Entwurf zurücksetzen…"
+  },
+  "draftActions": {
+    "execute": "Plan ausführen",
+    "update": "Plan aktualisieren…",
+    "expand": "Plan erweitern",
+    "split": "Plan aufteilen",
+    "createIssue": "Issue erstellen…",
+    "copyId": "Plan-ID kopieren",
+    "copyPath": "Ordnerpfad kopieren",
+    "openFolder": "Ordner öffnen",
+    "delete": "Plan löschen…"
+  },
+  "failureCallout": {
+    "title": "Ausführung fehlgeschlagen",
+    "verification": "<bold>{{name}}</bold>: {{status}} – Details finden Sie im Verifikationsbericht",
+    "noDetails": "Keine Details verfügbar. Prüfen Sie die Job-Logs."
+  },
+  "questionsPanel": {
+    "answered_one": "{{answered}} von {{count}} beantwortet",
+    "answered_other": "{{answered}} von {{count}} beantwortet",
+    "optional": "{{label}} (optional)",
+    "saving": "wird gespeichert…"
+  },
+  "planPane": {
+    "writing": "Der Agent entwirft diesen Plan noch. Der Inhalt erscheint hier, sobald der Job die erste Revision schreibt.",
+    "neverWritten": "Dieser Plan hat keine Revisionen. Sein Ordner wurde angelegt, aber der Job, der ihn entwerfen sollte, hat nie eine Revision geschrieben, daher gibt es keinen Planinhalt anzuzeigen.",
+    "neverWrittenUpdate": "Plan aktualisieren",
+    "unreadable_one": "Für diesen Plan ist {{count}} Revision auf der Festplatte verzeichnet, aber die neueste Revision war leer. Die Datei ist möglicherweise nicht lesbar.",
+    "unreadable_other": "Für diesen Plan sind {{count}} Revisionen auf der Festplatte verzeichnet, aber die neueste Revision war leer. Die Datei ist möglicherweise nicht lesbar."
+  },
+  "recommendationsTab": {
+    "title": "Planempfehlungen",
+    "description": "Folgearbeiten und Verbesserungen außerhalb des Umfangs, die während der Ausführung entdeckt wurden.",
+    "empty": "{{jobType}} hat für diesen Plan keine Empfehlungen registriert."
+  },
+  "gitTab": {
+    "loading": "Git-Status wird geladen…"
+  },
+  "details": {
+    "planId": "Plan-ID",
+    "folder": "Ordner",
+    "initialPrompt": "Ursprünglicher Prompt",
+    "revision": "Revision",
+    "profile": "Profil",
+    "relatedPlans": "Verwandte Pläne",
+    "dependsOn": "Abhängig von",
+    "issue": "Issue",
+    "created": "Erstellt",
+    "level": "Stufe",
+    "project": "Projekt",
+    "state": "Status",
+    "copyPlanIdTooltip": "In die Zwischenablage kopieren",
+    "copyFolderTooltip": "In die Zwischenablage kopieren",
+    "repositories": "Repositories",
+    "noRepositories": "Keine Repositories angegeben",
+    "commits": "Commits",
+    "noCommits": "Noch keine Commits"
+  },
+  "verificationStatus": {
+    "pass": "Bestanden",
+    "fail": "Fehlgeschlagen",
+    "pending": "Ausstehend",
+    "skipped": "Übersprungen"
+  },
+  "verifications": {
+    "empty": "Keine Verifikationen",
+    "updateFailed": "Verifikation {{name}} konnte nicht aktualisiert werden: {{error}}",
+    "viewReportTooltip": "Bericht zu {{name}} anzeigen",
+    "viewReport": "Bericht anzeigen",
+    "hideReport": "Bericht ausblenden",
+    "noReport": "Noch kein Bericht"
+  },
+  "reportSheet": {
+    "title": "Verifikationsbericht",
+    "description": "Details des Verifikationsberichts für {{name}}",
+    "descriptionFallback": "Details des Verifikationsberichts für den Plan",
+    "loading": "Verifikationsbericht wird geladen…",
+    "notFound": "Keine Verifikationsberichtsdatei für „{{name}}“ gefunden.",
+    "empty": "Kein Bericht für {{name}} verfügbar."
+  },
+  "artifactSheet": {
+    "thumbnail": {
+      "openLabel": "{{fileName}} öffnen",
+      "noPreview": "Keine Vorschau",
+      "loadingLabel": "{{fileName}} wird geladen"
+    },
+    "fallbackTitle": "Artefakt",
+    "noPreviewTitle": "Keine Vorschau",
+    "showInFolder": "Im Ordner anzeigen",
+    "loadingLabel": "{{fileName}} wird geladen",
+    "imageFailed": "Tendril konnte dieses Bild nicht laden.",
+    "imageFailedWithError": "Tendril konnte dieses Bild nicht laden: {{error}}",
+    "binary": "{{fileName}} ist keine Textdatei ({{size}}) und hat daher hier keine Vorschau.",
+    "tooLarge": "{{fileName}} ist {{size}} groß und damit zu groß für eine Vorschau.",
+    "plainNotice": "Als Klartext angezeigt: Mit {{size}} ist {{fileName}} zu groß für die Syntaxhervorhebung.",
+    "plainNotice_markdown": "Als Klartext angezeigt: Mit {{size}} ist {{fileName}} zu groß, um als Markdown dargestellt zu werden.",
+    "copyPath": "Pfad kopieren",
+    "revealLabel": "Im Ordner anzeigen"
+  },
+  "pullRequests": {
+    "title": "Pull Requests",
+    "refresh": "Aktualisieren",
+    "refreshing": "Wird aktualisiert…",
+    "unreachable": "GitHub war nicht erreichbar für: {{repos}}",
+    "syncInProgress": "Eine Synchronisation läuft bereits; die Status werden aktualisiert, sobald sie abgeschlossen ist.",
+    "checked": "geprüft {{when}}",
+    "checkedJustNow": "gerade eben geprüft",
+    "empty": "Keine PRs erstellt",
+    "state": {
+      "open": "Offen",
+      "closed": "Geschlossen",
+      "merged": "Gemergt",
+      "unknown": "Unbekannt"
+    }
+  },
+  "revisionDiff": {
+    "singleRevision": "Dieser Plan hat nur eine Revision, daher gibt es noch nichts zu vergleichen. Ein Diff erscheint, sobald {{createPlan}} oder {{retryPlan}} eine neue Revision schreibt.",
+    "compare": "<oldLabel><text>Revision</text><oldSelect/></oldLabel><newLabel><text>vergleichen mit</text><newSelect/></newLabel>",
+    "oldRevisionLabel": "Alte Revision",
+    "newRevisionLabel": "Neue Revision",
+    "onDisk_one": "{{count}} Revision auf der Festplatte",
+    "onDisk_other": "{{count}} Revisionen auf der Festplatte",
+    "loading": "Revisionen {{from}} und {{to}} werden geladen…",
+    "identical": "Die Revisionen {{from}} und {{to}} sind identisch."
+  },
+  "icebox": {
+    "title": "Icebox",
+    "description": "Archivierte und zurückgestellte Pläne, die auf Eis liegen.",
+    "searchPlaceholder": "Icebox-Pläne durchsuchen…",
+    "projectFilterLabel": "Projekt",
+    "allProjects": "Alle Projekte",
+    "levelFilterLabel": "Stufe",
+    "allLevels": "Alle Stufen",
+    "empty": {
+      "title": "Die Icebox ist leer",
+      "description": "Pläne, die Sie auf Eis legen, erscheinen hier"
+    },
+    "noMatch": {
+      "title": "Keine passenden Pläne",
+      "description": "Keine Icebox-Pläne entsprechen den aktuellen Filtern."
+    },
+    "card": {
+      "priority": "P{{priority}}",
+      "verificationTooltip": "{{name}}: {{status}}",
+      "deleteLabel": "Plan {{id}} löschen",
+      "thawLabel": "Plan {{id}} auftauen",
+      "thaw": "Auftauen",
+      "thawing": "Wird aufgetaut…"
+    },
+    "thawFailed": "Plan {{id}} konnte nicht aufgetaut werden: {{error}}"
+  },
+  "newPlan": {
+    "title": "Neuen Plan erstellen",
+    "closeLabel": "Dialog schließen",
+    "projectPickerLabel": "Zielprojekt",
+    "autoProject": "Automatisch",
+    "addProject": "+ Neues Projekt hinzufügen",
+    "submit": "Erstellen",
+    "placeholder": "Aufgabenbeschreibung eingeben…",
+    "emptyDescription": "Geben Sie eine Beschreibung für den neuen Plan ein."
+  },
+  "planActions": {
+    "canExecute": {
+      "alreadyCompleted": "Plan ist bereits abgeschlossen.",
+      "executing": "Plan wird gerade ausgeführt.",
+      "blockedByDependency": "Blockiert durch die Abhängigkeit „{{dependency}}“ im Status „{{state}}“ (erfordert „Abgeschlossen“)."
+    },
+    "canCreatePr": {
+      "wrongState": "„PR erstellen“ ist nur möglich, wenn der Plan im Status „Review“ oder „Fehlgeschlagen“ ist (aktuell: {{state}}).",
+      "verificationsFailed": "PR kann nicht erstellt werden: Verifikationen fehlgeschlagen ({{names}}).",
+      "verificationsPending": "PR kann nicht erstellt werden: Verifikationen noch ausstehend ({{names}})."
+    },
+    "canRetry": {
+      "wrongState": "Ein erneuter Versuch ist nur bei Plänen im Status „Review“ oder „Fehlgeschlagen“ möglich (aktuell: {{state}})."
+    },
+    "canRefine": {
+      "wrongState": "Die Planverfeinerung (Erweitern/Aktualisieren/Aufteilen) ist nur bei Plänen im Status „Entwurf“ möglich (aktuell: {{state}})."
+    },
+    "canDelete": {
+      "inFlight": "Ein Plan kann nicht gelöscht werden, solange er den Status „{{state}}“ hat – brechen Sie zuerst den Job ab."
+    },
+    "canReset": {
+      "terminal": "Der Plan hat den Status „{{state}}“ und kann nicht auf Entwurf zurückgesetzt werden.",
+      "inFlight": "Ein Plan kann nicht zurückgesetzt werden, solange er den Status „{{state}}“ hat – brechen Sie zuerst den Job ab.",
+      "wrongState": "„Auf Entwurf zurücksetzen“ ist nur bei Plänen im Status „Review“, „Fehlgeschlagen“ oder „Blockiert“ möglich (aktuell: {{state}})."
+    },
+    "canCompletePartial": {
+      "wrongState": "Eine Teilauslieferung ist nur möglich, wenn der Plan im Status „Review“ oder „Fehlgeschlagen“ ist (aktuell: {{state}}).",
+      "noFailures": "Keine Verifikationen fehlgeschlagen – schließen Sie den Plan stattdessen normal ab."
+    },
+    "canComplete": {
+      "alreadyCompleted": "Plan ist bereits abgeschlossen.",
+      "inFlight": "Ein Plan kann nicht abgeschlossen werden, solange er den Status „{{state}}“ hat – brechen Sie zuerst den Job ab."
+    },
+    "errors": {
+      "completeBlocked": "Abschließen des Plans blockiert",
+      "executeBlocked": "Ausführung blockiert",
+      "retryBlocked": "Erneuter Versuch blockiert",
+      "createPrBlocked": "PR-Erstellung blockiert",
+      "refineBlocked": "Verfeinerung blockiert",
+      "repositoryRequired": "Zum Erstellen eines Issues ist ein Repository erforderlich."
+    }
+  },
+  "store": {
+    "rollbackField": "Rollback: {{field}} konnte nicht aktualisiert werden: {{error}}",
+    "rollbackVerification": "Rollback der Verifikationsaktualisierung: {{error}}"
+  }
+}

@@ -15,6 +15,7 @@ import { useShell } from "./ShellContext.tsx";
 import type { ShellNavItemDto, ShellWidgetProps } from "./types.ts";
 import { ShellTooltip } from "./ShellTooltip.tsx";
 import { TuiBadge as Badge } from "../ui/TuiBadge";
+import { useTranslation } from "@/i18n/uiShell";
 import "./shell.css";
 
 interface ShellNavProps extends ShellWidgetProps {
@@ -82,6 +83,7 @@ export const ShellNav: React.FC<ShellNavProps> = ({
   items = [],
   showDivider = false,
 }) => {
+  const { t } = useTranslation("uiShell");
   const { collapsed } = useShell();
   const itemsRef = useRef<HTMLDivElement>(null);
   const [navHeight, setNavHeight] = useState<number | null>(readStoredHeight);
@@ -182,7 +184,7 @@ export const ShellNav: React.FC<ShellNavProps> = ({
           className="tsh-nav-divider"
           role="separator"
           aria-orientation="horizontal"
-          aria-label="Resize navigation"
+          aria-label={t("nav.resizeAriaLabel")}
           data-resizable={resizable}
           data-dragging={dragging}
           onPointerDown={onDividerPointerDown}

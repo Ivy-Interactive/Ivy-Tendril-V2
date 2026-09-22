@@ -4,6 +4,7 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { X } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/i18n/uiCommon";
 
 const Sheet = SheetPrimitive.Root;
 
@@ -54,18 +55,25 @@ interface SheetContentProps
 const SheetContent = React.forwardRef<
   React.ElementRef<typeof SheetPrimitive.Content>,
   SheetContentProps
->(({ side = "right", className, children, ...props }, ref) => (
-  <SheetPortal>
-    <SheetOverlay />
-    <SheetPrimitive.Content ref={ref} className={cn(sheetVariant({ side }), className)} {...props}>
-      <SheetPrimitive.Close className="absolute right-4 top-4 p-1 rounded-selector text-muted-foreground hover:bg-secondary/60 hover:text-foreground transition-colors focus:outline-none cursor-pointer">
-        <X className="size-4" />
-        <span className="sr-only">Close</span>
-      </SheetPrimitive.Close>
-      {children}
-    </SheetPrimitive.Content>
-  </SheetPortal>
-));
+>(({ side = "right", className, children, ...props }, ref) => {
+  const { t } = useTranslation("uiCommon");
+  return (
+    <SheetPortal>
+      <SheetOverlay />
+      <SheetPrimitive.Content
+        ref={ref}
+        className={cn(sheetVariant({ side }), className)}
+        {...props}
+      >
+        <SheetPrimitive.Close className="absolute right-4 top-4 p-1 rounded-selector text-muted-foreground hover:bg-secondary/60 hover:text-foreground transition-colors focus:outline-none cursor-pointer">
+          <X className="size-4" />
+          <span className="sr-only">{t("sheet.close")}</span>
+        </SheetPrimitive.Close>
+        {children}
+      </SheetPrimitive.Content>
+    </SheetPortal>
+  );
+});
 SheetContent.displayName = SheetPrimitive.Content.displayName;
 
 const SheetHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (

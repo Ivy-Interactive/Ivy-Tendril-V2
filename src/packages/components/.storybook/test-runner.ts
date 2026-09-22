@@ -3,6 +3,7 @@ import type { TestRunnerConfig } from "@storybook/test-runner";
 import { getStoryContext, waitForPageReady } from "@storybook/test-runner";
 import { checkA11y, configureAxe, injectAxe } from "axe-playwright";
 import { toMatchImageSnapshot } from "jest-image-snapshot";
+import { DEFAULT_LOCALE } from "../src/i18n/locales";
 import { readStoryGlobals } from "./globals";
 
 // `expect` is Jest's global inside the Storybook test runner. tsconfig.json lists
@@ -114,11 +115,18 @@ const config: TestRunnerConfig = {
     }
 
     const image = await rootElement.screenshot();
-    const { theme = "light", density = "Medium" } = readStoryGlobals(storyContext);
+    const {
+      theme = "light",
+      density = "Medium",
+      locale = DEFAULT_LOCALE,
+    } = readStoryGlobals(storyContext);
+    // English keeps the identifier it always had, so the existing baselines stay valid; a run in
+    // another language gets baselines of its own rather than failing against the English ones.
+    const localeSuffix = locale === DEFAULT_LOCALE ? "" : `-${locale}`;
 
     expect(image).toMatchImageSnapshot({
       customSnapshotsDir: snapshotsDir,
-      customSnapshotIdentifier: `${storyContext.id}-${theme}-${density.toLowerCase()}`,
+      customSnapshotIdentifier: `${storyContext.id}-${theme}-${density.toLowerCase()}${localeSuffix}`,
       customDiffDir: path.join(snapshotsDir, "__diff_output__"),
       failureThreshold: 0.01,
       failureThresholdType: "percent",

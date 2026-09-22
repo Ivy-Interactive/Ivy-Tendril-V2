@@ -1,4 +1,5 @@
 import React from "react";
+import { useTranslation } from "@/i18n/uiVault";
 import { Button, type ButtonProps } from "../ui/button/button";
 import { Callout } from "../ui/callout";
 import {
@@ -53,50 +54,53 @@ export const VaultDialogShell: React.FC<VaultDialogShellProps> = ({
   submitIcon,
   onSubmit,
   children,
-}) => (
-  <Dialog
-    open={open}
-    onOpenChange={(next) => {
-      if (!next) onClose();
-    }}
-  >
-    <DialogContent
-      data-testid={testId}
-      aria-modal="true"
-      {...(description === undefined ? { "aria-describedby": undefined } : {})}
-      onInteractOutside={(event) => event.preventDefault()}
-      onOpenAutoFocus={(event) => {
-        event.preventDefault();
-        (event.currentTarget as HTMLElement | null)?.focus();
+}) => {
+  const { t } = useTranslation("uiVault");
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(next) => {
+        if (!next) onClose();
       }}
     >
-      <DialogHeader>
-        <DialogTitle>{title}</DialogTitle>
-        {description !== undefined && (
-          <DialogDescription className="mt-1">{description}</DialogDescription>
-        )}
-      </DialogHeader>
+      <DialogContent
+        data-testid={testId}
+        aria-modal="true"
+        {...(description === undefined ? { "aria-describedby": undefined } : {})}
+        onInteractOutside={(event) => event.preventDefault()}
+        onOpenAutoFocus={(event) => {
+          event.preventDefault();
+          (event.currentTarget as HTMLElement | null)?.focus();
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+          {description !== undefined && (
+            <DialogDescription className="mt-1">{description}</DialogDescription>
+          )}
+        </DialogHeader>
 
-      <div className="flex-1 space-y-4 overflow-y-auto px-6 pb-2 text-sm text-foreground">
-        {children}
-        {error && <Callout.Error data-testid={`${testId}-error`}>{error}</Callout.Error>}
-      </div>
+        <div className="flex-1 space-y-4 overflow-y-auto px-6 pb-2 text-sm text-foreground">
+          {children}
+          {error && <Callout.Error data-testid={`${testId}-error`}>{error}</Callout.Error>}
+        </div>
 
-      <DialogFooter>
-        <Button variant="outline" size="sm" onClick={onClose}>
-          Cancel
-        </Button>
-        <Button
-          variant={submitVariant}
-          size="sm"
-          disabled={submitDisabled}
-          aria-disabled={submitDisabled}
-          onClick={onSubmit}
-        >
-          {submitIcon}
-          {submitLabel}
-        </Button>
-      </DialogFooter>
-    </DialogContent>
-  </Dialog>
-);
+        <DialogFooter>
+          <Button variant="outline" size="sm" onClick={onClose}>
+            {t("dialogShell.cancel")}
+          </Button>
+          <Button
+            variant={submitVariant}
+            size="sm"
+            disabled={submitDisabled}
+            aria-disabled={submitDisabled}
+            onClick={onSubmit}
+          >
+            {submitIcon}
+            {submitLabel}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+};

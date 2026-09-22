@@ -2,17 +2,22 @@ import { type PlanActionDto } from "@ivy-interactive/components/tendril";
 import type { Annotation, PlanDetail, PlanSummary } from "../../types/api";
 import { PlanActionsController } from "../../controllers/planActions";
 import { draftActions, type DraftAction } from "../../controllers/draftActions";
+import type { TFunction } from "../../i18n";
+import type { PlanRunAction } from "./helpers";
 
 /** What the action row is assembled from: the plan as the page believes it, and what is in flight. */
 export interface PlanActionsOptions {
   effectivePlan: PlanDetail;
   allPlans: PlanSummary[];
   isPlanInFlight: boolean;
-  pendingAction: string | null;
+  /** The id of the action in flight: a {@link PlanRunAction}, or `"complete"` for Complete Plan. */
+  pendingAction: PlanRunAction | "complete" | null;
   isCheckingPreflight: boolean;
   annotations: Annotation[];
   answeredQuestionCount: number;
   hasActiveJob: (type: string) => boolean;
+  /** The page's `t`, so the labels follow its language. */
+  t: TFunction<"plans">;
 }
 
 /**
@@ -47,6 +52,7 @@ export function buildPlanActions({
   annotations,
   answeredQuestionCount,
   hasActiveJob,
+  t,
 }: PlanActionsOptions): PlanActionSet {
   // Gating checks
   const canExec = PlanActionsController.canExecute(effectivePlan, allPlans);
@@ -125,7 +131,7 @@ export function buildPlanActions({
     // `actions.Menu("DiscussWithAgent", $"Discuss with {agentLabel}", agentIcon, ..., focusChat: true)`.
     workspaceMenu.push({
       tag: "DiscussWithAgent",
-      label: "Discuss with agent",
+      label: t("actions.discussWithAgent"),
       icon: "MessageSquare",
       focusChat: true,
     });
@@ -155,7 +161,7 @@ export function buildPlanActions({
     if (pendingWork > 0) {
       secondaryActions.push({
         tag: "UpdatePlan",
-        label: "Update Plan",
+        label: t("actions.updatePlan"),
         icon: "WandSparkles",
         badge: String(pendingWork),
         disabled: pendingAction !== null || hasActiveJob("UpdatePlan"),
@@ -168,9 +174,9 @@ export function buildPlanActions({
       primaryAction = {
         tag: "execute",
         label: isCheckingPreflight
-          ? "Checking..."
-          : pendingAction === "Execute Plan"
-            ? "Starting..."
+          ? t("actions.checking")
+          : pendingAction === "executePlan"
+            ? t("actions.starting")
             : draftLabel("execute"),
         icon: "Rocket",
         shortcut: "x",
@@ -184,26 +190,26 @@ export function buildPlanActions({
   if (!isPlanInFlight && (effectivePlan.state === "Review" || effectivePlan.state === "Failed")) {
     primaryAction = {
       tag: "CreatePr",
-      label: "Create PR",
+      label: t("actions.createPr"),
       icon: "GitPullRequest",
       disabled: !canPr.allowed || pendingAction !== null,
     };
     secondaryActions.push({
       tag: "CompletePlan",
-      label: "Complete Plan",
+      label: t("actions.completePlan"),
       icon: "CircleCheck",
       disabled: pendingAction !== null,
     });
     secondaryActions.push({
       tag: "RetryPlan",
-      label: "Retry Plan",
+      label: t("actions.retryPlan"),
       icon: "RotateCcw",
       disabled: !canRetryPlan.allowed || pendingAction !== null,
     });
     if (canPartial.allowed)
       secondaryActions.push({
         tag: "AcceptPartialDelivery",
-        label: "Accept Partial Delivery",
+        label: t("actions.acceptPartialDelivery"),
         icon: "TriangleAlert",
       });
   }
@@ -214,7 +220,7 @@ export function buildPlanActions({
   if (!isPlanInFlight && canResetPlan.allowed)
     workspaceMenu.push({
       tag: "ResetToDraft",
-      label: "Reset to Draft…",
+      label: t("actions.resetToDraft"),
       icon: "RotateCcw",
       shortcut: "r",
     });

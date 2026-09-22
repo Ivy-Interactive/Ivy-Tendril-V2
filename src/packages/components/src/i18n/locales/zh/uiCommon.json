@@ -1,0 +1,248 @@
+{
+  "blade": {
+    "back": "返回",
+    "backTo": "返回 {{title}}",
+    "close": "关闭 {{title}}",
+    "refresh": "刷新 {{title}}"
+  },
+  "bladeContainer": {
+    "ariaLabel": "抽屉"
+  },
+  "calendar": {
+    "dayButton": {
+      "selected": "{{date}}，已选择",
+      "today": "今天，{{date}}",
+      "todaySelected": "今天，{{date}}，已选择"
+    },
+    "gridcell": {
+      "today": "今天，{{date}}"
+    },
+    "monthDropdown": "选择月份",
+    "monthPlaceholder": "月",
+    "navLabel": "{{label}} 导航",
+    "nextMonth": "转到下个月",
+    "previousMonth": "转到上个月",
+    "weekNumber": "第 {{week}} 周",
+    "weekNumberHeader": "周数",
+    "yearDropdown": "选择年份",
+    "yearPlaceholder": "年"
+  },
+  "callout": {
+    "dismiss": "关闭"
+  },
+  "charts": {
+    "axis": {
+      "billions": "{{value}}B",
+      "millions": "{{value}}M",
+      "thousands": "{{value}}K"
+    },
+    "radarDefaultSeries": "数据",
+    "scatterLineSeries": "{{name}} 折线"
+  },
+  "chatMessageList": {
+    "scrollToBottom": "滚动到底部"
+  },
+  "clipboard": {
+    "copyFailed": "无法复制到剪贴板。"
+  },
+  "copyToClipboard": {
+    "ariaLabel": "复制到剪贴板",
+    "copied": "已复制！"
+  },
+  "dataTable": {
+    "columnHeader": {
+      "clearSort": "清除“{{column}}”的排序",
+      "reorder": "调整列顺序",
+      "reorderAt": "调整列顺序，第 {{position}} 列，共 {{total}} 列",
+      "resize": "调整列宽",
+      "sortAscending": "按“{{column}}”升序排序",
+      "sortDescending": "按“{{column}}”降序排序"
+    },
+    "columnOptions": "列选项",
+    "editCell": "编辑“{{column}}”",
+    "empty": "无结果。",
+    "filter": {
+      "clear": "清除",
+      "clearAriaLabel": "清除筛选",
+      "errors": {
+        "afterIs": "“{{keyword}}”之后应为“{{blank}}”、“{{notBlank}}”、“{{null}}”或“{{notNull}}”。",
+        "afterNot": "“{{keyword}}”之后应为“{{contains}}”、“{{in}}”或“{{equals}}”。",
+        "expectedColumn": "位置 {{position}} 处应为列名，但找到的是“{{text}}”。",
+        "expectedValue": "位置 {{position}} 处应为带引号的值，例如 {{example}}。找到的是“{{text}}”。",
+        "expectedWord": "“{{after}}”之后应为“{{word}}”。",
+        "inNeedsList": "“{{keyword}}”需要一个列表：{{example}}。",
+        "incomplete": "表达式尚未完整就结束了。",
+        "needsComparison": "“{{column}}”需要一个比较条件，例如 {{equalsExample}} 或 {{containsExample}}。",
+        "noFilterableColumn": "此表格中没有可筛选的列。",
+        "unclosedBracket": "位置 {{position}} 处的“[”未闭合。",
+        "unclosedGroup": "“(”未闭合：每个分组都需要一个匹配的“)”。",
+        "unclosedList": "“{{keyword}}”列表中的“(”未闭合。",
+        "unclosedQuote": "位置 {{position}} 处的引号未闭合。",
+        "unexpectedCharacter": "位置 {{position}} 处出现意外的“{{text}}”。",
+        "unexpectedSymbol": "位置 {{position}} 处出现意外的“{{text}}”。",
+        "unexpectedToken": "位置 {{position}} 处出现意外的“{{text}}”。请使用 {{and}} 或 {{or}} 连接条件。",
+        "unknownColumn": "未知列“{{text}}”。可筛选的列：{{names}}。",
+        "unknownComparison": "位置 {{position}} 处的比较“{{text}}”未知。请使用 {{operators}} 或 {{last}}。"
+      },
+      "filterableColumns": "可筛选的列",
+      "help": "输入一个表达式，按 Enter 提交。条件使用 <code>{{and}}</code> / <code>{{or}}</code> 连接，并可用括号分组。",
+      "input": "筛选表达式",
+      "noFilterableColumns": "没有可筛选的列",
+      "syntax": "筛选语法",
+      "syntaxTitle": "可筛选的内容及方法",
+      "toggle": "筛选",
+      "toggleTitle": "筛选表格数据"
+    },
+    "loadingMore": "正在加载更多…",
+    "pagination": {
+      "ariaLabel": "表格分页",
+      "firstPage": "转到第一页",
+      "lastPage": "转到最后一页",
+      "nextPage": "转到下一页",
+      "noRows": "没有行",
+      "page": "第 {{page}} 页，共 {{pageCount}} 页",
+      "previousPage": "转到上一页",
+      "rowsPerPage": "每页行数",
+      "showing": "显示第 {{start}}–{{end}} 条，共 {{total}} 条"
+    },
+    "rowActions": "行操作",
+    "selectAllRows": "选择所有行",
+    "selectRow": "选择第 {{id}} 行"
+  },
+  "dialog": {
+    "close": "关闭"
+  },
+  "diagram": {
+    "invalidGraphviz": "Graphviz DOT 语法无效",
+    "invalidMermaid": "Mermaid 图表语法无效",
+    "loading": "正在加载图表…",
+    "loadingGraphviz": "正在加载 Graphviz…",
+    "loadingMermaid": "正在加载 Mermaid…",
+    "renderFailed": "图表渲染失败"
+  },
+  "errorDisplay": {
+    "copyDetails": "复制详情",
+    "message": "消息",
+    "stackTrace": "堆栈跟踪",
+    "type": "类型"
+  },
+  "errorSheet": {
+    "description": "应用程序发生错误。详情如下。",
+    "title": "糟糕！出错了"
+  },
+  "format": {
+    "bytes": {
+      "b": "{{value}} B",
+      "gb": "{{value}} GB",
+      "kb": "{{value}} KB",
+      "mb": "{{value}} MB",
+      "pb": "{{value}} PB",
+      "tb": "{{value}} TB"
+    },
+    "duration": {
+      "hoursMinutes": "{{hours}} 小时 {{minutes}} 分",
+      "minutesSeconds": "{{minutes}} 分 {{seconds}} 秒",
+      "seconds": "{{seconds}} 秒"
+    },
+    "tokenCount": {
+      "millions": "{{value}}M",
+      "thousands": "{{value}}k"
+    },
+    "tokens": {
+      "millions": "{{value}}M",
+      "thousands": "{{value}}K"
+    }
+  },
+  "imageOverlay": {
+    "ariaLabel": "图片浮层",
+    "close": "关闭",
+    "next": "下一张图片",
+    "position": "{{current}} / {{total}}",
+    "previous": "上一张图片"
+  },
+  "invalidIcon": {
+    "ariaLabel": "验证错误"
+  },
+  "jsonRenderer": {
+    "invalid": "JSON 字符串无效"
+  },
+  "loading": {
+    "ariaLabel": "正在加载",
+    "text": "正在加载…"
+  },
+  "madeWithIvy": {
+    "label": "构建于"
+  },
+  "markdown": {
+    "alerts": {
+      "caution": "小心",
+      "important": "重要",
+      "note": "注意",
+      "tip": "提示",
+      "warning": "警告"
+    },
+    "footnotes": {
+      "backToReference": "返回引用 {{ref}}",
+      "backToReferenceRepeat": "返回引用 {{ref}}-{{reref}}",
+      "label": "脚注"
+    },
+    "taskCompleted": "已完成的待办项",
+    "taskPending": "未完成的待办项"
+  },
+  "multiselect": {
+    "bulkSelection": "批量选择",
+    "clearAll": "全部清除",
+    "empty": "没有可用选项",
+    "placeholder": "选择选项…",
+    "remove": "移除",
+    "selectAll": "全选",
+    "toggleDropdown": "切换下拉菜单"
+  },
+  "pagination": {
+    "ariaLabel": "分页",
+    "morePages": "更多页",
+    "next": "下一页",
+    "nextAriaLabel": "转到下一页",
+    "previous": "上一页",
+    "previousAriaLabel": "转到上一页"
+  },
+  "progress": {
+    "ariaLabel": "进度"
+  },
+  "sheet": {
+    "close": "关闭"
+  },
+  "sidebar": {
+    "toggle": "切换侧边栏"
+  },
+  "slider": {
+    "ariaLabel": "滑块"
+  },
+  "stackedProgress": {
+    "indeterminate": "不确定",
+    "segmentFallback": "分段 {{number}}",
+    "select": "选择 {{label}}",
+    "tooltip": "{{label}}：{{value}}",
+    "total": "总计：{{total}}",
+    "valueText": "{{label}}：{{value}}，共 {{total}}"
+  },
+  "starRating": {
+    "rate_other": "评为 {{count}} 星"
+  },
+  "statusLine": {
+    "estimatedTooltip": "根据目前的流式输出估算",
+    "tokensAbbreviated": "{{value}} Token",
+    "tokensAbbreviatedEstimated": "约 {{value}} Token",
+    "tokensEstimated_other": "约 {{value}} Token",
+    "tokens_other": "{{value}} Token"
+  },
+  "toolbar": {
+    "moreActions": "更多操作"
+  },
+  "tuiBadge": {
+    "remove": "移除"
+  },
+  "xmlRenderer": {
+    "invalid": "XML 字符串无效"
+  }
+}

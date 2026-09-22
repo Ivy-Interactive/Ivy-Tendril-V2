@@ -4,6 +4,7 @@ import type {
   DataTableRowAction,
   DataTableSortDirection,
 } from "./types";
+import { i18n } from "@/i18n/uiCommon";
 
 const isNil = (value: unknown): boolean => value === null || value === undefined;
 
@@ -67,6 +68,22 @@ export function toDisplayString(value: unknown): string {
 }
 
 /**
+ * The collator text cells sort with: numeric-aware, case- and accent-insensitive, in the UI's
+ * language rather than the operating system's. One per language, because building a collator per
+ * comparison is what makes sorting a large table slow.
+ */
+const collators = new Map<string, Intl.Collator>();
+function collator(): Intl.Collator {
+  const language = i18n.language;
+  let existing = collators.get(language);
+  if (!existing) {
+    existing = new Intl.Collator(language, { numeric: true, sensitivity: "base" });
+    collators.set(language, existing);
+  }
+  return existing;
+}
+
+/**
  * Default comparator for two non-nullish cell values: numbers numerically, dates by time, booleans
  * false before true, everything else by a numeric-aware locale compare.
  */
@@ -80,10 +97,7 @@ export function compareValues(a: unknown, b: unknown): number {
   if (typeof a === "boolean" && typeof b === "boolean") {
     return Number(a) - Number(b);
   }
-  return toDisplayString(a).localeCompare(toDisplayString(b), undefined, {
-    numeric: true,
-    sensitivity: "base",
-  });
+  return collator().compare(toDisplayString(a), toDisplayString(b));
 }
 
 /**

@@ -1,6 +1,8 @@
 import { whereColumn } from "@ivy-interactive/components/ui";
 import { queryJobsPage } from "../../api/tableQuery";
+import type { TFunction } from "../../i18n";
 import type { JobStatus } from "../../types/api";
+import { jobsT } from "./format";
 
 /**
  * The bulk clears the header menu offers: which scopes exist, what the confirm says for one, and how
@@ -8,16 +10,46 @@ import type { JobStatus } from "../../types/api";
  * deleted" - which is why the sentence is built here rather than in the dialog.
  */
 
+/** A scope's subtree in the `jobs` catalog: `clear.scopes.<key>`. */
+export type JobClearScopeKey = "completed" | "failed" | "timeout" | "stopped" | "all";
+
 /** One entry in the header menu's clear list. */
 export interface JobClearScope {
   /** The `status` value `POST /api/jobs/clear` is sent. */
   scope: string;
-  /** The menu label, and the dialog's title. */
-  label: string;
-  /** What the sentence in the dialog calls these rows, e.g. "12 **failed** jobs". */
+  /** Where the scope's copy lives in the `jobs` catalog, `clear.scopes.<key>`. */
+  key: JobClearScopeKey;
+  /** The menu label, and the dialog's title - in the language current when it is read. */
+  readonly label: string;
+  /**
+   * What the English sentence in the dialog calls these rows, e.g. "12 **failed** jobs". Not what is
+   * shown: every scope has whole sentences of its own in the catalog, because the adjective agrees
+   * with the noun and the count in most languages and cannot be dropped into one shared sentence.
+   */
   noun: string;
   /** The statuses removed, so the count and the sentence are read from one place. */
   statuses: JobStatus[];
+}
+
+/**
+ * One scope. `label` is a getter so the list can stay a constant: it is read when the menu renders,
+ * in the language of that moment, rather than frozen in the language the module was loaded in.
+ */
+function clearScope(
+  scope: string,
+  key: JobClearScopeKey,
+  noun: string,
+  statuses: JobStatus[],
+): JobClearScope {
+  return {
+    scope,
+    key,
+    noun,
+    statuses,
+    get label() {
+      return jobsT(`clear.scopes.${key}.label`);
+    },
+  };
 }
 
 /**
@@ -41,16 +73,11 @@ export interface JobClearScope {
  * which V1's service exposes as `ClearAllJobs` without ever putting it in a menu.
  */
 export const JOB_CLEAR_SCOPES: readonly JobClearScope[] = [
-  { scope: "Completed", label: "Clear Completed", noun: "completed", statuses: ["Completed"] },
-  { scope: "Failed", label: "Clear Failed", noun: "failed", statuses: ["Failed"] },
-  { scope: "Timeout", label: "Clear Timeout", noun: "timed-out", statuses: ["Timeout"] },
-  { scope: "Stopped", label: "Clear Stopped", noun: "stopped", statuses: ["Stopped"] },
-  {
-    scope: "all",
-    label: "Clear All Finished",
-    noun: "finished",
-    statuses: ["Completed", "Failed", "Timeout", "Stopped"],
-  },
+  clearScope("Completed", "completed", "completed", ["Completed"]),
+  clearScope("Failed", "failed", "failed", ["Failed"]),
+  clearScope("Timeout", "timeout", "timed-out", ["Timeout"]),
+  clearScope("Stopped", "stopped", "stopped", ["Stopped"]),
+  clearScope("all", "all", "finished", ["Completed", "Failed", "Timeout", "Stopped"]),
 ];
 
 /** What the clear confirm says and offers, for one scope and one count. */
@@ -76,26 +103,28 @@ export interface JobClearPrompt {
  *   nothing is not a question worth answering.
  * - **n rows**: the number, the noun, and what goes with them.
  */
-export function describeClearPrompt(scope: JobClearScope, count: number | null): JobClearPrompt {
+export function describeClearPrompt(
+  scope: JobClearScope,
+  count: number | null,
+  t: TFunction<"jobs"> = jobsT,
+): JobClearPrompt {
   if (count === null) {
     return {
-      body: `Counting ${scope.noun} jobs…`,
-      confirmLabel: "Clear",
+      body: t(`clear.scopes.${scope.key}.counting`),
+      confirmLabel: t("clear.confirm"),
       confirmDisabled: true,
     };
   }
   if (count === 0) {
     return {
-      body: `There are no ${scope.noun} jobs to clear.`,
-      confirmLabel: "Clear",
+      body: t(`clear.scopes.${scope.key}.empty`),
+      confirmLabel: t("clear.confirm"),
       confirmDisabled: true,
     };
   }
   return {
-    body:
-      `Delete ${count} ${scope.noun} job${count === 1 ? "" : "s"}? ` +
-      "Their logs and output are removed with them, and this cannot be undone.",
-    confirmLabel: `Clear ${count}`,
+    body: t(`clear.scopes.${scope.key}.confirm`, { count }),
+    confirmLabel: t("clear.confirmCount", { count }),
     confirmDisabled: false,
   };
 }

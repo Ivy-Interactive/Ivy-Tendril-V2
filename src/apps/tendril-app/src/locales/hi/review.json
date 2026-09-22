@@ -1,0 +1,209 @@
+{
+  "sidebar": {
+    "title": "समीक्षा",
+    "badges": {
+      "verified": "सत्यापित",
+      "unverified": "असत्यापित"
+    }
+  },
+  "shortcuts": {
+    "previousPlan": "पिछली योजना",
+    "nextPlan": "अगली योजना"
+  },
+  "empty": {
+    "title": "समीक्षा के लिए कोई योजना नहीं",
+    "description": "पूर्ण योजनाएं समीक्षा के लिए यहाँ दिखाई देंगी"
+  },
+  "workspace": {
+    "meta_one": "{{index}}/{{total}} योजना",
+    "meta_other": "{{index}}/{{total}} योजनाएं",
+    "sourceLabel": {
+      "pr": "PR",
+      "issue": "इश्यू"
+    }
+  },
+  "actions": {
+    "requestChanges": "परिवर्तन का अनुरोध करें",
+    "resetToDraft": "ड्राफ़्ट पर रीसेट करें",
+    "deletePlan": "योजना हटाएं",
+    "openPlanPage": "पूर्ण विनिर्देश और डिफ़ खोलें",
+    "partialDelivery": "आंशिक वितरण स्वीकार करें"
+  },
+  "primary": {
+    "updatePr": "PR अपडेट करें",
+    "createPr": "PR बनाएं",
+    "deletePlan": "योजना हटाएं",
+    "completePlan": "योजना पूर्ण करें",
+    "completing": "पूर्ण किया जा रहा है…",
+    "pushing": "पुश किया जा रहा है…",
+    "unavailable": "{{action}} उपलब्ध नहीं है: {{reason}}"
+  },
+  "completionBlocked": {
+    "title": "किसी परिवर्तन की आवश्यकता नहीं",
+    "body": "निष्पादन-पूर्व जांच में पाया गया कि किसी परिवर्तन की आवश्यकता नहीं है, क्योंकि इश्यू या कार्य पहले ही हल हो चुका है। आप इस योजना को हटा सकते हैं, या इसे ‘छोड़ी गई’ या आइसबॉक्स में ले जा सकते हैं।"
+  },
+  "errors": {
+    "markRecommendation": "\"{{title}}\" को {{state}} के रूप में चिह्नित नहीं किया जा सका: {{error}}",
+    "nothingSelected": "लागू करने के लिए कम से कम एक सिफ़ारिश चुनें।",
+    "noLongerPending": "चुनी गई सिफ़ारिशें अब लंबित नहीं हैं। रीफ़्रेश करें और फिर से प्रयास करें।",
+    "implementFailed": "चुनी गई सिफ़ारिशें लागू नहीं की जा सकीं: {{error}}",
+    "reviewActionFailed": "समीक्षा क्रिया \"{{name}}\" विफल रही: {{error}}",
+    "completeFailed": "योजना {{planId}} पूर्ण नहीं की जा सकी: {{error}}",
+    "updatePrFailed": "योजना {{planId}} के लिए PR अपडेट नहीं किया जा सका: {{error}}"
+  },
+  "recommendationState": {
+    "pending": "लंबित",
+    "accepted": "स्वीकृत",
+    "acceptedWithNotes": "नोट्स के साथ स्वीकृत",
+    "declined": "अस्वीकृत"
+  },
+  "tabs": {
+    "summary": "सारांश",
+    "plan": "योजना",
+    "details": "विवरण",
+    "git": "Git",
+    "changes": "परिवर्तन",
+    "artifacts": "आर्टिफ़ैक्ट्स",
+    "recommendations": "सिफ़ारिशें"
+  },
+  "verifications": {
+    "none": "कोई सत्यापन नहीं",
+    "viewReport": "{{name}} रिपोर्ट देखें"
+  },
+  "verificationStatus": {
+    "pending": "लंबित",
+    "pass": "पास",
+    "fail": "फ़ेल",
+    "skipped": "छोड़ा गया"
+  },
+  "summary": {
+    "loading": "सारांश लोड हो रहा है…",
+    "fallback": {
+      "heading": "सारांश",
+      "body": "इस योजना के लिए कोई सारांश नहीं मिला। अधिक जानकारी के लिए कृपया सत्यापन देखें।",
+      "retry": "योजना पर पुनः प्रयास करने के लिए `{{resetToDraft}}` या `{{requestChanges}}` का उपयोग करें।"
+    }
+  },
+  "plan": {
+    "noSpecification": "कोई योजना विनिर्देश उपलब्ध नहीं है।"
+  },
+  "details": {
+    "copyToClipboard": "क्लिपबोर्ड पर कॉपी करें",
+    "fields": {
+      "planId": "योजना ID",
+      "folder": "फ़ोल्डर",
+      "initialPrompt": "प्रारंभिक प्रॉम्प्ट",
+      "revision": "संशोधन",
+      "profile": "प्रोफ़ाइल",
+      "relatedPlans": "संबंधित योजनाएं",
+      "dependsOn": "निर्भरताएं",
+      "issue": "इश्यू",
+      "created": "बनाई गई",
+      "level": "स्तर",
+      "project": "प्रोजेक्ट",
+      "state": "स्थिति"
+    },
+    "repositories": {
+      "heading": "रिपॉजिटरी",
+      "empty": "कोई रिपॉजिटरी निर्दिष्ट नहीं"
+    },
+    "commits": {
+      "heading": "कमिट",
+      "empty": "अभी तक कोई कमिट नहीं"
+    },
+    "verifications": {
+      "heading": "सत्यापन ({{n}})",
+      "empty": "कोई सत्यापन नहीं"
+    }
+  },
+  "git": {
+    "loading": "Git स्थिति लोड हो रही है…"
+  },
+  "changes": {
+    "loading": "परिवर्तन लोड हो रहे हैं…",
+    "empty": "इस योजना के लिए कोई फ़ाइल परिवर्तन दर्ज नहीं है।"
+  },
+  "artifacts": {
+    "heading": "योजना आर्टिफ़ैक्ट्स",
+    "description": "निष्पादन के दौरान कैप्चर किए गए आउटपुट, नमूना फ़ाइलें और स्क्रीनशॉट।",
+    "loading": "आर्टिफ़ैक्ट्स लोड हो रहे हैं…",
+    "empty": "इस योजना के लिए कोई आर्टिफ़ैक्ट नहीं मिला।",
+    "screenshots": "स्क्रीनशॉट ({{n}})",
+    "otherFiles": "अन्य आर्टिफ़ैक्ट फ़ाइलें ({{n}})",
+    "copyPath": "पथ कॉपी करें",
+    "open": "खोलें",
+    "openTitle": "साइड पैनल में खोलें"
+  },
+  "recommendations": {
+    "empty": "कोई सिफ़ारिश नहीं।",
+    "implement": "लागू करें",
+    "starting": "शुरू हो रहा है…",
+    "implementHint": "चुनी गई सिफ़ारिशों को स्वीकार करता है और उन्हें परिवर्तन अनुरोध के रूप में लेकर योजना पर पुनः प्रयास करता है।",
+    "select": "{{title}} चुनें"
+  },
+  "noteDialog": {
+    "submit": "सबमिट करें",
+    "accept": {
+      "title": "सिफ़ारिश स्वीकार करें",
+      "ariaLabel": "सिफ़ारिश स्वीकार करें",
+      "noteLabel": "वैकल्पिक ऑपरेटर नोट:",
+      "noteAriaLabel": "वैकल्पिक नोट",
+      "placeholder": "वैकल्पिक नोट्स दर्ज करें…"
+    },
+    "decline": {
+      "title": "सिफ़ारिश अस्वीकार करें",
+      "ariaLabel": "सिफ़ारिश अस्वीकार करें",
+      "noteLabel": "अस्वीकार करने का कारण:",
+      "noteAriaLabel": "अस्वीकार करने का कारण",
+      "placeholder": "अस्वीकार करने का कारण दर्ज करें…"
+    }
+  },
+  "actionsBar": {
+    "tooltip": {
+      "barDisabled": "अक्षम: {{reason}}",
+      "barDisabledDefault": "अक्षम: समीक्षा क्रियाएं अभी उपलब्ध नहीं हैं",
+      "conditionNotMet": "अक्षम: शर्त पूरी नहीं हुई",
+      "conditionNotMetWithCondition": "अक्षम: शर्त पूरी नहीं हुई ({{condition}})",
+      "runCommand": "चलाएं: {{command}}",
+      "runCommandWithPorts": "चलाएं: {{command}} (पोर्ट्स: {{ports}})",
+      "runAction": "{{name}} चलाएं",
+      "runActionWithPorts": "{{name}} चलाएं (पोर्ट्स: {{ports}})",
+      "port": "{{name}}: {{port}}",
+      "conditionError": "अक्षम: शर्त का मूल्यांकन नहीं किया जा सका: {{reason}}",
+      "conditionErrorWithCondition": "अक्षम: शर्त का मूल्यांकन नहीं किया जा सका ({{condition}}): {{reason}}",
+      "starting": "{{name}} शुरू हो रहा है…",
+      "checking": "शर्त की जांच हो रही है: {{condition}}"
+    }
+  },
+  "actionView": {
+    "sendComments_one": "{{count}} टिप्पणी परिवर्तन अनुरोध के रूप में एजेंट को भेजें",
+    "sendComments_other": "{{count}} टिप्पणियां परिवर्तन अनुरोध के रूप में एजेंट को भेजें",
+    "starting": "{{name}} शुरू हो रहा है…"
+  },
+  "recommendationsPage": {
+    "sidebarTitle": "सिफ़ारिशें",
+    "empty": {
+      "title": "कोई सिफ़ारिश नहीं",
+      "description": "पूर्ण योजनाओं की सिफ़ारिशें यहाँ दिखाई देंगी"
+    },
+    "position_one": "<highlight>{{index}}/{{total}}</highlight> सिफ़ारिश",
+    "position_other": "<highlight>{{index}}/{{total}}</highlight> सिफ़ारिशें",
+    "decline": "अस्वीकार करें",
+    "accept": "स्वीकार करें",
+    "accepting": "स्वीकार किया जा रहा है…",
+    "acceptWithNotes": "नोट्स के साथ स्वीकार करें",
+    "createIssue": "इश्यू बनाएं",
+    "viewPlan": "योजना देखें",
+    "refresh": "रीफ़्रेश करें",
+    "errors": {
+      "load": "सिफ़ारिशें लोड करने में विफल: {{error}}",
+      "update": "सिफ़ारिश \"{{title}}\" अपडेट करने में विफल: {{error}}",
+      "jobNotStarted": "\"{{title}}\" को स्वीकृत चिह्नित किया गया, लेकिन {{jobType}} जॉब शुरू नहीं हुई: {{error}}"
+    }
+  },
+  "impact": {
+    "small": "कम",
+    "medium": "मध्यम",
+    "high": "उच्च"
+  }
+}

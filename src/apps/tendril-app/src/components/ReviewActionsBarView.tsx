@@ -3,6 +3,10 @@ import { Play } from "lucide-react";
 import { TuiTooltip, withTooltipScope } from "@ivy-interactive/components/ui";
 import type { ReviewActionConditionResult, ReviewActionConfig } from "../types/api";
 import { bridge } from "../api/bridge";
+import { i18n, useTranslation, type TFunction } from "../i18n";
+
+/** For the pure helpers below when no component hands them its `t`; follows the current language. */
+const reviewT = i18n.getFixedT(null, "review");
 
 export interface ConditionContext {
   worktreePaths?: string[];
@@ -149,40 +153,52 @@ export function conditionVerdictsFrom(
 /**
  * `ReviewActionsBarView.GetTooltip`, plus the undecided case V1 never had: `reason` is the daemon's
  * account of why it could not evaluate the condition, when it is the daemon that could not.
+ *
+ * Translated when it is called: a component passes its own `t`, so the text follows a language
+ * change on the next render; anything else gets the current language's. The action's name, command
+ * and condition are the project's own config and the daemon's `reason` its own text - only the
+ * sentence around them is.
  */
 export function getReviewActionTooltip(
   action: ReviewActionConfig,
   conditionMet: ConditionState,
   allocatedPorts?: Record<string, number> | null,
   reason?: string,
+  t: TFunction<"review"> = reviewT,
 ): string {
   const cond = action.condition?.trim();
 
   if (conditionMet === false) {
     return cond
-      ? `Disabled: Condition not met (${cond})`
-      : "Disabled: Condition not met";
+      ? t("actionsBar.tooltip.conditionNotMetWithCondition", { condition: cond })
+      : t("actionsBar.tooltip.conditionNotMet");
   }
 
   if (conditionMet === "unknown") {
     if (reason) {
       return cond
-        ? `Disabled: Condition could not be evaluated (${cond}): ${reason}`
-        : `Disabled: Condition could not be evaluated: ${reason}`;
+        ? t("actionsBar.tooltip.conditionErrorWithCondition", { condition: cond, reason })
+        : t("actionsBar.tooltip.conditionError", { reason });
     }
     return cond
-      ? `Disabled: Condition not met (${cond})`
-      : "Disabled: Condition not met";
+      ? t("actionsBar.tooltip.conditionNotMetWithCondition", { condition: cond })
+      : t("actionsBar.tooltip.conditionNotMet");
   }
 
   const portKeys = allocatedPorts ? Object.keys(allocatedPorts).sort() : [];
-  const portsStr =
-    portKeys.length > 0
-      ? ` (ports: ${portKeys.map((k) => `${k}: ${allocatedPorts![k]}`).join(", ")})`
-      : "";
+  const ports = portKeys
+    .map((k) => t("actionsBar.tooltip.port", { name: k, port: allocatedPorts![k] }))
+    .join(", ");
+  const withPorts = portKeys.length > 0;
 
   const cmd = action.command?.trim();
-  return cmd ? `Run: ${action.command}${portsStr}` : `Run ${action.name}${portsStr}`;
+  return cmd
+    ? withPorts
+      ? t("actionsBar.tooltip.runCommandWithPorts", { command: action.command, ports })
+      : t("actionsBar.tooltip.runCommand", { command: action.command })
+    : withPorts
+      ? t("actionsBar.tooltip.runActionWithPorts", { name: action.name, ports })
+      : t("actionsBar.tooltip.runAction", { name: action.name });
 }
 
 export interface ReviewActionsBarViewProps {
@@ -233,18 +249,28 @@ function presentAction(
     disabledReason?: string;
     checking: boolean;
     executing: boolean;
+    t: TFunction<"review">;
   },
 ): ActionPresentation {
+  const { t } = options;
   if (options.barDisabled) {
     return {
       disabled: true,
-      tooltip: `Disabled: ${options.disabledReason ?? "review actions are unavailable right now"}`,
+      tooltip:
+        options.disabledReason == null
+          ? t("actionsBar.tooltip.barDisabledDefault")
+          : t("actionsBar.tooltip.barDisabled", { reason: options.disabledReason }),
       dimmed: true,
       busy: false,
     };
   }
   if (options.executing) {
-    return { disabled: true, tooltip: `Starting ${action.name}…`, dimmed: false, busy: true };
+    return {
+      disabled: true,
+      tooltip: t("actionsBar.tooltip.starting", { name: action.name }),
+      dimmed: false,
+      busy: true,
+    };
   }
   if (options.checking) {
     // Dimmed like V1's `btn.Disabled()` while its query was out: a button drawn as pressable that
@@ -252,7 +278,9 @@ function presentAction(
     // exists to avoid.
     return {
       disabled: true,
-      tooltip: `Checking the condition: ${action.condition?.trim()}`,
+      tooltip: t("actionsBar.tooltip.checking", {
+        condition: String(action.condition?.trim()),
+      }),
       dimmed: true,
       busy: true,
     };
@@ -260,14 +288,20 @@ function presentAction(
   if (verdict.state === false || verdict.state === "unknown") {
     return {
       disabled: true,
-      tooltip: getReviewActionTooltip(action, verdict.state, options.allocatedPorts, verdict.reason),
+      tooltip: getReviewActionTooltip(
+        action,
+        verdict.state,
+        options.allocatedPorts,
+        verdict.reason,
+        t,
+      ),
       dimmed: true,
       busy: false,
     };
   }
   return {
     disabled: false,
-    tooltip: getReviewActionTooltip(action, true, options.allocatedPorts),
+    tooltip: getReviewActionTooltip(action, true, options.allocatedPorts, undefined, t),
     dimmed: false,
     busy: false,
   };
@@ -286,6 +320,7 @@ const ReviewActionsBar: React.FC<ReviewActionsBarViewProps> = ({
   disabled = false,
   disabledReason,
 }) => {
+  const { t } = useTranslation("review");
   /**
    * Which actions are mid-handover, by name rather than one at a time. V1's bar navigates to a
    * `[App(..., allowDuplicateTabs: true)] ReviewActionApp`, so a second action running beside the
@@ -342,6 +377,7 @@ const ReviewActionsBar: React.FC<ReviewActionsBarViewProps> = ({
           disabledReason,
           checking: hostVerdict === undefined && conditionsPending && verdict.state === "unknown",
           executing: executing.has(action.name),
+          t,
         });
         const descriptionId = `${descriptionIdBase}-${index}`;
 

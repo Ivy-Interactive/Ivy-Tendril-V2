@@ -1,9 +1,15 @@
 import { cleanup } from "@testing-library/react";
 import { afterEach } from "vite-plus/test";
+import { i18nStore } from "../src/i18n/runtime";
 
 afterEach(() => {
   cleanup();
 });
+
+// A key that is in no catalog renders as the key in production and warns in development. In a test it
+// throws, so a mistyped key - or a string extracted to a key nobody added - fails the test that
+// renders it instead of passing with the key on screen.
+i18nStore.setMissingKeyHandler("throw");
 
 if (typeof window !== "undefined" && !window.ResizeObserver) {
   window.ResizeObserver = class ResizeObserver {

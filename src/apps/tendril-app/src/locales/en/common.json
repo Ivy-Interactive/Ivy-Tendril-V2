@@ -1,0 +1,265 @@
+{
+  "actions": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "confirm": "Confirm",
+    "copy": "Copy",
+    "delete": "Delete",
+    "retry": "Retry",
+    "save": "Save"
+  },
+  "status": {
+    "copied": "Copied",
+    "error": "Error",
+    "loading": "Loading...",
+    "none": "None",
+    "unknown": "Unknown"
+  },
+  "enums": {
+    "jobStatus": {
+      "pending": "Pending",
+      "queued": "Queued",
+      "running": "Running",
+      "completed": "Completed",
+      "failed": "Failed",
+      "timeout": "Timeout",
+      "stopped": "Stopped",
+      "blocked": "Blocked"
+    },
+    "jobType": {
+      "executePlan": "ExecutePlan",
+      "createPlan": "CreatePlan",
+      "retryPlan": "RetryPlan",
+      "updatePlan": "UpdatePlan",
+      "expandPlan": "ExpandPlan",
+      "splitPlan": "SplitPlan",
+      "createPr": "CreatePr",
+      "createIssue": "CreateIssue",
+      "setupProject": "SetupProject",
+      "addProject": "AddProject",
+      "syncRepo": "SyncRepo"
+    },
+    "planState": {
+      "draft": "Draft",
+      "creating": "Creating",
+      "updating": "Updating",
+      "executing": "Executing",
+      "review": "Review",
+      "failed": "Failed",
+      "completed": "Completed",
+      "skipped": "Skipped",
+      "blocked": "Blocked",
+      "icebox": "Icebox"
+    }
+  },
+  "appTitles": {
+    "dashboard": "Dashboard",
+    "plans": "Plans",
+    "review": "Review",
+    "recommendations": "Recommendations",
+    "jobs": "Jobs",
+    "chat": "Chat",
+    "inbox": "Inbox",
+    "settings": "Settings",
+    "pullRequests": "Pull Requests",
+    "icebox": "Icebox",
+    "reviewAction": "Review Action",
+    "agent": "Agent",
+    "plan": "Plan {{id}}",
+    "job": "Job {{id}}"
+  },
+  "navigation": {
+    "errors": {
+      "tabGone": "Tab no longer exists."
+    }
+  },
+  "sidebar": {
+    "version": "v {{version}}",
+    "nav": {
+      "dashboard": "Dashboard",
+      "plans": "Plans",
+      "review": "Review",
+      "recommendations": "Recommendations",
+      "jobs": "Jobs"
+    },
+    "chat": "Chat",
+    "inbox": "Inbox",
+    "settings": "Settings",
+    "settingsMenu": {
+      "configuration": "Configuration",
+      "pullRequests": "Pull Requests",
+      "icebox": "Icebox",
+      "checkForUpdates": "Check for Updates",
+      "help": "Help",
+      "documentation": "Documentation",
+      "reportIssue": "Report Issue"
+    }
+  },
+  "shortcuts": {
+    "gotoChat": "Switch to Chat",
+    "gotoInbox": "Open GitHub issue inbox",
+    "newPlan": "Open new plan intake modal",
+    "planSearch": "Search plans",
+    "showShortcuts": "Show keyboard shortcuts"
+  },
+  "shortcutsHelp": {
+    "title": "Keyboard Shortcuts",
+    "empty": "No keyboard shortcuts are active."
+  },
+  "updateCheck": {
+    "available": {
+      "title": "Update Available",
+      "description": "Version {{version}} is available."
+    },
+    "upToDate": {
+      "title": "Up to date",
+      "description": "You're on the latest version (v{{version}})."
+    },
+    "failed": {
+      "title": "Update check failed"
+    }
+  },
+  "updateNotice": {
+    "available": "v{{latest}} is available (you have v{{current}})",
+    "copyCommand": "Copy Command",
+    "dismiss": "Dismiss"
+  },
+  "offlineBanner": {
+    "reconnecting": "Tendril-Service disconnected. Auto-reconnecting in {{seconds}}s...",
+    "unreachable": "Tendril-Service daemon is unreachable.",
+    "cachedState": "(Falling back to cached state)",
+    "reconnect": "Reconnect Now"
+  },
+  "planPage": {
+    "loading": "Loading plan {{id}}...",
+    "loadError": "Could not load plan {{id}}: {{error}}"
+  },
+  "jobPage": {
+    "placeholderType": "Agent Job"
+  },
+  "shellErrors": {
+    "restartFailed": "Restart service failed: {{error}}",
+    "repairFailed": "Repair service failed: {{error}}",
+    "dismissNavError": "Dismiss navigation error"
+  },
+  "stopQueued": {
+    "title": "Stop Queued Jobs",
+    "body_one": "Stop {{count}} queued job? Running jobs are not affected.",
+    "body_other": "Stop all {{count}} queued jobs? Running jobs are not affected.",
+    "confirm": "Stop All",
+    "toast": {
+      "title": "Jobs",
+      "description_one": "Stopped {{count}} queued job.",
+      "description_other": "Stopped {{count}} queued jobs."
+    }
+  },
+  "stopAll": {
+    "title": "Stop All Jobs",
+    "body_one": "Stop {{count}} active job? Running agents are killed and their plans revert to their previous state. This cannot be undone.",
+    "body_other": "Stop all {{count}} active jobs? Running agents are killed and their plans revert to their previous state. This cannot be undone.",
+    "confirm": "Stop All",
+    "toast": {
+      "title": "Jobs Stopped",
+      "description_one": "Stopped {{count}} job",
+      "description_other": "Stopped {{count}} jobs"
+    }
+  },
+  "errorBanner": {
+    "dismiss": "Dismiss error"
+  },
+  "recommendationCard": {
+    "state": {
+      "pending": "Pending",
+      "accepted": "Accepted",
+      "acceptedWithNotes": "AcceptedWithNotes",
+      "declined": "Declined"
+    },
+    "impact": {
+      "small": "Small",
+      "medium": "Medium",
+      "high": "High"
+    },
+    "declineReason": "Decline reason: {{reason}}",
+    "notes": "Notes: {{notes}}",
+    "accept": "Accept",
+    "decline": "Decline"
+  },
+  "service": {
+    "state": {
+      "connected": "Connected",
+      "disconnected": "Disconnected",
+      "unauthenticated": "Unauthenticated",
+      "notRunning": "NotRunning",
+      "foreignMaster": "ForeignMaster"
+    },
+    "ownership": {
+      "adoptedExternal": "AdoptedExternal",
+      "managed": "Managed"
+    }
+  },
+  "serviceStatus": {
+    "connectedExternal": "Connected (External)",
+    "portUnavailable": "N/A",
+    "restart": "Restart Service",
+    "repair": "Repair Service",
+    "diagnostics": "Diagnostics"
+  },
+  "serviceSettings": {
+    "controls": {
+      "title": "Service Supervision & Controls",
+      "hint": "Manage local companion daemon lifecycle, ownership adoption, and crash recovery."
+    },
+    "actions": {
+      "restart": "Restart Service",
+      "repair": "Repair Service",
+      "switchToExternal": "Switch to External Daemon",
+      "adoptManaged": "Adopt Managed Companion",
+      "install": "Install Background Service",
+      "installTooltip": "Copy the bundled daemon into {{path}} and start it with your session",
+      "disableAutostart": "Disable Start at Login",
+      "disableAutostartTooltip": "Stop the daemon starting at login. The installed binaries stay where they are.",
+      "refreshLogs": "Refresh Logs",
+      "loadingLogs": "Loading Logs..."
+    },
+    "messages": {
+      "restartInitiated": "Service restart initiated.",
+      "restartFailed": "Restart failed: {{error}}",
+      "repairFailed": "Repair failed: {{error}}",
+      "installFailed": "Install failed: {{error}}",
+      "disableAutostartFailed": "Could not disable start at login: {{error}}",
+      "switchedToManaged": "Switched service ownership mode to managed.",
+      "switchedToExternal": "Switched service ownership mode to external.",
+      "switchFailed": "Mode switch failed: {{error}}"
+    },
+    "provision": {
+      "installed": "Installed {{binaries, list(type: unit)}} into {{dir}}.",
+      "upToDate": "{{binaries, list(type: unit)}} already up to date in {{dir}}.",
+      "missing": "This build does not bundle {{binaries, list(type: unit)}}.",
+      "registered": "Registered to start with your session ({{detail}}).",
+      "alreadyRegistered": "Already registered to start with your session.",
+      "registerFailed": "Could not register start at login: {{detail}}",
+      "skipped": "Start at login skipped: {{detail}}",
+      "nothing": "Nothing to install."
+    },
+    "details": {
+      "ownership": "Ownership",
+      "ownershipFallback": "External / Standalone",
+      "endpoint": "Endpoint",
+      "pid": "Process PID",
+      "crashCount": "Crash Count",
+      "notAvailable": "N/A"
+    },
+    "logs": {
+      "title": "Daemon Diagnostics & Service Logs",
+      "hint": "Sensitive tokens are redacted. Read from {{path}}.",
+      "empty": "No logs recorded yet in {{file}}.",
+      "loadFailed": "Failed to load service logs: {{error}}"
+    }
+  },
+  "errors": {
+    "requestFailed": "Request to {{path}} failed ({{status}})",
+    "reviewActionFailed": "Review action {{endpoint}} failed ({{status}}): {{detail}}",
+    "subscribeFailed": "Failed to subscribe to {{url}}: HTTP {{status}}",
+    "agentTerminalFailed": "Agent terminal {{endpoint}} failed: HTTP {{status}}"
+  }
+}

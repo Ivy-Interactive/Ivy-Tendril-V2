@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/table";
 import { useDensity } from "@/contexts/density-context";
 import type { Densities } from "@/types/density";
+import { useTranslation } from "@/i18n/uiCommon";
 
 import "./data-table.css";
 
@@ -396,6 +397,7 @@ function DataTableInner<TRow>(
   }: DataTableProps<TRow>,
   ref: React.ForwardedRef<HTMLTableElement>,
 ) {
+  const { t } = useTranslation("uiCommon");
   const contextDensity = useDensity();
   const density = propDensity ?? contextDensity;
   const iconButtonSize = densityToIconButtonSize(density);
@@ -680,7 +682,12 @@ function DataTableInner<TRow>(
   const columnOptionsControl = showColumnOptions ? (
     <Popover>
       <PopoverTrigger asChild>
-        <Button type="button" variant="ghost" size={iconButtonSize} aria-label="Column options">
+        <Button
+          type="button"
+          variant="ghost"
+          size={iconButtonSize}
+          aria-label={t("dataTable.columnOptions")}
+        >
           <Settings2 aria-hidden="true" />
         </Button>
       </PopoverTrigger>
@@ -717,7 +724,7 @@ function DataTableInner<TRow>(
           onDoubleClick={(event) => event.stopPropagation()}
         >
           <DataTableCellEditor
-            aria-label={`Edit ${label}`}
+            aria-label={t("dataTable.editCell", { column: label })}
             value={previous}
             onCommit={(next) => {
               endEdit();
@@ -741,7 +748,7 @@ function DataTableInner<TRow>(
         ref={registerCell(rowId, column.name)}
         role="button"
         tabIndex={0}
-        aria-label={`Edit ${label}`}
+        aria-label={t("dataTable.editCell", { column: label })}
         // `cursor-default` is deliberate and must not be "tidied away". This cell carries
         // `role="button"`, which the shared pointer rule in `styles/base.css` targets, but it opens
         // its editor on DOUBLE click -- the single `onClick` here only stops propagation. A pointer
@@ -783,7 +790,7 @@ function DataTableInner<TRow>(
       return (
         <TableRow>
           <TableCell colSpan={Math.max(1, columnCount)} className="text-center">
-            {emptyState ?? <span className="text-muted-foreground">No results.</span>}
+            {emptyState ?? <span className="text-muted-foreground">{t("dataTable.empty")}</span>}
           </TableCell>
         </TableRow>
       );
@@ -859,7 +866,7 @@ function DataTableInner<TRow>(
                   onCheckedChange={(checked) => toggleRowSelected(rowId, checked === true)}
                 />
                 <Label htmlFor={`${selectionIdPrefix}-row-${rowId}`} className="sr-only">
-                  Select row {rowId}
+                  {t("dataTable.selectRow", { id: rowId })}
                 </Label>
               </div>
             </TableCell>
@@ -973,7 +980,9 @@ function DataTableInner<TRow>(
         <TableCell colSpan={Math.max(1, columnCount)}>
           <div className="flex items-center gap-2">
             <Skeleton className="h-4 flex-1" />
-            <span className="shrink-0 text-xs text-muted-foreground">Loading more…</span>
+            <span className="shrink-0 text-xs text-muted-foreground">
+              {t("dataTable.loadingMore")}
+            </span>
           </div>
         </TableCell>
       </TableRow>
@@ -1085,7 +1094,7 @@ function DataTableInner<TRow>(
                       onCheckedChange={(checked) => toggleSelectAll(checked === true)}
                     />
                     <Label htmlFor={`${selectionIdPrefix}-all`} className="sr-only">
-                      Select all rows
+                      {t("dataTable.selectAllRows")}
                     </Label>
                   </div>
                 </TableHead>
@@ -1117,8 +1126,11 @@ function DataTableInner<TRow>(
               ))}
 
               {hasActionsColumn ? (
-                <TableHead aria-label="Row actions" className={fitColumnClass("actions")}>
-                  <span className="sr-only">Row actions</span>
+                <TableHead
+                  aria-label={t("dataTable.rowActions")}
+                  className={fitColumnClass("actions")}
+                >
+                  <span className="sr-only">{t("dataTable.rowActions")}</span>
                 </TableHead>
               ) : null}
             </TableRow>

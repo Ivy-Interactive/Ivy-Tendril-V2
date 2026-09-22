@@ -4,6 +4,7 @@ import { Callout } from "../ui/callout";
 import { Input } from "../ui/input";
 import { NativeSelect } from "../ui/native-select";
 import { Textarea } from "../ui/textarea";
+import { Trans, useTranslation } from "@/i18n/uiDialogs";
 import { DialogShell } from "./DialogShell";
 
 /**
@@ -19,8 +20,28 @@ export interface CreateIssueSubject {
   body: string;
   /** Stable identity, `planId::title` for a recommendation. Footer citation and dedupe key. */
   source: string;
-  /** What kind of thing this is, for the dialog's heading. */
+  /**
+   * What kind of thing this is, as the app names it: `"Recommendation"`. A kind listed in
+   * {@link SUBJECT_CONTEXTS} gets a title and description of its own as whole sentences, so each
+   * language can inflect and capitalise the noun as its grammar needs - pass it untranslated. Any
+   * other value gets a generic sentence that shows it as given in the title and lower-cased in the
+   * description, as the English has always read.
+   */
   kind: string;
+}
+
+/**
+ * The subject kinds with a title and description of their own, by `kind` exactly as the app passes
+ * it: the catalog's `createIssue.titleForSubject_<context>` and
+ * `createIssue.descriptionForSubject_<context>`. The match is exact so that every other spelling
+ * keeps the generic sentences' English byte for byte.
+ */
+const SUBJECT_CONTEXTS: Readonly<Record<string, string>> = {
+  Recommendation: "recommendation",
+};
+
+function subjectContext(kind: string): string | undefined {
+  return Object.hasOwn(SUBJECT_CONTEXTS, kind) ? SUBJECT_CONTEXTS[kind] : undefined;
 }
 
 /** What the form collects, handed to the app to dispatch. */
@@ -74,6 +95,7 @@ export function CreateIssueDialog({
   isBusy = false,
   error,
 }: CreateIssueDialogProps) {
+  const { t } = useTranslation("uiDialogs");
   const [repo, setRepo] = React.useState(repos[0] ?? "");
   const [assignee, setAssignee] = React.useState("");
   const [labels, setLabels] = React.useState("");
@@ -149,15 +171,25 @@ export function CreateIssueDialog({
       isOpen={isOpen}
       onClose={onClose}
       title={
-        subject ? `Create GitHub Issue from ${subject.kind}` : `Create GitHub Issue #${planId}`
+        subject
+          ? t("createIssue.titleForSubject", {
+              context: subjectContext(subject.kind),
+              kind: subject.kind,
+            })
+          : t("createIssue.title", { planId })
       }
       width="rem30"
       shortcut="Ctrl+Enter"
       onShortcut={() => handleSubmit()}
       description={
         subject
-          ? `CreateIssue opens this with \`gh\` in the selected repository. The issue is filed against plan #${planId}, but describes the ${subject.kind.toLowerCase()} rather than the plan's own work.`
-          : "CreateIssue writes the issue body from the plan and opens it with `gh` in the selected repository."
+          ? t("createIssue.descriptionForSubject", {
+              context: subjectContext(subject.kind),
+              planId,
+              // Only the generic sentence shows it; lower-cased there as it always has been.
+              kind: subject.kind.toLowerCase(),
+            })
+          : t("createIssue.description")
       }
       testId="create-issue-dialog"
       initialFocusRef={repos.length === 0 ? cancelRef : repoRef}
@@ -170,14 +202,14 @@ export function CreateIssueDialog({
             data-testid="dialog-cancel"
             disabled={isBusy}
           >
-            Cancel
+            {t("actions.cancel")}
           </Button>
           <Button
             onClick={() => handleSubmit()}
             data-testid="dialog-confirm"
             disabled={isBusy || repo === "" || (subject != null && title.trim() === "")}
           >
-            {isBusy ? "Starting…" : "Create Issue"}
+            {isBusy ? t("status.starting") : t("createIssue.submit")}
           </Button>
         </>
       }
@@ -189,59 +221,58 @@ export function CreateIssueDialog({
               htmlFor="create-issue-title"
               className="mb-1 block text-xs text-muted-foreground"
             >
-              Title
+              {t("createIssue.issueTitle.label")}
             </label>
             <Input
               id="create-issue-title"
-              aria-label="Title"
+              aria-label={t("createIssue.issueTitle.label")}
               value={title}
               onChange={(event) => setTitle(event.target.value)}
-              placeholder="What the issue is about"
+              placeholder={t("createIssue.issueTitle.placeholder")}
               data-testid="create-issue-title"
             />
             {title.trim() === "" && (
-              <p className="mt-1 text-xs text-warning">
-                A title is required: the plan&apos;s own title is not used here.
-              </p>
+              <p className="mt-1 text-xs text-warning">{t("createIssue.issueTitle.required")}</p>
             )}
           </div>
 
           <div className="mb-4">
             <label htmlFor="create-issue-body" className="mb-1 block text-xs text-muted-foreground">
-              Body
+              {t("createIssue.body.label")}
             </label>
             <Textarea
               id="create-issue-body"
-              aria-label="Body"
+              aria-label={t("createIssue.body.label")}
               rows={6}
               value={body}
               onChange={(event) => setBody(event.target.value)}
-              placeholder="What should be done, and why…"
+              placeholder={t("createIssue.body.placeholder")}
               className="text-sm"
               data-testid="create-issue-body"
             />
-            <p className="mt-1 text-xs text-muted-foreground">
-              Edit before filing if the wording is terse. The agent formats it into Markdown and
-              keeps your words rather than rewriting them.
-            </p>
+            <p className="mt-1 text-xs text-muted-foreground">{t("createIssue.body.hint")}</p>
           </div>
         </>
       )}
 
       <div>
         <label htmlFor="create-issue-repo" className="mb-1 block text-xs text-muted-foreground">
-          Repository
+          {t("createIssue.repository.label")}
         </label>
         {repos.length === 0 ? (
           <p className="text-sm text-warning" data-testid="create-issue-no-repos">
-            Neither the plan nor its project records a repository, so there is nowhere to run{" "}
-            <code>gh</code>. Add one to the plan first.
+            <Trans
+              ns="uiDialogs"
+              i18nKey="createIssue.repository.none"
+              values={{ command: "gh" }}
+              components={{ code: <code /> }}
+            />
           </p>
         ) : (
           <NativeSelect
             id="create-issue-repo"
             ref={repoRef}
-            aria-label="Repository"
+            aria-label={t("createIssue.repository.label")}
             value={repo}
             onChange={(event) => setRepo(event.target.value)}
           >
@@ -252,18 +283,16 @@ export function CreateIssueDialog({
             ))}
           </NativeSelect>
         )}
-        <p className="mt-1 text-xs text-muted-foreground">
-          The local repository path the issue is opened against, not an owner/name slug.
-        </p>
+        <p className="mt-1 text-xs text-muted-foreground">{t("createIssue.repository.hint")}</p>
       </div>
 
       <div className="mt-4">
         <label htmlFor="create-issue-assignee" className="mb-1 block text-xs text-muted-foreground">
-          Assignee
+          {t("createIssue.assignee.label")}
         </label>
         <Input
           id="create-issue-assignee"
-          aria-label="Assignee"
+          aria-label={t("createIssue.assignee.label")}
           value={assignee}
           onChange={(event) => setAssignee(event.target.value)}
           placeholder="octocat"
@@ -272,32 +301,29 @@ export function CreateIssueDialog({
 
       <div className="mt-4">
         <label htmlFor="create-issue-labels" className="mb-1 block text-xs text-muted-foreground">
-          Labels
+          {t("createIssue.labels.label")}
         </label>
         <Input
           id="create-issue-labels"
-          aria-label="Labels"
+          aria-label={t("createIssue.labels.label")}
           value={labels}
           onChange={(event) => setLabels(event.target.value)}
           placeholder="bug, ui"
         />
-        <p className="mt-1 text-xs text-muted-foreground">
-          Comma-separated. Assignee and labels are free text: the service exposes issue metadata,
-          not the org&apos;s assignable users, so there is no list to pick from.
-        </p>
+        <p className="mt-1 text-xs text-muted-foreground">{t("createIssue.labels.hint")}</p>
       </div>
 
       <div className="mt-4">
         <label htmlFor="create-issue-comment" className="mb-1 block text-xs text-muted-foreground">
-          Comment
+          {t("createIssue.comment.label")}
         </label>
         <Textarea
           id="create-issue-comment"
-          aria-label="Comment"
+          aria-label={t("createIssue.comment.label")}
           rows={3}
           value={comment}
           onChange={(event) => setComment(event.target.value)}
-          placeholder="Extra context to append to the issue body…"
+          placeholder={t("createIssue.comment.placeholder")}
           className="text-sm"
         />
       </div>

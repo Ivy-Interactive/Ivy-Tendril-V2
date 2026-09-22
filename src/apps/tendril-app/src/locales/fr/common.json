@@ -1,0 +1,269 @@
+{
+  "actions": {
+    "cancel": "Annuler",
+    "close": "Fermer",
+    "confirm": "Confirmer",
+    "copy": "Copier",
+    "delete": "Supprimer",
+    "retry": "Réessayer",
+    "save": "Enregistrer"
+  },
+  "status": {
+    "copied": "Copié",
+    "error": "Erreur",
+    "loading": "Chargement…",
+    "none": "Aucun",
+    "unknown": "Inconnu"
+  },
+  "enums": {
+    "jobStatus": {
+      "pending": "En attente",
+      "queued": "En file d'attente",
+      "running": "En cours",
+      "completed": "Terminé",
+      "failed": "Échec",
+      "timeout": "Délai dépassé",
+      "stopped": "Arrêté",
+      "blocked": "Bloqué"
+    },
+    "jobType": {
+      "executePlan": "ExecutePlan",
+      "createPlan": "CreatePlan",
+      "retryPlan": "RetryPlan",
+      "updatePlan": "UpdatePlan",
+      "expandPlan": "ExpandPlan",
+      "splitPlan": "SplitPlan",
+      "createPr": "CreatePr",
+      "createIssue": "CreateIssue",
+      "setupProject": "SetupProject",
+      "addProject": "AddProject",
+      "syncRepo": "SyncRepo"
+    },
+    "planState": {
+      "draft": "Brouillon",
+      "creating": "En création",
+      "updating": "En mise à jour",
+      "executing": "En exécution",
+      "review": "En revue",
+      "failed": "Échec",
+      "completed": "Terminé",
+      "skipped": "Écarté",
+      "blocked": "Bloqué",
+      "icebox": "Icebox"
+    }
+  },
+  "appTitles": {
+    "dashboard": "Tableau de bord",
+    "plans": "Plans",
+    "review": "Revue",
+    "recommendations": "Recommandations",
+    "jobs": "Jobs",
+    "chat": "Chat",
+    "inbox": "Boîte de réception",
+    "settings": "Paramètres",
+    "pullRequests": "Pull requests",
+    "icebox": "Icebox",
+    "reviewAction": "Action de revue",
+    "agent": "Agent",
+    "plan": "Plan {{id}}",
+    "job": "Job {{id}}"
+  },
+  "navigation": {
+    "errors": {
+      "tabGone": "Cet onglet n'existe plus."
+    }
+  },
+  "sidebar": {
+    "version": "v {{version}}",
+    "nav": {
+      "dashboard": "Tableau de bord",
+      "plans": "Plans",
+      "review": "Revue",
+      "recommendations": "Recommandations",
+      "jobs": "Jobs"
+    },
+    "chat": "Chat",
+    "inbox": "Boîte de réception",
+    "settings": "Paramètres",
+    "settingsMenu": {
+      "configuration": "Configuration",
+      "pullRequests": "Pull requests",
+      "icebox": "Icebox",
+      "checkForUpdates": "Rechercher des mises à jour",
+      "help": "Aide",
+      "documentation": "Documentation",
+      "reportIssue": "Signaler un problème"
+    }
+  },
+  "shortcuts": {
+    "gotoChat": "Passer au chat",
+    "gotoInbox": "Ouvrir la boîte de réception des issues GitHub",
+    "newPlan": "Ouvrir la fenêtre de création de plan",
+    "planSearch": "Rechercher des plans",
+    "showShortcuts": "Afficher les raccourcis clavier"
+  },
+  "shortcutsHelp": {
+    "title": "Raccourcis clavier",
+    "empty": "Aucun raccourci clavier n'est actif."
+  },
+  "updateCheck": {
+    "available": {
+      "title": "Mise à jour disponible",
+      "description": "La version {{version}} est disponible."
+    },
+    "upToDate": {
+      "title": "À jour",
+      "description": "Vous utilisez la dernière version (v{{version}})."
+    },
+    "failed": {
+      "title": "Échec de la recherche de mises à jour"
+    }
+  },
+  "updateNotice": {
+    "available": "La v{{latest}} est disponible (version actuelle : v{{current}})",
+    "copyCommand": "Copier la commande",
+    "dismiss": "Masquer"
+  },
+  "offlineBanner": {
+    "reconnecting": "Tendril-Service déconnecté. Reconnexion automatique dans {{seconds}} s…",
+    "unreachable": "Le démon Tendril-Service est injoignable.",
+    "cachedState": "(Utilisation de l'état en cache)",
+    "reconnect": "Reconnecter maintenant"
+  },
+  "planPage": {
+    "loading": "Chargement du plan {{id}}…",
+    "loadError": "Impossible de charger le plan {{id}} : {{error}}"
+  },
+  "jobPage": {
+    "placeholderType": "Job d'agent"
+  },
+  "shellErrors": {
+    "restartFailed": "Échec du redémarrage du service : {{error}}",
+    "repairFailed": "Échec de la réparation du service : {{error}}",
+    "dismissNavError": "Fermer l'erreur de navigation"
+  },
+  "stopQueued": {
+    "title": "Arrêter les jobs en file d'attente",
+    "body_one": "Arrêter {{count}} job en file d'attente ? Les jobs en cours ne sont pas affectés.",
+    "body_many": "Arrêter les {{count}} jobs en file d'attente ? Les jobs en cours ne sont pas affectés.",
+    "body_other": "Arrêter les {{count}} jobs en file d'attente ? Les jobs en cours ne sont pas affectés.",
+    "confirm": "Tout arrêter",
+    "toast": {
+      "title": "Jobs",
+      "description_one": "{{count}} job en file d'attente arrêté.",
+      "description_many": "{{count}} jobs en file d'attente arrêtés.",
+      "description_other": "{{count}} jobs en file d'attente arrêtés."
+    }
+  },
+  "stopAll": {
+    "title": "Arrêter tous les jobs",
+    "body_one": "Arrêter {{count}} job actif ? Les agents en cours d'exécution sont arrêtés de force et leurs plans reviennent à leur état précédent. Cette action est irréversible.",
+    "body_many": "Arrêter les {{count}} jobs actifs ? Les agents en cours d'exécution sont arrêtés de force et leurs plans reviennent à leur état précédent. Cette action est irréversible.",
+    "body_other": "Arrêter les {{count}} jobs actifs ? Les agents en cours d'exécution sont arrêtés de force et leurs plans reviennent à leur état précédent. Cette action est irréversible.",
+    "confirm": "Tout arrêter",
+    "toast": {
+      "title": "Jobs arrêtés",
+      "description_one": "{{count}} job arrêté",
+      "description_many": "{{count}} jobs arrêtés",
+      "description_other": "{{count}} jobs arrêtés"
+    }
+  },
+  "errorBanner": {
+    "dismiss": "Fermer l'erreur"
+  },
+  "recommendationCard": {
+    "state": {
+      "pending": "En attente",
+      "accepted": "Acceptée",
+      "acceptedWithNotes": "Acceptée avec des notes",
+      "declined": "Refusée"
+    },
+    "impact": {
+      "small": "Faible",
+      "medium": "Moyen",
+      "high": "Élevé"
+    },
+    "declineReason": "Motif du refus : {{reason}}",
+    "notes": "Notes : {{notes}}",
+    "accept": "Accepter",
+    "decline": "Refuser"
+  },
+  "service": {
+    "state": {
+      "connected": "Connecté",
+      "disconnected": "Déconnecté",
+      "unauthenticated": "Non authentifié",
+      "notRunning": "Non démarré",
+      "foreignMaster": "Maître étranger"
+    },
+    "ownership": {
+      "adoptedExternal": "Externe adopté",
+      "managed": "Géré"
+    }
+  },
+  "serviceStatus": {
+    "connectedExternal": "Connecté (externe)",
+    "portUnavailable": "N/D",
+    "restart": "Redémarrer le service",
+    "repair": "Réparer le service",
+    "diagnostics": "Diagnostics"
+  },
+  "serviceSettings": {
+    "controls": {
+      "title": "Supervision et contrôle du service",
+      "hint": "Gérer le cycle de vie du démon compagnon local, l'adoption de propriété et la reprise après plantage."
+    },
+    "actions": {
+      "restart": "Redémarrer le service",
+      "repair": "Réparer le service",
+      "switchToExternal": "Basculer vers le démon externe",
+      "adoptManaged": "Adopter le compagnon géré",
+      "install": "Installer le service d'arrière-plan",
+      "installTooltip": "Copier le démon fourni dans {{path}} et le lancer avec votre session",
+      "disableAutostart": "Désactiver le lancement à l'ouverture de session",
+      "disableAutostartTooltip": "Empêcher le démon de démarrer à l'ouverture de session. Les binaires installés restent en place.",
+      "refreshLogs": "Actualiser les journaux",
+      "loadingLogs": "Chargement des journaux…"
+    },
+    "messages": {
+      "restartInitiated": "Redémarrage du service lancé.",
+      "restartFailed": "Échec du redémarrage : {{error}}",
+      "repairFailed": "Échec de la réparation : {{error}}",
+      "installFailed": "Échec de l'installation : {{error}}",
+      "disableAutostartFailed": "Impossible de désactiver le lancement à l'ouverture de session : {{error}}",
+      "switchedToManaged": "Mode de propriété du service basculé sur géré.",
+      "switchedToExternal": "Mode de propriété du service basculé sur externe.",
+      "switchFailed": "Échec du changement de mode : {{error}}"
+    },
+    "provision": {
+      "installed": "Installé dans {{dir}} : {{binaries, list(type: unit)}}.",
+      "upToDate": "Déjà à jour dans {{dir}} : {{binaries, list(type: unit)}}.",
+      "missing": "Cette version n'inclut pas les binaires suivants : {{binaries, list(type: unit)}}.",
+      "registered": "Enregistré pour démarrer avec votre session ({{detail}}).",
+      "alreadyRegistered": "Déjà enregistré pour démarrer avec votre session.",
+      "registerFailed": "Impossible d'activer le lancement à l'ouverture de session : {{detail}}",
+      "skipped": "Lancement à l'ouverture de session ignoré : {{detail}}",
+      "nothing": "Rien à installer."
+    },
+    "details": {
+      "ownership": "Propriété",
+      "ownershipFallback": "Externe / autonome",
+      "endpoint": "Point de terminaison",
+      "pid": "PID du processus",
+      "crashCount": "Nombre de plantages",
+      "notAvailable": "N/D"
+    },
+    "logs": {
+      "title": "Diagnostics du démon et journaux du service",
+      "hint": "Les jetons sensibles sont masqués. Lecture depuis {{path}}.",
+      "empty": "Aucun journal enregistré pour l'instant dans {{file}}.",
+      "loadFailed": "Impossible de charger les journaux du service : {{error}}"
+    }
+  },
+  "errors": {
+    "requestFailed": "La requête vers {{path}} a échoué ({{status}})",
+    "reviewActionFailed": "L'action de revue {{endpoint}} a échoué ({{status}}) : {{detail}}",
+    "subscribeFailed": "Échec de l'abonnement à {{url}} : HTTP {{status}}",
+    "agentTerminalFailed": "Le terminal de l'agent {{endpoint}} a échoué : HTTP {{status}}"
+  }
+}

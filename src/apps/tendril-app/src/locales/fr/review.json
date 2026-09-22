@@ -1,0 +1,212 @@
+{
+  "sidebar": {
+    "title": "Revue",
+    "badges": {
+      "verified": "Vérifié",
+      "unverified": "Non vérifié"
+    }
+  },
+  "shortcuts": {
+    "previousPlan": "Plan précédent",
+    "nextPlan": "Plan suivant"
+  },
+  "empty": {
+    "title": "Aucun plan à passer en revue",
+    "description": "Les plans terminés apparaîtront ici pour la revue"
+  },
+  "workspace": {
+    "meta_one": "{{index}}/{{total}} plan",
+    "meta_many": "{{index}}/{{total}} plans",
+    "meta_other": "{{index}}/{{total}} plans",
+    "sourceLabel": {
+      "pr": "PR",
+      "issue": "Issue"
+    }
+  },
+  "actions": {
+    "requestChanges": "Demander des modifications",
+    "resetToDraft": "Remettre en brouillon",
+    "deletePlan": "Supprimer le plan",
+    "openPlanPage": "Ouvrir la spécification complète et le diff",
+    "partialDelivery": "Accepter la livraison partielle"
+  },
+  "primary": {
+    "updatePr": "Mettre à jour la PR",
+    "createPr": "Créer la PR",
+    "deletePlan": "Supprimer le plan",
+    "completePlan": "Terminer le plan",
+    "completing": "Finalisation…",
+    "pushing": "Push en cours…",
+    "unavailable": "« {{action}} » est indisponible : {{reason}}"
+  },
+  "completionBlocked": {
+    "title": "Aucune modification nécessaire",
+    "body": "La validation préalable à l'exécution n'a trouvé aucune modification nécessaire, car l'issue ou la tâche est déjà résolue. Vous pouvez supprimer ce plan, le marquer comme écarté ou le déplacer vers l'Icebox."
+  },
+  "errors": {
+    "markRecommendation": "Impossible de marquer « {{title}} » comme « {{state}} » : {{error}}",
+    "nothingSelected": "Sélectionnez au moins une recommandation à implémenter.",
+    "noLongerPending": "Les recommandations sélectionnées ne sont plus en attente. Actualisez, puis réessayez.",
+    "implementFailed": "Impossible d'implémenter les recommandations sélectionnées : {{error}}",
+    "reviewActionFailed": "Échec de l'action de revue « {{name}} » : {{error}}",
+    "completeFailed": "Impossible de terminer le plan {{planId}} : {{error}}",
+    "updatePrFailed": "Impossible de mettre à jour la PR du plan {{planId}} : {{error}}"
+  },
+  "recommendationState": {
+    "pending": "En attente",
+    "accepted": "Acceptée",
+    "acceptedWithNotes": "Acceptée avec des notes",
+    "declined": "Refusée"
+  },
+  "tabs": {
+    "summary": "Résumé",
+    "plan": "Plan",
+    "details": "Détails",
+    "git": "Git",
+    "changes": "Modifications",
+    "artifacts": "Artefacts",
+    "recommendations": "Recommandations"
+  },
+  "verifications": {
+    "none": "Aucune vérification",
+    "viewReport": "Voir le rapport {{name}}"
+  },
+  "verificationStatus": {
+    "pending": "En attente",
+    "pass": "Réussite",
+    "fail": "Échec",
+    "skipped": "Écartée"
+  },
+  "summary": {
+    "loading": "Chargement du résumé…",
+    "fallback": {
+      "heading": "Résumé",
+      "body": "Aucun résumé n'a été trouvé pour ce plan. Consultez les vérifications pour plus d'informations.",
+      "retry": "Utilisez `{{resetToDraft}}` ou `{{requestChanges}}` pour réessayer le plan."
+    }
+  },
+  "plan": {
+    "noSpecification": "Aucune spécification de plan disponible."
+  },
+  "details": {
+    "copyToClipboard": "Copier dans le presse-papiers",
+    "fields": {
+      "planId": "ID du plan",
+      "folder": "Dossier",
+      "initialPrompt": "Prompt initial",
+      "revision": "Révision",
+      "profile": "Profil",
+      "relatedPlans": "Plans associés",
+      "dependsOn": "Dépend de",
+      "issue": "Issue",
+      "created": "Créé le",
+      "level": "Niveau",
+      "project": "Projet",
+      "state": "État"
+    },
+    "repositories": {
+      "heading": "Dépôts",
+      "empty": "Aucun dépôt spécifié"
+    },
+    "commits": {
+      "heading": "Commits",
+      "empty": "Aucun commit pour l'instant"
+    },
+    "verifications": {
+      "heading": "Vérifications ({{n}})",
+      "empty": "Aucune vérification"
+    }
+  },
+  "git": {
+    "loading": "Chargement de l'état Git…"
+  },
+  "changes": {
+    "loading": "Chargement des modifications…",
+    "empty": "Aucune modification de fichier enregistrée pour ce plan."
+  },
+  "artifacts": {
+    "heading": "Artefacts du plan",
+    "description": "Sorties, fichiers d'exemple et captures d'écran enregistrés pendant l'exécution.",
+    "loading": "Chargement des artefacts…",
+    "empty": "Aucun artefact trouvé pour ce plan.",
+    "screenshots": "Captures d'écran ({{n}})",
+    "otherFiles": "Autres fichiers d'artefacts ({{n}})",
+    "copyPath": "Copier le chemin",
+    "open": "Ouvrir",
+    "openTitle": "Ouvrir dans un panneau latéral"
+  },
+  "recommendations": {
+    "empty": "Aucune recommandation.",
+    "implement": "Implémenter",
+    "starting": "Démarrage…",
+    "implementHint": "Accepte les recommandations cochées et relance le plan avec celles-ci comme demande de modifications.",
+    "select": "Sélectionner « {{title}} »"
+  },
+  "noteDialog": {
+    "submit": "Envoyer",
+    "accept": {
+      "title": "Accepter la recommandation",
+      "ariaLabel": "Accepter la recommandation",
+      "noteLabel": "Note de l'opérateur (facultatif) :",
+      "noteAriaLabel": "Note facultative",
+      "placeholder": "Saisissez des notes facultatives…"
+    },
+    "decline": {
+      "title": "Refuser la recommandation",
+      "ariaLabel": "Refuser la recommandation",
+      "noteLabel": "Motif du refus :",
+      "noteAriaLabel": "Motif du refus",
+      "placeholder": "Saisissez le motif du refus…"
+    }
+  },
+  "actionsBar": {
+    "tooltip": {
+      "barDisabled": "Désactivé : {{reason}}",
+      "barDisabledDefault": "Désactivé : les actions de revue sont indisponibles pour le moment",
+      "conditionNotMet": "Désactivé : condition non remplie",
+      "conditionNotMetWithCondition": "Désactivé : condition non remplie ({{condition}})",
+      "runCommand": "Exécuter : {{command}}",
+      "runCommandWithPorts": "Exécuter : {{command}} (ports : {{ports}})",
+      "runAction": "Exécuter {{name}}",
+      "runActionWithPorts": "Exécuter {{name}} (ports : {{ports}})",
+      "port": "{{name}} : {{port}}",
+      "conditionError": "Désactivé : la condition n'a pas pu être évaluée : {{reason}}",
+      "conditionErrorWithCondition": "Désactivé : la condition n'a pas pu être évaluée ({{condition}}) : {{reason}}",
+      "starting": "Démarrage de {{name}}…",
+      "checking": "Vérification de la condition : {{condition}}"
+    }
+  },
+  "actionView": {
+    "sendComments_one": "Envoyer {{count}} commentaire à l'agent comme demande de modifications",
+    "sendComments_many": "Envoyer {{count}} commentaires à l'agent comme demande de modifications",
+    "sendComments_other": "Envoyer {{count}} commentaires à l'agent comme demande de modifications",
+    "starting": "Démarrage de {{name}}…"
+  },
+  "recommendationsPage": {
+    "sidebarTitle": "Recommandations",
+    "empty": {
+      "title": "Aucune recommandation",
+      "description": "Les recommandations des plans terminés apparaîtront ici"
+    },
+    "position_one": "<highlight>{{index}}/{{total}}</highlight> recommandation",
+    "position_many": "<highlight>{{index}}/{{total}}</highlight> recommandations",
+    "position_other": "<highlight>{{index}}/{{total}}</highlight> recommandations",
+    "decline": "Refuser",
+    "accept": "Accepter",
+    "accepting": "Acceptation…",
+    "acceptWithNotes": "Accepter avec des notes",
+    "createIssue": "Créer une issue",
+    "viewPlan": "Voir le plan",
+    "refresh": "Actualiser",
+    "errors": {
+      "load": "Impossible de charger les recommandations : {{error}}",
+      "update": "Impossible de mettre à jour la recommandation « {{title}} » : {{error}}",
+      "jobNotStarted": "« {{title}} » a été marquée comme acceptée, mais le job {{jobType}} n'a pas démarré : {{error}}"
+    }
+  },
+  "impact": {
+    "small": "Faible",
+    "medium": "Moyen",
+    "high": "Élevé"
+  }
+}

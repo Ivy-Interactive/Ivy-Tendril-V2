@@ -1,0 +1,137 @@
+{
+  "actions": {
+    "back": "Retour",
+    "next": "Suivant",
+    "skip": "Passer",
+    "finish": "Terminer",
+    "createProject": "Créer le projet"
+  },
+  "wizard": {
+    "title": "Bienvenue sur Tendril",
+    "stepsLabel": "Étapes de configuration",
+    "steps": {
+      "codingAgent": "Agent de codage",
+      "dataStorage": "Stockage des données",
+      "firstProject": "Votre premier projet",
+      "complete": "Terminé"
+    },
+    "skipSetup": "Passer la configuration",
+    "progress": {
+      "label": "Configuration",
+      "checkingAgent": "Vérification de l'agent {{agent}}…",
+      "finishing": "Finalisation de la configuration…",
+      "cloning": "Clonage des dépôts…",
+      "settingUp": "Configuration de votre projet…"
+    },
+    "errors": {
+      "checksUnavailable": "Vérifications d'état indisponibles : {{error}}",
+      "agentProbeFailed": "Veuillez vérifier que votre agent est présent et que vous êtes autorisé. ({{error}})",
+      "finishFailed": "Impossible de terminer la configuration : {{error}}",
+      "skipFailed": "Impossible de passer la configuration : {{error}}",
+      "setupNotStarted": "Projet créé, mais {{jobType}} n'a pas pu démarrer : {{error}}",
+      "createFailed": "Impossible de créer le projet : {{error}}",
+      "createAbandoned": "Arrêt de l'attente de la création du projet. Le démon est peut-être encore en train de cloner ; vérifiez vos projets avant de le créer à nouveau."
+    }
+  },
+  "codingAgent": {
+    "title": "Quel est votre agent de codage ?",
+    "description": "Tendril est un orchestrateur de codage qui s'exécute au-dessus de votre propre agent de codage. Choisissez l'agent que vous souhaitez utiliser :"
+  },
+  "prerequisites": {
+    "missing_one": "Tendril nécessite {{names, list}}, mais cet outil n'est pas installé. Installez-le, puis cliquez sur « Revérifier ».",
+    "missing_many": "Tendril nécessite {{names, list}}, mais ces outils ne sont pas installés. Installez-les, puis cliquez sur « Revérifier ».",
+    "missing_other": "Tendril nécessite {{names, list}}, mais ces outils ne sont pas installés. Installez-les, puis cliquez sur « Revérifier ».",
+    "description": "Les outils que Tendril lance sur votre machine.",
+    "recheck": "Revérifier",
+    "checking": "Vérification…",
+    "empty": "Aucune vérification signalée.",
+    "required": "obligatoire",
+    "install": "Installer",
+    "status": {
+      "ok": "OK",
+      "warn": "ATTENTION",
+      "fail": "ÉCHEC"
+    }
+  },
+  "dataStorage": {
+    "title": "Où stocker vos données ?",
+    "description": "Tendril conserve votre configuration et vos plans dans ce dossier.",
+    "homeLabel": "Répertoire Tendril",
+    "homeHint": "Le démon en cours d'exécution a résolu ce dossier. Pour le déplacer, définissez <code>{{envVar}}</code> avant de démarrer Tendril.",
+    "homeMissing": "Veuillez indiquer un chemin valide."
+  },
+  "repoPicker": {
+    "label": "Ajoutez un ou plusieurs dépôts Git",
+    "inputLabel": "URL du dépôt ou chemin local",
+    "placeholder": "URL du dépôt ou chemin local",
+    "add": "Ajouter le dépôt",
+    "willClone": "sera cloné lors de « Créer le projet »",
+    "remove": "Retirer {{path}}",
+    "invalidPath": "Chemin de dépôt non valide."
+  },
+  "firstProject": {
+    "title": "Configurez votre premier projet",
+    "description": "Un projet regroupe un ou plusieurs dépôts afin que Tendril puisse planifier et vérifier des modifications sur l'ensemble de ceux-ci.",
+    "browse": "Parcourir",
+    "browseTitle": "Sélectionner le dossier du dépôt",
+    "browseUnavailable": "Sélecteur de dossier indisponible ({{error}}). Saisissez plutôt un chemin.",
+    "nameLabel": "Nom du projet",
+    "nameExists": {
+      "title": "Un projet portant ce nom existe déjà.",
+      "body": "Pour résoudre ce conflit, vous pouvez saisir un autre nom ci-dessus ou continuer avec la configuration du projet existant (son chemin de dépôt et ses paramètres seront conservés).",
+      "useExisting": "Utiliser la configuration du projet existant"
+    },
+    "registered": "Le projet {{name}} est enregistré. « Suivant » affiche l'exécution de sa configuration."
+  },
+  "validation": {
+    "invalidProjectName": "Nom de projet non valide : « {{name}} ». Utilisez uniquement des lettres, des chiffres, des points, des tirets et des traits de soulignement (ni barres obliques ni espaces).",
+    "invalidProjectNameWithSuggestion": "Nom de projet non valide : « {{name}} ». Utilisez uniquement des lettres, des chiffres, des points, des tirets et des traits de soulignement (ni barres obliques ni espaces). Suggestion : « {{suggestion}} »."
+  },
+  "agentRun": {
+    "title": "Configuration de votre projet",
+    "wizardHint": "Tendril détecte votre stack technique et configure votre harnais agentique. Cela prendra quelques minutes : profitez-en pour vous offrir un ☕ en attendant.",
+    "noRun": "Aucune exécution de configuration n'est associée à ce projet. Une fois la configuration terminée, vous pourrez configurer ses vérifications et ses actions de revue depuis l'écran du projet.",
+    "timedOut": "La configuration a dépassé le délai imparti.",
+    "failed": "Échec de la configuration."
+  },
+  "harness": {
+    "title": "Harnais de revue",
+    "description": "Ce que l'agent de configuration a paramétré pour votre projet. Tout ceci peut être modifié depuis l'écran du projet.",
+    "verifications": {
+      "title": "Vérifications",
+      "hint": "Les étapes exécutées après chaque exécution de plan pour valider les modifications."
+    },
+    "reviewActions": {
+      "title": "Actions de revue",
+      "hint": "Des commandes qui facilitent le démarrage de votre projet pour les tests manuels."
+    },
+    "loadError": "Impossible de lire le harnais de votre projet ({{error}}). Cela ne dit rien de ce que l'agent de configuration a paramétré : ouvrez le projet depuis la ligne Projets pour le voir.",
+    "empty": "Rien n'est encore configuré. Si l'agent de configuration est toujours en cours d'exécution, ses résultats apparaîtront ici une fois qu'il aura terminé : rouvrez le projet depuis la ligne Projets pour les voir."
+  },
+  "complete": {
+    "title": "Tout est prêt",
+    "description": "Votre projet est configuré. Cliquez sur « Terminer » pour commencer à utiliser Tendril.",
+    "newsletter": {
+      "title": "Newsletter",
+      "description": "Soyez parmi les premiers informés de nos nouvelles versions."
+    }
+  },
+  "addProject": {
+    "title": "Ajouter un projet",
+    "hint": "Nommez le projet et associez-le à un ou plusieurs dépôts Git. Tendril les inspecte ensuite et configure le harnais de revue.",
+    "nameLabel": "Nom",
+    "namePlaceholder": "Nom du projet…",
+    "creating": "Création…",
+    "createInBackground": "Créer en arrière-plan",
+    "nameRequired": "Un projet doit avoir un nom.",
+    "nameInvalidChars": "Un nom de projet ne peut pas contenir / \\ : * ? \" < > ou |.",
+    "nameExists": "Un projet nommé « {{name}} » existe déjà.",
+    "createFailed": "Impossible de créer le projet : {{error}}",
+    "setupNotStarted": "Projet créé, mais l'agent de configuration n'a pas pu démarrer : {{error}}. Le projet est enregistré et peut être configuré depuis sa propre ligne.",
+    "agentHint": "Tendril détecte votre stack technique et configure votre harnais agentique. Cela prend quelques minutes.",
+    "verificationRequired": "obligatoire",
+    "noVerifications": "Aucune vérification n'a été configurée. Ajoutez-en depuis les paramètres du projet.",
+    "noReviewActions": "Aucune action de revue n'a été configurée. Ajoutez-en depuis les paramètres du projet.",
+    "harnessEmpty": "Le projet est enregistré. Si l'agent de configuration est toujours en cours d'exécution, ses résultats apparaîtront ici une fois qu'il aura terminé : rouvrez le projet depuis la ligne Projets pour les voir."
+  }
+}

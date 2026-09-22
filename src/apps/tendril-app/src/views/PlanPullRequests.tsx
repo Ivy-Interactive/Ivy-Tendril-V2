@@ -1,9 +1,11 @@
 import React, { useCallback, useEffect, useState } from "react";
 import { Badge, Button } from "@ivy-interactive/components/ui";
+import { useFormatters, type Formatters } from "@ivy-interactive/components/i18n";
 import { bridge } from "../api/bridge";
 import { onPlanEvent } from "../api/events";
-import { bridgeErrorCode, describeBridgeError, type PrStatus } from "../types/api";
+import { bridgeErrorCode, describeBridgeError, type PrState, type PrStatus } from "../types/api";
 import { PR_STATE_COLOR } from "../utils/prStatus";
+import { useTranslation, type TFunction } from "../i18n";
 
 interface PlanPullRequestsProps {
   planId: string;
@@ -29,16 +31,35 @@ export function prRepo(url: string): string {
   return match ? `${match[1]}/${match[2]}` : url;
 }
 
-function formatRelativeTime(dateString: string): string {
-  const date = new Date(dateString);
-  const diffSec = Math.floor((Date.now() - date.getTime()) / 1000);
-  if (isNaN(diffSec)) return "";
-  if (diffSec < 60) return "just now";
-  const diffMin = Math.floor(diffSec / 60);
-  if (diffMin < 60) return `${diffMin}m ago`;
-  const diffHours = Math.floor(diffMin / 60);
-  if (diffHours < 24) return `${diffHours}h ago`;
-  return `${Math.floor(diffHours / 24)}d ago`;
+/** Each PR state's label key. The state itself stays the raw value, which also picks the colour. */
+const PR_STATE_KEYS = {
+  Open: "pullRequests.state.open",
+  Closed: "pullRequests.state.closed",
+  Merged: "pullRequests.state.merged",
+  Unknown: "pullRequests.state.unknown",
+} as const satisfies Record<PrState, string>;
+
+/** A PR state as the operator reads it; a state this build does not know is shown as it is. */
+function prStateLabel(t: TFunction<"plans">, state: string): string {
+  return Object.hasOwn(PR_STATE_KEYS, state) ? t(PR_STATE_KEYS[state as PrState]) : state;
+}
+
+/**
+ * "checked 5m ago": "just now" under a minute, then whole minutes, hours and days - never weeks or
+ * months, which the hand-rolled helper this replaces never reached for either. An unparseable time
+ * leaves the line with no time in it, as that helper did.
+ */
+function checkedAgo(t: TFunction<"plans">, format: Formatters, dateString: string): string {
+  const diffSec = Math.floor((Date.now() - new Date(dateString).getTime()) / 1000);
+  if (isNaN(diffSec)) return t("pullRequests.checked", { when: "" });
+  if (diffSec < 60) return t("pullRequests.checkedJustNow");
+  const when = format.relativeTime(dateString, {
+    style: "narrow",
+    numeric: "always",
+    minUnit: "minute",
+    maxUnit: "day",
+  });
+  return t("pullRequests.checked", { when });
 }
 
 /**
@@ -50,6 +71,8 @@ function formatRelativeTime(dateString: string): string {
  * the running pass broadcasts its result anyway.
  */
 export const PlanPullRequests: React.FC<PlanPullRequestsProps> = ({ planId, prs }) => {
+  const { t } = useTranslation("plans");
+  const format = useFormatters();
   const [statuses, setStatuses] = useState<Record<string, PrStatus>>({});
   const [syncing, setSyncing] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
@@ -109,12 +132,13 @@ export const PlanPullRequests: React.FC<PlanPullRequestsProps> = ({ planId, prs 
     try {
       const report = await bridge.syncPullRequests();
       if (report.errors.length > 0) {
-        setNotice(`GitHub could not be reached for: ${report.errors.join("; ")}`);
+        // The entries are the daemon's own text; only the sentence around them is translated.
+        setNotice(t("pullRequests.unreachable", { repos: report.errors.join("; ") }));
       }
       await load();
     } catch (err) {
       if (bridgeErrorCode(err) === "PR_SYNC_IN_PROGRESS") {
-        setNotice("A sync is already running; statuses will update when it finishes.");
+        setNotice(t("pullRequests.syncInProgress"));
       } else {
         setError(describeBridgeError(err));
       }
@@ -132,7 +156,7 @@ export const PlanPullRequests: React.FC<PlanPullRequestsProps> = ({ planId, prs 
     <div>
       <div className="flex items-center justify-between gap-2">
         <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          Pull Requests
+          {t("pullRequests.title")}
         </h4>
         <Button
           type="button"
@@ -142,7 +166,7 @@ export const PlanPullRequests: React.FC<PlanPullRequestsProps> = ({ planId, prs 
           disabled={syncing}
           className="h-auto px-2 py-1 text-xs text-muted-foreground"
         >
-          {syncing ? "Refreshing..." : "Refresh"}
+          {syncing ? t("pullRequests.refreshing") : t("pullRequests.refresh")}
         </Button>
       </div>
 
@@ -154,7 +178,7 @@ export const PlanPullRequests: React.FC<PlanPullRequestsProps> = ({ planId, prs 
           rows.map(({ url, key, status }) => (
             <li key={key} className="flex flex-wrap items-center gap-2">
               <Badge color={PR_STATE_COLOR[status?.status ?? "Unknown"]} density="Small">
-                {status?.status ?? "Unknown"}
+                {prStateLabel(t, status?.status ?? "Unknown")}
               </Badge>
               {/* V1's PR table pairs a Repository column with the PR link; the repo is what
                   tells two PRs of a multi-repo plan apart. */}
@@ -173,13 +197,13 @@ export const PlanPullRequests: React.FC<PlanPullRequestsProps> = ({ planId, prs 
               )}
               {status?.lastChecked && (
                 <span className="text-xs text-muted-foreground/70">
-                  checked {formatRelativeTime(status.lastChecked)}
+                  {checkedAgo(t, format, status.lastChecked)}
                 </span>
               )}
             </li>
           ))
         ) : (
-          <li className="text-muted-foreground/70">No PRs created</li>
+          <li className="text-muted-foreground/70">{t("pullRequests.empty")}</li>
         )}
       </ul>
     </div>

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef } from "react";
 import { ChatStore, type ChatStorePlanScope } from "../../state/chatStore";
+import { i18n, useTranslation } from "../../i18n";
 import {
   ChatView,
   buildPlanSamplePrompts,
@@ -7,8 +8,14 @@ import {
   type SamplePromptPlan,
 } from "../../views/ChatView";
 
-/** `PlanChatView.Headline`. */
-export const PLAN_CHAT_HEADLINE = "Ask Tendril to Change Anything";
+/**
+ * `PlanChatView.Headline`, in the language current at the call.
+ *
+ * A function rather than a string so it is never frozen in the language the app started in: the
+ * hosts hand it to `ChatView` as it is (`headline={PLAN_CHAT_HEADLINE}`), and `ChatView` reads it at
+ * every render.
+ */
+export const PLAN_CHAT_HEADLINE = (): string => i18n.t("chat:planChat.headline");
 
 /** Everything the panel needs off the plan it sits beside. `PlanDetail` and `PlanSummary` both fit. */
 export interface PlanChatPlan extends SamplePromptPlan {
@@ -54,6 +61,7 @@ export const PlanChatPanel: React.FC<{
   /** Opens the plan a job in this conversation reports. */
   onOpenPlan?: (planId: string) => void;
 }> = ({ plan, draft, onOpenPlan }) => {
+  const { t } = useTranslation("chat");
   const folder = planFolderName(plan);
   const sessionTitle = `#${shortPlanId(plan.id)} ${plan.title}`;
 
@@ -98,11 +106,11 @@ export const PlanChatPanel: React.FC<{
   useEffect(() => () => store.destroy(), [store]);
 
   const samplePrompts: SamplePrompt[] = useMemo(
-    () => buildPlanSamplePrompts(plan),
-    // The chips are `SamplePrompts.ForPlan`'s four inputs and nothing else, so a plan object
-    // rebuilt by a refetch does not rebuild them.
+    () => buildPlanSamplePrompts(plan, t),
+    // The chips are `SamplePrompts.ForPlan`'s four inputs and the language, and nothing else, so a
+    // plan object rebuilt by a refetch does not rebuild them.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [plan.state, plan.verifications, plan.prs, plan.dependsOn],
+    [plan.state, plan.verifications, plan.prs, plan.dependsOn, t],
   );
 
   return (

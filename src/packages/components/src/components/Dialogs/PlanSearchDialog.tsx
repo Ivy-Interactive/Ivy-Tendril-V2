@@ -3,6 +3,7 @@ import { Button } from "../ui/button";
 import { Callout } from "../ui/callout";
 import { Input } from "../ui/input";
 import { ShellSidebarSection } from "../Shell";
+import { useTranslation } from "@/i18n/uiDialogs";
 import type { ShellSectionItemDto } from "../Shell";
 import { DialogShell } from "./DialogShell";
 
@@ -76,6 +77,7 @@ export function PlanSearchDialog({
   search,
   describeError = describeErrorFallback,
 }: PlanSearchDialogProps) {
+  const { t } = useTranslation("uiDialogs");
   const [query, setQuery] = React.useState("");
   const [items, setItems] = React.useState<ShellSectionItemDto[]>([]);
   const [isSearching, setIsSearching] = React.useState(false);
@@ -146,13 +148,13 @@ export function PlanSearchDialog({
       isOpen={isOpen}
       onClose={onClose}
       // V1's `new DialogHeader("Search Plans")` and `.Width(Size.Px(560))`.
-      title="Search Plans"
+      title={t("planSearch.title")}
       width="px560"
       testId="plan-search-dialog"
       initialFocusRef={inputRef}
       footer={
         <Button variant="outline" onClick={onClose} data-testid="dialog-close">
-          Close
+          {t("actions.close")}
         </Button>
       }
     >
@@ -160,11 +162,11 @@ export function PlanSearchDialog({
       <Input
         ref={inputRef}
         type="search"
-        aria-label="Search plans"
+        aria-label={t("planSearch.inputLabel")}
         data-testid="plan-search-input"
         value={query}
         onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search plans"
+        placeholder={t("planSearch.placeholder")}
       />
 
       {trimmed !== "" && (
@@ -189,12 +191,12 @@ export function PlanSearchDialog({
           ) : isSearching || !hasAnswer ? (
             /* V2 only: the query is still out, so V1's "No plans found." would be premature. */
             <p className="text-sm text-muted-foreground" data-testid="plan-search-pending">
-              Searching…
+              {t("planSearch.searching")}
             </p>
           ) : (
             /* V1: `body |= Text.Muted("No plans found.")`. */
             <p className="text-sm text-muted-foreground" data-testid="plan-search-empty">
-              No plans found.
+              {t("planSearch.empty")}
             </p>
           )}
         </div>

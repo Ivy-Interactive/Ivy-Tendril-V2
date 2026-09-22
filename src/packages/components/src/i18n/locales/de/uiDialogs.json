@@ -1,0 +1,309 @@
+{
+  "actions": {
+    "cancel": "Abbrechen",
+    "close": "Schließen"
+  },
+  "status": {
+    "starting": "Wird gestartet…"
+  },
+  "planStates": {
+    "draft": "Entwurf",
+    "creating": "Wird erstellt",
+    "updating": "Wird aktualisiert",
+    "executing": "Wird ausgeführt",
+    "review": "Review",
+    "failed": "Fehlgeschlagen",
+    "completed": "Abgeschlossen",
+    "skipped": "Übersprungen",
+    "blocked": "Blockiert",
+    "icebox": "Icebox"
+  },
+  "confirm": {
+    "working": "Wird bearbeitet…"
+  },
+  "autoAcceptSettings": {
+    "title": "Einstellungen für automatisches Annehmen",
+    "save": "Speichern",
+    "saving": "Wird gespeichert…",
+    "intro": "Importiert neu zugewiesene GitHub-Issues in regelmäßigen Abständen automatisch als Tendril-Pläne.",
+    "autoAcceptLabel": "Zugewiesene Issues automatisch annehmen",
+    "intervalLabel": "Prüfintervall",
+    "intervalOption_one": "{{count}} Minute",
+    "intervalOption_other": "{{count}} Minuten",
+    "checkNow": "Jetzt prüfen",
+    "checking": "Wird geprüft…",
+    "checkAlreadyRunning": "Es läuft bereits eine Prüfung.",
+    "checkSummary": "{{imported}} importiert, {{skipped}} übersprungen."
+  },
+  "createIssue": {
+    "title": "GitHub-Issue für #{{planId}} erstellen",
+    "titleForSubject": "GitHub-Issue aus {{kind}} erstellen",
+    "titleForSubject_recommendation": "GitHub-Issue aus Empfehlung erstellen",
+    "description": "CreateIssue erstellt den Issue-Text aus dem Plan und öffnet das Issue mit `gh` im ausgewählten Repository.",
+    "descriptionForSubject": "CreateIssue öffnet dies mit `gh` im ausgewählten Repository. Das Issue wird zu Plan #{{planId}} erfasst, beschreibt aber das Element vom Typ {{kind}} statt der eigentlichen Arbeit des Plans.",
+    "descriptionForSubject_recommendation": "CreateIssue öffnet dies mit `gh` im ausgewählten Repository. Das Issue wird zu Plan #{{planId}} erfasst, beschreibt aber die Empfehlung statt der eigentlichen Arbeit des Plans.",
+    "submit": "Issue erstellen",
+    "issueTitle": {
+      "label": "Titel",
+      "placeholder": "Worum es in dem Issue geht",
+      "required": "Ein Titel ist erforderlich: Der Titel des Plans wird hier nicht verwendet."
+    },
+    "body": {
+      "label": "Text",
+      "placeholder": "Was getan werden soll und warum…",
+      "hint": "Bearbeiten Sie den Text vor dem Erstellen, wenn er zu knapp formuliert ist. Der Agent formatiert ihn als Markdown und übernimmt Ihre Formulierungen, statt sie umzuschreiben."
+    },
+    "repository": {
+      "label": "Repository",
+      "none": "Weder der Plan noch sein Projekt hat ein Repository hinterlegt, daher kann <code>{{command}}</code> nirgends ausgeführt werden. Fügen Sie dem Plan zuerst eines hinzu.",
+      "hint": "Der lokale Repository-Pfad, für den das Issue geöffnet wird, kein owner/name-Kürzel."
+    },
+    "assignee": {
+      "label": "Zugewiesene Person"
+    },
+    "labels": {
+      "label": "Labels",
+      "hint": "Kommagetrennt. Zugewiesene Person und Labels sind Freitext: Der Dienst stellt Issue-Metadaten bereit, nicht die zuweisbaren Benutzer der Organisation, daher gibt es keine Liste zur Auswahl."
+    },
+    "comment": {
+      "label": "Kommentar",
+      "placeholder": "Zusätzlicher Kontext, der an den Issue-Text angehängt wird…"
+    }
+  },
+  "createPr": {
+    "title": "PR für #{{planId}} erstellen",
+    "description": "CreatePr pusht den Branch des Plans, öffnet den PR und – sofern nicht anders angegeben – mergt ihn und löscht den Branch.",
+    "submit": "PR erstellen",
+    "toggles": {
+      "solveMergeConflicts": {
+        "label": "Merge-Konflikte lösen"
+      },
+      "merge": {
+        "label": "Mergen",
+        "hint": "Wenn deaktiviert, wird der PR ohne Mergen geöffnet."
+      },
+      "deleteBranch": {
+        "label": "Branch löschen",
+        "label_multiple": "Branches löschen",
+        "hint": "Löscht den nach origin gepushten Branch nach erfolgreichem Merge.",
+        "hint_multiple": "Löscht die nach origin gepushten Branches nach erfolgreichem Merge."
+      },
+      "includeArtifacts": {
+        "label": "Artefakte einschließen"
+      },
+      "draft": {
+        "label": "Als PR-Entwurf erstellen",
+        "hint": "Ein PR-Entwurf kann nicht gemergt werden."
+      }
+    },
+    "reviewers": {
+      "label": "Reviewer",
+      "hint": "Kommagetrennte GitHub-Logins. V2 hat kein eigenes Feld für die zugewiesene Person – die CLI übernimmt eine zugewiesene Person in die Reviewer-Liste, daher ist es derselbe Kanal."
+    },
+    "comment": {
+      "label": "Kommentar",
+      "placeholder": "Was der Reviewer vor dem Lesen des Diffs wissen sollte…"
+    }
+  },
+  "deleteProject": {
+    "title": "Projekt löschen",
+    "confirm": "Projekt löschen",
+    "intro": "Dadurch werden das Projekt <name>{{name}}</name> und alles, was ihm auf der Festplatte gehört, dauerhaft gelöscht. Dies kann nicht rückgängig gemacht werden.",
+    "plans": "Alle Pläne dieses Projekts mit ihren Revisionen und Verifikationsberichten.",
+    "folder": "<code>{{root}}</code><code>{{name}}</code> – die geklonten Repositories, Skills, MCP-Definitionen und Erinnerungen des Projekts, einschließlich aller Commits, die nie gepusht wurden.",
+    "database": "Seine Pläne, Jobs und Empfehlungen in der Datenbank von Tendril.",
+    "config": "Sein Eintrag in config.yaml.",
+    "logsKept": "Job-Logs bleiben erhalten: Sie werden nach Job-ID statt nach Projekt gespeichert.",
+    "removeInstead": "Um das Projekt aus Tendril zu entfernen, ohne etwas auf der Festplatte anzutasten, brechen Sie ab und verwenden Sie stattdessen „Projekt entfernen“.",
+    "typeToConfirm": "Geben Sie zur Bestätigung <name>{{name}}</name> ein",
+    "typeToConfirmAriaLabel": "Geben Sie zur Bestätigung {{name}} ein"
+  },
+  "dirtyRepo": {
+    "title": "Lokale Änderungen erkannt",
+    "description_one": "⚠ {{count}} Repository hat nicht committete Änderungen. Sie werden nicht in den Worktree übernommen, in dem der Agent arbeitet.",
+    "description_other": "⚠ {{count}} Repositories haben nicht committete Änderungen. Sie werden nicht in den Worktree übernommen, in dem der Agent arbeitet.",
+    "proceed": "Trotzdem ausführen",
+    "changeCount_one": "{{count}} nicht committete Änderung",
+    "changeCount_other": "{{count}} nicht committete Änderungen",
+    "moreChanges_one": "+{{count}} weitere",
+    "moreChanges_other": "+{{count}} weitere"
+  },
+  "jobDebug": {
+    "title": "Job-Debug",
+    "loading": "Job-Details werden geladen…",
+    "copy": "Details kopieren",
+    "copied": "Kopiert",
+    "copyFailed": "Kopieren in die Zwischenablage fehlgeschlagen",
+    "values": {
+      "duration": "{{seconds}} s",
+      "cost": "{{cost, currency(minimumFractionDigits: 4; maximumFractionDigits: 4; useGrouping: false)}}",
+      "tokens": "{{tokens, number}}"
+    },
+    "fields": {
+      "jobId": "Job-ID",
+      "planId": "Plan-ID",
+      "planTitle": "Prompt/Titel",
+      "status": "Status",
+      "type": "Typ",
+      "project": "Projekt",
+      "provider": "Provider",
+      "model": "Modell",
+      "started": "Gestartet",
+      "completed": "Abgeschlossen",
+      "lastOutput": "Letzte Ausgabe",
+      "duration": "Dauer",
+      "cost": "Kosten",
+      "tokens": "Tokens",
+      "processId": "Prozess-ID",
+      "detached": "Abgekoppelt",
+      "workingDirectory": "Arbeitsverzeichnis",
+      "arguments": "Argumente",
+      "args": "Args",
+      "failureReason": "Fehlerursache",
+      "permissionDenials": "Verweigerte Berechtigungen",
+      "planFolder": "Planordner",
+      "jobLog": "Job-Log",
+      "jobPrompt": "Job-Prompt",
+      "jobRawLog": "Job-Roh-Log",
+      "jobEventwireLog": "Job-Eventwire-Log"
+    }
+  },
+  "noProjects": {
+    "title": "Keine Projekte",
+    "description": "Jeder Plan gehört zu einem Projekt, und in diesem Tendril Home gibt es noch keines.",
+    "openSettings": "Zu Projekten",
+    "body": "Fügen Sie unter <location>Einstellungen → Projekte</location> ein Projekt hinzu – einen Namen, seine Repositories und die Verifikationen, die seine Pläne ausführen – und erstellen Sie den Plan dann erneut."
+  },
+  "pendingAnnotations": {
+    "title": {
+      "changes": "Nicht eingearbeitete Änderungen",
+      "answers": "Nicht eingearbeitete Antworten",
+      "annotations": "Nicht eingearbeitete Annotationen"
+    },
+    "description": {
+      "items_one": "⚠ Dieser Plan hat {{count}} Element, das noch von keinem UpdatePlan-Lauf eingearbeitet wurde.",
+      "items_other": "⚠ Dieser Plan hat {{count}} Elemente, die noch von keinem UpdatePlan-Lauf eingearbeitet wurden.",
+      "annotations_one": "⚠ Dieser Plan hat {{count}} Annotation, die noch nicht eingearbeitet wurde. Wenn Sie jetzt ausführen, wird sie ignoriert.",
+      "annotations_other": "⚠ Dieser Plan hat {{count}} Annotationen, die noch nicht eingearbeitet wurden. Wenn Sie jetzt ausführen, werden sie ignoriert.",
+      "answers_one": "⚠ Dieser Plan hat {{count}} beantwortete Frage, die noch nicht eingearbeitet wurde. Wenn Sie jetzt ausführen, liest der Agent sie so, wie sie ist, statt als Teil des Plans.",
+      "answers_other": "⚠ Dieser Plan hat {{count}} beantwortete Fragen, die noch nicht eingearbeitet wurden. Wenn Sie jetzt ausführen, liest der Agent sie so, wie sie sind, statt als Teil des Plans.",
+      "both": "⚠ Dieser Plan hat {{annotations}} und {{answers}}, die noch nicht eingearbeitet wurden. Wenn Sie jetzt ausführen, werden die Annotationen ignoriert, und der Agent liest die Antworten so, wie sie sind, statt als Teil des Plans.",
+      "annotationCount_one": "{{count}} Annotation",
+      "annotationCount_other": "{{count}} Annotationen",
+      "answerCount_one": "{{count}} beantwortete Frage",
+      "answerCount_other": "{{count}} beantwortete Fragen"
+    },
+    "updatePlan": "Plan aktualisieren",
+    "decline": {
+      "discardAnnotations": "Annotationen verwerfen & ausführen",
+      "withoutUpdating": "Ohne Aktualisierung ausführen",
+      "anyway": "Trotzdem ausführen"
+    },
+    "updateAndExecute": "Plan aktualisieren & ausführen",
+    "body": "Wenn Sie jetzt ausführen, wird der Plan so ausgeführt, wie er geschrieben ist, und diese Notizen beeinflussen nicht, was der Agent tut. Wenn Sie zuerst UpdatePlan ausführen, werden sie in den Plantext eingearbeitet."
+  },
+  "resetToDraft": {
+    "title": "Plan #{{planId}} auf Entwurf zurücksetzen",
+    "confirm": "Auf Entwurf zurücksetzen",
+    "body": "Der Plan kehrt in den Status <state>Entwurf</state> zurück, und seine Worktrees werden entfernt; dabei werden alle darin nicht committeten Änderungen verworfen. Bereits gepushte Commits sind nicht betroffen."
+  },
+  "partialDelivery": {
+    "title": "Verifikation fehlgeschlagen",
+    "confirm": "Als Teilauslieferung abschließen",
+    "body": "Plan #{{planId}} wird trotz dieser fehlgeschlagenen Verifikationen als <state>Abgeschlossen</state> erfasst und als Teilauslieferung markiert:"
+  },
+  "deletePlan": {
+    "title": "Plan löschen",
+    "confirm": "Löschen",
+    "body": "Möchten Sie Plan #{{planId}} wirklich dauerhaft löschen? Dadurch werden der Planordner, alle Revisionen und alle Verifikationsberichte entfernt. Dies kann nicht rückgängig gemacht werden. Um den Ordner zu behalten, setzen Sie den Plan stattdessen auf „Übersprungen“ oder verschieben Sie ihn in die Icebox.",
+    "skip": "Auf „Übersprungen“ setzen",
+    "archive": "In die Icebox verschieben"
+  },
+  "planSearch": {
+    "title": "Pläne durchsuchen",
+    "inputLabel": "Pläne durchsuchen",
+    "placeholder": "Pläne durchsuchen",
+    "searching": "Wird gesucht…",
+    "empty": "Keine Pläne gefunden."
+  },
+  "removeProject": {
+    "title": "Projekt entfernen",
+    "confirm": "Projekt entfernen",
+    "question": "Möchten Sie das Projekt <name>{{name}}</name> wirklich entfernen?",
+    "consequence": "Dadurch wird das Projekt aus config.yaml entfernt. Seine geklonten Repositories, Planordner und sein Verlauf bleiben auf der Festplatte, es wird also nichts von Ihrem Rechner gelöscht – aber Tendril listet das Projekt nicht mehr auf, und seine bestehenden Pläne und Jobs verweisen auf ein Projekt, das Tendril nicht mehr kennt."
+  },
+  "shareTunnel": {
+    "title": "Arbeit teilen",
+    "intro": "Teilen Sie Ihre Arbeit über einen sicheren, schreibgeschützten Cloudflare-Tunnel mit Ihrem Team. Reviewer können Pläne und Diffs einsehen und Kommentare hinterlassen, ohne Zugriff auf Ihr Terminal oder Ihre Einstellungen zu haben.",
+    "errorTitle": "Fehler",
+    "connecting": {
+      "title": "Tunnel wird gestartet",
+      "body": "Freigabe-Tunnel wird gestartet… Das dauert in der Regel 15–30 Sekunden."
+    },
+    "active": {
+      "title": "Freigabe aktiv",
+      "body": "Ihr Freigabe-Tunnel ist aktiv – nur Lesen und Kommentieren."
+    },
+    "copyLink": "Link kopieren",
+    "openInBrowser": "Im Browser öffnen",
+    "stop": "Freigabe beenden",
+    "start": "Freigabe-Tunnel starten",
+    "errors": {
+      "start": "Freigabe-Tunnel konnte nicht gestartet werden: {{error}}",
+      "stop": "Freigabe-Tunnel konnte nicht gestoppt werden: {{error}}",
+      "copy": "Der Link konnte nicht kopiert werden: {{error}}"
+    },
+    "notifications": {
+      "stoppedTitle": "Deaktiviert",
+      "stoppedMessage": "Freigabe-Tunnel gestoppt",
+      "copiedTitle": "Link kopiert",
+      "copiedMessage": "Freigabe-URL in die Zwischenablage kopiert"
+    }
+  },
+  "suggestChanges": {
+    "notAllowed": {
+      "title": "Plan #{{planId}} nimmt keine Änderungen an",
+      "state": "Der Plan hat den Status „{{state}}“. Eine Änderungsanfrage wird nur angenommen, solange er im Review ist oder bereits eine Änderungsanfrage umsetzt.",
+      "commentsKept_one": "{{count}} Kommentar ist noch vorhanden – senden Sie ihn, sobald der Plan wieder im Review ist.",
+      "commentsKept_other": "{{count}} Kommentare sind noch vorhanden – senden Sie sie, sobald der Plan wieder im Review ist."
+    },
+    "fromApp": {
+      "title": "Plan #{{planId}} aktualisieren",
+      "submit": "Aktualisieren",
+      "queue": "Aktualisierung einreihen",
+      "summary_one": "{{count}} Kommentar aus der laufenden App wird als Änderungsanfrage an den Agenten gesendet.",
+      "summary_other": "{{count}} Kommentare aus der laufenden App werden als Änderungsanfrage an den Agenten gesendet.",
+      "queueNote_one": "Für Plan #{{planId}} läuft bereits {{count}} Job, daher wird dieser dahinter eingereiht und startet, sobald jener abgeschlossen ist.",
+      "queueNote_other": "Für Plan #{{planId}} laufen bereits {{count}} Jobs, daher wird dieser dahinter eingereiht und startet, sobald sie abgeschlossen sind.",
+      "untaggedElement": "Element"
+    },
+    "diff": {
+      "title": "Änderungen für Plan #{{planId}} anfordern",
+      "description": "Geben Sie Vorschläge oder Anweisungen für Änderungen an der Implementierung an. RetryPlan setzt im bestehenden Worktree fort und wendet sie als Delta auf die bereits committete Arbeit an.",
+      "submit": "Änderungen anfordern",
+      "submitWithInline_one": "Änderungen anfordern ({{count}} inline)",
+      "submitWithInline_other": "Änderungen anfordern ({{count}} inline)",
+      "inlineNote_one": "{{count}} Inline-Kommentar zu Datei-Diffs wird Ihrem Feedback beigefügt.",
+      "inlineNote_other": "{{count}} Inline-Kommentare zu Datei-Diffs werden Ihrem Feedback beigefügt.",
+      "requestLabel": "Änderungsanfrage",
+      "requestPlaceholder": "Beschreiben Sie, was im Worktree geändert, behoben oder neu geschrieben werden muss…"
+    }
+  },
+  "unansweredQuestions": {
+    "title": "Unbeantwortete Fragen",
+    "description_one": "⚠ Dieser Plan hat {{count}} unbeantwortete Frage. Wenn Sie jetzt ausführen, überlassen Sie sie dem Agenten, der die empfohlene Option wählt, sofern es eine gibt, und andernfalls selbst entscheidet.",
+    "description_other": "⚠ Dieser Plan hat {{count}} unbeantwortete Fragen. Wenn Sie jetzt ausführen, überlassen Sie sie dem Agenten, der die empfohlene Option wählt, sofern es eine gibt, und andernfalls selbst entscheidet.",
+    "updatePlan": "Plan aktualisieren…",
+    "proceed": "Trotzdem ausführen",
+    "updateAndExecute": "Plan aktualisieren & ausführen"
+  },
+  "updatePlan": {
+    "title": "Plan #{{planId}} aktualisieren",
+    "description": "Geben Sie Anweisungen zur Überarbeitung dieses Plans an. UpdatePlan überarbeitet den Plan in eine neue Revision – Code wird dabei nicht verändert.",
+    "submit": "Aktualisieren",
+    "alreadyRunning": "UpdatePlan läuft für diesen Plan bereits. Bitte warten…",
+    "instructionsLabel": "Anweisungen",
+    "instructionsAriaLabel": "Anweisungen zur Aktualisierung",
+    "instructionsPlaceholder": "Die beantworteten Fragen einarbeiten, dann den Umfang auf die Guard-Kette beschränken…"
+  }
+}

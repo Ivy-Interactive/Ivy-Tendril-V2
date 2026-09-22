@@ -1,0 +1,258 @@
+{
+  "agentPicker": {
+    "tooltip": "Agent, model and effort",
+    "triggerLabel": "Agent: {{agent}}",
+    "menuLabel": "Agents",
+    "optionsTooltip": "Model and effort",
+    "optionsLabel": "{{agent}} options",
+    "settingsLabel": "{{agent}} settings",
+    "model": "Model",
+    "effort": "Effort Level",
+    "unlistedValue": "Default",
+    "effortLevels": {
+      "default": "Default",
+      "none": "None",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "xhigh": "Extra High",
+      "max": "Max"
+    }
+  },
+  "composerAttachment": {
+    "remove": "Remove {{name}}"
+  },
+  "lightbox": {
+    "fallbackTitle": "Image preview",
+    "fallbackAlt": "Attachment preview",
+    "closeLabel": "Close preview"
+  },
+  "newChatButtons": {
+    "label": "New chat",
+    "tooltip": "New chat",
+    "tooltip_terminal": "New chat (terminal)",
+    "override_chat": "New chat UI session",
+    "override_terminal": "New terminal chat"
+  },
+  "planChat": {
+    "headline": "Ask Tendril to Change Anything"
+  },
+  "systemEvent": {
+    "linked": {
+      "completed": "Completed {{type}} <plan>{{plan}}</plan>.",
+      "completed_plan": "Completed plan <plan>{{plan}}</plan>.",
+      "completed_pullRequest": "Completed pull request <plan>{{plan}}</plan>.",
+      "failed": "Failed {{type}} <plan>{{plan}}</plan>.",
+      "failed_plan": "Failed plan <plan>{{plan}}</plan>.",
+      "failed_pullRequest": "Failed pull request <plan>{{plan}}</plan>.",
+      "timeout": "Timed out {{type}} <plan>{{plan}}</plan>.",
+      "timeout_plan": "Timed out plan <plan>{{plan}}</plan>.",
+      "timeout_pullRequest": "Timed out pull request <plan>{{plan}}</plan>.",
+      "cancelled": "Cancelled {{type}} <plan>{{plan}}</plan>.",
+      "cancelled_plan": "Cancelled plan <plan>{{plan}}</plan>.",
+      "cancelled_pullRequest": "Cancelled pull request <plan>{{plan}}</plan>.",
+      "unknown": "{{status}} {{type}} <plan>{{plan}}</plan>.",
+      "unknown_plan": "{{status}} plan <plan>{{plan}}</plan>.",
+      "unknown_pullRequest": "{{status}} pull request <plan>{{plan}}</plan>."
+    },
+    "quoted": {
+      "completed": "Completed {{type}} '{{subject}}'",
+      "completed_plan": "Completed plan '{{subject}}'",
+      "completed_pullRequest": "Completed pull request '{{subject}}'",
+      "failed": "Failed {{type}} '{{subject}}'",
+      "failed_plan": "Failed plan '{{subject}}'",
+      "failed_pullRequest": "Failed pull request '{{subject}}'",
+      "timeout": "Timed out {{type}} '{{subject}}'",
+      "timeout_plan": "Timed out plan '{{subject}}'",
+      "timeout_pullRequest": "Timed out pull request '{{subject}}'",
+      "cancelled": "Cancelled {{type}} '{{subject}}'",
+      "cancelled_plan": "Cancelled plan '{{subject}}'",
+      "cancelled_pullRequest": "Cancelled pull request '{{subject}}'",
+      "unknown": "{{status}} {{type}} '{{subject}}'",
+      "unknown_plan": "{{status}} plan '{{subject}}'",
+      "unknown_pullRequest": "{{status}} pull request '{{subject}}'"
+    },
+    "started": "Started plan '{{plan}}'",
+    "fullStop": "{{sentence}}.",
+    "openPlan": "Open plan"
+  },
+  "terminal": {
+    "untitled": "Agent",
+    "newChat": "New Chat",
+    "starting": "Starting {{agent}}…",
+    "startingUnknown": "Starting agent…"
+  },
+  "jobsMenu": {
+    "triggerLabel": "View running jobs",
+    "triggerTitle": "View jobs",
+    "triggerTitleRunning_one": "{{count}} job running",
+    "triggerTitleRunning_other": "{{count}} jobs running",
+    "pillRunning_one": "{{count}} running",
+    "pillRunning_other": "{{count}} running",
+    "pillJobs_one": "{{count}} job",
+    "pillJobs_other": "{{count}} jobs",
+    "pillWithFailures_one": "{{jobs}} ({{count}} failed)",
+    "pillWithFailures_other": "{{jobs}} ({{count}} failed)",
+    "listLabel": "Jobs",
+    "title": "Running Jobs ({{count}})",
+    "title_spawned": "Spawned Jobs ({{count}})",
+    "summaryRunning_one": "{{count}} running",
+    "summaryRunning_other": "{{count}} running",
+    "summaryCompleted_one": "{{count}} completed",
+    "summaryCompleted_other": "{{count}} completed",
+    "summaryFailed_one": "{{count}} failed",
+    "summaryFailed_other": "{{count}} failed",
+    "genericJobType": "Job",
+    "openPlan": "Open plan",
+    "review": "Ask agent to review outcomes"
+  },
+  "chatHeader": {
+    "titleInputLabel": "Chat name",
+    "optionsLabel": "Chat options",
+    "optionsMenuLabel": "Chat options",
+    "editName": "Edit name",
+    "deleteChat": "Delete chat"
+  },
+  "messageRow": {
+    "openAttachment": "Open {{name}}",
+    "submittingAnswer": "Submitting answer..."
+  },
+  "view": {
+    "dropOverlay": "Drop files here to attach to message",
+    "noActiveChat": "No Active Chat",
+    "working": "Working...",
+    "jumpToQuestion_down": "Jump to pending question ↓",
+    "jumpToQuestion_up": "Jump to pending question ↑",
+    "scrollToStreamingTail": "Scroll to streaming tail",
+    "scrollToBottom": "Scroll to bottom"
+  },
+  "composer": {
+    "attach": "Attach file",
+    "promptLabel": "Chat prompt",
+    "placeholder": "Ask Tendril anything...",
+    "voice": "Voice input",
+    "voiceErrorDismiss": "Dismiss voice input error",
+    "nothingTranscribed": "Nothing was transcribed. Please try again.",
+    "clearAttachments": "Clear all",
+    "queue": "Queue message",
+    "stop": "Stop agent",
+    "stopping": "Stopping agent",
+    "stopTooltip": "Stop agent",
+    "stoppingTooltip": "Stopping agent...",
+    "send": "Send message"
+  },
+  "emptyState": {
+    "headline": "What Are We Producing Today?"
+  },
+  "greeting": {
+    "morning": "Good Morning!",
+    "afternoon": "Good Afternoon!",
+    "evening": "Good Evening!"
+  },
+  "deleteSession": {
+    "title": "Delete Session",
+    "body": "Are you sure you want to delete \"{{title}}\"? This action cannot be undone.",
+    "bodyUntitled": "Are you sure you want to delete this chat session? This action cannot be undone."
+  },
+  "jobsReview": {
+    "prompt": "Review the outcomes of the jobs this conversation started and tell me what changed:\n{{jobs}}"
+  },
+  "search": {
+    "title": "Search Chats",
+    "inputLabel": "Search chats",
+    "placeholder": "Search chats",
+    "empty": "No chats found."
+  },
+  "queue": {
+    "title": "Queued Messages",
+    "hint": "Sends after agent finishes working",
+    "collapse": "Collapse queued messages",
+    "expand": "Expand queued messages",
+    "editInputLabel": "Edit queued prompt",
+    "save": "Save queued prompt",
+    "cancelEdit": "Cancel edit",
+    "attachments_one": "{{count}} attachment",
+    "attachments_other": "{{count}} attachments",
+    "sendNow": "Send now",
+    "edit": "Edit queued prompt",
+    "remove": "Remove from queue"
+  },
+  "samplePrompts": {
+    "chat": {
+      "review": {
+        "label_one": "Review the {{count}} plans waiting",
+        "label_other": "Review the {{count}} plans waiting",
+        "prompt_one": "{{count}} plans are waiting for review: {{plans}}. Summarize what each delivers and tell me which to merge first.",
+        "prompt_other": "{{count}} plans are waiting for review: {{plans}}. Summarize what each delivers and tell me which to merge first."
+      },
+      "failed": {
+        "label": "Why did #{{id}} fail?",
+        "prompt": "Plan #{{id}} {{title}} failed. Read its logs and verification reports and explain what went wrong."
+      },
+      "blocked": {
+        "label": "What is blocking #{{id}}?",
+        "prompt": "Plan #{{id}} {{title}} is blocked. List the plans it depends on and what each one still needs."
+      },
+      "jobs": {
+        "label": "What are my jobs doing?",
+        "prompt_one": "{{count}} jobs are running. Summarize what each one is working on.",
+        "prompt_other": "{{count}} jobs are running. Summarize what each one is working on."
+      },
+      "addProject": {
+        "label": "Add a new project",
+        "prompt": "Add a new project to my tendril"
+      },
+      "editVerifications": {
+        "label": "Edit verifications",
+        "prompt": "Edit verifications for my projects"
+      },
+      "teamVault": {
+        "label": "Create a team vault",
+        "prompt": "Create a shared team vault"
+      },
+      "nextWork": {
+        "label": "What should I work on next?",
+        "prompt": "Look at my draft plans across all projects and recommend which two to execute next, with reasons."
+      },
+      "shipped": {
+        "label": "What shipped this week?",
+        "prompt": "Summarize the plans that reached {{state}} in the last seven days, grouped by project."
+      }
+    },
+    "plan": {
+      "failedVerification": {
+        "label": "Why did {{name}} fail?",
+        "prompt": "The {{name}} verification failed for this plan. Read its report in {{report}} and explain the failure and how to fix it."
+      },
+      "prFeedback": {
+        "label": "Summarize the PR feedback",
+        "prompt": "Read the review comments on {{pr}} and list the changes they ask for."
+      },
+      "blocked": {
+        "label": "What is blocking this?",
+        "prompt": "This plan is blocked on {{dependencies}}. Tell me what each dependency still needs."
+      },
+      "tightenScope": {
+        "label": "Tighten the scope",
+        "prompt": "Read the latest revision of this plan and point out anything out of scope or under specified."
+      },
+      "explainSolution": {
+        "label": "Explain the solution",
+        "prompt": "Explain the {{section}} section of this plan in plain terms, and list every file it will touch."
+      },
+      "risks": {
+        "label": "What could go wrong?",
+        "prompt": "What are the riskiest parts of this plan, and what should I check in review?"
+      }
+    }
+  },
+  "sidebar": {
+    "title": "Chats",
+    "searchLabel": "Search chats",
+    "newLabel": "New chat",
+    "untitled": "New Chat"
+  },
+  "attachments": {
+    "pickerTitle": "Select Files to Attach"
+  }
+}

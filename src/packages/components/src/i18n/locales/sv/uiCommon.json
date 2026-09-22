@@ -1,0 +1,251 @@
+{
+  "blade": {
+    "back": "Tillbaka",
+    "backTo": "Tillbaka till {{title}}",
+    "close": "Stäng {{title}}",
+    "refresh": "Uppdatera {{title}}"
+  },
+  "bladeContainer": {
+    "ariaLabel": "Paneler"
+  },
+  "calendar": {
+    "dayButton": {
+      "selected": "{{date}}, vald",
+      "today": "I dag, {{date}}",
+      "todaySelected": "I dag, {{date}}, vald"
+    },
+    "gridcell": {
+      "today": "I dag, {{date}}"
+    },
+    "monthDropdown": "Välj månad",
+    "monthPlaceholder": "M",
+    "navLabel": "Navigering för {{label}}",
+    "nextMonth": "Gå till nästa månad",
+    "previousMonth": "Gå till föregående månad",
+    "weekNumber": "Vecka {{week}}",
+    "weekNumberHeader": "Veckonummer",
+    "yearDropdown": "Välj år",
+    "yearPlaceholder": "ÅÅÅÅ"
+  },
+  "callout": {
+    "dismiss": "Avfärda"
+  },
+  "charts": {
+    "axis": {
+      "billions": "{{value}} md",
+      "millions": "{{value}} mn",
+      "thousands": "{{value}} tn"
+    },
+    "radarDefaultSeries": "Data",
+    "scatterLineSeries": "{{name}} (linje)"
+  },
+  "chatMessageList": {
+    "scrollToBottom": "Rulla längst ned"
+  },
+  "clipboard": {
+    "copyFailed": "Det gick inte att kopiera till urklipp."
+  },
+  "copyToClipboard": {
+    "ariaLabel": "Kopiera till urklipp",
+    "copied": "Kopierat!"
+  },
+  "dataTable": {
+    "columnHeader": {
+      "clearSort": "Rensa sortering på {{column}}",
+      "reorder": "Flytta kolumn",
+      "reorderAt": "Flytta kolumn, position {{position}} av {{total}}",
+      "resize": "Ändra kolumnbredd",
+      "sortAscending": "Sortera efter {{column}} stigande",
+      "sortDescending": "Sortera efter {{column}} fallande"
+    },
+    "columnOptions": "Kolumnalternativ",
+    "editCell": "Redigera {{column}}",
+    "empty": "Inga resultat.",
+    "filter": {
+      "clear": "Rensa",
+      "clearAriaLabel": "Rensa filter",
+      "errors": {
+        "afterIs": "Efter ”{{keyword}}” förväntades ”{{blank}}”, ”{{notBlank}}”, ”{{null}}” eller ”{{notNull}}”.",
+        "afterNot": "Efter ”{{keyword}}” förväntades ”{{contains}}”, ”{{in}}” eller ”{{equals}}”.",
+        "expectedColumn": "Ett kolumnnamn förväntades på position {{position}}, men ”{{text}}” hittades.",
+        "expectedValue": "Ett värde inom citattecken förväntades på position {{position}}, t.ex. {{example}}. ”{{text}}” hittades.",
+        "expectedWord": "Efter ”{{after}}” förväntades ”{{word}}”.",
+        "inNeedsList": "”{{keyword}}” tar en lista: {{example}}.",
+        "incomplete": "Uttrycket tar slut innan det är komplett.",
+        "needsComparison": "”{{column}}” behöver en jämförelse, t.ex. {{equalsExample}} eller {{containsExample}}.",
+        "noFilterableColumn": "Ingen kolumn i den här tabellen kan filtreras.",
+        "unclosedBracket": "Ostängd ”[” på position {{position}}.",
+        "unclosedGroup": "Ostängd ”(” — varje grupp behöver en matchande ”)”.",
+        "unclosedList": "Ostängd ”(” i en ”{{keyword}}”-lista.",
+        "unclosedQuote": "Ostängt citattecken på position {{position}}.",
+        "unexpectedCharacter": "Oväntat ”{{text}}” på position {{position}}.",
+        "unexpectedSymbol": "Oväntat ”{{text}}” på position {{position}}.",
+        "unexpectedToken": "Oväntat ”{{text}}” på position {{position}}. Koppla ihop villkor med {{and}} eller {{or}}.",
+        "unknownColumn": "Okänd kolumn ”{{text}}”. Filtrerbara: {{names}}.",
+        "unknownComparison": "Okänd jämförelse ”{{text}}” på position {{position}}. Använd {{operators}} eller {{last}}."
+      },
+      "filterableColumns": "Filtrerbara kolumner",
+      "help": "Ett uttryck, som bekräftas med Retur. Villkor kopplas ihop med <code>{{and}}</code> / <code>{{or}}</code> och grupperas med parenteser.",
+      "input": "Filteruttryck",
+      "noFilterableColumns": "Inga filtrerbara kolumner",
+      "syntax": "Filtersyntax",
+      "syntaxTitle": "Vad som kan filtreras och hur",
+      "toggle": "Filtrera",
+      "toggleTitle": "Filtrera tabelldata"
+    },
+    "loadingMore": "Läser in fler…",
+    "pagination": {
+      "ariaLabel": "Sidnumrering för tabellen",
+      "firstPage": "Gå till första sidan",
+      "lastPage": "Gå till sista sidan",
+      "nextPage": "Gå till nästa sida",
+      "noRows": "Inga rader",
+      "page": "Sida {{page}} av {{pageCount}}",
+      "previousPage": "Gå till föregående sida",
+      "rowsPerPage": "Rader per sida",
+      "showing": "Visar {{start}}–{{end}} av {{total}}"
+    },
+    "rowActions": "Radåtgärder",
+    "selectAllRows": "Markera alla rader",
+    "selectRow": "Markera rad {{id}}"
+  },
+  "dialog": {
+    "close": "Stäng"
+  },
+  "diagram": {
+    "invalidGraphviz": "Ogiltig Graphviz DOT-syntax",
+    "invalidMermaid": "Ogiltig syntax för Mermaid-diagram",
+    "loading": "Läser in diagram…",
+    "loadingGraphviz": "Läser in Graphviz…",
+    "loadingMermaid": "Läser in Mermaid…",
+    "renderFailed": "Det gick inte att rendera diagrammet"
+  },
+  "errorDisplay": {
+    "copyDetails": "Kopiera detaljer",
+    "message": "Meddelande",
+    "stackTrace": "Stackspårning",
+    "type": "Typ"
+  },
+  "errorSheet": {
+    "description": "Ett fel uppstod i programmet. Detaljer visas nedan.",
+    "title": "Hoppsan! Något gick fel"
+  },
+  "format": {
+    "bytes": {
+      "b": "{{value}} B",
+      "gb": "{{value}} GB",
+      "kb": "{{value}} kB",
+      "mb": "{{value}} MB",
+      "pb": "{{value}} PB",
+      "tb": "{{value}} TB"
+    },
+    "duration": {
+      "hoursMinutes": "{{hours}} h {{minutes}} min",
+      "minutesSeconds": "{{minutes}} min {{seconds}} s",
+      "seconds": "{{seconds}} s"
+    },
+    "tokenCount": {
+      "millions": "{{value}} mn",
+      "thousands": "{{value}} tn"
+    },
+    "tokens": {
+      "millions": "{{value}} mn",
+      "thousands": "{{value}} tn"
+    }
+  },
+  "imageOverlay": {
+    "ariaLabel": "Bildöverlägg",
+    "close": "Stäng",
+    "next": "Nästa bild",
+    "position": "{{current}} / {{total}}",
+    "previous": "Föregående bild"
+  },
+  "invalidIcon": {
+    "ariaLabel": "Valideringsfel"
+  },
+  "jsonRenderer": {
+    "invalid": "Ogiltig JSON-sträng"
+  },
+  "loading": {
+    "ariaLabel": "Läser in",
+    "text": "Läser in…"
+  },
+  "madeWithIvy": {
+    "label": "SKAPAD MED"
+  },
+  "markdown": {
+    "alerts": {
+      "caution": "Se upp",
+      "important": "Viktigt",
+      "note": "Obs",
+      "tip": "Tips",
+      "warning": "Varning"
+    },
+    "footnotes": {
+      "backToReference": "Tillbaka till referens {{ref}}",
+      "backToReferenceRepeat": "Tillbaka till referens {{ref}}-{{reref}}",
+      "label": "Fotnoter"
+    },
+    "taskCompleted": "Slutförd uppgift",
+    "taskPending": "Väntande uppgift"
+  },
+  "multiselect": {
+    "bulkSelection": "Massmarkering",
+    "clearAll": "Rensa alla",
+    "empty": "Inga alternativ tillgängliga",
+    "placeholder": "Välj alternativ…",
+    "remove": "Ta bort",
+    "selectAll": "Markera alla",
+    "toggleDropdown": "Visa/dölj listrutan"
+  },
+  "pagination": {
+    "ariaLabel": "sidnumrering",
+    "morePages": "Fler sidor",
+    "next": "Nästa",
+    "nextAriaLabel": "Gå till nästa sida",
+    "previous": "Föregående",
+    "previousAriaLabel": "Gå till föregående sida"
+  },
+  "progress": {
+    "ariaLabel": "Förlopp"
+  },
+  "sheet": {
+    "close": "Stäng"
+  },
+  "sidebar": {
+    "toggle": "Visa/dölj sidofältet"
+  },
+  "slider": {
+    "ariaLabel": "Skjutreglage"
+  },
+  "stackedProgress": {
+    "indeterminate": "Obestämt",
+    "segmentFallback": "Segment {{number}}",
+    "select": "Välj {{label}}",
+    "tooltip": "{{label}}: {{value}}",
+    "total": "Totalt: {{total}}",
+    "valueText": "{{label}}: {{value}} av {{total}}"
+  },
+  "starRating": {
+    "rate_one": "Ge {{count}} stjärna",
+    "rate_other": "Ge {{count}} stjärnor"
+  },
+  "statusLine": {
+    "estimatedTooltip": "Uppskattat utifrån strömmen hittills",
+    "tokensAbbreviated": "{{value}} tokens",
+    "tokensAbbreviatedEstimated": "~{{value}} tokens",
+    "tokensEstimated_one": "~{{value}} token",
+    "tokensEstimated_other": "~{{value}} tokens",
+    "tokens_one": "{{value}} token",
+    "tokens_other": "{{value}} tokens"
+  },
+  "toolbar": {
+    "moreActions": "Fler åtgärder"
+  },
+  "tuiBadge": {
+    "remove": "Ta bort"
+  },
+  "xmlRenderer": {
+    "invalid": "Ogiltig XML-sträng"
+  }
+}

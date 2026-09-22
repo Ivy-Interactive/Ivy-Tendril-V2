@@ -1,0 +1,239 @@
+{
+  "gate": {
+    "github": "Melden Sie sich bei GitHub an, um einen Vault zu erstellen oder zu verbinden",
+    "vault": "Verbinden Sie zuerst einen Vault",
+    "busy": "Aktion wird bereits ausgeführt"
+  },
+  "dialogShell": {
+    "cancel": "Abbrechen"
+  },
+  "assetCategories": {
+    "skills": {
+      "label": "Skills",
+      "badge": "Skill"
+    },
+    "mcpServers": {
+      "label": "MCP-Server",
+      "badge": "MCP"
+    },
+    "memories": {
+      "label": "Projekt-Erinnerungen",
+      "badge": "Erinnerung"
+    },
+    "reviewActions": {
+      "label": "Review-Aktionen",
+      "badge": "Aktion"
+    },
+    "verifications": {
+      "label": "Verifikationen",
+      "badge": "Verifikation"
+    }
+  },
+  "assetChecklist": {
+    "selectAll": "Alle auswählen",
+    "selectAllAriaLabel": "Alle {{label}} auswählen",
+    "selectAllAriaLabel_scoped": "Alle {{label}} für {{scope}} auswählen",
+    "deselectAll": "Auswahl aufheben",
+    "deselectAllAriaLabel": "Alle {{label}} abwählen",
+    "deselectAllAriaLabel_scoped": "Alle {{label}} für {{scope}} abwählen"
+  },
+  "githubAccountTypes": {
+    "user": "Benutzer",
+    "organization": "Organisation"
+  },
+  "emptyState": {
+    "title": "Team-Konfigurations-Vault",
+    "description": "Teilen und synchronisieren Sie Tendril-Projekte, benutzerdefinierte Skills, MCP-Server und Sicherheitsregeln über ein versioniertes Git-Repository mit Ihrem Team.",
+    "create": "GitHub-Vault erstellen",
+    "connect": "Bestehenden Git-Vault verbinden"
+  },
+  "createDialog": {
+    "title": "Team Vault auf GitHub erstellen",
+    "description": "Erstellen Sie ein privates GitHub-Repository, um Tendril-Projektkonfigurationen, benutzerdefinierte Skills und MCP-Server mit Ihrem Team zu teilen.",
+    "submit": "Vault erstellen",
+    "name": {
+      "label": "Repository-Name"
+    },
+    "owner": {
+      "label": "Besitzer / Organisation",
+      "placeholder": "Besitzer auswählen",
+      "inputPlaceholder": "z. B. Benutzername oder Organisation"
+    },
+    "accountOption": "{{login}} ({{type}})",
+    "private": "Privates Repository"
+  },
+  "connectDialog": {
+    "title": "Bestehenden Team Vault verbinden",
+    "description": "Verbinden Sie ein bestehendes Tendril-Vault-Repository, um Projekte, Skills und Konfiguration mit Ihrem Team zu synchronisieren.",
+    "submit": "Vault verbinden",
+    "discovering": "🔍 Ihr GitHub-Konto und Ihre Organisationen werden nach bestehenden Vaults durchsucht…",
+    "detected": {
+      "label": "Erkannte GitHub-Vaults",
+      "placeholder": "Repository auswählen"
+    },
+    "repoOption": "{{fullName}} ({{accountType}})",
+    "repoOption_private": "{{fullName}} ({{accountType}}, privat)",
+    "url": {
+      "label": "Git-Repository-URL"
+    },
+    "displayName": {
+      "label": "Anzeigename (optional)",
+      "placeholder": "z. B. Core-Team-Vault (optional)"
+    }
+  },
+  "importDialog": {
+    "title": "„{{name}}“ aus dem Vault importieren",
+    "mergeTitle": "„{{name}}“ mit lokalem Projekt zusammenführen",
+    "submit": "Projekt importieren",
+    "mergeSubmit": "Verknüpfen & zusammenführen",
+    "collision": "Ein lokales Projekt namens „{{name}}“ existiert bereits. Wählen Sie einen anderen Namen (z. B. {{suggestion}}).",
+    "mergeCallout": "Beim Zusammenführen wird dieses Vault-Projekt mit Ihrem bestehenden lokalen Projekt „{{name}}“ verknüpft. Lokale Repository-Pfade und konfliktfreie Einstellungen bleiben erhalten, während die ausgewählten Vault-Assets (Verifikationen, Aktionen, Skills, MCPs, Erinnerungen) integriert werden.",
+    "renameNotice": "Ein lokales Projekt namens „{{name}}“ existiert bereits. Wir haben für diesen Import „{{suggestion}}“ vorgeschlagen, um Konflikte zu vermeiden.",
+    "name": {
+      "label": "Lokaler Projektname"
+    },
+    "source": "Vault-Quelle: {{name}}",
+    "changelog": "Änderungsprotokoll: {{changelog}}",
+    "repos": {
+      "heading": "Repositories",
+      "description": "Verknüpft mit bestehenden lokalen Ordnern auf der Festplatte oder klont fehlende Repositories automatisch von GitHub.",
+      "existing": "✓ Bestehender lokaler Ordner",
+      "willClone": "Wird von GitHub geklont",
+      "pathAriaLabel": "Lokaler Pfad für {{repo}}"
+    },
+    "assets": {
+      "heading": "Zu importierende Assets",
+      "empty": {
+        "skills": "Keine benutzerdefinierten Skills in diesem Vault-Projekt.",
+        "mcpServers": "Keine MCP-Server in diesem Vault-Projekt.",
+        "memories": "Keine Markdown-Dateien mit Projekt-Erinnerungen in diesem Vault-Projekt.",
+        "reviewActions": "Keine Review-Aktionen in diesem Vault-Projekt.",
+        "verifications": "Keine Verifikationen in diesem Vault-Projekt."
+      }
+    },
+    "permissions": "Sicherheits- & Berechtigungsrichtlinien importieren"
+  },
+  "pushDialog": {
+    "title": "Projekt zu {{vault}} hinzufügen (PR erstellen)",
+    "submit": "Veröffentlichen & PR öffnen",
+    "projects": {
+      "heading": "Zu veröffentlichende Projekte & Assets",
+      "none": "Alle lokalen Projekte werden bereits von einem Vault verfolgt. Erstellen Sie zuerst ein neues lokales Projekt, um es hier hinzuzufügen.",
+      "assetsAriaLabel": "Assets für {{project}}"
+    },
+    "empty": {
+      "skills": "Für dieses Projekt sind keine benutzerdefinierten Skills konfiguriert.",
+      "mcpServers": "Für dieses Projekt sind keine MCP-Server konfiguriert.",
+      "memories": "Für dieses Projekt wurden keine Markdown-Dateien mit Erinnerungen gefunden.",
+      "reviewActions": "Für dieses Projekt sind keine Review-Aktionen konfiguriert.",
+      "verifications": "Für dieses Projekt sind keine Verifikationen konfiguriert."
+    },
+    "summary": {
+      "skills_one": "{{selected}}/{{count}} Skill",
+      "skills_other": "{{selected}}/{{count}} Skills",
+      "mcpServers_one": "{{selected}}/{{count}} MCP",
+      "mcpServers_other": "{{selected}}/{{count}} MCPs",
+      "memories_one": "{{selected}}/{{count}} Erinn.",
+      "memories_other": "{{selected}}/{{count}} Erinn.",
+      "reviewActions_one": "{{selected}}/{{count}} Aktion",
+      "reviewActions_other": "{{selected}}/{{count}} Aktionen",
+      "verifications_one": "{{selected}}/{{count}} Verif.",
+      "verifications_other": "{{selected}}/{{count}} Verif.",
+      "none": "0 Assets"
+    },
+    "permissions": "Sicherheits- & Berechtigungsrichtlinien einschließen",
+    "release": {
+      "heading": "Release-Details",
+      "version": {
+        "label": "Versions-Tag (UTC-Zeitstempel)"
+      },
+      "changelog": {
+        "label": "Änderungsprotokoll / Release-Hinweise",
+        "placeholder": "Zusammenfassung der Updates, neuen Skills, MCP-Server oder Änderungen an Sicherheitsrichtlinien…"
+      },
+      "reviewers": {
+        "label": "PR-Reviewer anfordern",
+        "placeholder": "z. B. alice, bob (kommagetrennte GitHub-Benutzernamen)"
+      }
+    },
+    "prOpened": "Pull Request erfolgreich geöffnet: {{url}}"
+  },
+  "confirmDelete": {
+    "title": "„{{projectName}}“ aus dem Vault löschen?",
+    "submit": "Lösch-PR erstellen",
+    "warning": "Dadurch werden das Projekt „{{projectName}}“ und alle zugehörigen Manifeste, Skills, MCP-Konfigurationen und Erinnerungen aus dem Vault-Repository entfernt.",
+    "note": "Für diese Löschung werden ein neuer Branch und ein Pull Request im Vault-Repository geöffnet."
+  },
+  "projectsTable": {
+    "addTrackedProject": "Verfolgtes Projekt hinzufügen",
+    "loading": "Geteilte Projekte werden geladen…",
+    "empty": {
+      "title": "Keine geteilten Projekte",
+      "description": "Dieser Vault enthält noch keine geteilten Projekte. Fügen Sie ein lokales Projekt hinzu, um es mit Ihrem Team zu teilen."
+    },
+    "columns": {
+      "project": "Projekt",
+      "version": "Version",
+      "actions": "Aktionen",
+      "syncStatus": "Synchronisationsstatus",
+      "contents": "Inhalt",
+      "changelog": "Änderungsprotokoll / Kontext"
+    },
+    "actions": {
+      "import": "Importieren",
+      "linkMerge": "Verknüpfen & zusammenführen",
+      "importAs": "Importieren als…",
+      "update": "Aktualisieren",
+      "publish": "Veröffentlichen",
+      "openPr": "PR öffnen",
+      "publishTooltip": "PR öffnen, um „{{name}}“ im Vault zu aktualisieren",
+      "delete": "„{{name}}“ aus dem Vault löschen"
+    },
+    "syncStatus": {
+      "upToDate": "✓ Synchron",
+      "modified": "Lokale Änderungen",
+      "updateAvailable": "Update verfügbar",
+      "localOnly": "Nur lokal",
+      "notImported": "Nicht importiert",
+      "conflict": "Namenskonflikt"
+    },
+    "contents": {
+      "repos_one": "{{count}} Repo",
+      "repos_other": "{{count}} Repos",
+      "skills_one": "{{count}} Skill",
+      "skills_other": "{{count}} Skills",
+      "mcps_one": "{{count}} MCP",
+      "mcps_other": "{{count}} MCPs",
+      "memories_one": "{{count}} Erinnerung",
+      "memories_other": "{{count}} Erinnerungen",
+      "reviewActions_one": "{{count}} Aktion",
+      "reviewActions_other": "{{count}} Aktionen",
+      "verifications_one": "{{count}} Verif.",
+      "verifications_other": "{{count}} Verif."
+    }
+  },
+  "statusCard": {
+    "fallbackName": "Team Vault",
+    "sync": {
+      "behind_one": "{{count}} hinterher",
+      "behind_other": "{{count}} hinterher",
+      "ahead_one": "{{count}} voraus",
+      "ahead_other": "{{count}} voraus",
+      "inSync": "Synchron"
+    },
+    "details": {
+      "vault": "Vault",
+      "branch": "Branch",
+      "status": "Status",
+      "lastSynced": "Zuletzt synchronisiert"
+    },
+    "openOnGitHub": "Auf GitHub öffnen",
+    "syncedStatus": "✓ {{status}}",
+    "lastSynced": {
+      "never": "Nie",
+      "value": "{{date}} {{time}} UTC"
+    },
+    "alwaysInSync": "Immer synchron",
+    "disconnect": "Vault trennen"
+  }
+}

@@ -1,0 +1,230 @@
+{
+  "workspace": {
+    "moreActions": {
+      "label": "अधिक क्रियाएं",
+      "tooltip": "अधिक",
+      "menuAriaLabel": "अधिक क्रियाएं"
+    },
+    "source": "स्रोत",
+    "verifications": "सत्यापन",
+    "questions": "प्रश्न",
+    "resizer": {
+      "tooltip": "आकार बदलने के लिए ड्रैग करें, रीसेट करने के लिए डबल-क्लिक करें",
+      "ariaLabel": "चैट का आकार बदलें"
+    },
+    "chatAriaLabel": "योजना चैट"
+  },
+  "diffView": {
+    "empty": "दिखाने के लिए कोई डिफ़ नहीं",
+    "fileCount_one": "{{count}} फ़ाइल",
+    "fileCount_other": "{{count}} फ़ाइलें",
+    "jumpToFile": {
+      "ariaLabel": "फ़ाइल पर जाएं",
+      "placeholder": "फ़ाइल पर जाएं…"
+    },
+    "untitledFile": "डिफ़ {{index}}",
+    "untitledPath": "डिफ़",
+    "viewed": "देखी गई",
+    "commentToggle": {
+      "noneTooltip": "इस फ़ाइल पर कोई टिप्पणी नहीं",
+      "showTooltip_one": "{{count}} टिप्पणी दिखाएं",
+      "showTooltip_other": "{{count}} टिप्पणियां दिखाएं",
+      "hideTooltip_one": "{{count}} टिप्पणी छिपाएं",
+      "hideTooltip_other": "{{count}} टिप्पणियां छिपाएं",
+      "showAriaLabel": "टिप्पणियां दिखाएं",
+      "hideAriaLabel": "टिप्पणियां छिपाएं"
+    },
+    "comment": {
+      "draftAuthor": "एजेंट निर्देश (ड्राफ़्ट)",
+      "resolvedBadge": "✓ हल किया गया",
+      "edit": "संपादित करें",
+      "reopenTooltip": "टिप्पणी फिर से खोलें",
+      "resolveTooltip": "टिप्पणी को हल किया गया चिह्नित करें",
+      "unresolve": "अनसुलझा चिह्नित करें",
+      "resolve": "हल करें",
+      "deleteTooltip": "टिप्पणी हटाएं",
+      "deleteAriaLabel": "टिप्पणी हटाएं",
+      "delete": "हटाएं"
+    },
+    "commentForm": {
+      "title": "एजेंट निर्देश",
+      "editTitle": "एजेंट निर्देश संपादित करें",
+      "placeholder": "इस पंक्ति के लिए एजेंट को निर्देश दर्ज करें…",
+      "cancel": "रद्द करें",
+      "add": "टिप्पणी जोड़ें",
+      "update": "टिप्पणी अपडेट करें"
+    }
+  },
+  "changesView": {
+    "empty": "कोई फ़ाइल परिवर्तन नहीं।",
+    "treeAriaLabel": "बदली गई फ़ाइलें",
+    "fileCount_one": "{{count}} फ़ाइल",
+    "fileCount_other": "{{count}} फ़ाइलें",
+    "jumpToFile": {
+      "ariaLabel": "फ़ाइल पर जाएं",
+      "placeholder": "फ़ाइल पर जाएं…"
+    }
+  },
+  "gitView": {
+    "atRisk": {
+      "title": "जोखिम में कमिट",
+      "unreachable_one": "{{count}} कमिट किसी भी शाखा, टैग या रिमोट से पहुंच योग्य नहीं है: <hashes/>। यह केवल ढीले ऑब्जेक्ट के रूप में मौजूद है, इसलिए रिपॉजिटरी में अगला <code>{{gcCommand}}</code> इसे नष्ट कर देगा। इसे बचाए रखने के लिए इसे एक ref दें: <code>{{recoverCommand}}</code>।",
+      "unreachable_other": "{{count}} कमिट किसी भी शाखा, टैग या रिमोट से पहुंच योग्य नहीं हैं: <hashes/>। ये केवल ढीले ऑब्जेक्ट के रूप में मौजूद हैं, इसलिए रिपॉजिटरी में अगला <code>{{gcCommand}}</code> इन्हें नष्ट कर देगा। किसी एक को बचाए रखने के लिए उसे एक ref दें: <code>{{recoverCommand}}</code>।",
+      "missing_one": "{{count}} कमिट योजना की रिपॉजिटरी में कहीं नहीं मिला: <hashes/>। या तो ऑब्जेक्ट पहले ही प्रून हो चुका है, या जिस रिपॉजिटरी में इसे बनाया गया था वह योजना की रिपॉजिटरी में से एक नहीं है।",
+      "missing_other": "{{count}} कमिट योजना की रिपॉजिटरी में कहीं नहीं मिले: <hashes/>। या तो ऑब्जेक्ट पहले ही प्रून हो चुके हैं, या जिस रिपॉजिटरी में इन्हें बनाया गया था वह योजना की रिपॉजिटरी में से एक नहीं है।",
+      "hashSeparator": ", ",
+      "badge": {
+        "unreachable": "अप्राप्य",
+        "missing": "नहीं मिला"
+      }
+    },
+    "commitTable": {
+      "commit": "कमिट",
+      "message": "संदेश",
+      "files": "फ़ाइलें",
+      "unresolved": "(अनसुलझा कमिट)"
+    },
+    "worktrees": {
+      "heading": "वर्क-ट्रीज़",
+      "emptyFinished": "योजना के अपनी अंतिम स्थिति में पहुंचने के बाद वर्क-ट्री हटा दिए गए।",
+      "emptyNeverCreated": "वर्क-ट्री कभी बनाए ही नहीं गए, या योजना के अपनी समय-सीमा से अधिक निष्क्रिय रहने पर पुराने वर्क-ट्री साफ़ करने वाली प्रक्रिया ने उन्हें हटा दिया।",
+      "emptyUnknown": "वर्क-ट्री हटा दिए गए, या कभी बनाए ही नहीं गए।",
+      "copyPath": "{{name}} का पथ कॉपी करें",
+      "repository": "रिपॉजिटरी",
+      "base": "आधार",
+      "worktree": "वर्क-ट्री",
+      "head": "हेड",
+      "detachedHead": "डिटैच्ड HEAD",
+      "uncommittedChanges": "इस वर्क-ट्री में बिना कमिट किए परिवर्तन हैं। ये किसी कमिट का हिस्सा नहीं हैं, इसलिए इन्हें कोई भी चीज़ सुरक्षित नहीं रख रही।",
+      "noCommits": "(कोई कमिट नहीं)"
+    },
+    "commits": {
+      "heading": "कमिट",
+      "description": "योजना पर दर्ज हैं, लेकिन योजना के किसी मौजूदा वर्क-ट्री से पहुंच योग्य नहीं — आमतौर पर इसलिए कि PR मर्ज होने के बाद वर्क-ट्री हटा दिया गया।"
+    },
+    "pullRequests": {
+      "heading": "पुल रिक्वेस्ट्स",
+      "repository": "रिपॉजिटरी",
+      "pr": "PR"
+    },
+    "empty": "इस योजना में अभी तक कोई वर्क-ट्री, कमिट या पुल रिक्वेस्ट नहीं है।"
+  },
+  "alert": {
+    "note": "नोट",
+    "tip": "सुझाव",
+    "important": "महत्वपूर्ण",
+    "warning": "चेतावनी",
+    "caution": "सावधानी"
+  },
+  "diagram": {
+    "loading": "डायग्राम लोड हो रहा है…",
+    "invalidGraphviz": "अमान्य Graphviz DOT सिंटैक्स",
+    "invalidMermaid": "अमान्य Mermaid डायग्राम सिंटैक्स"
+  },
+  "codeBlock": {
+    "copy": "क्लिपबोर्ड पर कॉपी करें"
+  },
+  "image": {
+    "loadFailed": "छवि लोड नहीं हो सकी",
+    "close": "बंद करें"
+  },
+  "search": {
+    "placeholder": "दस्तावेज़ में खोजें…",
+    "ariaLabel": "दस्तावेज़ में खोजें",
+    "noMatches": "कोई मिलान नहीं",
+    "position": "{{total}} में से {{current}}",
+    "previous": "पिछला मिलान",
+    "next": "अगला मिलान",
+    "close": "खोज बंद करें"
+  },
+  "annotation": {
+    "quote": "“{{text}}”",
+    "quoteTruncated": "“{{text}}…”",
+    "add": {
+      "placeholder": "टिप्पणी जोड़ें…",
+      "cancel": "रद्द करें",
+      "submit": "जोड़ें"
+    },
+    "edit": {
+      "resolvedBadge": "✓ हल किया गया",
+      "placeholder": "टिप्पणी संपादित करें…",
+      "reopenTooltip": "एनोटेशन फिर से खोलें",
+      "resolveTooltip": "एनोटेशन को हल किया गया चिह्नित करें",
+      "unresolve": "अनसुलझा चिह्नित करें",
+      "resolve": "हल करें",
+      "deleteTooltip": "एनोटेशन हटाएं",
+      "delete": "हटाएं",
+      "cancel": "रद्द करें",
+      "save": "सहेजें"
+    },
+    "selectionToolbar": {
+      "addComment": "टिप्पणी जोड़ें"
+    }
+  },
+  "wireframe": {
+    "invalid": "यह वायरफ़्रेम ब्लॉक मान्य नहीं है।",
+    "placeholder": "वायरफ़्रेम: <strong>{{name}}</strong>। इसे देखने के लिए योजना खोलें।",
+    "lastGoodBuild": "सफलतापूर्वक बना अंतिम संस्करण दिखाया जा रहा है",
+    "paused": "लाइव अपडेट रुके हुए हैं",
+    "openFullSize": "पूरे आकार में खोलें",
+    "building": "वायरफ़्रेम बन रहा है…",
+    "missing": "इस योजना में <strong>{{name}}</strong> नाम का कोई वायरफ़्रेम नहीं है।",
+    "buildFailed": "यह वायरफ़्रेम बिल्ड नहीं होता।",
+    "unavailable": "वायरफ़्रेम पूर्वावलोकन अभी उपलब्ध नहीं है।",
+    "retry": "पुनः प्रयास करें",
+    "close": "बंद करें",
+    "errors": {
+      "empty": "ब्लॉक में किसी वायरफ़्रेम का नाम नहीं है। `{{example}}` जैसी एक पंक्ति जोड़ें।",
+      "notYaml": "ब्लॉक मान्य YAML नहीं है।",
+      "notMapping": "ब्लॉक को `{{example}}` के रूप में लिखें, वैकल्पिक रूप से {{height}} और {{viewport}} के साथ।",
+      "unknownKey": "अज्ञात कुंजी \"{{key}}\"। {{name}}, {{height}} या {{viewport}} का उपयोग करें।",
+      "badName": "{{name}} एक लोअरकेस स्लग होना चाहिए, जैसे {{example}}।",
+      "badHeight": "{{height}} 1 और {{max}} के बीच पिक्सेल की एक पूर्ण संख्या होनी चाहिए।",
+      "badViewport": "{{viewport}} {{desktop}}, {{tablet}} या {{mobile}} होना चाहिए।"
+    }
+  },
+  "questions": {
+    "recommended": "अनुशंसित",
+    "optional": "वैकल्पिक",
+    "selectAll": "जो भी लागू हों, सभी चुनें",
+    "other": "अन्य",
+    "otherPlaceholder": "अपना उत्तर लिखें",
+    "otherAriaLabel": "{{question}} के लिए अन्य उत्तर",
+    "notAnswered": {
+      "skipped": "उत्तर नहीं दिया गया (आवश्यक नहीं)",
+      "agentDecided": "उत्तर नहीं दिया गया (एजेंट ने तय किया)"
+    },
+    "clear": "साफ़ करें",
+    "clearAllAriaLabel": "इस ब्लॉक के सभी उत्तर साफ़ करें",
+    "clearOneAriaLabel": "उत्तर साफ़ करें",
+    "submit": "उत्तर सबमिट करें",
+    "submitNote": {
+      "noAnswers": "सबमिट करने के लिए किसी प्रश्न का उत्तर दें।",
+      "oneUnanswered": "अनुत्तरित: \"{{title}}\"। सबमिट करने पर इसका निर्णय मुझ पर छोड़ दिया जाएगा।",
+      "manyUnanswered_one": "{{count}} प्रश्न अनुत्तरित है। सबमिट करने पर इसका निर्णय मुझ पर छोड़ दिया जाएगा।",
+      "manyUnanswered_other": "{{count}} प्रश्न अनुत्तरित हैं। सबमिट करने पर इनका निर्णय मुझ पर छोड़ दिया जाएगा।"
+    }
+  },
+  "answersCard": {
+    "ariaLabel": "सबमिट किए गए उत्तर",
+    "title": "उत्तर",
+    "notAnswered": {
+      "skipped": "उत्तर नहीं दिया गया (आवश्यक नहीं)",
+      "agentDecided": "उत्तर नहीं दिया गया (एजेंट ने तय किया)"
+    }
+  },
+  "verificationList": {
+    "dragHandle": "खींचने का हैंडल",
+    "required": "आवश्यक",
+    "a11y": {
+      "roleDescription": "क्रमबद्ध करने योग्य",
+      "instructions": "खींचने योग्य आइटम उठाने के लिए स्पेस बार दबाएं। खींचते समय आइटम को हिलाने के लिए तीर कुंजियों का उपयोग करें। आइटम को उसकी नई जगह पर छोड़ने के लिए फिर से स्पेस दबाएं, या रद्द करने के लिए Esc दबाएं।",
+      "pickedUp": "खींचने योग्य आइटम {{active}} उठाया गया।",
+      "movedOver": "खींचने योग्य आइटम {{active}} को ड्रॉप क्षेत्र {{over}} के ऊपर ले जाया गया।",
+      "movedAway": "खींचने योग्य आइटम {{active}} अब किसी ड्रॉप क्षेत्र के ऊपर नहीं है।",
+      "droppedOver": "खींचने योग्य आइटम {{active}} को ड्रॉप क्षेत्र {{over}} पर छोड़ा गया",
+      "dropped": "खींचने योग्य आइटम {{active}} को छोड़ा गया।",
+      "cancelled": "खींचना रद्द किया गया। खींचने योग्य आइटम {{active}} को छोड़ा गया।"
+    }
+  }
+}

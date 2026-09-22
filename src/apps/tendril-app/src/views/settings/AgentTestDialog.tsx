@@ -13,6 +13,7 @@ import {
 import { Bug, CircleCheck, CircleDashed, CircleX, Info } from "lucide-react";
 
 import { agentsApi } from "../../api/agentsApi";
+import { i18n, useTranslation, type TFunction } from "../../i18n";
 import { describeBridgeError } from "../../types/api";
 import type {
   AgentAuthResult,
@@ -60,7 +61,17 @@ export interface AgentTestRow {
 export interface TestModelEntry {
   /** The model id to validate. Empty means "whatever this agent defaults to". */
   id: string;
+  /** The model's name in the row. Ignored for the empty id, which the row names at render time. */
   displayName: string;
+}
+
+/**
+ * The name a model row shows. The agent-default entry is worded here, at render, rather than by
+ * whoever built the entry: a run keeps its entries, so a name translated up front would stay in the
+ * language the run started in.
+ */
+function modelName(entry: TestModelEntry, t: TFunction<"settingsAgents">): string {
+  return entry.id === "" ? t("test.defaultModel") : entry.displayName;
 }
 
 const STATUS_ICON: Record<TestStatus, React.ReactNode> = {
@@ -73,29 +84,29 @@ const STATUS_ICON: Record<TestStatus, React.ReactNode> = {
   pending: <CircleDashed className="size-4 text-muted-foreground" aria-hidden />,
 };
 
-/** Screen readers get the status as a word; sighted users get the icon. */
-const STATUS_LABEL: Record<TestStatus, string> = {
-  passed: "Passed",
-  failed: "Failed",
-  warning: "Warning",
-  running: "Running",
-  pending: "Pending",
-};
+/**
+ * The row builders' `t` when the caller passes none - the unit tests, which call them directly.
+ * Follows the language at every call, so it is safe to create here. The dialog passes its own, and
+ * builds the rows at render time from the run's data, so an open table follows a language change.
+ */
+const defaultT: TFunction<"settingsAgents"> = i18n.getFixedT(null, "settingsAgents");
 
 /** `results[0]`, from `CheckInstallAsync`. */
-function installRow(result: TestAgentResult): AgentTestRow {
+function installRow(result: TestAgentResult, t: TFunction<"settingsAgents">): AgentTestRow {
   const { install } = result;
   if (install.isInstalled) {
     return {
-      label: "Installation",
+      label: t("test.rows.install"),
       status: "passed",
-      message: install.version ? `v${install.version}` : "Installed",
+      message: install.version
+        ? t("test.install.version", { version: install.version })
+        : t("test.install.installed"),
     };
   }
   return {
-    label: "Installation",
+    label: t("test.rows.install"),
     status: "failed",
-    message: install.error ?? "Not installed",
+    message: install.error ?? t("test.install.notInstalled"),
     ...(install.error ? { rawOutput: install.error } : {}),
   };
 }
@@ -108,76 +119,97 @@ function installRow(result: TestAgentResult): AgentTestRow {
  * best one only. `then` is a slash command typed at the prompt the shell line opens, so it is joined
  * with "then" rather than concatenated - `copilot /login` would be a prompt, not a login. A hint
  * with no command at all is a bring-your-own provider, whose answer is a console to open.
+ *
+ * Each shape is one whole sentence, "Not authenticated" included, rather than a hint appended to a
+ * prefix, so a translation can order it however its language needs to.
  */
-function hintSentence(hint: AgentSignInHint): string | null {
-  const route = hint.auth.commands[0];
+function notAuthenticatedMessage(
+  hint: AgentSignInHint | undefined,
+  t: TFunction<"settingsAgents">,
+): string {
+  const route = hint?.auth.commands[0];
   if (route) {
     return route.then
-      ? `run \`${route.command}\`, then \`${route.then}\``
-      : `run \`${route.command}\``;
+      ? t("test.auth.notAuthenticatedRunThen", { command: route.command, prompt: route.then })
+      : t("test.auth.notAuthenticatedRun", { command: route.command });
   }
-  return hint.auth.url ? `create a key at ${hint.auth.url}` : null;
+  return hint?.auth.url
+    ? t("test.auth.notAuthenticatedCreateKey", { url: hint.auth.url })
+    : t("test.auth.notAuthenticated");
 }
 
 /** `results[1]`, from `CheckAuthAsync`. */
-function authRow(auth: AgentAuthResult): AgentTestRow {
-  const provider = auth.provider ? ` (${auth.provider})` : "";
+function authRow(auth: AgentAuthResult, t: TFunction<"settingsAgents">): AgentTestRow {
   if (auth.status === "authenticated") {
-    return { label: "Authentication", status: "passed", message: `Authenticated${provider}` };
+    return {
+      label: t("test.rows.auth"),
+      status: "passed",
+      message: auth.provider
+        ? t("test.auth.authenticatedWith", { provider: auth.provider })
+        : t("test.auth.authenticated"),
+    };
   }
   if (auth.status === "notAuthenticated") {
-    const hint = auth.signInHint ? hintSentence(auth.signInHint) : null;
     return {
-      label: "Authentication",
+      label: t("test.rows.auth"),
       status: "failed",
       // V1 shows the flat "Not authenticated" and keeps the detail behind the Bug button; the hint is
       // the one thing that says what to *do*, so it is appended where there is one. The hint is the
       // daemon's structured value, rendered here as one line - the Help section under the pane
       // renders the same value in full, which is the point of it being data rather than a sentence.
-      message: hint ? `Not authenticated - ${hint}` : "Not authenticated",
+      message: notAuthenticatedMessage(auth.signInHint ?? undefined, t),
       ...(auth.error ? { rawOutput: auth.error } : {}),
     };
   }
   return {
-    label: "Authentication",
+    label: t("test.rows.auth"),
     status: "warning",
-    message: auth.error ?? "Check inconclusive",
+    message: auth.error ?? t("test.auth.inconclusive"),
     ...(auth.error ? { rawOutput: auth.error } : {}),
   };
 }
 
 /** `results[2 + i]`, from `ValidateModelAsync`. */
-function modelRow(entry: TestModelEntry, validation: ModelValidation | undefined): AgentTestRow {
-  const label = `Model: ${entry.displayName}`;
-  if (!validation) return { label, status: "warning", message: "Not checked" };
+function modelRow(
+  entry: TestModelEntry,
+  validation: ModelValidation | undefined,
+  t: TFunction<"settingsAgents">,
+): AgentTestRow {
+  const label = t("test.rows.model", { name: modelName(entry, t) });
+  if (!validation) return { label, status: "warning", message: t("test.model.notChecked") };
 
   const raw = validation.errorMessage ? { rawOutput: validation.errorMessage } : {};
   switch (validation.status) {
     case "ok":
-      return { label, status: "passed", message: "Ok" };
+      return { label, status: "passed", message: t("test.model.ok") };
     case "invalidModel":
       return {
         label,
         status: "failed",
-        message: validation.errorMessage ?? "Invalid model",
+        message: validation.errorMessage ?? t("test.model.invalidModel"),
         ...raw,
       };
     case "authError":
-      return { label, status: "failed", message: validation.errorMessage ?? "Auth error", ...raw };
+      return {
+        label,
+        status: "failed",
+        message: validation.errorMessage ?? t("test.model.authError"),
+        ...raw,
+      };
     // The model is fine, its quota is not - a failure either way, since nothing run against it will
     // do any work until the quota clears.
     case "rateLimit":
       return {
         label,
         status: "failed",
-        message: validation.errorMessage ?? "Quota exhausted or rate limited",
+        message: validation.errorMessage ?? t("test.model.rateLimit"),
         ...raw,
       };
     default:
       return {
         label,
         status: validation.errorMessage ? "failed" : "warning",
-        message: validation.errorMessage ?? "Unknown",
+        message: validation.errorMessage ?? t("common:status.unknown"),
         ...raw,
       };
   }
@@ -189,12 +221,15 @@ function modelRow(entry: TestModelEntry, validation: ModelValidation | undefined
  * Seeded before the request rather than built from its reply, so the dialog opens on the list of
  * checks it is about to run instead of on an empty box.
  */
-export function pendingRows(models: TestModelEntry[]): AgentTestRow[] {
+export function pendingRows(
+  models: TestModelEntry[],
+  t: TFunction<"settingsAgents"> = defaultT,
+): AgentTestRow[] {
   return [
-    { label: "Installation", status: "pending" },
-    { label: "Authentication", status: "pending" },
+    { label: t("test.rows.install"), status: "pending" },
+    { label: t("test.rows.auth"), status: "pending" },
     ...models.map((model) => ({
-      label: `Model: ${model.displayName}`,
+      label: t("test.rows.model", { name: modelName(model, t) }),
       status: "pending" as const,
     })),
   ];
@@ -208,14 +243,18 @@ export function pendingRows(models: TestModelEntry[]): AgentTestRow[] {
  * spawn failure and teaches nobody anything. The remaining rows stay Pending rather than being
  * reported as failures they were never given the chance to be.
  */
-export function rowsFromResult(models: TestModelEntry[], result: TestAgentResult): AgentTestRow[] {
-  const rows: AgentTestRow[] = [installRow(result)];
+export function rowsFromResult(
+  models: TestModelEntry[],
+  result: TestAgentResult,
+  t: TFunction<"settingsAgents"> = defaultT,
+): AgentTestRow[] {
+  const rows: AgentTestRow[] = [installRow(result, t)];
   if (!result.install.isInstalled) {
     return [
       ...rows,
-      { label: "Authentication", status: "pending" },
+      { label: t("test.rows.auth"), status: "pending" },
       ...models.map((model) => ({
-        label: `Model: ${model.displayName}`,
+        label: t("test.rows.model", { name: modelName(model, t) }),
         status: "pending" as const,
       })),
     ];
@@ -223,20 +262,71 @@ export function rowsFromResult(models: TestModelEntry[], result: TestAgentResult
 
   rows.push(
     result.auth
-      ? authRow(result.auth)
-      : { label: "Authentication", status: "warning", message: "Check inconclusive" },
+      ? authRow(result.auth, t)
+      : { label: t("test.rows.auth"), status: "warning", message: t("test.auth.inconclusive") },
   );
-  models.forEach((model, index) => rows.push(modelRow(model, result.models[index])));
+  models.forEach((model, index) => rows.push(modelRow(model, result.models[index], t)));
   return rows;
 }
 
 /** `catch (OperationCanceledException)`: everything still in flight becomes a Cancelled warning. */
-export function cancelRows(rows: AgentTestRow[]): AgentTestRow[] {
+export function cancelRows(
+  rows: AgentTestRow[],
+  t: TFunction<"settingsAgents"> = defaultT,
+): AgentTestRow[] {
   return rows.map((row) =>
     row.status === "running" || row.status === "pending"
-      ? { ...row, status: "warning" as const, message: "Cancelled" }
+      ? { ...row, status: "warning" as const, message: t("test.cancelled") }
       : row,
   );
+}
+
+/**
+ * Where the dialog's current run has got to, kept as data rather than as rows so the table is worded
+ * at render time. `entries` are the models the run was started with: the pane rebuilds its list on
+ * every render, and the table describes the checks this run asked for.
+ */
+type TestRun =
+  | { phase: "pending"; entries: TestModelEntry[] }
+  | { phase: "done"; entries: TestModelEntry[]; result: TestAgentResult }
+  | { phase: "failed"; entries: TestModelEntry[]; error: string };
+
+/**
+ * `catch (Exception ex)`: an extra row rather than a replaced table, so the checks that did get
+ * seeded stay visible alongside the reason the run stopped.
+ */
+function failedRows(
+  entries: TestModelEntry[],
+  error: string,
+  t: TFunction<"settingsAgents">,
+): AgentTestRow[] {
+  return [
+    ...cancelRows(pendingRows(entries, t), t),
+    {
+      label: t("test.rows.unexpectedError"),
+      status: "failed",
+      message: t("test.runFailed"),
+      rawOutput: error,
+    },
+  ];
+}
+
+function runRows(run: TestRun | null, t: TFunction<"settingsAgents">): AgentTestRow[] {
+  if (run === null) return [];
+  switch (run.phase) {
+    case "pending":
+      return pendingRows(run.entries, t);
+    case "done":
+      // A reply the builders cannot read fails the run, as it did when the rows were built in the
+      // request's own `then` and a throw there landed in its `catch`.
+      try {
+        return rowsFromResult(run.entries, run.result, t);
+      } catch (err) {
+        return failedRows(run.entries, describeBridgeError(err), t);
+      }
+    case "failed":
+      return failedRows(run.entries, run.error, t);
+  }
 }
 
 export interface AgentTestDialogProps {
@@ -254,7 +344,9 @@ export const AgentTestDialog: React.FC<AgentTestDialogProps> = ({
   agent,
   models,
 }) => {
-  const [rows, setRows] = React.useState<AgentTestRow[]>([]);
+  const { t } = useTranslation("settingsAgents");
+  const [run, setRun] = React.useState<TestRun | null>(null);
+  const rows = React.useMemo(() => runRows(run, t), [run, t]);
   const [isTesting, setIsTesting] = React.useState(false);
   const [rawOutput, setRawOutput] = React.useState<string | null>(null);
   /**
@@ -274,28 +366,18 @@ export const AgentTestDialog: React.FC<AgentTestDialogProps> = ({
     const entries = modelsRef.current;
 
     setRawOutput(null);
-    setRows(pendingRows(entries));
+    setRun({ phase: "pending", entries });
     setIsTesting(true);
 
     agentsApi
       .testAgent(agent, { models: entries.map((entry) => entry.id) })
       .then((result) => {
         if (runId.current !== thisRun) return;
-        setRows(rowsFromResult(entries, result));
+        setRun({ phase: "done", entries, result });
       })
       .catch((err: unknown) => {
         if (runId.current !== thisRun) return;
-        // `catch (Exception ex)`: an extra row rather than a replaced table, so the checks that did
-        // get seeded stay visible alongside the reason the run stopped.
-        setRows((prev) => [
-          ...cancelRows(prev),
-          {
-            label: "Unexpected error",
-            status: "failed",
-            message: "Test run failed",
-            rawOutput: describeBridgeError(err),
-          },
-        ]);
+        setRun({ phase: "failed", entries, error: describeBridgeError(err) });
       })
       .finally(() => {
         if (runId.current !== thisRun) return;
@@ -312,7 +394,7 @@ export const AgentTestDialog: React.FC<AgentTestDialogProps> = ({
     // previous run's reply.
     runId.current += 1;
     setIsTesting(false);
-    setRows([]);
+    setRun(null);
     setRawOutput(null);
     onClose();
   };
@@ -322,12 +404,12 @@ export const AgentTestDialog: React.FC<AgentTestDialogProps> = ({
       <DialogShell
         isOpen={isOpen}
         onClose={close}
-        title="Coding Agent Test"
+        title={t("test.title")}
         testId="agent-test-dialog"
         width="rem40"
         footer={
           <Button type="button" variant="outline" data-testid="agent-test-close" onClick={close}>
-            {isTesting ? "Cancel" : "Close"}
+            {isTesting ? t("common:actions.cancel") : t("common:actions.close")}
           </Button>
         }
       >
@@ -335,9 +417,9 @@ export const AgentTestDialog: React.FC<AgentTestDialogProps> = ({
           <TableHeader>
             <TableRow>
               <TableHead className="w-16" />
-              <TableHead>Test</TableHead>
+              <TableHead>{t("test.columns.test")}</TableHead>
               {/* `.ColumnWidth(r => r.Result, Size.Percent(60))`. */}
-              <TableHead className="w-[60%]">Result</TableHead>
+              <TableHead className="w-[60%]">{t("test.columns.result")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -345,13 +427,14 @@ export const AgentTestDialog: React.FC<AgentTestDialogProps> = ({
               <TableRow key={row.label} data-testid={`agent-test-row-${row.status}`}>
                 <TableCell>
                   <div className="flex items-center gap-1">
-                    <span title={STATUS_LABEL[row.status]}>
-                      <span className="sr-only">{STATUS_LABEL[row.status]}</span>
+                    {/* Screen readers get the status as a word; sighted users get the icon. */}
+                    <span title={t(`test.status.${row.status}`)}>
+                      <span className="sr-only">{t(`test.status.${row.status}`)}</span>
                       {STATUS_ICON[row.status]}
                     </span>
                     {row.rawOutput !== undefined && (
                       <IconButton
-                        label="Show raw output"
+                        label={t("test.showRawOutput")}
                         size="xs"
                         variant="outline"
                         data-testid="agent-test-raw-output"
@@ -379,7 +462,7 @@ export const AgentTestDialog: React.FC<AgentTestDialogProps> = ({
       <DialogShell
         isOpen={rawOutput !== null}
         onClose={() => setRawOutput(null)}
-        title="Raw Output"
+        title={t("test.rawOutputTitle")}
         testId="agent-test-raw-dialog"
         footer={
           <Button
@@ -388,7 +471,7 @@ export const AgentTestDialog: React.FC<AgentTestDialogProps> = ({
             data-testid="agent-test-raw-close"
             onClick={() => setRawOutput(null)}
           >
-            Close
+            {t("common:actions.close")}
           </Button>
         }
       >

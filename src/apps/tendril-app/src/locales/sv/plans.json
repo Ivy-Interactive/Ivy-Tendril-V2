@@ -1,0 +1,281 @@
+{
+  "plansView": {
+    "newPlanShortcut": "Ny plan",
+    "empty": {
+      "title": "Inga planer",
+      "description": "Planer du skapar visas här"
+    },
+    "noSelection": "Välj en plan i sidofältet"
+  },
+  "sidebar": {
+    "title": "Planer"
+  },
+  "searchBadges": {
+    "verified": "Verifierad",
+    "unverified": "Ej verifierad"
+  },
+  "detail": {
+    "tabs": {
+      "plan": "Plan",
+      "details": "Detaljer",
+      "diff": "Diff-vy",
+      "recommendations": "Rekommendationer ({{n}})",
+      "git": "Git",
+      "gitCount": "Git ({{n}})",
+      "gitAtRisk_one": "Git ({{n}}) · {{count}} i riskzonen",
+      "gitAtRisk_other": "Git ({{n}}) · {{count}} i riskzonen",
+      "gitAtRiskUncounted_one": "Git · {{count}} i riskzonen",
+      "gitAtRiskUncounted_other": "Git · {{count}} i riskzonen"
+    },
+    "questions": {
+      "label": "Frågor",
+      "labelUnanswered_one": "Frågor ({{count}} obesvarad)",
+      "labelUnanswered_other": "Frågor ({{count}} obesvarade)"
+    },
+    "sourceLabel": {
+      "pr": "PR",
+      "issue": "Ärende"
+    },
+    "meta": {
+      "position_one": "{{position}}/{{count}} plan",
+      "position_other": "{{position}}/{{count}} planer",
+      "dependsOn": "Beror på {{plans}}"
+    },
+    "errors": {
+      "saveAnswer": "Det gick inte att spara svaret: {{error}}",
+      "saveAnnotation": "Det gick inte att spara annoteringen: {{error}}",
+      "updateRecommendation": "Det gick inte att uppdatera rekommendationen ”{{title}}”: {{error}}",
+      "completePlan": "Det gick inte att slutföra plan {{id}}: {{error}}"
+    },
+    "runActionFailed": {
+      "executePlan": "”Exekvera plan” misslyckades: {{error}}",
+      "updatePlan": "”Uppdatera plan” misslyckades: {{error}}",
+      "expandPlan": "”Utöka plan” misslyckades: {{error}}",
+      "splitPlan": "”Dela upp plan” misslyckades: {{error}}",
+      "copyPlanId": "”Kopiera plan-ID” misslyckades: {{error}}",
+      "copyFolderPath": "”Kopiera mappsökväg” misslyckades: {{error}}",
+      "openFolder": "”Öppna mapp” misslyckades: {{error}}"
+    },
+    "discussDraft": {
+      "outcome": "Jag vill diskutera resultatet av den här planen innan jag slutför den. Sammanfatta vad som gjordes och peka ut allt som är värt att titta närmare på.",
+      "plan": "Jag vill diskutera den här planen innan jag exekverar den. Sammanfatta den och peka ut allt du skulle ändra."
+    }
+  },
+  "actions": {
+    "discussWithAgent": "Diskutera med agent",
+    "updatePlan": "Uppdatera plan",
+    "checking": "Kontrollerar…",
+    "starting": "Startar…",
+    "createPr": "Skapa PR",
+    "completePlan": "Slutför plan",
+    "retryPlan": "Försök igen med planen",
+    "acceptPartialDelivery": "Acceptera delleverans",
+    "resetToDraft": "Återställ till utkast…"
+  },
+  "draftActions": {
+    "execute": "Exekvera plan",
+    "update": "Uppdatera plan…",
+    "expand": "Utöka plan",
+    "split": "Dela upp plan",
+    "createIssue": "Skapa ärende…",
+    "copyId": "Kopiera plan-ID",
+    "copyPath": "Kopiera mappsökväg",
+    "openFolder": "Öppna mapp",
+    "delete": "Ta bort plan…"
+  },
+  "failureCallout": {
+    "title": "Exekveringen misslyckades",
+    "verification": "<bold>{{name}}</bold>: {{status}}, se verifieringsrapporten för mer information",
+    "noDetails": "Ingen information tillgänglig. Kontrollera jobbloggarna."
+  },
+  "questionsPanel": {
+    "answered_one": "{{answered}} av {{count}} besvarad",
+    "answered_other": "{{answered}} av {{count}} besvarade",
+    "optional": "{{label}} (valfri)",
+    "saving": "sparar…"
+  },
+  "planPane": {
+    "writing": "Agenten håller fortfarande på att skriva planen. Innehållet visas här när jobbet har skrivit den första revisionen.",
+    "neverWritten": "Planen har inga revisioner. Mappen skapades, men jobbet som skrev planen skrev aldrig någon revision, så det finns inget planinnehåll att visa.",
+    "neverWrittenUpdate": "Uppdatera plan",
+    "unreadable_one": "Planen har {{count}} revision registrerad på disken, men den senaste revisionen var tom. Filen kan vara oläsbar.",
+    "unreadable_other": "Planen har {{count}} revisioner registrerade på disken, men den senaste revisionen var tom. Filen kan vara oläsbar."
+  },
+  "recommendationsTab": {
+    "title": "Planens rekommendationer",
+    "description": "Uppföljningar och förbättringar utanför planens omfattning som upptäcktes under exekveringen.",
+    "empty": "{{jobType}} registrerade inga rekommendationer för den här planen."
+  },
+  "gitTab": {
+    "loading": "Läser in Git-status…"
+  },
+  "details": {
+    "planId": "Plan-ID",
+    "folder": "Mapp",
+    "initialPrompt": "Ursprunglig prompt",
+    "revision": "Revision",
+    "profile": "Profil",
+    "relatedPlans": "Relaterade planer",
+    "dependsOn": "Beror på",
+    "issue": "Ärende",
+    "created": "Skapad",
+    "level": "Nivå",
+    "project": "Projekt",
+    "state": "Tillstånd",
+    "copyPlanIdTooltip": "Kopiera till urklipp",
+    "copyFolderTooltip": "Kopiera till urklipp",
+    "repositories": "Arkiv",
+    "noRepositories": "Inga arkiv angivna",
+    "commits": "Commits",
+    "noCommits": "Inga commits än"
+  },
+  "verificationStatus": {
+    "pass": "Godkänd",
+    "fail": "Underkänd",
+    "pending": "Väntar",
+    "skipped": "Överhoppad"
+  },
+  "verifications": {
+    "empty": "Inga verifieringar",
+    "updateFailed": "Det gick inte att uppdatera verifieringen {{name}}: {{error}}",
+    "viewReportTooltip": "Visa rapporten för {{name}}",
+    "viewReport": "Visa rapport",
+    "hideReport": "Dölj rapport",
+    "noReport": "Ingen rapport än"
+  },
+  "reportSheet": {
+    "title": "Verifieringsrapport",
+    "description": "Detaljer i verifieringsrapporten för {{name}}",
+    "descriptionFallback": "Detaljer i verifieringsrapporten för planen",
+    "loading": "Läser in verifieringsrapporten…",
+    "notFound": "Ingen verifieringsrapport hittades för ”{{name}}”.",
+    "empty": "Ingen rapport tillgänglig för {{name}}."
+  },
+  "artifactSheet": {
+    "thumbnail": {
+      "openLabel": "Öppna {{fileName}}",
+      "noPreview": "Ingen förhandsvisning",
+      "loadingLabel": "Läser in {{fileName}}"
+    },
+    "fallbackTitle": "Artefakt",
+    "noPreviewTitle": "Ingen förhandsvisning",
+    "showInFolder": "Visa i mapp",
+    "loadingLabel": "Läser in {{fileName}}",
+    "imageFailed": "Tendril kunde inte läsa in bilden.",
+    "imageFailedWithError": "Tendril kunde inte läsa in bilden: {{error}}",
+    "binary": "{{fileName}} är inte en textfil ({{size}}), så den kan inte förhandsvisas här.",
+    "tooLarge": "{{fileName}} är {{size}}, för stor för att förhandsvisas här.",
+    "plainNotice": "Visas som oformaterad text: med {{size}} är {{fileName}} för stor för syntaxmarkering.",
+    "plainNotice_markdown": "Visas som oformaterad text: med {{size}} är {{fileName}} för stor för att återges som Markdown.",
+    "copyPath": "Kopiera sökväg",
+    "revealLabel": "Visa i mapp"
+  },
+  "pullRequests": {
+    "title": "Pull requests",
+    "refresh": "Uppdatera",
+    "refreshing": "Uppdaterar…",
+    "unreachable": "Det gick inte att nå GitHub för: {{repos}}",
+    "syncInProgress": "En synkronisering pågår redan; statusarna uppdateras när den är klar.",
+    "checked": "kontrollerad {{when}}",
+    "checkedJustNow": "kontrollerad nyss",
+    "empty": "Inga PR:er skapade",
+    "state": {
+      "open": "Öppen",
+      "closed": "Stängd",
+      "merged": "Sammanslagen",
+      "unknown": "Okänd"
+    }
+  },
+  "revisionDiff": {
+    "singleRevision": "Planen har bara en revision, så det finns inget att jämföra än. En diff visas när {{createPlan}} eller {{retryPlan}} skriver en ny revision.",
+    "compare": "<oldLabel><text>Jämför revision</text><oldSelect/></oldLabel><newLabel><text>med</text><newSelect/></newLabel>",
+    "oldRevisionLabel": "Gammal revision",
+    "newRevisionLabel": "Ny revision",
+    "onDisk_one": "{{count}} revision på disken",
+    "onDisk_other": "{{count}} revisioner på disken",
+    "loading": "Läser in revision {{from}} och {{to}}…",
+    "identical": "Revision {{from}} och {{to}} är identiska."
+  },
+  "icebox": {
+    "title": "Isbox",
+    "description": "Arkiverade och uppskjutna planer som har lagts på is.",
+    "searchPlaceholder": "Sök bland planer i isboxen…",
+    "projectFilterLabel": "Projekt",
+    "allProjects": "Alla projekt",
+    "levelFilterLabel": "Nivå",
+    "allLevels": "Alla nivåer",
+    "empty": {
+      "title": "Isboxen är tom",
+      "description": "Planer som du lägger på is visas här"
+    },
+    "noMatch": {
+      "title": "Inga matchande planer",
+      "description": "Inga planer i isboxen matchar de aktuella filtren."
+    },
+    "card": {
+      "priority": "P{{priority}}",
+      "verificationTooltip": "{{name}}: {{status}}",
+      "deleteLabel": "Ta bort plan {{id}}",
+      "thawLabel": "Tina upp plan {{id}}",
+      "thaw": "Tina upp",
+      "thawing": "Tinar upp…"
+    },
+    "thawFailed": "Det gick inte att tina upp plan {{id}}: {{error}}"
+  },
+  "newPlan": {
+    "title": "Skapa ny plan",
+    "closeLabel": "Stäng dialogrutan",
+    "projectPickerLabel": "Målprojekt",
+    "autoProject": "Automatiskt",
+    "addProject": "+ Lägg till nytt projekt",
+    "submit": "Skapa",
+    "placeholder": "Ange en uppgiftsbeskrivning…",
+    "emptyDescription": "Ange en beskrivning för den nya planen."
+  },
+  "planActions": {
+    "canExecute": {
+      "alreadyCompleted": "Planen är redan slutförd.",
+      "executing": "Planen exekveras just nu.",
+      "blockedByDependency": "Blockeras av beroendet ”{{dependency}}”, som har tillståndet ”{{state}}” (kräver Slutförd)."
+    },
+    "canCreatePr": {
+      "wrongState": "Skapa PR är bara tillåtet när planen har tillståndet Granskning eller Misslyckad (aktuellt: {{state}}).",
+      "verificationsFailed": "Det går inte att skapa en PR: verifieringar misslyckades ({{names}}).",
+      "verificationsPending": "Det går inte att skapa en PR: verifieringar väntar fortfarande ({{names}})."
+    },
+    "canRetry": {
+      "wrongState": "Nytt försök är bara tillåtet för planer med tillståndet Granskning eller Misslyckad (aktuellt: {{state}})."
+    },
+    "canRefine": {
+      "wrongState": "Förfining av planen (Utöka/Uppdatera/Dela upp) är bara tillåten för planer med tillståndet Utkast (aktuellt: {{state}})."
+    },
+    "canDelete": {
+      "inFlight": "Det går inte att ta bort en plan med tillståndet {{state}} — avbryt jobbet först."
+    },
+    "canReset": {
+      "terminal": "Planen har tillståndet {{state}} och kan inte återställas till utkast.",
+      "inFlight": "Det går inte att återställa en plan med tillståndet {{state}} — avbryt jobbet först.",
+      "wrongState": "Återställ till utkast är bara tillåtet för planer med tillståndet Granskning, Misslyckad eller Blockerad (aktuellt: {{state}})."
+    },
+    "canCompletePartial": {
+      "wrongState": "Delleverans är bara tillåten när planen har tillståndet Granskning eller Misslyckad (aktuellt: {{state}}).",
+      "noFailures": "Inga verifieringar misslyckades — slutför planen på vanligt sätt i stället."
+    },
+    "canComplete": {
+      "alreadyCompleted": "Planen är redan slutförd.",
+      "inFlight": "Det går inte att slutföra en plan med tillståndet {{state}} — avbryt jobbet först."
+    },
+    "errors": {
+      "completeBlocked": "Slutförandet av planen blockerades",
+      "executeBlocked": "Exekveringen blockerades",
+      "retryBlocked": "Nytt försök blockerades",
+      "createPrBlocked": "Skapa PR blockerades",
+      "refineBlocked": "Förfining blockerades",
+      "repositoryRequired": "Ett arkiv krävs för att skapa ett ärende."
+    }
+  },
+  "store": {
+    "rollbackField": "Ändringen återställdes: det gick inte att uppdatera {{field}}: {{error}}",
+    "rollbackVerification": "Verifieringsuppdateringen återställdes: {{error}}"
+  }
+}

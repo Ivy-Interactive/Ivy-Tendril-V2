@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Button } from "@ivy-interactive/components/ui";
 import { DialogShell } from "@ivy-interactive/components/dialogs";
+import { useTranslation } from "../i18n";
 
 export interface RecommendationNoteDialogProps {
   isOpen: boolean;
@@ -30,6 +31,7 @@ export const RecommendationNoteDialog: React.FC<RecommendationNoteDialogProps> =
   onClose,
   onSubmit,
 }) => {
+  const { t } = useTranslation("review");
   const [noteText, setNoteText] = useState(initialNote);
   // V1's `.AutoFocus()` on the textarea. `DialogShell` honours `initialFocusRef` and otherwise
   // focuses the panel, so without this the operator had to click into the only field on the dialog.
@@ -50,16 +52,17 @@ export const RecommendationNoteDialog: React.FC<RecommendationNoteDialogProps> =
     void onSubmit(trimmed ? trimmed : undefined);
   };
 
-  const heading = action === "Accept" ? "Accept Recommendation" : "Decline Recommendation";
+  // `action` is the decision itself, compared below; only its wording goes through the catalog.
+  const mode = action === "Accept" ? "accept" : "decline";
 
   return (
     <DialogShell
       isOpen={isOpen}
       onClose={onClose}
-      title={heading}
+      title={t(`noteDialog.${mode}.title`)}
       description={title}
       testId="recommendation-note-dialog"
-      ariaLabel={`${action} Recommendation`}
+      ariaLabel={t(`noteDialog.${mode}.ariaLabel`)}
       initialFocusRef={noteRef}
       // `.ShortcutKey("Ctrl+Enter")` on V1's Accept button. `DialogShell` has carried the shortcut
       // machinery all along and this dialog never opted in, so the only way to submit was the mouse.
@@ -69,14 +72,14 @@ export const RecommendationNoteDialog: React.FC<RecommendationNoteDialogProps> =
       footer={
         <>
           <Button variant="outline" onClick={onClose} data-testid="rec-dialog-cancel">
-            Cancel
+            {t("common:actions.cancel")}
           </Button>
           <Button
             variant={action === "Accept" ? "default" : "destructive"}
             onClick={handleSubmit}
             data-testid="rec-dialog-submit"
           >
-            Submit
+            {t("noteDialog.submit")}
           </Button>
         </>
       }
@@ -93,18 +96,16 @@ export const RecommendationNoteDialog: React.FC<RecommendationNoteDialogProps> =
         htmlFor="rec-dialog-note"
         className="block text-xs font-medium text-muted-foreground mb-1"
       >
-        {action === "Accept" ? "Optional Operator Note:" : "Decline Reason:"}
+        {t(`noteDialog.${mode}.noteLabel`)}
       </label>
       <textarea
         id="rec-dialog-note"
         ref={noteRef}
-        aria-label={action === "Accept" ? "Optional note" : "Decline reason"}
+        aria-label={t(`noteDialog.${mode}.noteAriaLabel`)}
         rows={3}
         value={noteText}
         onChange={(e) => setNoteText(e.target.value)}
-        placeholder={
-          action === "Accept" ? "Enter optional notes..." : "Enter reason for declining..."
-        }
+        placeholder={t(`noteDialog.${mode}.placeholder`)}
         className="w-full rounded-box border border-border bg-background p-3 text-sm text-foreground placeholder-muted-foreground/70 focus-visible:border-ring focus-visible:outline-none"
       />
     </DialogShell>

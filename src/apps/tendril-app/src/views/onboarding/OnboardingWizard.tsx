@@ -5,7 +5,9 @@ import { jobsStore } from "../../state/jobsStore";
 import { describeBridgeError, type DoctorCheck, type OnboardingStatus } from "../../types/api";
 import { Button, Progress } from "@ivy-interactive/components/ui";
 import { ErrorBanner } from "../../components/ErrorBanner";
-import { DataStorageStep, blockingChecks } from "./PrerequisitesStep";
+import { useTranslation } from "../../i18n";
+import { jobTypeLabel } from "../../i18n/enumLabels";
+import { DataStorageStep, blockingChecks, missingToolsMessage } from "./PrerequisitesStep";
 import { CodingAgentStep, agentCheck, agentLabel, machinePrerequisites } from "./CodingAgentStep";
 import { FirstProjectStep } from "./FirstProjectStep";
 import { ProjectAgentStep } from "./ProjectAgentStep";
@@ -13,8 +15,11 @@ import { ProjectHarnessStep } from "./ProjectHarnessStep";
 import { CompleteStep } from "./CompleteStep";
 import { classifyRepoPath, isValidProjectName, sanitizeProjectName } from "./validation";
 
-/** V1 `OnboardingApp.GetSteps`: four steps, in this order, with these labels. */
-const STEP_TITLES = ["Coding Agent", "Data Storage", "Your First Project", "Complete"] as const;
+/**
+ * V1 `OnboardingApp.GetSteps`: four steps, in this order. The ids are what the stepper keys its
+ * items by; the labels (V1's) are `onboarding:wizard.steps.<id>`, looked up at render time.
+ */
+const STEP_IDS = ["codingAgent", "dataStorage", "firstProject", "complete"] as const;
 
 const AGENT_STEP = 0;
 const HOME_STEP = 1;
@@ -83,11 +88,6 @@ function formatElapsed(seconds: number): string {
   return `${Math.trunc(seconds / 60)}:${String(seconds % 60).padStart(2, "0")}`;
 }
 
-/** V1 `InstallMissingDialog`'s body, collapsed to one line: what is missing and what to do. */
-function installMessage(missing: DoctorCheck[]): string {
-  return `Tendril needs ${missing.map((check) => check.name).join(", ")} but it isn't installed. Install it, then press Re-check.`;
-}
-
 /**
  * The first-run wizard, mirroring V1's `OnboardingApp`: a welcome heading, a four-item stepper, and
  * the step's own view underneath, each step building its own button row.
@@ -106,9 +106,14 @@ function installMessage(missing: DoctorCheck[]): string {
  * only the operator's Next reaches Complete.
  */
 export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) {
+  const { t } = useTranslation("onboarding");
   const [step, setStep] = React.useState(AGENT_STEP);
   const [checks, setChecks] = React.useState<DoctorCheck[]>([]);
   const [checksLoading, setChecksLoading] = React.useState(true);
+  /**
+   * Why the health checks could not run - the daemon's own words - or null. Worded at render time,
+   * so the sentence around it follows the language.
+   */
   const [checksError, setChecksError] = React.useState<string | null>(null);
   const [selectedAgent, setSelectedAgent] = React.useState<string | null>(null);
   const [projectName, setProjectName] = React.useState("");
@@ -212,7 +217,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
         // A wizard that cannot reach the daemon still has to be usable; the failure is reported and
         // the operator can re-check or move on through the stepper.
         setChecks([]);
-        setChecksError(`Health checks unavailable: ${describeBridgeError(err)}`);
+        setChecksError(describeBridgeError(err));
         setChecksLoading(false);
       });
   }, []);
@@ -293,21 +298,19 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
     setSelectedAgent(agentId);
     setBusy(true);
     setError(null);
-    startProgress(`Checking ${agentLabel(agentId)}...`);
+    startProgress(t("wizard.progress.checkingAgent", { agent: agentLabel(agentId) }));
     try {
       const fresh = await bridge.runDoctor();
       setChecks(fresh);
       setChecksError(null);
       const missing = missingRequirement(fresh, agentId);
       if (missing) {
-        setError(installMessage([missing]));
+        setError(missingToolsMessage(t, [missing]));
         return;
       }
       goTo(HOME_STEP);
     } catch (err) {
-      setError(
-        `Please make sure your agent is present and you are authorized. (${describeBridgeError(err)})`,
-      );
+      setError(t("wizard.errors.agentProbeFailed", { error: describeBridgeError(err) }));
     } finally {
       clearProgress();
       setBusy(false);
@@ -318,7 +321,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
     if (busy) return;
     setBusy(true);
     setError(null);
-    startProgress("Finishing setup...");
+    startProgress(t("wizard.progress.finishing"));
     try {
       if (writeAgent && selectedAgent) {
         await bridge.putConfig("codingAgent", selectedAgent);
@@ -328,7 +331,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
       onFinished();
     } catch (err) {
       clearProgress();
-      setError(`Could not finish setup: ${describeBridgeError(err)}`);
+      setError(t("wizard.errors.finishFailed", { error: describeBridgeError(err) }));
     } finally {
       setBusy(false);
     }
@@ -342,7 +345,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
       await bridge.dismissOnboarding();
       onFinished();
     } catch (err) {
-      setError(`Could not skip setup: ${describeBridgeError(err)}`);
+      setError(t("wizard.errors.skipFailed", { error: describeBridgeError(err) }));
     } finally {
       setBusy(false);
     }
@@ -378,7 +381,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
     // A remote is cloned by the daemon inside this one call and a large repository takes minutes,
     // so the busy state has to say what is taking the time rather than look hung.
     const cloning = repoPaths.some((path) => classifyRepoPath(path) !== "local");
-    startProgress(cloning ? "Cloning repositories..." : "Setting up your project...");
+    startProgress(cloning ? t("wizard.progress.cloning") : t("wizard.progress.settingUp"));
     // The bar stops moving after fifteen seconds; the clock does not, and it is what the Cancel
     // beside it is a decision about.
     setRegisterElapsed(0);
@@ -433,14 +436,20 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
         // on. The sub-step still advances, with no run to watch - V1 does not roll a project back
         // over a promptware that would not start either.
         if (!stillWaiting()) return;
-        setError(`Project created, but AddProject could not start: ${describeBridgeError(err)}`);
+        setError(
+          t("wizard.errors.setupNotStarted", {
+            jobType: jobTypeLabel("AddProject"),
+            error: describeBridgeError(err),
+          }),
+        );
         setSetupFinished(true);
       }
       if (!stillWaiting()) return;
       setProjectSubStep(SUB_AGENT);
     } catch (err) {
       // The daemon answers a duplicate name with 409; record it so the conflict box appears rather
-      // than only a raw error, which is what V1 shows for the same state.
+      // than only a raw error, which is what V1 shows for the same state. The pattern matches the
+      // daemon's English message, never the UI's own text, so it is not translated.
       const message = describeBridgeError(err);
       if (/already exists/i.test(message)) {
         setKnownProjects((known) =>
@@ -452,7 +461,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
       // An abandoned call's failure is not news: the operator already stopped waiting on it, and
       // `abandonRegister` has put its own line on screen.
       if (!stillWaiting()) return;
-      setError(`Could not create the project: ${message}`);
+      setError(t("wizard.errors.createFailed", { error: message }));
     } finally {
       // Guarded, or the abandoned call clears the progress and the busy flag of the *next* create.
       if (stillWaiting()) {
@@ -477,9 +486,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
     registerRun.current += 1;
     clearProgress();
     setBusy(false);
-    setError(
-      "Stopped waiting for the project to be created. The daemon may still be cloning; check your projects before creating it again.",
-    );
+    setError(t("wizard.errors.createAbandoned"));
   };
 
   /**
@@ -537,7 +544,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
       data-testid="onboarding-back"
     >
       <ArrowLeft className="size-4" aria-hidden="true" />
-      Back
+      {t("actions.back")}
     </Button>
   );
 
@@ -559,7 +566,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
             disabled={busy || !canLeaveHomeStep}
             data-testid="onboarding-continue"
           >
-            Next
+            {t("actions.next")}
             <ArrowRight className="size-4" aria-hidden="true" />
           </Button>
         </>
@@ -583,7 +590,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
               data-testid="onboarding-back"
             >
               <ArrowLeft className="size-4" aria-hidden="true" />
-              Back
+              {t("actions.back")}
             </Button>
             <div className="flex-1" />
             <Button
@@ -594,7 +601,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
               data-testid="onboarding-skip"
               className="text-muted-foreground"
             >
-              Skip
+              {t("actions.skip")}
             </Button>
             {/* V1 `ProjectAgentStepView`'s `.Disabled(running)`. Gated on the run, not on
                 `setupFinished` alone: the sub-step is also reached with nothing to watch - an
@@ -607,7 +614,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
               disabled={busy || setupRunning}
               data-testid="onboarding-continue"
             >
-              Next
+              {t("actions.next")}
               <ArrowRight className="size-4" aria-hidden="true" />
             </Button>
           </>
@@ -626,7 +633,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
               data-testid="onboarding-back"
             >
               <ArrowLeft className="size-4" aria-hidden="true" />
-              Back
+              {t("actions.back")}
             </Button>
             <div className="flex-1" />
             <Button
@@ -636,7 +643,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
               disabled={busy}
               data-testid="onboarding-continue"
             >
-              Next
+              {t("actions.next")}
               <ArrowRight className="size-4" aria-hidden="true" />
             </Button>
           </>
@@ -654,7 +661,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
             data-testid="onboarding-skip"
             className="text-muted-foreground"
           >
-            Skip
+            {t("actions.skip")}
           </Button>
           <div className="flex-1" />
           {/* The one control that stays live while the create is in flight, and the only reason the
@@ -668,7 +675,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
               onClick={abandonRegister}
               data-testid="onboarding-cancel-create"
             >
-              Cancel
+              {t("common:actions.cancel")}
             </Button>
           ) : (
             backButton
@@ -686,7 +693,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
             disabled={busy || (!projectRegistered && !canCreateProject)}
             data-testid="onboarding-continue"
           >
-            {projectRegistered ? "Next" : "Create Project"}
+            {projectRegistered ? t("actions.next") : t("actions.createProject")}
             <ArrowRight className="size-4" aria-hidden="true" />
           </Button>
         </>
@@ -703,7 +710,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
           disabled={busy}
           data-testid="onboarding-continue"
         >
-          Finish
+          {t("actions.finish")}
           <Check className="size-4" aria-hidden="true" />
         </Button>
       </>
@@ -715,16 +722,16 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
       <div className="mx-auto flex w-150 max-w-full flex-col gap-4 px-6 py-20">
         {/* V1 pairs the Tendril mark with an H2; V2 has no logo asset yet, so the heading stands
             alone. */}
-        <h2 className="text-2xl font-bold text-foreground">Welcome to Tendril</h2>
+        <h2 className="text-2xl font-bold text-foreground">{t("wizard.title")}</h2>
 
-        <nav aria-label="Setup steps">
+        <nav aria-label={t("wizard.stepsLabel")}>
           <ol className="flex w-full items-center">
-            {STEP_TITLES.map((title, index) => {
+            {STEP_IDS.map((id, index) => {
               const completed = index < step;
               const active = index === step;
               return (
                 <li
-                  key={title}
+                  key={id}
                   className="flex items-center last:flex-none [&:not(:last-child)]:flex-1"
                 >
                   <button
@@ -753,10 +760,10 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
                         active ? "text-foreground" : "text-muted-foreground"
                       }`}
                     >
-                      {title}
+                      {t(`wizard.steps.${id}`)}
                     </span>
                   </button>
-                  {index < STEP_TITLES.length - 1 && (
+                  {index < STEP_IDS.length - 1 && (
                     <span
                       aria-hidden="true"
                       className={`mx-2 h-0.5 flex-1 ${completed ? "bg-primary" : "bg-muted"}`}
@@ -774,7 +781,11 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
           <CodingAgentStep
             checks={checks}
             checksLoading={checksLoading}
-            checksError={checksError}
+            checksError={
+              checksError === null
+                ? null
+                : t("wizard.errors.checksUnavailable", { error: checksError })
+            }
             onRecheck={runChecks}
             selectedAgent={selectedAgent}
             onSelectAgent={(agent) => void pickAgent(agent)}
@@ -826,7 +837,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
             {/* The library component, not a hand-rolled bar: it is the same `h-2 rounded-full` track
                 over a 10%-primary fill, and Radix gives it the progressbar role and aria-value* for
                 free. */}
-            <Progress value={progress} aria-label={progressMessage ?? "Setting up"} />
+            <Progress value={progress} aria-label={progressMessage ?? t("wizard.progress.label")} />
           </div>
         )}
 
@@ -845,7 +856,7 @@ export function OnboardingWizard({ status, onFinished }: OnboardingWizardProps) 
             data-testid="onboarding-skip-setup"
             className="text-xs text-muted-foreground hover:text-foreground"
           >
-            Skip setup
+            {t("wizard.skipSetup")}
           </Button>
         </div>
       </div>

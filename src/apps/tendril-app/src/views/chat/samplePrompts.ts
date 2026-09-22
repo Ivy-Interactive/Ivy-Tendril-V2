@@ -1,11 +1,19 @@
 import type { Job, PlanSummary } from "../../types/api";
+import { i18n, type TFunction } from "../../i18n";
 
 /**
  * `SamplePrompts.ForChat` and `SamplePrompts.ForPlan`: the chips the empty state offers, built from
  * whatever this tendril happens to hold right now. Both are pure functions of the lists they are
  * handed, which is why they sit apart from the view that renders them - the plan panel calls
  * {@link buildPlanSamplePrompts} directly, and the tests drive both without mounting anything.
+ *
+ * Label and prompt are both the user's: the chip drafts its prompt into the composer, where the user
+ * reads it and sends it as their own, so both are written in the language they chose. Each builder
+ * takes the `t` of the component that renders the chips (and re-builds them when it changes); called
+ * without one it translates into the current language.
  */
+
+const chatT = i18n.getFixedT(null, "chat");
 
 /** One chip of the empty state: the label is the button, the prompt is what it drafts. */
 export interface SamplePrompt {
@@ -15,23 +23,26 @@ export interface SamplePrompt {
 
 /**
  * The static tail of the sample prompts, in the order and with the wording of
- * `SamplePrompts.ForChat`'s fallbacks: the label is the button, the prompt is what it drafts.
+ * `SamplePrompts.ForChat`'s fallbacks: each is `samplePrompts.chat.<id>`, whose label is the button
+ * and whose prompt is what it drafts.
  */
-const SAMPLE_PROMPTS = [
-  { label: "Add a new project", prompt: "Add a new project to my tendril" },
-  { label: "Edit verifications", prompt: "Edit verifications for my projects" },
-  { label: "Create a team vault", prompt: "Create a shared team vault" },
-  {
-    label: "What should I work on next?",
-    prompt:
-      "Look at my draft plans across all projects and recommend which two to execute next, with reasons.",
-  },
-  {
-    label: "What shipped this week?",
-    prompt:
-      "Summarize the plans that reached Completed in the last seven days, grouped by project.",
-  },
-];
+const FALLBACK_PROMPTS = [
+  "addProject",
+  "editVerifications",
+  "teamVault",
+  "nextWork",
+  "shipped",
+] as const;
+
+/**
+ * What a fallback prompt names for the agent to look up verbatim - a plan state, here - rather than
+ * says: an identifier, not prose, so it goes in as a variable no translation can change.
+ */
+const FALLBACK_PROMPT_VALUES: Partial<
+  Record<(typeof FALLBACK_PROMPTS)[number], Record<string, string>>
+> = {
+  shipped: { state: "Completed" satisfies PlanSummary["state"] },
+};
 
 /** `SamplePrompts.Max`: the empty state never offers more than five. */
 const MAX_SAMPLE_PROMPTS = 5;
@@ -52,7 +63,11 @@ const newestByUpdated = (plans: PlanSummary[]): PlanSummary | undefined =>
  * V1's fifth rule - the newest plan with `PartialDelivery` - has no counterpart here: `PlanSummary`
  * carries no partial-delivery flag, so that chip is absent rather than guessed at.
  */
-export function buildChatSamplePrompts(plans: PlanSummary[], jobs: Job[]): SamplePrompt[] {
+export function buildChatSamplePrompts(
+  plans: PlanSummary[],
+  jobs: Job[],
+  t: TFunction<"chat"> = chatT,
+): SamplePrompt[] {
   const prompts: SamplePrompt[] = [];
   const labels = new Set<string>();
   const add = (label: string, prompt: string) => {
@@ -64,26 +79,23 @@ export function buildChatSamplePrompts(plans: PlanSummary[], jobs: Job[]): Sampl
   const reviewPlans = plans.filter((p) => p.state === "Review");
   if (reviewPlans.length > 0) {
     const planList = reviewPlans.map((p) => `#${shortPlanId(p.id)} ${p.title}`).join(", ");
+    const count = reviewPlans.length;
     add(
-      `Review the ${reviewPlans.length} plans waiting`,
-      `${reviewPlans.length} plans are waiting for review: ${planList}. Summarize what each delivers and tell me which to merge first.`,
+      t("samplePrompts.chat.review.label", { count }),
+      t("samplePrompts.chat.review.prompt", { count, plans: planList }),
     );
   }
 
   const failedPlan = newestByUpdated(plans.filter((p) => p.state === "Failed"));
   if (failedPlan) {
-    add(
-      `Why did #${shortPlanId(failedPlan.id)} fail?`,
-      `Plan #${shortPlanId(failedPlan.id)} ${failedPlan.title} failed. Read its logs and verification reports and explain what went wrong.`,
-    );
+    const plan = { id: shortPlanId(failedPlan.id), title: failedPlan.title };
+    add(t("samplePrompts.chat.failed.label", plan), t("samplePrompts.chat.failed.prompt", plan));
   }
 
   const blockedPlan = newestByUpdated(plans.filter((p) => p.state === "Blocked"));
   if (blockedPlan) {
-    add(
-      `What is blocking #${shortPlanId(blockedPlan.id)}?`,
-      `Plan #${shortPlanId(blockedPlan.id)} ${blockedPlan.title} is blocked. List the plans it depends on and what each one still needs.`,
-    );
+    const plan = { id: shortPlanId(blockedPlan.id), title: blockedPlan.title };
+    add(t("samplePrompts.chat.blocked.label", plan), t("samplePrompts.chat.blocked.prompt", plan));
   }
 
   const runningJobs = jobs.filter(
@@ -91,13 +103,16 @@ export function buildChatSamplePrompts(plans: PlanSummary[], jobs: Job[]): Sampl
   );
   if (runningJobs.length > 0) {
     add(
-      "What are my jobs doing?",
-      `${runningJobs.length} jobs are running. Summarize what each one is working on.`,
+      t("samplePrompts.chat.jobs.label"),
+      t("samplePrompts.chat.jobs.prompt", { count: runningJobs.length }),
     );
   }
 
-  for (const fallback of SAMPLE_PROMPTS) {
-    add(fallback.label, fallback.prompt);
+  for (const id of FALLBACK_PROMPTS) {
+    add(
+      t(`samplePrompts.chat.${id}.label`),
+      t(`samplePrompts.chat.${id}.prompt`, FALLBACK_PROMPT_VALUES[id]),
+    );
   }
 
   return prompts.slice(0, MAX_SAMPLE_PROMPTS);
@@ -127,7 +142,10 @@ export interface SamplePromptPlan {
  * same reason `buildChatSamplePrompts` is missing its fifth: neither `PlanDetail` nor `PlanSummary`
  * carries a partial-delivery flag, so that chip is absent rather than guessed at.
  */
-export function buildPlanSamplePrompts(plan: SamplePromptPlan): SamplePrompt[] {
+export function buildPlanSamplePrompts(
+  plan: SamplePromptPlan,
+  t: TFunction<"chat"> = chatT,
+): SamplePrompt[] {
   const prompts: SamplePrompt[] = [];
   const labels = new Set<string>();
   const add = (label: string, prompt: string) => {
@@ -138,50 +156,50 @@ export function buildPlanSamplePrompts(plan: SamplePromptPlan): SamplePrompt[] {
 
   const failed = (plan.verifications ?? []).find((v) => v.status === "Fail");
   if (failed) {
+    // The report's path is a file name, not prose: it goes in as a variable so no translation can
+    // change it.
     add(
-      `Why did ${failed.name} fail?`,
-      `The ${failed.name} verification failed for this plan. Read its report in Verification/${failed.name}.md and explain the failure and how to fix it.`,
+      t("samplePrompts.plan.failedVerification.label", { name: failed.name }),
+      t("samplePrompts.plan.failedVerification.prompt", {
+        name: failed.name,
+        report: `Verification/${failed.name}.md`,
+      }),
     );
   }
 
   const firstPr = (plan.prs ?? [])[0];
   if (firstPr) {
     add(
-      "Summarize the PR feedback",
-      `Read the review comments on ${firstPr} and list the changes they ask for.`,
+      t("samplePrompts.plan.prFeedback.label"),
+      t("samplePrompts.plan.prFeedback.prompt", { pr: firstPr }),
     );
   }
 
   if (plan.state === "Blocked") {
     add(
-      "What is blocking this?",
-      `This plan is blocked on ${(plan.dependsOn ?? []).join(", ")}. Tell me what each dependency still needs.`,
+      t("samplePrompts.plan.blocked.label"),
+      t("samplePrompts.plan.blocked.prompt", { dependencies: (plan.dependsOn ?? []).join(", ") }),
     );
   }
 
   if (plan.state === "Draft") {
-    add(
-      "Tighten the scope",
-      "Read the latest revision of this plan and point out anything out of scope or under specified.",
-    );
+    add(t("samplePrompts.plan.tightenScope.label"), t("samplePrompts.plan.tightenScope.prompt"));
   }
 
+  // `Solution` is the heading of plan.md's section, which the agent finds by that name.
   add(
-    "Explain the solution",
-    "Explain the Solution section of this plan in plain terms, and list every file it will touch.",
+    t("samplePrompts.plan.explainSolution.label"),
+    t("samplePrompts.plan.explainSolution.prompt", { section: "Solution" }),
   );
-  add(
-    "What could go wrong?",
-    "What are the riskiest parts of this plan, and what should I check in review?",
-  );
+  add(t("samplePrompts.plan.risks.label"), t("samplePrompts.plan.risks.prompt"));
 
   return prompts.slice(0, MAX_SAMPLE_PROMPTS);
 }
 
-/** The time-of-day greeting above the empty state's headline. */
-export function buildGreeting(now: Date): string {
+/** The time-of-day greeting above the empty state's headline: one whole greeting per part of day. */
+export function buildGreeting(now: Date, t: TFunction<"chat"> = chatT): string {
   const hour = now.getHours();
-  const word =
-    hour >= 5 && hour < 12 ? "Morning" : hour >= 12 && hour < 17 ? "Afternoon" : "Evening";
-  return `Good ${word}!`;
+  const part =
+    hour >= 5 && hour < 12 ? "morning" : hour >= 12 && hour < 17 ? "afternoon" : "evening";
+  return t(`greeting.${part}`);
 }

@@ -8,6 +8,7 @@ import {
   Trash2,
   Upload,
 } from "lucide-react";
+import { useTranslation, type TFunction } from "@/i18n/uiVault";
 import { Badge } from "../ui/badge";
 import { IconButton } from "../ui/IconButton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../ui/table";
@@ -31,14 +32,22 @@ export interface VaultProjectsTableProps {
 
 const OPEN: VaultGate = { disabled: false };
 
-const SYNC_STATUS_LABELS: Record<VaultItemSyncStatus, string> = {
-  UpToDate: "✓ In Sync",
-  Modified: "Local Changes",
-  UpdateAvailable: "Update Available",
-  LocalOnly: "Local Only",
-  NotImported: "Not Imported",
-  Conflict: "Name Conflict",
+/** Each sync status's label. A status the daemon added after this build is shown as it comes. */
+const SYNC_STATUS_LABEL_KEYS: Record<VaultItemSyncStatus, Parameters<TFunction>[0]> = {
+  UpToDate: "projectsTable.syncStatus.upToDate",
+  Modified: "projectsTable.syncStatus.modified",
+  UpdateAvailable: "projectsTable.syncStatus.updateAvailable",
+  LocalOnly: "projectsTable.syncStatus.localOnly",
+  NotImported: "projectsTable.syncStatus.notImported",
+  Conflict: "projectsTable.syncStatus.conflict",
 };
+
+function syncStatusLabel(t: TFunction, status: VaultItemSyncStatus): string {
+  const key = Object.prototype.hasOwnProperty.call(SYNC_STATUS_LABEL_KEYS, status)
+    ? SYNC_STATUS_LABEL_KEYS[status]
+    : undefined;
+  return key ? t(key) : status;
+}
 
 const SYNC_STATUS_VARIANTS: Record<VaultItemSyncStatus, "secondary" | "outline" | "destructive"> = {
   UpToDate: "secondary",
@@ -49,21 +58,22 @@ const SYNC_STATUS_VARIANTS: Record<VaultItemSyncStatus, "secondary" | "outline" 
   Conflict: "destructive",
 };
 
-function plural(count: number, one: string, many: string): string {
-  return `${count} ${count === 1 ? one : many}`;
-}
+/** The asset counts a row can carry, in badge order; each names its `projectsTable.contents` key. */
+const CONTENT_COUNTS = [
+  ["repos", (item: VaultCatalogItem) => item.reposCount],
+  ["skills", (item: VaultCatalogItem) => item.skillsCount],
+  ["mcps", (item: VaultCatalogItem) => item.mcpsCount],
+  ["memories", (item: VaultCatalogItem) => item.memoriesCount],
+  ["reviewActions", (item: VaultCatalogItem) => item.reviewActionsCount],
+  ["verifications", (item: VaultCatalogItem) => item.verificationsCount],
+] as const;
 
 /** The content badges, each shown only when the project actually carries that kind of asset. */
-function contentBadges(item: VaultCatalogItem): string[] {
-  const badges: string[] = [];
-  if (item.reposCount > 0) badges.push(plural(item.reposCount, "repo", "repos"));
-  if (item.skillsCount > 0) badges.push(plural(item.skillsCount, "skill", "skills"));
-  if (item.mcpsCount > 0) badges.push(`${item.mcpsCount} MCPs`);
-  if (item.memoriesCount > 0) badges.push(plural(item.memoriesCount, "memory", "memories"));
-  if (item.reviewActionsCount > 0)
-    badges.push(plural(item.reviewActionsCount, "action", "actions"));
-  if (item.verificationsCount > 0) badges.push(plural(item.verificationsCount, "verif", "verifs"));
-  return badges;
+function contentBadges(t: TFunction, item: VaultCatalogItem): { id: string; label: string }[] {
+  return CONTENT_COUNTS.flatMap(([id, countOf]) => {
+    const count = countOf(item);
+    return count > 0 ? [{ id, label: t(`projectsTable.contents.${id}`, { count }) }] : [];
+  });
 }
 
 function versionLabel(item: VaultCatalogItem): string {
@@ -83,17 +93,18 @@ export const VaultProjectsTable: React.FC<VaultProjectsTableProps> = ({
   isLoading = false,
   gate = OPEN,
 }) => {
+  const { t } = useTranslation("uiVault");
   const addTrackedProject = (
     <GatedActionButton gate={gate} variant="outline" size="sm" onClick={onAddTrackedProject}>
       <Plus className="mr-1.5 size-3.5" aria-hidden="true" />
-      Add Tracked Project
+      {t("projectsTable.addTrackedProject")}
     </GatedActionButton>
   );
 
   if (isLoading && items.length === 0) {
     return (
       <p className="text-xs text-muted-foreground" data-testid="vault-projects-loading">
-        Loading shared projects...
+        {t("projectsTable.loading")}
       </p>
     );
   }
@@ -101,11 +112,8 @@ export const VaultProjectsTable: React.FC<VaultProjectsTableProps> = ({
   if (items.length === 0) {
     return (
       <div className="space-y-2" data-testid="vault-projects-empty">
-        <p className="text-sm font-semibold text-foreground">No Shared Projects</p>
-        <p className="text-xs text-muted-foreground">
-          This vault does not contain any shared projects yet. Add a local project to share it with
-          your team.
-        </p>
+        <p className="text-sm font-semibold text-foreground">{t("projectsTable.empty.title")}</p>
+        <p className="text-xs text-muted-foreground">{t("projectsTable.empty.description")}</p>
         <div className="flex">{addTrackedProject}</div>
       </div>
     );
@@ -122,12 +130,12 @@ export const VaultProjectsTable: React.FC<VaultProjectsTableProps> = ({
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Project</TableHead>
-            <TableHead>Version</TableHead>
-            <TableHead>Actions</TableHead>
-            <TableHead>Sync Status</TableHead>
-            <TableHead>Contents</TableHead>
-            {showChangelog && <TableHead>Changelog / Context</TableHead>}
+            <TableHead>{t("projectsTable.columns.project")}</TableHead>
+            <TableHead>{t("projectsTable.columns.version")}</TableHead>
+            <TableHead>{t("projectsTable.columns.actions")}</TableHead>
+            <TableHead>{t("projectsTable.columns.syncStatus")}</TableHead>
+            <TableHead>{t("projectsTable.columns.contents")}</TableHead>
+            {showChangelog && <TableHead>{t("projectsTable.columns.changelog")}</TableHead>}
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -156,7 +164,7 @@ export const VaultProjectsTable: React.FC<VaultProjectsTableProps> = ({
                       onClick={() => onImport(item)}
                     >
                       <Download className="mr-1.5 size-3.5" aria-hidden="true" />
-                      Import
+                      {t("projectsTable.actions.import")}
                     </GatedActionButton>
                   )}
 
@@ -164,7 +172,7 @@ export const VaultProjectsTable: React.FC<VaultProjectsTableProps> = ({
                     <>
                       <GatedActionButton gate={gate} size="sm" onClick={() => onMerge(item)}>
                         <GitMerge className="mr-1.5 size-3.5" aria-hidden="true" />
-                        Link &amp; Merge
+                        {t("projectsTable.actions.linkMerge")}
                       </GatedActionButton>
                       <GatedActionButton
                         gate={gate}
@@ -173,7 +181,7 @@ export const VaultProjectsTable: React.FC<VaultProjectsTableProps> = ({
                         onClick={() => onImport(item)}
                       >
                         <Download className="mr-1.5 size-3.5" aria-hidden="true" />
-                        Import As...
+                        {t("projectsTable.actions.importAs")}
                       </GatedActionButton>
                     </>
                   )}
@@ -186,7 +194,7 @@ export const VaultProjectsTable: React.FC<VaultProjectsTableProps> = ({
                       onClick={() => onUpdate(item)}
                     >
                       <CircleArrowUp className="mr-1.5 size-3.5" aria-hidden="true" />
-                      Update
+                      {t("projectsTable.actions.update")}
                     </GatedActionButton>
                   )}
 
@@ -197,25 +205,25 @@ export const VaultProjectsTable: React.FC<VaultProjectsTableProps> = ({
                       gate={gate}
                       variant="outline"
                       size="sm"
-                      tooltip={`Open a PR to update '${item.name}' in vault`}
+                      tooltip={t("projectsTable.actions.publishTooltip", { name: item.name })}
                       onClick={() => onPublish(item)}
                     >
                       {item.syncStatus === "LocalOnly" ? (
                         <>
                           <Upload className="mr-1.5 size-3.5" aria-hidden="true" />
-                          Publish
+                          {t("projectsTable.actions.publish")}
                         </>
                       ) : (
                         <>
                           <GitPullRequest className="mr-1.5 size-3.5" aria-hidden="true" />
-                          Open PR
+                          {t("projectsTable.actions.openPr")}
                         </>
                       )}
                     </GatedActionButton>
                   )}
 
                   <IconButton
-                    label={`Delete '${item.name}' from vault`}
+                    label={t("projectsTable.actions.delete", { name: item.name })}
                     variant="danger"
                     size="sm"
                     onClick={() => onDelete(item)}
@@ -226,14 +234,14 @@ export const VaultProjectsTable: React.FC<VaultProjectsTableProps> = ({
               </TableCell>
               <TableCell>
                 <Badge variant={SYNC_STATUS_VARIANTS[item.syncStatus]}>
-                  {SYNC_STATUS_LABELS[item.syncStatus]}
+                  {syncStatusLabel(t, item.syncStatus)}
                 </Badge>
               </TableCell>
               <TableCell>
                 <span className="flex flex-wrap gap-1">
-                  {contentBadges(item).map((badge) => (
-                    <Badge key={badge} variant="secondary">
-                      {badge}
+                  {contentBadges(t, item).map((badge) => (
+                    <Badge key={badge.id} variant="secondary">
+                      {badge.label}
                     </Badge>
                   ))}
                 </span>

@@ -1,0 +1,215 @@
+{
+  "sidebar": {
+    "title": "Ревью",
+    "badges": {
+      "verified": "Верифицирован",
+      "unverified": "Не верифицирован"
+    }
+  },
+  "shortcuts": {
+    "previousPlan": "Предыдущий план",
+    "nextPlan": "Следующий план"
+  },
+  "empty": {
+    "title": "Нет планов для ревью",
+    "description": "Здесь появятся завершённые планы, готовые к ревью"
+  },
+  "workspace": {
+    "meta_one": "Планы: {{index}}/{{total}}",
+    "meta_few": "Планы: {{index}}/{{total}}",
+    "meta_many": "Планы: {{index}}/{{total}}",
+    "meta_other": "Планы: {{index}}/{{total}}",
+    "sourceLabel": {
+      "pr": "PR",
+      "issue": "Задача"
+    }
+  },
+  "actions": {
+    "requestChanges": "Запросить изменения",
+    "resetToDraft": "Вернуть в черновик",
+    "deletePlan": "Удалить план",
+    "openPlanPage": "Открыть спецификацию и дифф",
+    "partialDelivery": "Принять частичную доставку"
+  },
+  "primary": {
+    "updatePr": "Обновить PR",
+    "createPr": "Создать PR",
+    "deletePlan": "Удалить план",
+    "completePlan": "Завершить план",
+    "completing": "Завершение…",
+    "pushing": "Отправка…",
+    "unavailable": "Действие «{{action}}» недоступно: {{reason}}"
+  },
+  "completionBlocked": {
+    "title": "Изменения не требуются",
+    "body": "Проверка перед выполнением показала, что изменения не требуются: проблема или задача уже решена. Вы можете удалить этот план, пометить его как пропущенный или убрать в холодильник."
+  },
+  "errors": {
+    "markRecommendation": "Не удалось присвоить рекомендации «{{title}}» статус «{{state}}»: {{error}}",
+    "nothingSelected": "Выберите хотя бы одну рекомендацию для реализации.",
+    "noLongerPending": "Выбранные рекомендации больше не ожидают обработки. Обновите список и повторите попытку.",
+    "implementFailed": "Не удалось реализовать выбранные рекомендации: {{error}}",
+    "reviewActionFailed": "Сбой действия ревью «{{name}}»: {{error}}",
+    "completeFailed": "Не удалось завершить план {{planId}}: {{error}}",
+    "updatePrFailed": "Не удалось обновить PR для плана {{planId}}: {{error}}"
+  },
+  "recommendationState": {
+    "pending": "Ожидает",
+    "accepted": "Принята",
+    "acceptedWithNotes": "Принята с заметками",
+    "declined": "Отклонена"
+  },
+  "tabs": {
+    "summary": "Сводка",
+    "plan": "План",
+    "details": "Сведения",
+    "git": "Git",
+    "changes": "Изменения",
+    "artifacts": "Артефакты",
+    "recommendations": "Рекомендации"
+  },
+  "verifications": {
+    "none": "Нет верификаций",
+    "viewReport": "Показать отчёт {{name}}"
+  },
+  "verificationStatus": {
+    "pending": "Ожидает",
+    "pass": "Пройдена",
+    "fail": "Не пройдена",
+    "skipped": "Пропущена"
+  },
+  "summary": {
+    "loading": "Загрузка сводки…",
+    "fallback": {
+      "heading": "Сводка",
+      "body": "Для этого плана не найдена сводка. Подробности смотрите в верификациях.",
+      "retry": "Чтобы повторить план, используйте `{{resetToDraft}}` или `{{requestChanges}}`."
+    }
+  },
+  "plan": {
+    "noSpecification": "Спецификация плана недоступна."
+  },
+  "details": {
+    "copyToClipboard": "Копировать в буфер обмена",
+    "fields": {
+      "planId": "ID плана",
+      "folder": "Папка",
+      "initialPrompt": "Начальный промпт",
+      "revision": "Ревизия",
+      "profile": "Профиль",
+      "relatedPlans": "Связанные планы",
+      "dependsOn": "Зависит от",
+      "issue": "Задача",
+      "created": "Создан",
+      "level": "Уровень",
+      "project": "Проект",
+      "state": "Состояние"
+    },
+    "repositories": {
+      "heading": "Репозитории",
+      "empty": "Репозитории не указаны"
+    },
+    "commits": {
+      "heading": "Коммиты",
+      "empty": "Коммитов пока нет"
+    },
+    "verifications": {
+      "heading": "Верификации ({{n}})",
+      "empty": "Нет верификаций"
+    }
+  },
+  "git": {
+    "loading": "Загрузка состояния Git…"
+  },
+  "changes": {
+    "loading": "Загрузка изменений…",
+    "empty": "Для этого плана не записано изменений файлов."
+  },
+  "artifacts": {
+    "heading": "Артефакты плана",
+    "description": "Результаты, файлы-примеры и скриншоты, полученные при выполнении.",
+    "loading": "Загрузка артефактов…",
+    "empty": "Для этого плана не найдено артефактов.",
+    "screenshots": "Скриншоты ({{n}})",
+    "otherFiles": "Другие файлы артефактов ({{n}})",
+    "copyPath": "Копировать путь",
+    "open": "Открыть",
+    "openTitle": "Открыть на боковой панели"
+  },
+  "recommendations": {
+    "empty": "Нет рекомендаций.",
+    "implement": "Реализовать",
+    "starting": "Запуск…",
+    "implementHint": "Принимает отмеченные рекомендации и повторяет план, используя их как запрос изменений.",
+    "select": "Выбрать: {{title}}"
+  },
+  "noteDialog": {
+    "submit": "Отправить",
+    "accept": {
+      "title": "Принять рекомендацию",
+      "ariaLabel": "Принять рекомендацию",
+      "noteLabel": "Заметка оператора (необязательно):",
+      "noteAriaLabel": "Необязательная заметка",
+      "placeholder": "Введите заметки (необязательно)…"
+    },
+    "decline": {
+      "title": "Отклонить рекомендацию",
+      "ariaLabel": "Отклонить рекомендацию",
+      "noteLabel": "Причина отклонения:",
+      "noteAriaLabel": "Причина отклонения",
+      "placeholder": "Укажите причину отклонения…"
+    }
+  },
+  "actionsBar": {
+    "tooltip": {
+      "barDisabled": "Недоступно: {{reason}}",
+      "barDisabledDefault": "Недоступно: действия ревью сейчас недоступны",
+      "conditionNotMet": "Недоступно: условие не выполнено",
+      "conditionNotMetWithCondition": "Недоступно: условие не выполнено ({{condition}})",
+      "runCommand": "Запустить: {{command}}",
+      "runCommandWithPorts": "Запустить: {{command}} (порты: {{ports}})",
+      "runAction": "Запустить {{name}}",
+      "runActionWithPorts": "Запустить {{name}} (порты: {{ports}})",
+      "port": "{{name}}: {{port}}",
+      "conditionError": "Недоступно: не удалось вычислить условие: {{reason}}",
+      "conditionErrorWithCondition": "Недоступно: не удалось вычислить условие ({{condition}}): {{reason}}",
+      "starting": "Запуск {{name}}…",
+      "checking": "Проверка условия: {{condition}}"
+    }
+  },
+  "actionView": {
+    "sendComments_one": "Отправить агенту {{count}} комментарий как запрос изменений",
+    "sendComments_few": "Отправить агенту {{count}} комментария как запрос изменений",
+    "sendComments_many": "Отправить агенту {{count}} комментариев как запрос изменений",
+    "sendComments_other": "Отправить агенту {{count}} комментария как запрос изменений",
+    "starting": "Запуск {{name}}…"
+  },
+  "recommendationsPage": {
+    "sidebarTitle": "Рекомендации",
+    "empty": {
+      "title": "Нет рекомендаций",
+      "description": "Здесь появятся рекомендации из завершённых планов"
+    },
+    "position_one": "Рекомендации: <highlight>{{index}}/{{total}}</highlight>",
+    "position_few": "Рекомендации: <highlight>{{index}}/{{total}}</highlight>",
+    "position_many": "Рекомендации: <highlight>{{index}}/{{total}}</highlight>",
+    "position_other": "Рекомендации: <highlight>{{index}}/{{total}}</highlight>",
+    "decline": "Отклонить",
+    "accept": "Принять",
+    "accepting": "Принятие…",
+    "acceptWithNotes": "Принять с заметками",
+    "createIssue": "Создать задачу",
+    "viewPlan": "Открыть план",
+    "refresh": "Обновить",
+    "errors": {
+      "load": "Не удалось загрузить рекомендации: {{error}}",
+      "update": "Не удалось обновить рекомендацию «{{title}}»: {{error}}",
+      "jobNotStarted": "Рекомендация «{{title}}» отмечена как принятая, но задание {{jobType}} не запустилось: {{error}}"
+    }
+  },
+  "impact": {
+    "small": "Низкое",
+    "medium": "Среднее",
+    "high": "Высокое"
+  }
+}

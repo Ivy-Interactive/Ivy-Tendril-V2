@@ -1,6 +1,15 @@
 import "@testing-library/jest-dom";
 import { configure } from "@testing-library/react";
 import { vi } from "vitest";
+import { addCatalogs, i18n } from "../i18n";
+import { catalogs as englishCatalogs } from "../locales/en/index";
+
+// The app renders in English with every catalog present from the first render, as it does after
+// `main.tsx` awaits `initI18n`: installed synchronously here, so no test waits on a lazy chunk. The
+// components' English is already there - that package registers it statically. A key that is in no
+// catalog throws instead of rendering itself, so an extraction typo fails the test that renders it.
+addCatalogs("en", englishCatalogs);
+i18n.setMissingKeyHandler("throw");
 
 // Testing Library's `waitFor` gives up after 1000ms by default, but a vitest test is allowed
 // 5000ms. That asymmetry is a flake generator rather than a safety net: on an unloaded machine

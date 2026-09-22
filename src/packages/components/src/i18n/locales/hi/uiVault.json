@@ -1,0 +1,239 @@
+{
+  "gate": {
+    "github": "वॉल्ट बनाने या कनेक्ट करने के लिए GitHub में साइन इन करें",
+    "vault": "पहले एक वॉल्ट कनेक्ट करें",
+    "busy": "क्रिया पहले से प्रगति में है"
+  },
+  "dialogShell": {
+    "cancel": "रद्द करें"
+  },
+  "assetCategories": {
+    "skills": {
+      "label": "स्किल्स",
+      "badge": "स्किल"
+    },
+    "mcpServers": {
+      "label": "MCP सर्वर",
+      "badge": "MCP"
+    },
+    "memories": {
+      "label": "प्रोजेक्ट मेमोरी",
+      "badge": "मेमोरी"
+    },
+    "reviewActions": {
+      "label": "समीक्षा क्रियाएं",
+      "badge": "क्रिया"
+    },
+    "verifications": {
+      "label": "सत्यापन",
+      "badge": "सत्यापन"
+    }
+  },
+  "assetChecklist": {
+    "selectAll": "सभी चुनें",
+    "selectAllAriaLabel": "सभी {{label}} चुनें",
+    "selectAllAriaLabel_scoped": "{{scope}} के लिए सभी {{label}} चुनें",
+    "deselectAll": "सभी का चयन हटाएं",
+    "deselectAllAriaLabel": "सभी {{label}} का चयन हटाएं",
+    "deselectAllAriaLabel_scoped": "{{scope}} के लिए सभी {{label}} का चयन हटाएं"
+  },
+  "githubAccountTypes": {
+    "user": "उपयोगकर्ता",
+    "organization": "संगठन"
+  },
+  "emptyState": {
+    "title": "टीम कॉन्फ़िगरेशन वॉल्ट",
+    "description": "संस्करण-नियंत्रित Git रिपॉजिटरी के ज़रिए अपनी टीम के साथ Tendril प्रोजेक्ट्स, कस्टम स्किल्स, MCP सर्वर और सुरक्षा नियम साझा और सिंक्रोनाइज़ करें।",
+    "create": "GitHub वॉल्ट बनाएं",
+    "connect": "मौजूदा Git वॉल्ट कनेक्ट करें"
+  },
+  "createDialog": {
+    "title": "GitHub पर टीम वॉल्ट बनाएं",
+    "description": "अपनी टीम के साथ Tendril प्रोजेक्ट कॉन्फ़िग, कस्टम स्किल्स और MCP सर्वर साझा करने के लिए एक निजी GitHub रिपॉजिटरी बनाएं।",
+    "submit": "वॉल्ट बनाएं",
+    "name": {
+      "label": "रिपॉजिटरी का नाम"
+    },
+    "owner": {
+      "label": "स्वामी / संगठन",
+      "placeholder": "स्वामी चुनें",
+      "inputPlaceholder": "उदा. उपयोगकर्ता नाम या संगठन"
+    },
+    "accountOption": "{{login}} ({{type}})",
+    "private": "निजी रिपॉजिटरी"
+  },
+  "connectDialog": {
+    "title": "मौजूदा टीम वॉल्ट कनेक्ट करें",
+    "description": "अपनी टीम के साथ प्रोजेक्ट्स, स्किल्स और कॉन्फ़िगरेशन सिंक्रोनाइज़ करने के लिए किसी मौजूदा Tendril वॉल्ट रिपॉजिटरी को कनेक्ट करें।",
+    "submit": "वॉल्ट कनेक्ट करें",
+    "discovering": "🔍 मौजूदा वॉल्ट के लिए आपका GitHub खाता और संगठन खोजे जा रहे हैं…",
+    "detected": {
+      "label": "पाए गए GitHub वॉल्ट",
+      "placeholder": "रिपॉजिटरी चुनें"
+    },
+    "repoOption": "{{fullName}} ({{accountType}})",
+    "repoOption_private": "{{fullName}} ({{accountType}}, निजी)",
+    "url": {
+      "label": "Git रिपॉजिटरी URL"
+    },
+    "displayName": {
+      "label": "प्रदर्शन नाम (वैकल्पिक)",
+      "placeholder": "उदा. कोर टीम वॉल्ट (वैकल्पिक)"
+    }
+  },
+  "importDialog": {
+    "title": "वॉल्ट से \"{{name}}\" आयात करें",
+    "mergeTitle": "\"{{name}}\" को स्थानीय प्रोजेक्ट के साथ मर्ज करें",
+    "submit": "प्रोजेक्ट आयात करें",
+    "mergeSubmit": "लिंक और मर्ज करें",
+    "collision": "\"{{name}}\" नाम का एक स्थानीय प्रोजेक्ट पहले से मौजूद है। कृपया कोई दूसरा नाम चुनें (उदा. {{suggestion}})।",
+    "mergeCallout": "मर्ज करने से यह वॉल्ट प्रोजेक्ट आपके मौजूदा स्थानीय प्रोजेक्ट \"{{name}}\" से लिंक हो जाएगा। स्थानीय रिपॉजिटरी पथ और बिना विरोध वाली सेटिंग्स सुरक्षित रहेंगी, जबकि चुने गए वॉल्ट एसेट (सत्यापन, क्रियाएं, स्किल्स, MCP, मेमोरी) एकीकृत किए जाएंगे।",
+    "renameNotice": "\"{{name}}\" नाम का एक स्थानीय प्रोजेक्ट पहले से मौजूद है। विरोध से बचने के लिए हमने इस आयात के लिए \"{{suggestion}}\" नाम सुझाया है।",
+    "name": {
+      "label": "स्थानीय प्रोजेक्ट का नाम"
+    },
+    "source": "वॉल्ट स्रोत: {{name}}",
+    "changelog": "चेंजलॉग: {{changelog}}",
+    "repos": {
+      "heading": "रिपॉजिटरी",
+      "description": "डिस्क पर मौजूद स्थानीय फ़ोल्डरों से लिंक करेगा या अनुपलब्ध रिपॉजिटरी को GitHub से स्वचालित रूप से क्लोन करेगा।",
+      "existing": "✓ मौजूदा स्थानीय फ़ोल्डर",
+      "willClone": "GitHub से क्लोन किया जाएगा",
+      "pathAriaLabel": "{{repo}} के लिए स्थानीय पथ"
+    },
+    "assets": {
+      "heading": "आयात करने के लिए एसेट",
+      "empty": {
+        "skills": "इस वॉल्ट प्रोजेक्ट में कोई कस्टम स्किल नहीं है।",
+        "mcpServers": "इस वॉल्ट प्रोजेक्ट में कोई MCP सर्वर नहीं है।",
+        "memories": "इस वॉल्ट प्रोजेक्ट में कोई प्रोजेक्ट मेमोरी Markdown फ़ाइल नहीं है।",
+        "reviewActions": "इस वॉल्ट प्रोजेक्ट में कोई समीक्षा क्रिया नहीं है।",
+        "verifications": "इस वॉल्ट प्रोजेक्ट में कोई सत्यापन नहीं है।"
+      }
+    },
+    "permissions": "सुरक्षा और अनुमति नीतियां आयात करें"
+  },
+  "pushDialog": {
+    "title": "{{vault}} में प्रोजेक्ट जोड़ें (PR बनाएं)",
+    "submit": "प्रकाशित करें और PR खोलें",
+    "projects": {
+      "heading": "प्रकाशित करने के लिए प्रोजेक्ट्स और एसेट",
+      "none": "सभी स्थानीय प्रोजेक्ट्स पहले से किसी वॉल्ट द्वारा ट्रैक किए जा रहे हैं। किसी प्रोजेक्ट को यहाँ जोड़ने के लिए पहले एक नया स्थानीय प्रोजेक्ट बनाएं।",
+      "assetsAriaLabel": "{{project}} के लिए एसेट"
+    },
+    "empty": {
+      "skills": "इस प्रोजेक्ट के लिए कोई कस्टम स्किल कॉन्फ़िगर नहीं है।",
+      "mcpServers": "इस प्रोजेक्ट के लिए कोई MCP सर्वर कॉन्फ़िगर नहीं है।",
+      "memories": "इस प्रोजेक्ट के लिए कोई मेमोरी Markdown फ़ाइल नहीं मिली।",
+      "reviewActions": "इस प्रोजेक्ट के लिए कोई समीक्षा क्रिया कॉन्फ़िगर नहीं है।",
+      "verifications": "इस प्रोजेक्ट के लिए कोई सत्यापन कॉन्फ़िगर नहीं है।"
+    },
+    "summary": {
+      "skills_one": "{{selected}}/{{count}} स्किल",
+      "skills_other": "{{selected}}/{{count}} स्किल्स",
+      "mcpServers_one": "{{selected}}/{{count}} MCP",
+      "mcpServers_other": "{{selected}}/{{count}} MCP",
+      "memories_one": "{{selected}}/{{count}} मेमोरी",
+      "memories_other": "{{selected}}/{{count}} मेमोरी",
+      "reviewActions_one": "{{selected}}/{{count}} क्रिया",
+      "reviewActions_other": "{{selected}}/{{count}} क्रियाएं",
+      "verifications_one": "{{selected}}/{{count}} सत्यापन",
+      "verifications_other": "{{selected}}/{{count}} सत्यापन",
+      "none": "0 एसेट"
+    },
+    "permissions": "सुरक्षा और अनुमति नीतियां शामिल करें",
+    "release": {
+      "heading": "रिलीज़ विवरण",
+      "version": {
+        "label": "संस्करण टैग (UTC टाइमस्टैम्प)"
+      },
+      "changelog": {
+        "label": "चेंजलॉग / रिलीज़ नोट्स",
+        "placeholder": "अपडेट, नई स्किल्स, MCP सर्वर या सुरक्षा नीति परिवर्तनों का सारांश…"
+      },
+      "reviewers": {
+        "label": "PR समीक्षकों का अनुरोध करें",
+        "placeholder": "उदा. alice, bob (अल्पविराम से अलग किए गए GitHub उपयोगकर्ता नाम)"
+      }
+    },
+    "prOpened": "पुल रिक्वेस्ट सफलतापूर्वक खोला गया: {{url}}"
+  },
+  "confirmDelete": {
+    "title": "वॉल्ट से \"{{projectName}}\" हटाएं?",
+    "submit": "हटाने का PR बनाएं",
+    "warning": "यह वॉल्ट रिपॉजिटरी से प्रोजेक्ट \"{{projectName}}\" और उससे जुड़े सभी मैनिफ़ेस्ट, स्किल्स, MCP कॉन्फ़िग और मेमोरी हटा देगा।",
+    "note": "यह हटाने के लिए वॉल्ट रिपॉजिटरी पर एक नई शाखा और पुल रिक्वेस्ट खोले जाएंगे।"
+  },
+  "projectsTable": {
+    "addTrackedProject": "ट्रैक किया जाने वाला प्रोजेक्ट जोड़ें",
+    "loading": "साझा प्रोजेक्ट्स लोड हो रहे हैं…",
+    "empty": {
+      "title": "कोई साझा प्रोजेक्ट नहीं",
+      "description": "इस वॉल्ट में अभी तक कोई साझा प्रोजेक्ट नहीं है। अपनी टीम के साथ साझा करने के लिए कोई स्थानीय प्रोजेक्ट जोड़ें।"
+    },
+    "columns": {
+      "project": "प्रोजेक्ट",
+      "version": "संस्करण",
+      "actions": "क्रियाएं",
+      "syncStatus": "सिंक स्थिति",
+      "contents": "सामग्री",
+      "changelog": "चेंजलॉग / संदर्भ"
+    },
+    "actions": {
+      "import": "आयात करें",
+      "linkMerge": "लिंक और मर्ज करें",
+      "importAs": "इस रूप में आयात करें…",
+      "update": "अपडेट करें",
+      "publish": "प्रकाशित करें",
+      "openPr": "PR खोलें",
+      "publishTooltip": "वॉल्ट में \"{{name}}\" को अपडेट करने के लिए PR खोलें",
+      "delete": "वॉल्ट से \"{{name}}\" हटाएं"
+    },
+    "syncStatus": {
+      "upToDate": "✓ सिंक में",
+      "modified": "स्थानीय परिवर्तन",
+      "updateAvailable": "अपडेट उपलब्ध",
+      "localOnly": "केवल स्थानीय",
+      "notImported": "आयात नहीं किया गया",
+      "conflict": "नाम विरोध"
+    },
+    "contents": {
+      "repos_one": "{{count}} रिपो",
+      "repos_other": "{{count}} रिपो",
+      "skills_one": "{{count}} स्किल",
+      "skills_other": "{{count}} स्किल्स",
+      "mcps_one": "{{count}} MCP",
+      "mcps_other": "{{count}} MCP",
+      "memories_one": "{{count}} मेमोरी",
+      "memories_other": "{{count}} मेमोरी",
+      "reviewActions_one": "{{count}} क्रिया",
+      "reviewActions_other": "{{count}} क्रियाएं",
+      "verifications_one": "{{count}} सत्यापन",
+      "verifications_other": "{{count}} सत्यापन"
+    }
+  },
+  "statusCard": {
+    "fallbackName": "टीम वॉल्ट",
+    "sync": {
+      "behind_one": "{{count}} पीछे",
+      "behind_other": "{{count}} पीछे",
+      "ahead_one": "{{count}} आगे",
+      "ahead_other": "{{count}} आगे",
+      "inSync": "सिंक में"
+    },
+    "details": {
+      "vault": "वॉल्ट",
+      "branch": "शाखा",
+      "status": "स्थिति",
+      "lastSynced": "अंतिम सिंक"
+    },
+    "openOnGitHub": "GitHub पर खोलें",
+    "syncedStatus": "✓ {{status}}",
+    "lastSynced": {
+      "never": "कभी नहीं",
+      "value": "{{date}} {{time}} UTC"
+    },
+    "alwaysInSync": "हमेशा सिंक में",
+    "disconnect": "वॉल्ट डिस्कनेक्ट करें"
+  }
+}

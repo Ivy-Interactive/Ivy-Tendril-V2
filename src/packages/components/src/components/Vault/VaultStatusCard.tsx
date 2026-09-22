@@ -1,5 +1,6 @@
 import React from "react";
 import { ExternalLink, Unlink } from "lucide-react";
+import { i18n, useFormatters, useTranslation, type TFunction } from "@/i18n/uiVault";
 import { Button } from "../ui/button";
 import { Checkbox } from "../ui/checkbox";
 import { DetailItem, Details } from "../ui/detail";
@@ -23,32 +24,52 @@ export function formatVaultRepo(status: VaultStatus): string {
   if (status.repoUrl) {
     return status.repoUrl.replace("https://github.com/", "").replace(/\.git$/, "");
   }
-  return status.name || "Team Vault";
+  return status.name || i18n.t("uiVault:statusCard.fallbackName");
 }
 
 /** "N behind" outranks "N ahead": what the vault has that you do not is the actionable half. */
 export function formatVaultSync(status: VaultStatus): string {
-  if (status.commitsBehind > 0) return `${status.commitsBehind} behind`;
-  if (status.commitsAhead > 0) return `${status.commitsAhead} ahead`;
-  return "In sync";
+  if (status.commitsBehind > 0) {
+    return i18n.t("uiVault:statusCard.sync.behind", { count: status.commitsBehind });
+  }
+  if (status.commitsAhead > 0) {
+    return i18n.t("uiVault:statusCard.sync.ahead", { count: status.commitsAhead });
+  }
+  return i18n.t("uiVault:statusCard.sync.inSync");
 }
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-
-/**
- * `MMM d, yyyy HH:mm UTC`, the format `VaultSetupView.cs` prints `LastSyncedAt` in. The month names
- * are spelled out here rather than left to `toLocaleString`, so the label does not drift with the
- * machine's locale.
+/*
+ * The date and the time of day of `LastSyncedAt`, both in UTC. In English they read
+ * `MMM d, yyyy` and `HH:mm`, the format `VaultSetupView.cs` prints it in (`Jan 2, 2026 03:04 UTC`);
+ * other languages get their own month names and order, never the machine's locale.
  */
-function formatLastSynced(lastSyncedAt?: string | null): string {
-  if (!lastSyncedAt) return "Never";
+const LAST_SYNCED_DATE: Intl.DateTimeFormatOptions = {
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  timeZone: "UTC",
+};
+const LAST_SYNCED_TIME: Intl.DateTimeFormatOptions = {
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+  timeZone: "UTC",
+};
+
+function formatLastSynced(
+  t: TFunction,
+  format: ReturnType<typeof useFormatters>,
+  lastSyncedAt?: string | null,
+): string {
+  if (!lastSyncedAt) return t("statusCard.lastSynced.never");
   const parsed = new Date(lastSyncedAt);
-  if (Number.isNaN(parsed.getTime()) || parsed.getUTCFullYear() <= 1) return "Never";
-  const pad = (value: number) => String(value).padStart(2, "0");
-  const day = parsed.getUTCDate();
-  const month = MONTHS[parsed.getUTCMonth()];
-  const time = `${pad(parsed.getUTCHours())}:${pad(parsed.getUTCMinutes())}`;
-  return `${month} ${day}, ${parsed.getUTCFullYear()} ${time} UTC`;
+  if (Number.isNaN(parsed.getTime()) || parsed.getUTCFullYear() <= 1) {
+    return t("statusCard.lastSynced.never");
+  }
+  return t("statusCard.lastSynced.value", {
+    date: format.date(parsed, LAST_SYNCED_DATE),
+    time: format.time(parsed, LAST_SYNCED_TIME),
+  });
 }
 
 /**
@@ -67,8 +88,11 @@ export const VaultStatusCard: React.FC<VaultStatusCardProps> = ({
   isBusy = false,
   gate,
 }) => {
+  const { t } = useTranslation("uiVault");
+  const format = useFormatters();
   const repo = formatVaultRepo(status);
-  const url = status.repoUrl || `https://github.com/${repo}`;
+  /* Built from the vault's own name, never from the translated fallback label `repo` may carry. */
+  const url = status.repoUrl || `https://github.com/${status.name}`;
   const syncText = formatVaultSync(status);
   const effectiveGate =
     gate ??
@@ -82,7 +106,7 @@ export const VaultStatusCard: React.FC<VaultStatusCardProps> = ({
   return (
     <div className="space-y-2" data-testid="vault-status-card">
       <Details>
-        <DetailItem label="Vault">
+        <DetailItem label={t("statusCard.details.vault")}>
           <span className="flex items-center justify-end gap-1">
             {/* `link` is this treatment exactly - `text-primary underline-offset-4 hover:underline`
                 in `buttonVariant` - so the hand-rolled copy was one more place the shared link had
@@ -97,7 +121,7 @@ export const VaultStatusCard: React.FC<VaultStatusCardProps> = ({
               {repo}
             </Button>
             <IconButton
-              label="Open on GitHub"
+              label={t("statusCard.openOnGitHub")}
               variant="ghost"
               size="sm"
               onClick={() => onOpenUrl?.(url)}
@@ -106,10 +130,11 @@ export const VaultStatusCard: React.FC<VaultStatusCardProps> = ({
             </IconButton>
           </span>
         </DetailItem>
-        <DetailItem label="Branch">
+        <DetailItem label={t("statusCard.details.branch")}>
+          {/* A branch name, not copy: `main` is what the vault checks out when it names none. */}
           <span className="font-mono">{status.currentBranch || "main"}</span>
         </DetailItem>
-        <DetailItem label="Status">
+        <DetailItem label={t("statusCard.details.status")}>
           {/* Behind is the only state that is wrong rather than merely unpublished, so it is the
               only one tinted; ahead reads as plain foreground and in-sync as a muted tick, exactly
               as the `GitStatus` builder decides in `VaultSetupView.cs`. */}
@@ -123,11 +148,15 @@ export const VaultStatusCard: React.FC<VaultStatusCardProps> = ({
             }
             data-testid="vault-git-status"
           >
-            {status.commitsBehind > 0 || status.commitsAhead > 0 ? syncText : `✓ ${syncText}`}
+            {status.commitsBehind > 0 || status.commitsAhead > 0
+              ? syncText
+              : t("statusCard.syncedStatus", { status: syncText })}
           </span>
         </DetailItem>
-        <DetailItem label="Last Synced">
-          <span className="text-muted-foreground">{formatLastSynced(status.lastSyncedAt)}</span>
+        <DetailItem label={t("statusCard.details.lastSynced")}>
+          <span className="text-muted-foreground">
+            {formatLastSynced(t, format, status.lastSyncedAt)}
+          </span>
         </DetailItem>
       </Details>
 
@@ -141,7 +170,7 @@ export const VaultStatusCard: React.FC<VaultStatusCardProps> = ({
             checked={status.alwaysUpToDate}
             onCheckedChange={(checked) => onAlwaysUpToDateChange(checked === true)}
           />
-          Always in sync
+          {t("statusCard.alwaysInSync")}
         </label>
         <GatedActionButton
           gate={effectiveGate}
@@ -151,7 +180,7 @@ export const VaultStatusCard: React.FC<VaultStatusCardProps> = ({
           onClick={onDisconnect}
         >
           <Unlink className="mr-1.5 size-3.5" aria-hidden="true" />
-          Disconnect Vault
+          {t("statusCard.disconnect")}
         </GatedActionButton>
       </div>
     </div>

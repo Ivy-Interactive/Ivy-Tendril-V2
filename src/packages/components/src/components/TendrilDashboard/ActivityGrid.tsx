@@ -1,6 +1,7 @@
 import React, { useMemo } from "react";
 import { type DashboardActivityMonthDto, rampLevel } from "./types.ts";
 import { HoverTip, useHoverTip } from "./HoverTip.tsx";
+import { useFormatters, useTranslation } from "@/i18n/uiShell";
 
 interface ActivityGridProps {
   months: DashboardActivityMonthDto[];
@@ -39,12 +40,14 @@ const weekStartDates = (month: DashboardActivityMonthDto): Map<number, Date> => 
 /** One column per month; each week with activity renders as a cell stacked
     from the bottom, shaded by that week's intensity relative to the range. */
 export const ActivityGrid: React.FC<ActivityGridProps> = ({ months }) => {
+  const { t } = useTranslation("uiShell");
+  const format = useFormatters();
   const { wrapRef, tip, showTip, hideTip } = useHoverTip();
 
   const maxWeek = useMemo(() => Math.max(0, ...months.flatMap((m) => m.weeks)), [months]);
 
   if (months.length === 0 || maxWeek === 0) {
-    return <div className="tdb-empty-note">No merged pull requests yet</div>;
+    return <div className="tdb-empty-note">{t("activityGrid.empty")}</div>;
   }
 
   // Label every other month when the range is long, always including the last.
@@ -64,13 +67,15 @@ export const ActivityGrid: React.FC<ActivityGridProps> = ({ months }) => {
                   .map(({ count, weekIndex }) => {
                     const weekStart = starts.get(weekIndex);
                     const title = weekStart
-                      ? `Week of ${weekStart.toLocaleDateString("en-US", {
-                          weekday: "short",
-                          month: "short",
-                          day: "numeric",
-                        })}`
+                      ? t("activityGrid.weekOf", {
+                          date: format.date(weekStart, {
+                            weekday: "short",
+                            month: "short",
+                            day: "numeric",
+                          }),
+                        })
                       : month.label;
-                    const body = `${count} pull request${count === 1 ? "" : "s"} merged`;
+                    const body = t("activityGrid.merged", { count });
                     return (
                       <div
                         key={weekIndex}

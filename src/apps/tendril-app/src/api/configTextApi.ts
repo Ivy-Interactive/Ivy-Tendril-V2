@@ -20,6 +20,7 @@
 
 import { invoke } from "@tauri-apps/api/core";
 import { isTauri } from "../utils/tauri";
+import { i18n } from "../i18n";
 
 /** `GET /api/config/text`. `maskedPaths` is document order, e.g. `llm.apiKey`. */
 export interface MaskedConfigText {
@@ -48,7 +49,7 @@ async function readError(response: Response): Promise<string> {
     .json()
     .then((payload: { error?: string }) => payload.error)
     .catch(() => undefined);
-  return detail ?? `Request to ${PATH} failed (${response.status})`;
+  return detail ?? i18n.t("common:errors.requestFailed", { path: PATH, status: response.status });
 }
 
 const httpRead: ConfigTextTransport = async () => {

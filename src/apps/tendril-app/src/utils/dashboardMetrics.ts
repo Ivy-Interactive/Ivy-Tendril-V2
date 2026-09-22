@@ -20,8 +20,17 @@ import type {
   RecentPlanCost,
   ShippedFeatureDay,
 } from "../types/api";
+import {
+  formatCurrency as formatMoney,
+  formatDate,
+  formatNumber,
+} from "@ivy-interactive/components/i18n";
+import { i18n } from "../i18n";
 import { toDayNumber, todayDayNumber } from "./rollingAverage";
 import { NO_VALUE, formatTokensCompact } from "./format";
+
+/** The dashboard's strings, in the language current at each call. */
+const t = i18n.getFixedT(null, "dashboard");
 
 /** Months plotted on the trend chart. The other 12 the daemon returns are the comparison year. */
 export const TREND_MONTHS = 12;
@@ -36,23 +45,11 @@ export const KPI_WINDOW_DAYS = 30;
  */
 export const ACTIVITY_WEEKS = 4;
 
-const MONTH_LABELS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
-
+/** The month's short name in the current language ("Sep" in English); the number if it is not one. */
 const monthLabel = (month: DashboardMonthStats): string =>
-  MONTH_LABELS[month.month - 1] ?? String(month.month);
+  Number.isInteger(month.month) && month.month >= 1 && month.month <= 12
+    ? formatDate(Date.UTC(month.year, month.month - 1, 1), { month: "short", timeZone: "UTC" })
+    : String(month.month);
 
 /** `YYYY-MM`, matching the prefix of every date string the daemon returns. */
 const monthKey = (year: number, month: number): string =>
@@ -69,15 +66,70 @@ const monthKey = (year: number, month: number): string =>
  */
 export { NO_VALUE };
 
+/**
+ * `value` rounded to `digits` decimals the way `toFixed` rounds it: on the binary value, so `0.145`
+ * is `0.14`. `Intl` rounds the shortest decimal instead (`0.145` is `0.15`), which would move a
+ * figure by a cent at every such tie. So the arithmetic here decides the digits, as it always has,
+ * and the formatters only write them - separators, the currency symbol and where it goes - in the
+ * current language.
+ */
+const roundAsToFixed = (value: number, digits: number): number => Number(value.toFixed(digits));
+
+/**
+ * Two decimals and no grouping, as `toFixed(2)` wrote them. Below a thousand there is nothing to
+ * group, except where the rounding carries into the thousands: 999.995 is `$1000.00`, as it was,
+ * and not `$1,000.00`.
+ */
+const CENTS: Intl.NumberFormatOptions = {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+  useGrouping: false,
+};
+const UP_TO_ONE_DECIMAL: Intl.NumberFormatOptions = {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 1,
+};
+const WHOLE: Intl.NumberFormatOptions = { minimumFractionDigits: 0, maximumFractionDigits: 0 };
+
+/** Whole dollars with the language's grouping: `$1,235` in English. */
+export const formatWholeDollars = (value: number): string =>
+  formatMoney(Math.round(value), "USD", WHOLE);
+
+/** Cents below a thousand dollars, whole dollars above: `$6.67`, `$1,235` in English. */
 export const formatCurrency = (value: number): string =>
-  value >= 1000 ? `$${Math.round(value).toLocaleString("en-US")}` : `$${value.toFixed(2)}`;
+  value >= 1000 ? formatWholeDollars(value) : formatMoney(roundAsToFixed(value, 2), "USD", CENTS);
 
-/** `"1.0"` to `"1"`, so a round figure does not spend a character saying so. */
-const trimDotZero = (mantissa: string): string =>
-  mantissa.endsWith(".0") ? mantissa.slice(0, -2) : mantissa;
+/**
+ * A percentage that is already a percentage (`38` for 38%, not `0.38`), in the language's own
+ * shape: `38%` in English, `38 %` in German. `Intl`'s `percent` unit, because its `percent` *style*
+ * multiplies by 100 and so rounds a figure the caller had already rounded.
+ *
+ * The caller rounds, with the same arithmetic it always used, and passes the number of decimals it
+ * kept; `signDisplay: "always"` is the `+12%` / `-3%` of a delta. No grouping, as `toFixed` had
+ * none: a `+1250%` jump stays one run of digits.
+ */
+export function formatPercentValue(
+  value: number,
+  maximumFractionDigits = 0,
+  signDisplay?: "always",
+): string {
+  return formatNumber(value, {
+    style: "unit",
+    unit: "percent",
+    minimumFractionDigits: 0,
+    maximumFractionDigits,
+    useGrouping: false,
+    ...(signDisplay ? { signDisplay } : {}),
+  });
+}
 
-/** Units the compact currency ladder climbs, in order. */
-const COMPACT_UNITS = ["k", "M", "B", "T"];
+/** The compact ladder's units, in order: `$1.2k`, `$1.2M`, `$1.2B`, `$1.2T` in English. */
+const COMPACT_UNIT_KEYS = [
+  "format.currencyCompact.thousand",
+  "format.currencyCompact.million",
+  "format.currencyCompact.billion",
+  "format.currencyCompact.trillion",
+] as const;
 
 /**
  * A cost at two or three significant figures, never wider than five characters: `$0.00`, `$9.99`,
@@ -111,28 +163,42 @@ const COMPACT_UNITS = ["k", "M", "B", "T"];
  * rather than `$1000`, and 999_500 is `$1M` rather than `$1000k`. A trailing `.0` is always dropped,
  * so a round thousand is `$1k` and ten thousand is `$10k`. The guarantee holds up to `$999T`,
  * comfortably past any month a coding agent can bill for.
+ *
+ * Those widths are the English ones. The digits are decided here in every language, but the symbol,
+ * the separator and the unit are the language's: below a thousand the currency formatter writes them,
+ * and above it the catalog does (`format.currencyCompact.*`, `${{value}}k` in English), so a language
+ * that writes `1,2 Tsd. $` can say so - at the cost of the budget, which only English is held to.
  */
 export function formatCurrencyCompact(value: number): string {
-  const sign = value < 0 ? "-" : "";
+  const negative = value < 0;
   const magnitude = Math.abs(value);
   if (!Number.isFinite(magnitude)) return NO_VALUE;
+  const signed = (amount: number): number => (negative ? -amount : amount);
 
   // Single dollars: the cents are the figure, and two of them cost no extra characters.
-  if (magnitude < 9.995) return `${sign}$${magnitude.toFixed(2)}`;
+  if (magnitude < 9.995) return formatMoney(signed(roundAsToFixed(magnitude, 2)), "USD", CENTS);
   // Tens: one decimal. Hundreds: none — the tenth of a dollar is not a fact about next month.
-  if (magnitude < 99.95) return `${sign}$${trimDotZero(magnitude.toFixed(1))}`;
-  if (magnitude < 999.5) return `${sign}$${Math.round(magnitude)}`;
+  // A trailing `.0` is dropped by the format itself (`minimumFractionDigits: 0`).
+  if (magnitude < 99.95) {
+    return formatMoney(signed(roundAsToFixed(magnitude, 1)), "USD", UP_TO_ONE_DECIMAL);
+  }
+  if (magnitude < 999.5) return formatMoney(signed(Math.round(magnitude)), "USD", WHOLE);
 
   let scaled = magnitude / 1000;
   let unit = 0;
   // Climb until the mantissa is under a thousand, so 999_500 is `$1M` and never `$1000k`.
-  while (scaled >= 999.5 && unit < COMPACT_UNITS.length - 1) {
+  while (scaled >= 999.5 && unit < COMPACT_UNIT_KEYS.length - 1) {
     scaled /= 1000;
     unit += 1;
   }
   // Same shape one unit up: a decimal below ten, whole numbers above it.
-  const mantissa = scaled < 9.995 ? trimDotZero(scaled.toFixed(1)) : String(Math.round(scaled));
-  return `${sign}$${mantissa}${COMPACT_UNITS[unit]}`;
+  const mantissa = scaled < 9.995 ? roundAsToFixed(scaled, 1) : Math.round(scaled);
+  const figure = t(COMPACT_UNIT_KEYS[unit], {
+    value: formatNumber(mantissa, { ...UP_TO_ONE_DECIMAL, useGrouping: false }),
+  });
+  // The sign leads the whole figure, `-$1.2k`, as it always has; no cost the dashboard shows is
+  // negative, so this is a guard rather than a case any language has to phrase.
+  return negative ? `-${figure}` : figure;
 }
 
 /**
@@ -149,10 +215,15 @@ export const COMPACT_CURRENCY_MAX_CHARS = 5;
  * dash on a currency figure reads as a minus sign. Gluing the dash to the lower bound leaves exactly
  * one break opportunity, so the range either sits on one line or wraps as `$1.2k –` / `$3.4k`.
  * `.tdb-kpi-value` supplies the wrapping half (`white-space: normal`, `min-width: 0`).
+ *
+ * The range itself is the catalog's (`kpis.forecastMonth.range`), since a language may write a range
+ * its own way; the English there is `{{lower}}` + this separator + `{{upper}}`, with a real U+00A0.
+ * The forecast-range test holds the English range to this constant.
  */
 export const RANGE_SEPARATOR = "\u00a0\u2013 ";
 
-const formatRange = (lower: string, upper: string): string => `${lower}${RANGE_SEPARATOR}${upper}`;
+const formatRange = (lower: string, upper: string): string =>
+  t("kpis.forecastMonth.range", { lower, upper });
 
 /**
  * The Tokens Consumed KPI's figure. Shared with the Pull Requests table, which had copied this
@@ -164,8 +235,9 @@ export { formatTokensCompact };
 const percentChange = (current: number, previous: number): number | null =>
   previous > 0 ? ((current - previous) / previous) * 100 : null;
 
+/** `+12%`, `-3%`, and `+0%` for no change, as V1 wrote it; `toFixed(0)` still decides the digits. */
 const formatDelta = (change: number | null): string | undefined =>
-  change == null ? undefined : `${change >= 0 ? "+" : ""}${change.toFixed(0)}%`;
+  change == null ? undefined : formatPercentValue(roundAsToFixed(change, 0), 0, "always");
 
 const deltaDirection = (change: number | null): "up" | "down" | null => {
   if (change == null) return null;
@@ -289,14 +361,17 @@ export function buildKpis({
   // features that shipped were free to us, which is a different unknown from "cheap".
   const costPerFeature: DashboardKpiDto = {
     id: "costPerFeature",
-    label: "Avg Cost / Feature",
-    value: features > 0 && spend > 0 ? formatCurrency(spend / features) : "n/a",
+    label: t("kpis.costPerFeature.label"),
+    value:
+      features > 0 && spend > 0
+        ? formatCurrency(spend / features)
+        : t("kpis.costPerFeature.noValue"),
     hint:
       features === 0
-        ? `no features shipped in ${KPI_WINDOW_DAYS} days`
+        ? t("kpis.costPerFeature.hintNoFeatures", { count: KPI_WINDOW_DAYS })
         : spend === 0
-          ? `no priced spend in ${KPI_WINDOW_DAYS} days`
-          : `${formatCurrency(spend)} over ${features} features`,
+          ? t("kpis.costPerFeature.hintNoSpend", { count: KPI_WINDOW_DAYS })
+          : t("kpis.costPerFeature.hint", { spend: formatCurrency(spend), count: features }),
     delta: formatDelta(percentChange(spend, priorSpend)),
     direction: deltaDirection(percentChange(spend, priorSpend)),
   };
@@ -310,7 +385,7 @@ export function buildKpis({
   const upperText = upper == null ? null : formatCurrencyCompact(upper);
   const forecastMonth: DashboardKpiDto = {
     id: "forecastMonth",
-    label: "Forecast This Month",
+    label: t("kpis.forecastMonth.label"),
     // Collapsed on the rendered *text*, not on the raw floats. The bases coincide whenever every day
     // in the window had spend, and rounding brings them together whenever they are within a
     // significant figure of each other — and `$1.2k – $1.2k` states a band the card cannot show.
@@ -322,8 +397,11 @@ export function buildKpis({
           : formatRange(lowerText, upperText),
     hint:
       lower == null || upper == null
-        ? "no spend recorded to project from"
-        : `${forecast.calendarDays}d calendar to ${forecast.activityDays}d activity basis`,
+        ? t("kpis.forecastMonth.hintNoSpend")
+        : t("kpis.forecastMonth.hint", {
+            calendarDays: forecast.calendarDays,
+            activityDays: forecast.activityDays,
+          }),
   };
 
   // The daemon supplies only the prior week's average, so the current one is computed here from the
@@ -342,12 +420,12 @@ export function buildKpis({
 
   const avgCostPlan: DashboardKpiDto = {
     id: "avgCostPlan",
-    label: "Avg Cost / Plan",
+    label: t("kpis.avgCostPlan.label"),
     value: currentAvg == null ? NO_VALUE : formatCurrency(currentAvg),
     hint:
       activity.prevWeekAvgCost > 0
-        ? `vs ${formatCurrency(activity.prevWeekAvgCost)} prior week`
-        : "no priced plans in the prior week",
+        ? t("kpis.avgCostPlan.hint", { cost: formatCurrency(activity.prevWeekAvgCost) })
+        : t("kpis.avgCostPlan.hintNoPrior"),
     delta: formatDelta(avgChange),
     direction: deltaDirection(avgChange),
   };
@@ -355,9 +433,9 @@ export function buildKpis({
   return [
     {
       id: "featuresShipped",
-      label: "Features Shipped",
+      label: t("kpis.featuresShipped.label"),
       value: String(features),
-      hint: `last ${KPI_WINDOW_DAYS} days`,
+      hint: t("kpis.featuresShipped.hint", { count: KPI_WINDOW_DAYS }),
       delta: formatDelta(featureChange),
       direction: deltaDirection(featureChange),
     },
@@ -366,12 +444,14 @@ export function buildKpis({
     avgCostPlan,
     {
       id: "tokensConsumed",
-      label: "Tokens Consumed",
+      label: t("kpis.tokensConsumed.label"),
       value: formatTokensCompact(tokens),
       hint:
         forecast.subsidizedTokenPercent > 0
-          ? `${forecast.subsidizedTokenPercent.toFixed(0)}% subsidized`
-          : `last ${KPI_WINDOW_DAYS} days`,
+          ? t("kpis.tokensConsumed.hintSubsidized", {
+              percent: formatPercentValue(roundAsToFixed(forecast.subsidizedTokenPercent, 0)),
+            })
+          : t("kpis.tokensConsumed.hint", { count: KPI_WINDOW_DAYS }),
       delta: formatDelta(tokenChange),
       direction: deltaDirection(tokenChange),
     },

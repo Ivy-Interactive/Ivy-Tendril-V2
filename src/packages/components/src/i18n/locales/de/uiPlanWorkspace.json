@@ -1,0 +1,230 @@
+{
+  "workspace": {
+    "moreActions": {
+      "label": "Weitere Aktionen",
+      "tooltip": "Mehr",
+      "menuAriaLabel": "Weitere Aktionen"
+    },
+    "source": "Quelle",
+    "verifications": "Verifikationen",
+    "questions": "Fragen",
+    "resizer": {
+      "tooltip": "Ziehen zum Ändern der Größe, Doppelklick zum Zurücksetzen",
+      "ariaLabel": "Chatgröße ändern"
+    },
+    "chatAriaLabel": "Plan-Chat"
+  },
+  "diffView": {
+    "empty": "Kein Diff vorhanden",
+    "fileCount_one": "{{count}} Datei",
+    "fileCount_other": "{{count}} Dateien",
+    "jumpToFile": {
+      "ariaLabel": "Zu Datei springen",
+      "placeholder": "Zu Datei springen…"
+    },
+    "untitledFile": "Diff {{index}}",
+    "untitledPath": "Diff",
+    "viewed": "Angesehen",
+    "commentToggle": {
+      "noneTooltip": "Keine Kommentare zu dieser Datei",
+      "showTooltip_one": "{{count}} Kommentar anzeigen",
+      "showTooltip_other": "{{count}} Kommentare anzeigen",
+      "hideTooltip_one": "{{count}} Kommentar ausblenden",
+      "hideTooltip_other": "{{count}} Kommentare ausblenden",
+      "showAriaLabel": "Kommentare anzeigen",
+      "hideAriaLabel": "Kommentare ausblenden"
+    },
+    "comment": {
+      "draftAuthor": "Agenten-Anweisung (Entwurf)",
+      "resolvedBadge": "✓ Gelöst",
+      "edit": "Bearbeiten",
+      "reopenTooltip": "Kommentar erneut öffnen",
+      "resolveTooltip": "Kommentar als gelöst markieren",
+      "unresolve": "Als ungelöst markieren",
+      "resolve": "Auflösen",
+      "deleteTooltip": "Kommentar löschen",
+      "deleteAriaLabel": "Kommentar löschen",
+      "delete": "Löschen"
+    },
+    "commentForm": {
+      "title": "Agenten-Anweisung",
+      "editTitle": "Agenten-Anweisung bearbeiten",
+      "placeholder": "Anweisung für den Agenten zu dieser Zeile eingeben…",
+      "cancel": "Abbrechen",
+      "add": "Kommentar hinzufügen",
+      "update": "Kommentar aktualisieren"
+    }
+  },
+  "changesView": {
+    "empty": "Keine Dateiänderungen.",
+    "treeAriaLabel": "Geänderte Dateien",
+    "fileCount_one": "{{count}} Datei",
+    "fileCount_other": "{{count}} Dateien",
+    "jumpToFile": {
+      "ariaLabel": "Zu Datei springen",
+      "placeholder": "Zu Datei springen…"
+    }
+  },
+  "gitView": {
+    "atRisk": {
+      "title": "Gefährdete Commits",
+      "unreachable_one": "{{count}} Commit ist von keinem Branch, Tag oder Remote aus erreichbar: <hashes/>. Er existiert nur als loses Objekt, daher zerstört ihn der nächste <code>{{gcCommand}}</code> im Repo. Geben Sie ihm eine Ref, um ihn zu behalten: <code>{{recoverCommand}}</code>.",
+      "unreachable_other": "{{count}} Commits sind von keinem Branch, Tag oder Remote aus erreichbar: <hashes/>. Sie existieren nur als lose Objekte, daher zerstört sie der nächste <code>{{gcCommand}}</code> im Repo. Geben Sie einem davon eine Ref, um ihn zu behalten: <code>{{recoverCommand}}</code>.",
+      "missing_one": "{{count}} Commit wurde in den Repos des Plans überhaupt nicht gefunden: <hashes/>. Entweder wurde das Objekt bereits bereinigt, oder das Repo, in dem es erstellt wurde, gehört nicht zu den Repos des Plans.",
+      "missing_other": "{{count}} Commits wurden in den Repos des Plans überhaupt nicht gefunden: <hashes/>. Entweder wurde das Objekt bereits bereinigt, oder das Repo, in dem es erstellt wurde, gehört nicht zu den Repos des Plans.",
+      "hashSeparator": ", ",
+      "badge": {
+        "unreachable": "nicht erreichbar",
+        "missing": "nicht gefunden"
+      }
+    },
+    "commitTable": {
+      "commit": "Commit",
+      "message": "Nachricht",
+      "files": "Dateien",
+      "unresolved": "(nicht aufgelöster Commit)"
+    },
+    "worktrees": {
+      "heading": "Worktrees",
+      "emptyFinished": "Die Worktrees wurden entfernt, nachdem der Plan seinen Endstatus erreicht hatte.",
+      "emptyNeverCreated": "Die Worktrees wurden nie erstellt oder von der Bereinigung veralteter Worktrees entfernt, nachdem der Plan länger als vorgesehen inaktiv war.",
+      "emptyUnknown": "Die Worktrees wurden entfernt oder nie erstellt.",
+      "copyPath": "Pfad zu {{name}} kopieren",
+      "repository": "Repository",
+      "base": "Basis",
+      "worktree": "Worktree",
+      "head": "Head",
+      "detachedHead": "losgelöster HEAD",
+      "uncommittedChanges": "Dieser Worktree hat nicht committete Änderungen. Sie gehören zu keinem Commit, daher schützt sie nichts.",
+      "noCommits": "(keine Commits)"
+    },
+    "commits": {
+      "heading": "Commits",
+      "description": "Im Plan erfasst, aber von keinem Worktree aus erreichbar, den der Plan noch hat – meist, weil der Worktree nach dem Mergen des PRs entfernt wurde."
+    },
+    "pullRequests": {
+      "heading": "Pull Requests",
+      "repository": "Repository",
+      "pr": "PR"
+    },
+    "empty": "Dieser Plan hat noch keine Worktrees, Commits oder Pull Requests."
+  },
+  "alert": {
+    "note": "Hinweis",
+    "tip": "Tipp",
+    "important": "Wichtig",
+    "warning": "Warnung",
+    "caution": "Vorsicht"
+  },
+  "diagram": {
+    "loading": "Diagramm wird geladen…",
+    "invalidGraphviz": "Ungültige Graphviz-DOT-Syntax",
+    "invalidMermaid": "Ungültige Mermaid-Diagrammsyntax"
+  },
+  "codeBlock": {
+    "copy": "In die Zwischenablage kopieren"
+  },
+  "image": {
+    "loadFailed": "Bild konnte nicht geladen werden",
+    "close": "Schließen"
+  },
+  "search": {
+    "placeholder": "Im Dokument suchen…",
+    "ariaLabel": "Im Dokument suchen",
+    "noMatches": "Keine Treffer",
+    "position": "{{current}} von {{total}}",
+    "previous": "Vorheriger Treffer",
+    "next": "Nächster Treffer",
+    "close": "Suche schließen"
+  },
+  "annotation": {
+    "quote": "„{{text}}“",
+    "quoteTruncated": "„{{text}}…“",
+    "add": {
+      "placeholder": "Kommentar hinzufügen…",
+      "cancel": "Abbrechen",
+      "submit": "Hinzufügen"
+    },
+    "edit": {
+      "resolvedBadge": "✓ Gelöst",
+      "placeholder": "Kommentar bearbeiten…",
+      "reopenTooltip": "Annotation erneut öffnen",
+      "resolveTooltip": "Annotation als gelöst markieren",
+      "unresolve": "Als ungelöst markieren",
+      "resolve": "Auflösen",
+      "deleteTooltip": "Annotation löschen",
+      "delete": "Löschen",
+      "cancel": "Abbrechen",
+      "save": "Speichern"
+    },
+    "selectionToolbar": {
+      "addComment": "Kommentar hinzufügen"
+    }
+  },
+  "wireframe": {
+    "invalid": "Dieser Wireframe-Block ist ungültig.",
+    "placeholder": "Wireframe: <strong>{{name}}</strong>. Öffnen Sie den Plan, um es anzuzeigen.",
+    "lastGoodBuild": "Letzte erfolgreich gebaute Version wird angezeigt",
+    "paused": "Live-Updates pausiert",
+    "openFullSize": "In voller Größe öffnen",
+    "building": "Wireframe wird gebaut…",
+    "missing": "Dieser Plan hat kein Wireframe namens <strong>{{name}}</strong>.",
+    "buildFailed": "Dieses Wireframe lässt sich nicht bauen.",
+    "unavailable": "Die Wireframe-Vorschau ist derzeit nicht verfügbar.",
+    "retry": "Erneut versuchen",
+    "close": "Schließen",
+    "errors": {
+      "empty": "Der Block nennt kein Wireframe. Fügen Sie eine Zeile wie `{{example}}` hinzu.",
+      "notYaml": "Der Block ist kein gültiges YAML.",
+      "notMapping": "Schreiben Sie den Block als `{{example}}`, optional mit {{height}} und {{viewport}}.",
+      "unknownKey": "Unbekannter Schlüssel „{{key}}“. Verwenden Sie {{name}}, {{height}} oder {{viewport}}.",
+      "badName": "{{name}} muss ein Slug in Kleinbuchstaben sein, z. B. {{example}}.",
+      "badHeight": "{{height}} muss eine ganze Zahl von Pixeln zwischen 1 und {{max}} sein.",
+      "badViewport": "{{viewport}} muss {{desktop}}, {{tablet}} oder {{mobile}} sein."
+    }
+  },
+  "questions": {
+    "recommended": "Empfohlen",
+    "optional": "Optional",
+    "selectAll": "Alle zutreffenden auswählen",
+    "other": "Sonstiges",
+    "otherPlaceholder": "Ihre Antwort eingeben",
+    "otherAriaLabel": "Andere Antwort für {{question}}",
+    "notAnswered": {
+      "skipped": "Nicht beantwortet (nicht erforderlich)",
+      "agentDecided": "Nicht beantwortet (Agent hat entschieden)"
+    },
+    "clear": "Zurücksetzen",
+    "clearAllAriaLabel": "Alle Antworten in diesem Block zurücksetzen",
+    "clearOneAriaLabel": "Antwort zurücksetzen",
+    "submit": "Antwort absenden",
+    "submitNote": {
+      "noAnswers": "Beantworten Sie eine Frage, um abzusenden.",
+      "oneUnanswered": "Unbeantwortet: „{{title}}“. Wenn Sie jetzt absenden, entscheide ich darüber.",
+      "manyUnanswered_one": "{{count}} Frage unbeantwortet. Wenn Sie jetzt absenden, entscheide ich darüber.",
+      "manyUnanswered_other": "{{count}} Fragen unbeantwortet. Wenn Sie jetzt absenden, entscheide ich darüber."
+    }
+  },
+  "answersCard": {
+    "ariaLabel": "Abgesendete Antworten",
+    "title": "Antworten",
+    "notAnswered": {
+      "skipped": "Nicht beantwortet (nicht erforderlich)",
+      "agentDecided": "Nicht beantwortet (Agent hat entschieden)"
+    }
+  },
+  "verificationList": {
+    "dragHandle": "Ziehpunkt",
+    "required": "Erforderlich",
+    "a11y": {
+      "roleDescription": "sortierbar",
+      "instructions": "Um ein ziehbares Element aufzunehmen, drücken Sie die Leertaste. Verwenden Sie beim Ziehen die Pfeiltasten, um das Element zu verschieben. Drücken Sie erneut die Leertaste, um das Element an seiner neuen Position abzulegen, oder drücken Sie Esc, um abzubrechen.",
+      "pickedUp": "Ziehbares Element {{active}} wurde aufgenommen.",
+      "movedOver": "Ziehbares Element {{active}} wurde über den Ablagebereich {{over}} bewegt.",
+      "movedAway": "Ziehbares Element {{active}} befindet sich nicht mehr über einem Ablagebereich.",
+      "droppedOver": "Ziehbares Element {{active}} wurde im Ablagebereich {{over}} abgelegt",
+      "dropped": "Ziehbares Element {{active}} wurde abgelegt.",
+      "cancelled": "Ziehen wurde abgebrochen. Ziehbares Element {{active}} wurde abgelegt."
+    }
+  }
+}

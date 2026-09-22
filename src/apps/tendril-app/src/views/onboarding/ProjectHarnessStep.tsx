@@ -1,6 +1,7 @@
 import React from "react";
 import { bridge } from "../../api/bridge";
 import { describeBridgeError, type ProjectSummary } from "../../types/api";
+import { useTranslation } from "../../i18n";
 
 /**
  * V1's `ProjectCrudStepView`, the project section's third sub-step: what the setup run configured,
@@ -23,6 +24,7 @@ export interface ProjectHarnessStepProps {
 }
 
 export function ProjectHarnessStep({ projectName, refreshToken }: ProjectHarnessStepProps) {
+  const { t } = useTranslation("onboarding");
   const [project, setProject] = React.useState<ProjectSummary | null>(null);
   // Kept apart from `project === null`. Both render nothing, but they mean opposite things: a null
   // project is "the agent configured nothing yet", a load error is "we could not ask". Folding the
@@ -55,17 +57,14 @@ export function ProjectHarnessStep({ projectName, refreshToken }: ProjectHarness
 
   return (
     <div className="space-y-4" data-testid="onboarding-step-harness">
-      <h3 className="text-base font-semibold text-foreground">Review Harness</h3>
-      <p className="text-sm text-muted-foreground">
-        What the setup agent configured for your project. Everything here is editable from the
-        project&apos;s own screen.
-      </p>
+      <h3 className="text-base font-semibold text-foreground">{t("harness.title")}</h3>
+      <p className="text-sm text-muted-foreground">{t("harness.description")}</p>
 
       <div className="space-y-1">
-        <span className="block text-xs font-medium text-foreground">Verifications</span>
-        <p className="text-xs text-muted-foreground">
-          The steps run after each plan execution to validate changes.
-        </p>
+        <span className="block text-xs font-medium text-foreground">
+          {t("harness.verifications.title")}
+        </span>
+        <p className="text-xs text-muted-foreground">{t("harness.verifications.hint")}</p>
         {verifications.length > 0 && (
           <ul className="space-y-1 pt-1" data-testid="onboarding-harness-verifications">
             {verifications.map((name) => (
@@ -78,10 +77,10 @@ export function ProjectHarnessStep({ projectName, refreshToken }: ProjectHarness
       </div>
 
       <div className="space-y-1">
-        <span className="block text-xs font-medium text-foreground">Review Actions</span>
-        <p className="text-xs text-muted-foreground">
-          Commands that make it easy to start your project for manual testing.
-        </p>
+        <span className="block text-xs font-medium text-foreground">
+          {t("harness.reviewActions.title")}
+        </span>
+        <p className="text-xs text-muted-foreground">{t("harness.reviewActions.hint")}</p>
         {reviewActions.length > 0 && (
           <ul className="space-y-1 pt-1" data-testid="onboarding-harness-review-actions">
             {reviewActions.map((action) => (
@@ -96,15 +95,13 @@ export function ProjectHarnessStep({ projectName, refreshToken }: ProjectHarness
 
       {loadError !== null && (
         <p className="text-xs text-muted-foreground" data-testid="onboarding-harness-error">
-          Could not read your project&apos;s harness ({loadError}). This says nothing about what the
-          setup agent configured - open the project from the Projects row to see it.
+          {t("harness.loadError", { error: loadError })}
         </p>
       )}
 
       {loadError === null && verifications.length === 0 && reviewActions.length === 0 && (
         <p className="text-xs text-muted-foreground" data-testid="onboarding-harness-empty">
-          Nothing is configured yet. If the setup agent is still running, its results appear here
-          once it finishes - reopen the project from the Projects row to see them.
+          {t("harness.empty")}
         </p>
       )}
     </div>

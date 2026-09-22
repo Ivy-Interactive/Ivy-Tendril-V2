@@ -1,0 +1,274 @@
+{
+  "agentButton": {
+    "label": "Agent",
+    "newChatTooltip": "Ny chatt",
+    "flyout": {
+      "empty": "Inga chattar än",
+      "newChat": "Ny chatt"
+    }
+  },
+  "newPlanButton": {
+    "label": "Ny plan"
+  },
+  "settingsButton": {
+    "label": "Inställningar"
+  },
+  "nav": {
+    "resizeAriaLabel": "Ändra storlek på navigeringen"
+  },
+  "railFlyout": {
+    "previous": "Föregående",
+    "next": "Nästa"
+  },
+  "sectionItems": {
+    "state": {
+      "working": "Arbetar",
+      "completed": "Slutförd"
+    },
+    "menu": {
+      "label": "Alternativ för {{title}}",
+      "tooltip": "Alternativ",
+      "pin": "Fäst chatt",
+      "unpin": "Lossa chatt",
+      "rename": "Redigera namn",
+      "delete": "Ta bort"
+    },
+    "titleEditor": {
+      "ariaLabel": "Objektnamn"
+    }
+  },
+  "sidebarHeader": {
+    "openSidebar": "Öppna sidofältet",
+    "closeSidebar": "Stäng sidofältet"
+  },
+  "sidebarSection": {
+    "searchLabel": "Sök planer",
+    "searchButton": "Sök"
+  },
+  "tabs": {
+    "closeAriaLabel": "Stäng {{title}}",
+    "newSession": "Ny agentsession"
+  },
+  "shell": {
+    "toggleSidebarShortcut": "Visa/dölj sidofältet",
+    "resizer": {
+      "ariaLabel": "Ändra storlek på sidofältet",
+      "title": "Dra för att ändra storlek på sidofältet, dubbelklicka för att återställa"
+    }
+  },
+  "agentStatus": {
+    "starting": "Startar…",
+    "completed": "Slutförd",
+    "failed": "Misslyckad",
+    "thinking": "Tänker…",
+    "working": "Arbetar…",
+    "runningCommand": "Kör kommando",
+    "reading": "Läser",
+    "readingFile": "Läser {{file}}",
+    "editing": "Redigerar",
+    "editingFile": "Redigerar {{file}}",
+    "searching": "Söker",
+    "runningTool": "Kör {{name}}"
+  },
+  "resultSummary": {
+    "errorTitle": "❌ Fel",
+    "terminated": "Agentprocessen avslutades eller fick timeout (slutkod {{code}}).",
+    "terminatedUnknownCode": "Agentprocessen avslutades eller fick timeout (slutkod okänd).",
+    "cost": {
+      "billed": "Kostnad: {{cost}}",
+      "estimated": "Kostnad: ~{{cost}}",
+      "billedTooltip": "Debiterad av agenten",
+      "estimatedTooltip": "Beräknad från antalet tokens enligt modellens listpris, som inte kan ta hänsyn till ditt abonnemang eller din nivå"
+    },
+    "duration": "Varaktighet: {{seconds}} s",
+    "tokens": "Tokens: {{input}} in / {{output}} ut",
+    "cache": "Cache: {{read}} lästa / {{write}} skrivna",
+    "premium": "Premium: {{value}}",
+    "exitCode": "Slutkod: {{code}}",
+    "denied": "Nekade: {{value}}"
+  },
+  "metrics": {
+    "elapsed": {
+      "label": "Utdatatid",
+      "reportedTooltip": "Utdatatid: den varaktighet som agenten rapporterade",
+      "measuredTooltip": "Utdatatid: uppmätt från den första händelsen till den sista",
+      "runningTooltip": "Utdatatid: uppmätt från den första händelsen"
+    },
+    "tokens": {
+      "label": "Tokens",
+      "estimatedTooltip": "Tokens: uppskattade från strömmen hittills; agenten rapporterar sitt eget antal när den är klar",
+      "reportedTooltip": "Tokens: rapporterade av agenten"
+    },
+    "cost": {
+      "label": "Kostnad",
+      "estimatedTooltip": "Kostnad: beräknad från antalet tokens enligt modellens listpris, som inte kan ta hänsyn till ditt abonnemang eller din nivå",
+      "billedTooltip": "Kostnad: debiterad av agenten"
+    }
+  },
+  "toolCard": {
+    "file": "Fil: {{path}}",
+    "url": "URL: {{url}}",
+    "query": "Sökfråga: {{query}}",
+    "queryInPath": "Sökfråga: {{query}} i {{path}}",
+    "input": "IN",
+    "output": "UT"
+  },
+  "toolGroup": {
+    "count_one": "{{count}} verktygsanrop",
+    "count_other": "{{count}} verktygsanrop"
+  },
+  "agentNode": {
+    "session": "session: {{session}}",
+    "sessionWithModel": "session: {{session}} ({{model}})",
+    "errorTitle": "❌ Fel"
+  },
+  "badgeSelect": {
+    "placeholder": "Välj…",
+    "ariaLabel": "Välj",
+    "remove": "Ta bort {{label}}"
+  },
+  "contentInput": {
+    "placeholder": "Hur kan jag hjälpa dig i dag?",
+    "send": "Skicka",
+    "moreOptions": "Fler alternativ",
+    "attachFiles": "Bifoga filer",
+    "voiceInput": "Transkribering av röstinmatning",
+    "dismissError": "Stäng felmeddelandet",
+    "removeFile": "Ta bort fil",
+    "attachment": {
+      "document": "Dokument",
+      "lineCount_one": "{{count}} rad",
+      "lineCount_other": "{{count}} rader",
+      "sizeBytes": "{{size}} B",
+      "sizeKilobytes": "{{size}} kB",
+      "sizeMegabytes": "{{size}} MB"
+    },
+    "errors": {
+      "uploadStatus": "Uppladdningen misslyckades med status {{status}}",
+      "uploadFailed": "Det gick inte att ladda upp filen: {{error}}",
+      "readFailed": "Det gick inte att läsa filen",
+      "emptyTranscription": "Transkriberingen innehöll inte tillräckligt med information för att skapa en prompt. Försök igen och tala tydligt."
+    }
+  },
+  "voice": {
+    "errors": {
+      "insecureContext": "Röstinmatning kräver en säker anslutning. Öppna Tendril via HTTPS eller på localhost och försök sedan igen.",
+      "mediaDevicesUnavailable": "Röstinmatning är inte tillgänglig i det här fönstret. På macOS avslutar du Ivy Tendril och öppnar det igen efter uppdateringen, och tillåter sedan mikrofonåtkomst när du tillfrågas. Du kan också köra ”{{command}}” och använda röstinmatning i webbläsaren.",
+      "audioCaptureUnsupported": "Den här webbläsaren kan inte spela in ljud för röstinmatning.",
+      "captureInitFailed": "Det gick inte att initiera ljudinspelningen: {{error}}",
+      "websocket": "Ett WebSocket-fel uppstod vid anslutning till transkriberingstjänsten.",
+      "closedUnexpectedly": "WebSocket-anslutningen stängdes oväntat (kod {{code}}: {{reason}})",
+      "closedUnexpectedlyNoReason": "WebSocket-anslutningen stängdes oväntat (kod {{code}}: ingen orsak angavs)",
+      "connectionFailed": "Mikrofonåtkomst nekades eller så misslyckades anslutningen: {{error}}",
+      "microphoneDenied": "Mikrofonåtkomst nekades. Tillåt mikrofonåtkomst för Ivy Tendril i Systeminställningar > Integritet och säkerhet > Mikrofon och försök sedan igen.",
+      "microphoneNotFound": "Ingen mikrofon hittades. Anslut en inmatningsenhet och försök igen."
+    }
+  },
+  "dashboard": {
+    "status": {
+      "plans": "Planer",
+      "inProgress": "Pågående",
+      "readyForReview": "Redo för granskning",
+      "completed": "Slutförda",
+      "failed": "Misslyckade"
+    },
+    "kpi": {
+      "breakdownAriaLabel": "Visa beräkningsuppdelning för {{label}}",
+      "loadingAriaLabel": "Läser in mätvärden"
+    },
+    "trend": {
+      "loading": "Läser in trend för kostnad och planer",
+      "costTab": "Total kostnad",
+      "plansTab": "Totalt antal planer",
+      "currentName": "Senaste 4 veckorna",
+      "rollingLegend": "7-dagarsgenomsnitt",
+      "plansValue_one": "{{count}} plan",
+      "plansValue_other": "{{count}} planer"
+    },
+    "gitActivity": {
+      "title": "Git-aktivitet",
+      "loading": "Läser in Git-aktivitet"
+    },
+    "pullRequests": {
+      "title": "Pull requests",
+      "weekTab": "Vecka",
+      "monthTab": "Månad",
+      "loading": "Läser in sammanslagna pull requests"
+    },
+    "tunnel": {
+      "title": "Tunnel"
+    },
+    "factory": {
+      "title": "Mjukvarufabrik"
+    },
+    "jobs": {
+      "title": "Aktiva jobb",
+      "empty": "Inga jobb körs"
+    }
+  },
+  "trendChart": {
+    "axisDateWithYear": "{{date}} ’{{year}}",
+    "currentRow": "{{name}}: {{value}}",
+    "rollingRow": "7-dagarsgenomsnitt: {{value}}"
+  },
+  "activityGrid": {
+    "empty": "Inga sammanslagna pull requests än",
+    "weekOf": "Vecka från {{date}}",
+    "merged_one": "{{count}} pull request sammanslagen",
+    "merged_other": "{{count}} pull requests sammanslagna"
+  },
+  "pullRequestBars": {
+    "empty": "Inga sammanslagna pull requests än",
+    "weekOf": "Vecka från {{date}}",
+    "barLabel": "{{period}}: {{merged}}",
+    "merged_one": "{{count}} pull request sammanslagen",
+    "merged_other": "{{count}} pull requests sammanslagna",
+    "tooltipMerged_one": "{{count}} PR sammanslagen",
+    "tooltipMerged_other": "{{count}} PR:er sammanslagna"
+  },
+  "processViewer": {
+    "newPlan": "Ny plan",
+    "plans": "Planer",
+    "review": "Granskning",
+    "creatingPr": "PR {{value}}"
+  },
+  "terminal": {
+    "loading": "Läser in…"
+  },
+  "webViewer": {
+    "toolbar": {
+      "ariaLabel": "Webbläsarkontroller",
+      "back": "Bakåt",
+      "forward": "Framåt",
+      "reload": "Läs in igen",
+      "startSelecting": "Välj ett element att kommentera",
+      "stopSelecting": "Sluta välja",
+      "viewport": "Visningsyta: {{device}}",
+      "address": "Adress",
+      "addressPlaceholder": "Ange en URL"
+    },
+    "devices": {
+      "desktop": "Dator",
+      "tablet": "Surfplatta",
+      "mobile": "Mobil"
+    },
+    "empty": "Ange en URL i adressfältet för att läsa in en sida.",
+    "frameTitle": "Webbinnehåll",
+    "comment": {
+      "title": "Kommentera",
+      "title_tag": "Kommentera<tag>{{tag}}</tag>",
+      "title_text": "Kommentera<snippet>”{{text}}”</snippet>",
+      "title_tagText": "Kommentera<tag>{{tag}}</tag><snippet>”{{text}}”</snippet>",
+      "sourceLabel": "källa",
+      "resolvingSource": "löser upp källmappning…",
+      "componentsLabel": "komponenter",
+      "xpathLabel": "xpath",
+      "selectorLabel": "selektor",
+      "placeholder": "Skriv en kommentar… ({{shortcut}} för att skicka)",
+      "delete": "Ta bort",
+      "cancel": "Avbryt",
+      "save": "Spara",
+      "add": "Lägg till"
+    }
+  }
+}

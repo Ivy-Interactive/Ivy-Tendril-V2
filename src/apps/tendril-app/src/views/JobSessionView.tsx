@@ -1,8 +1,11 @@
 import React, { useState, useEffect, useRef } from "react";
 import { NO_VALUE, formatTimeSpan, formatTokens } from "@ivy-interactive/components";
+import { useFormatters } from "@ivy-interactive/components/i18n";
 import { AgentViewer } from "@ivy-interactive/components/tendril";
 import { Badge, Button, Callout, IconButton } from "@ivy-interactive/components/ui";
 import { X } from "lucide-react";
+import { useTranslation, type TFunction } from "../i18n";
+import { useEnumLabels } from "../i18n/enumLabels";
 import { describeBridgeError, type Job, type JobDetail } from "../types/api";
 import { isActiveStatus, jobsStore, type StreamEventItem } from "../state/jobsStore";
 import { JOB_STATUS_COLOR, UNMAPPED_COLOR, projectColor } from "../utils/jobStatus";
@@ -10,7 +13,7 @@ import { JOB_STATUS_COLOR, UNMAPPED_COLOR, projectColor } from "../utils/jobStat
    output *sheet over that table*, so a job's cost has to render identically in the row behind it and
    in the header here. The two copies had already diverged once over the case of `costSource` and
    been fixed twice; sharing the one function is what stops the third divergence. */
-import { formatJobCost } from "./jobs/format";
+import { formatJobCost, formatMonthDayTime, jobStatusMessage } from "./jobs/format";
 import { ConfirmDialog } from "./dialogs";
 import { parseProjects } from "./PlansView";
 
@@ -54,17 +57,13 @@ function formatTimer(job: Job): string {
 
 /**
  * The Timestamp cell (`JobsApp.Helpers.cs` `FormatTimestamp`): when the job finished, as a clock in
- * the viewer's local time, in V1's `MM-dd HH:mm` shape. A job that has not finished gets "-", the
- * same placeholder the Timer uses.
+ * the viewer's local time, as the current language writes month, day and time - the table's
+ * {@link formatMonthDayTime}, so the two follow the language together. A job that has not finished gets "-", the same placeholder
+ * the Timer uses.
  */
 function formatTimestamp(job: Job): string {
   if (!job.completedAt) return "-";
-  const completed = new Date(job.completedAt);
-  if (Number.isNaN(completed.getTime())) return "-";
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pad(completed.getMonth() + 1)}-${pad(completed.getDate())} ${pad(
-    completed.getHours(),
-  )}:${pad(completed.getMinutes())}`;
+  return formatMonthDayTime(new Date(job.completedAt).getTime());
 }
 
 /**
@@ -75,37 +74,28 @@ function formatTimestamp(job: Job): string {
  */
 const NO_EVENTS: StreamEventItem[] = [];
 
-/** `FormatHelper.FormatCount`: the exact figure, grouped, for the tooltip behind the short form. */
-function formatTokenCount(tokens: number): string {
-  return tokens.toLocaleString("en-US");
+/**
+ * `JobsApp.Helpers.cs` `GetStatusMessage`: the job's own message where it has one, and otherwise
+ * V1's per-status default - the Jobs table's Status Message cell, {@link jobStatusMessage}. A status
+ * with no default (Running, Completed) says nothing.
+ */
+function statusMessage(job: Job, t: TFunction<"jobs">): string {
+  // `GetStatusMessage` has no Pending default because V1's Pending rows are transient in the
+  // table, but `OutputSheet.cs:42-47` - the sheet this view replaces - does:
+  // `Callout.Info("Job is queued and waiting to start.", "Job Pending")`. Without it a Pending
+  // job showed a warning badge and nothing else.
+  if (job.status === "Pending" && !job.statusMessage) return t("statusMessage.pending");
+  return jobStatusMessage(job, t);
 }
 
 /**
- * `JobsApp.Helpers.cs` `GetStatusMessage`: the job's own message where it has one, and otherwise
- * V1's per-status default. A status with no default (Running, Completed) says nothing.
+ * The status callout title's context, V1's `$"Job {job.Status}"`: the status with its first letter
+ * lower-cased, as the catalog keys it. Each status has a title of its own rather than its label
+ * dropped into one shared sentence, so a language can phrase "Job Failed" the way it phrases it; a
+ * status this build has no title for falls back to the shared "Job {{status}}".
  */
-function statusMessage(job: Job): string {
-  if (job.statusMessage) return job.statusMessage;
-  switch (job.status) {
-    case "Blocked":
-      return "Waiting for dependency plans to complete.";
-    case "Failed":
-      return "Job encountered an error during execution";
-    case "Timeout":
-      return "Job exceeded the configured timeout";
-    case "Queued":
-      return "Waiting for a job slot to become available";
-    case "Stopped":
-      return "Job was manually stopped";
-    // `GetStatusMessage` has no Pending default because V1's Pending rows are transient in the
-    // table, but `OutputSheet.cs:42-47` - the sheet this view replaces - does:
-    // `Callout.Info("Job is queued and waiting to start.", "Job Pending")`. Without it a Pending
-    // job showed a warning badge and nothing else.
-    case "Pending":
-      return "Job is queued and waiting to start.";
-    default:
-      return "";
-  }
+function statusCalloutContext(status: string): string {
+  return `${status.charAt(0).toLowerCase()}${status.slice(1)}`;
 }
 
 /**
@@ -139,6 +129,9 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
   onCloseTab,
   layout = "page",
 }) => {
+  const { t } = useTranslation("jobs");
+  const labels = useEnumLabels();
+  const format = useFormatters();
   const [isStopping, setIsStopping] = useState(false);
   const [stopError, setStopError] = useState<string | null>(null);
   const [isForceStarting, setIsForceStarting] = useState(false);
@@ -270,7 +263,7 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
     } catch (err) {
       // A failed stop means the job is still running; saying nothing would
       // leave the operator thinking they had stopped it.
-      setStopError(`Stop failed: ${describeBridgeError(err)}`);
+      setStopError(t("errors.stopFailed", { error: describeBridgeError(err) }));
     } finally {
       setIsStopping(false);
     }
@@ -282,7 +275,7 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
     try {
       await jobsStore.forceStartJob(currentJob.id);
     } catch (err) {
-      setStopError(`Force start failed: ${describeBridgeError(err)}`);
+      setStopError(t("errors.forceStartFailed", { error: describeBridgeError(err) }));
     } finally {
       setIsForceStarting(false);
     }
@@ -301,14 +294,14 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
       // the tab is pointing at a job that no longer exists.
       onCloseTab?.();
     } catch (err) {
-      setDeleteError(`Delete failed: ${describeBridgeError(err)}`);
+      setDeleteError(t("errors.deleteFailed", { error: describeBridgeError(err) }));
     } finally {
       setIsDeleting(false);
     }
   };
 
   const failureReason = (currentJob as JobDetail).reportedFailureReason;
-  const message = failureReason || statusMessage(currentJob);
+  const message = failureReason || statusMessage(currentJob, t);
   // Failed and Timeout are V1's two red statuses; Blocked, Queued, Pending and Stopped explain
   // themselves without claiming something went wrong.
   const isFailure = currentJob.status === "Failed" || currentJob.status === "Timeout";
@@ -322,6 +315,8 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
   const timer = formatTimer(currentJob);
   const timestamp = formatTimestamp(currentJob);
   const planId = currentJob.planId;
+  // Guarded: an entry the store made from a patch alone (`applyJobPatch`) has no type yet.
+  const typeLabel = currentJob.type ? labels.jobType(currentJob.type) : "";
   const noop = () => {};
 
   // The Cost and Tokens cells. V1 has two labelled columns, so an empty Cost beside a populated
@@ -329,7 +324,7 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
   // rendered together whenever either has a figure: a subscription-plan run - tokens spent, nothing
   // billed - then reads "Tokens 450,000 · Cost —" rather than dropping the cost silently and looking
   // like a run whose cost simply has not landed yet.
-  const cost = formatJobCost(currentJob);
+  const cost = formatJobCost(currentJob, t);
   const tokens = currentJob.tokens;
   const hasUsage = cost !== null || tokens !== undefined;
 
@@ -368,7 +363,7 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
               color={JOB_STATUS_COLOR[currentJob.status] ?? UNMAPPED_COLOR}
               density="Small"
             >
-              {currentJob.status}
+              {labels.jobStatus(currentJob.status)}
             </Badge>
             {/* `ProjectHelper.ParseProjects`: a job's project field can name several. */}
             {parseProjects(currentJob.project).map((project) => (
@@ -380,7 +375,7 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
                 session started end to end. */}
             {currentJob.detached && (
               <Badge data-testid="job-detached-badge" color="Orange" density="Small">
-                Detached (PID {currentJob.processId}) — Monitoring active process
+                {t("session.detachedBadge", { pid: currentJob.processId })}
               </Badge>
             )}
           </div>
@@ -388,7 +383,7 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
               only for the page framing - in a sheet it is the `SheetTitle`, as it is in V1. */}
           {!isSheet && (
             <h1 className="mt-2 truncate text-2xl font-bold text-foreground">
-              {planId ? `${currentJob.type} ${planId}` : currentJob.type}
+              {planId ? t("outputSheet.title", { type: typeLabel, planId }) : typeLabel}
             </h1>
           )}
           <div className="mt-1 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
@@ -398,17 +393,20 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
             {hasUsage && (
               <span
                 data-testid="job-tokens"
-                title={tokens !== undefined ? formatTokenCount(tokens) : undefined}
+                // `FormatHelper.FormatCount`: the exact figure, grouped, behind the short form.
+                title={tokens !== undefined ? format.number(tokens) : undefined}
               >
-                Tokens {tokens !== undefined ? formatTokens(tokens) : NO_VALUE}
+                {t("session.tokens", {
+                  tokens: tokens !== undefined ? formatTokens(tokens) : NO_VALUE,
+                })}
               </span>
             )}
             {hasUsage && (
               <span
                 data-testid="job-cost"
-                title={cost === null ? "No cost was reported for this job" : undefined}
+                title={cost === null ? t("cost.notReported") : undefined}
               >
-                Cost {cost ?? NO_VALUE}
+                {t("session.cost", { cost: cost ?? NO_VALUE })}
               </span>
             )}
           </div>
@@ -426,10 +424,10 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
               variant="destructive"
               disabled={isStopping}
               onClick={handleStop}
-              title="Stop this job"
+              title={t("actions.stop.tooltip")}
               className="h-auto rounded-selector px-3 py-1.5 text-xs"
             >
-              {isStopping ? "Stopping..." : "Stop"}
+              {isStopping ? t("actions.stop.busy") : t("actions.stop.label")}
             </Button>
           )}
 
@@ -441,10 +439,10 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
               data-testid="job-force-start"
               disabled={isForceStarting}
               onClick={handleForceStart}
-              title="Force start this blocked job"
+              title={t("actions.forceStart.tooltip")}
               className="h-auto rounded-selector px-3 py-1.5 text-xs"
             >
-              {isForceStarting ? "Starting..." : "Force Start"}
+              {isForceStarting ? t("actions.forceStart.busy") : t("actions.forceStart.label")}
             </Button>
           )}
 
@@ -461,10 +459,10 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
                 setDeleteError(null);
                 setIsConfirmDeleteOpen(true);
               }}
-              title="Delete this job"
+              title={t("actions.delete.tooltip")}
               className="h-auto rounded-selector border-destructive/40 px-3 py-1.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
             >
-              Delete
+              {t("actions.delete.label")}
             </Button>
           )}
 
@@ -472,7 +470,7 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
               rather than the "✕" glyph this used to draw: every other close in the app is
               `lucide-react`'s, and a text glyph does not line up with one. */}
           {onCloseTab && !isSheet && (
-            <IconButton label="Close session tab" size="md" tone="muted" onClick={onCloseTab}>
+            <IconButton label={t("session.closeTab")} size="md" tone="muted" onClick={onCloseTab}>
               <X className="size-4" />
             </IconButton>
           )}
@@ -492,7 +490,10 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
         <div className={isSheet ? "px-4" : ""}>
           <Callout
             variant={isFailure ? "error" : "info"}
-            title={`Job ${currentJob.status}`}
+            title={t("session.statusCallout.title", {
+              context: statusCalloutContext(currentJob.status),
+              status: labels.jobStatus(currentJob.status),
+            })}
             data-testid="job-failure-reason"
           >
             <p className="whitespace-pre-wrap">{message}</p>
@@ -553,7 +554,7 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
             className={`text-sm text-muted-foreground ${isSheet ? "px-4" : ""}`}
             data-testid="job-no-output"
           >
-            No output available.
+            {t("session.noOutput")}
           </p>
         )}
       </div>
@@ -566,9 +567,9 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
         <ConfirmDialog
           isOpen={isConfirmDeleteOpen}
           onClose={() => setIsConfirmDeleteOpen(false)}
-          title="Delete Job"
-          body={<p>Are you sure you want to delete this job? This cannot be undone.</p>}
-          confirmLabel="Delete"
+          title={t("deleteDialog.title")}
+          body={<p>{t("deleteDialog.body")}</p>}
+          confirmLabel={t("common:actions.delete")}
           confirmVariant="destructive"
           onConfirm={handleDelete}
           isBusy={isDeleting}

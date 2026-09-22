@@ -1,3 +1,4 @@
+import { Trans, useTranslation } from "@/i18n/uiDialogs";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 export interface RemoveProjectDialogProps {
@@ -42,14 +43,15 @@ export function RemoveProjectDialog({
   isBusy,
   error,
 }: RemoveProjectDialogProps) {
+  const { t } = useTranslation("uiDialogs");
   return (
     <ConfirmDialog
       isOpen={isOpen}
       onClose={onClose}
-      title="Remove Project"
+      title={t("removeProject.title")}
       testId="remove-project-dialog"
       width="rem40"
-      confirmLabel="Remove Project"
+      confirmLabel={t("removeProject.confirm")}
       confirmVariant="destructive"
       onConfirm={onConfirm}
       isBusy={isBusy}
@@ -57,15 +59,14 @@ export function RemoveProjectDialog({
       body={
         <>
           <p>
-            Are you sure you want to remove project{" "}
-            <span className="text-foreground">{projectName}</span>?
+            <Trans
+              ns="uiDialogs"
+              i18nKey="removeProject.question"
+              values={{ name: projectName }}
+              components={{ name: <span className="text-foreground" /> }}
+            />
           </p>
-          <p className="text-muted-foreground">
-            This removes the project from config.yaml. Its cloned repositories, plan folders and
-            history stay on disk, so nothing is deleted from your machine - but Tendril will stop
-            listing the project, and its existing plans and jobs will name a project it no longer
-            knows.
-          </p>
+          <p className="text-muted-foreground">{t("removeProject.consequence")}</p>
         </>
       }
     />

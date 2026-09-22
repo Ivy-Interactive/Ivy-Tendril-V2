@@ -29,7 +29,13 @@ import { MarkdownCodeBlock } from "./markdown/MarkdownCodeBlock";
 import { PopoverLink } from "./markdown/PopoverLink";
 import { Icon } from "@/components/Icon";
 import type { Components, Options } from "react-markdown";
-import { parseGitHubAlert, githubAlertStyles, extractTextContent } from "@/lib/markdown-utils";
+import {
+  parseGitHubAlert,
+  githubAlertStyles,
+  githubAlertTitle,
+  extractTextContent,
+} from "@/lib/markdown-utils";
+import { useFormatters, useTranslation } from "@/i18n/uiCommon";
 import { parse as parseYaml } from "yaml";
 
 interface MarkdownRendererProps {
@@ -82,21 +88,37 @@ function parseFrontmatter(content: string): {
 }
 
 /**
+ * `Date.prototype.toLocaleString()`'s own default parts - numeric date, then the time to the second
+ * ("9/22/2026, 3:04:05 PM" in English) - in the UI's language rather than the operating system's.
+ */
+const FRONTMATTER_DATE_TIME: Intl.DateTimeFormatOptions = {
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  hour: "numeric",
+  minute: "numeric",
+  second: "numeric",
+};
+
+/**
  * Component to display frontmatter metadata in a styled card.
  */
 const FrontmatterDisplay: React.FC<{ data: FrontmatterData }> = memo(({ data }) => {
+  const format = useFormatters();
   const formatValue = (value: any): string => {
     if (value === null || value === undefined) return "null";
     if (typeof value === "boolean") return value ? "true" : "false";
     if (value instanceof Date) {
-      return value.toLocaleString();
+      return format.dateTime(value, FRONTMATTER_DATE_TIME);
     }
     if (typeof value === "string") {
       // Format ISO dates nicely
       if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(value)) {
         try {
           const date = new Date(value);
-          return date.toLocaleString();
+          // An ISO-shaped string that is no real date ("2026-13-45T…") is shown as written.
+          if (Number.isNaN(date.getTime())) return value;
+          return format.dateTime(date, FRONTMATTER_DATE_TIME);
         } catch {
           return value;
         }
@@ -295,6 +317,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   onLinkClick,
   dangerouslyAllowLocalFiles = false,
 }) => {
+  const { t } = useTranslation("uiCommon");
   const typography = useTypography();
   // KaTeX is not imported statically (see `src/lib/math.ts`): 259 kB of maths typesetting in the
   // initial load of every consumer is too much for a feature most markdown does not use. The plugin
@@ -498,7 +521,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
                 className={cn("mr-3.5 shrink-0 opacity-90", style.iconColor)}
               />
               <div className="flex flex-col min-w-0 flex-1">
-                <div className="font-medium mb-1 leading-6">{style.title}</div>
+                <div className="font-medium mb-1 leading-6">{githubAlertTitle(alert.type)}</div>
                 <div className="text-sm opacity-90 leading-relaxed [&_p]:text-sm [&_p]:mb-0">
                   {alert.content}
                 </div>
@@ -535,7 +558,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
             <input
               type="checkbox"
               checked={checked}
-              aria-label={checked ? "Completed task" : "Pending task"}
+              aria-label={checked ? t("markdown.taskCompleted") : t("markdown.taskPending")}
               {...props}
             />
           );
@@ -586,6 +609,8 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
       typography.details,
       typography.summary,
       dangerouslyAllowLocalFiles,
+      // The alert headings and the task checkboxes' labels are translated inside these renderers.
+      t,
     ],
   );
 
@@ -789,6 +814,22 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
     [dangerouslyAllowLocalFiles],
   );
 
+  // remark-gfm's footnotes section: its sr-only heading and each back-reference link's label, which
+  // mdast-util-to-hast writes in English ("Footnotes", "Back to reference 1", "… 1-2") by default.
+  const remarkRehypeOptions = useMemo<NonNullable<Options["remarkRehypeOptions"]>>(
+    () => ({
+      footnoteLabel: t("markdown.footnotes.label"),
+      footnoteBackLabel: (referenceIndex: number, rereferenceIndex: number) =>
+        rereferenceIndex > 1
+          ? t("markdown.footnotes.backToReferenceRepeat", {
+              ref: referenceIndex + 1,
+              reref: rereferenceIndex,
+            })
+          : t("markdown.footnotes.backToReference", { ref: referenceIndex + 1 }),
+    }),
+    [t],
+  );
+
   return (
     <>
       {frontmatter && <FrontmatterDisplay data={frontmatter} />}
@@ -798,6 +839,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         }}
         remarkPlugins={plugins.remarkPlugins}
         rehypePlugins={plugins.rehypePlugins}
+        remarkRehypeOptions={remarkRehypeOptions}
         urlTransform={urlTransform}
       >
         {normalizedContent}

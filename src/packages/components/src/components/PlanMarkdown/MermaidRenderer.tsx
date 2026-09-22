@@ -1,18 +1,20 @@
 import { memo } from "react";
 import { renderMermaid } from "@/lib/diagram";
 import { useDiagramRender } from "@/hooks/use-diagram-render";
+import { useTranslation } from "@/i18n/uiPlanWorkspace";
 
 interface MermaidRendererProps {
   content: string;
 }
 
 export const MermaidRenderer = memo(({ content }: MermaidRendererProps) => {
+  const { t } = useTranslation("uiPlanWorkspace");
   const { elementRef, isLoading, error } = useDiagramRender(content, renderMermaid);
 
   if (error) {
     return (
       <div className="pmv-diagram-error">
-        <span>Invalid Mermaid diagram syntax</span>
+        <span>{t("diagram.invalidMermaid")}</span>
       </div>
     );
   }
@@ -21,7 +23,7 @@ export const MermaidRenderer = memo(({ content }: MermaidRendererProps) => {
     <div className="pmv-diagram-container">
       {isLoading && (
         <div className="pmv-diagram-loading">
-          <span>Loading diagram...</span>
+          <span>{t("diagram.loading")}</span>
         </div>
       )}
       <div ref={elementRef} style={{ minHeight: isLoading ? "100px" : "auto" }} />

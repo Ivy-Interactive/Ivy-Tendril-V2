@@ -16,6 +16,25 @@
 export { NO_VALUE, formatCost, formatTimeSpan, formatTokens } from "@ivy-interactive/components";
 
 import { NO_VALUE } from "@ivy-interactive/components";
+import { formatNumber } from "@ivy-interactive/components/i18n";
+import { i18n } from "../i18n";
+
+const t = i18n.getFixedT(null, "dashboard");
+
+/** `toFixed(1)`'s shape - one decimal, always, no grouping - in the current language's separator. */
+const ONE_DECIMAL: Intl.NumberFormatOptions = {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+  useGrouping: false,
+};
+
+/**
+ * `value` to one decimal, rounded the way `toFixed(1)` rounds it and written the way the current
+ * language writes a decimal. The rounding stays `toFixed`'s because `Intl` rounds the *shortest
+ * decimal* rather than the binary value (`1.45` → `1.5`, where `toFixed` says `1.4`), and the
+ * ladder's figures are pinned in English; only the separator is the language's.
+ */
+const oneDecimal = (value: number): string => formatNumber(Number(value.toFixed(1)), ONE_DECIMAL);
 
 /**
  * The Dashboard's token ladder: millions to one decimal, thousands to one, lower-case units.
@@ -40,7 +59,13 @@ import { NO_VALUE } from "@ivy-interactive/components";
  */
 export function formatTokensCompact(tokens: number): string {
   if (!Number.isFinite(tokens) || tokens < 0) return NO_VALUE;
-  if (tokens >= 1_000_000) return `${(tokens / 1_000_000).toFixed(1)}M`;
-  if (tokens >= 1_000) return `${(tokens / 1_000).toFixed(1)}k`;
-  return String(tokens);
+  // The unit is the catalog's (`160.0k` in English), so a language can spell it its own way.
+  if (tokens >= 1_000_000) {
+    return t("format.tokensCompact.million", { value: oneDecimal(tokens / 1_000_000) });
+  }
+  if (tokens >= 1_000) {
+    return t("format.tokensCompact.thousand", { value: oneDecimal(tokens / 1_000) });
+  }
+  // `+ 0` so a -0 still reads "0", as `String` wrote it, and not `Intl`'s "-0".
+  return formatNumber(tokens + 0);
 }

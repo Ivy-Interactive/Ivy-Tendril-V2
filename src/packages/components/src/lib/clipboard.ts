@@ -1,3 +1,5 @@
+import { i18n } from "@/i18n/uiCommon";
+
 /**
  * Copies `text` to the clipboard, preferring the async Clipboard API and falling back to
  * `document.execCommand("copy")` only when that API is missing or rejects (an iframe or a webview
@@ -25,13 +27,13 @@ export async function copyToClipboard(text: string): Promise<void> {
     } catch (execCommandError) {
       document.body.removeChild(textarea);
       if (activeElement instanceof HTMLElement) activeElement.focus();
-      throw new Error("Could not copy to the clipboard.", { cause: execCommandError });
+      throw new Error(i18n.t("uiCommon:clipboard.copyFailed"), { cause: execCommandError });
     }
 
     document.body.removeChild(textarea);
     if (activeElement instanceof HTMLElement) activeElement.focus();
     if (!copied) {
-      throw new Error("Could not copy to the clipboard.", { cause: writeTextError });
+      throw new Error(i18n.t("uiCommon:clipboard.copyFailed"), { cause: writeTextError });
     }
   }
 }

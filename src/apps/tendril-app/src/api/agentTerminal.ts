@@ -7,6 +7,7 @@ import {
   type EventUnsubscribe,
 } from "./events";
 import { encodeBase64, isTauri } from "../utils/tauri";
+import { i18n } from "../i18n";
 
 /** The `meta` frame: what a pane needs before it can type into the agent. */
 export interface AgentTerminalSession {
@@ -195,7 +196,9 @@ async function startViaHttp(
       { method: "POST", headers, body: JSON.stringify(body) },
     );
     if (!response.ok) {
-      throw new Error(`Agent terminal ${endpoint} failed: HTTP ${response.status}`);
+      throw new Error(
+        i18n.t("common:errors.agentTerminalFailed", { endpoint, status: response.status }),
+      );
     }
   };
 

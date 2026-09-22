@@ -3,6 +3,7 @@ import { Button } from "../ui/button";
 import { Callout } from "../ui/callout";
 import { Input } from "../ui/input";
 import { Textarea } from "../ui/textarea";
+import { useTranslation, type TFunction } from "@/i18n/uiDialogs";
 import { DialogShell } from "./DialogShell";
 
 /**
@@ -36,8 +37,7 @@ export interface CreatePrDialogProps {
 
 type ToggleKey = "solveMergeConflicts" | "merge" | "deleteBranch" | "includeArtifacts" | "draft";
 
-interface ToggleDescriptor {
-  key: ToggleKey;
+interface ToggleCopy {
   label: string;
   hint?: string;
 }
@@ -49,13 +49,44 @@ interface ToggleDescriptor {
  * `ToBoolInput` defaults to a checkbox in Ivy Framework and V1 passes no `.Variant(Switch)`, so
  * these are checkboxes.
  */
-const TOGGLES: ToggleDescriptor[] = [
-  { key: "solveMergeConflicts", label: "Solve Merge Conflicts" },
-  { key: "merge", label: "Merge", hint: "Unchecked opens the PR without merging." },
-  { key: "deleteBranch", label: "Delete Branch" },
-  { key: "includeArtifacts", label: "Include Artifacts" },
-  { key: "draft", label: "Create as Draft", hint: "A draft PR cannot be merged." },
+const TOGGLES: readonly ToggleKey[] = [
+  "solveMergeConflicts",
+  "merge",
+  "deleteBranch",
+  "includeArtifacts",
+  "draft",
 ];
+
+/**
+ * A toggle's label and hint, looked up at render time so they follow the language.
+ * `multipleBranches` - the plan spans several repos, so there is a branch per repo - is a yes/no
+ * choice between two wordings, not a count: the label shows no number, so it is a context
+ * (`label_multiple`) rather than a plural that would pick the singular for 21 repos in Russian.
+ */
+function toggleCopy(t: TFunction, key: ToggleKey, multipleBranches: boolean): ToggleCopy {
+  const branchContext = multipleBranches ? "multiple" : undefined;
+  switch (key) {
+    case "solveMergeConflicts":
+      return { label: t("createPr.toggles.solveMergeConflicts.label") };
+    case "merge":
+      return {
+        label: t("createPr.toggles.merge.label"),
+        hint: t("createPr.toggles.merge.hint"),
+      };
+    case "deleteBranch":
+      return {
+        label: t("createPr.toggles.deleteBranch.label", { context: branchContext }),
+        hint: t("createPr.toggles.deleteBranch.hint", { context: branchContext }),
+      };
+    case "includeArtifacts":
+      return { label: t("createPr.toggles.includeArtifacts.label") };
+    case "draft":
+      return {
+        label: t("createPr.toggles.draft.label"),
+        hint: t("createPr.toggles.draft.hint"),
+      };
+  }
+}
 
 /**
  * V1's own `UseState` defaults for this dialog. `includeArtifacts` is the one that is *not* the
@@ -91,6 +122,7 @@ export function CreatePrDialog({
   isBusy = false,
   error,
 }: CreatePrDialogProps) {
+  const { t } = useTranslation("uiDialogs");
   const [toggles, setToggles] = React.useState(DEFAULTS);
   const [reviewers, setReviewers] = React.useState("");
   const [comment, setComment] = React.useState("");
@@ -143,48 +175,43 @@ export function CreatePrDialog({
     <DialogShell
       isOpen={isOpen}
       onClose={onClose}
-      title={`Create PR for #${planId}`}
+      title={t("createPr.title", { planId })}
       width="rem30"
       shortcut="Ctrl+Enter"
       onShortcut={() => void handleSubmit()}
-      description="CreatePr pushes the plan's branch, opens the PR and — unless you say otherwise — merges it and deletes the branch."
+      description={t("createPr.description")}
       testId="create-pr-dialog"
       initialFocusRef={firstToggleRef}
       footer={
         <>
           <Button variant="outline" onClick={onClose} data-testid="dialog-cancel" disabled={isBusy}>
-            Cancel
+            {t("actions.cancel")}
           </Button>
           <Button
             onClick={() => void handleSubmit()}
             data-testid="dialog-confirm"
             disabled={isBusy}
           >
-            {isBusy ? "Starting…" : "Create PR"}
+            {isBusy ? t("status.starting") : t("createPr.submit")}
           </Button>
         </>
       }
     >
       <div className="space-y-2">
-        {TOGGLES.map((toggle, index) => {
-          const isDeleteBranch = toggle.key === "deleteBranch";
-          const label = isDeleteBranch && multipleBranches ? "Delete Branches" : toggle.label;
-          const hint = isDeleteBranch
-            ? multipleBranches
-              ? "Deletes the branches pushed to origin after successful merge."
-              : "Deletes the branch pushed to origin after successful merge."
-            : toggle.hint;
+        {TOGGLES.map((key, index) => {
+          const isDeleteBranch = key === "deleteBranch";
+          const { label, hint } = toggleCopy(t, key, multipleBranches);
           const disabled = isDeleteBranch && !toggles.merge;
           return (
-            <div key={toggle.key} className="flex items-start gap-2">
+            <div key={key} className="flex items-start gap-2">
               <input
-                id={`create-pr-${toggle.key}`}
+                id={`create-pr-${key}`}
                 ref={index === 0 ? firstToggleRef : undefined}
                 type="checkbox"
-                checked={toggles[toggle.key]}
+                checked={toggles[key]}
                 disabled={disabled}
-                aria-describedby={hint ? `create-pr-${toggle.key}-hint` : undefined}
-                onChange={(event) => setToggle(toggle.key, event.target.checked)}
+                aria-describedby={hint ? `create-pr-${key}-hint` : undefined}
+                onChange={(event) => setToggle(key, event.target.checked)}
                 className="mt-0.5 size-4 accent-primary disabled:opacity-50"
               />
               {/* The hint is V1's `.Description(...)`, a sibling of the field rather than part of its
@@ -192,13 +219,13 @@ export function CreatePrDialog({
                   name, which is then read out in full every time the control is announced. */}
               <div>
                 <label
-                  htmlFor={`create-pr-${toggle.key}`}
+                  htmlFor={`create-pr-${key}`}
                   className={disabled ? "text-sm text-muted-foreground" : "text-sm text-foreground"}
                 >
                   {label}
                 </label>
                 {hint && (
-                  <p id={`create-pr-${toggle.key}-hint`} className="text-xs text-muted-foreground">
+                  <p id={`create-pr-${key}-hint`} className="text-xs text-muted-foreground">
                     {hint}
                   </p>
                 )}
@@ -210,32 +237,29 @@ export function CreatePrDialog({
 
       <div className="mt-4">
         <label htmlFor="create-pr-reviewers" className="mb-1 block text-xs text-muted-foreground">
-          Reviewers
+          {t("createPr.reviewers.label")}
         </label>
         <Input
           id="create-pr-reviewers"
-          aria-label="Reviewers"
+          aria-label={t("createPr.reviewers.label")}
           value={reviewers}
           onChange={(event) => setReviewers(event.target.value)}
           placeholder="octocat, hubot"
         />
-        <p className="mt-1 text-xs text-muted-foreground">
-          Comma-separated GitHub logins. V2 has no separate assignee field — the CLI folds an
-          assignee into the reviewer list, so these are the same channel.
-        </p>
+        <p className="mt-1 text-xs text-muted-foreground">{t("createPr.reviewers.hint")}</p>
       </div>
 
       <div className="mt-4">
         <label htmlFor="create-pr-comment" className="mb-1 block text-xs text-muted-foreground">
-          Comment
+          {t("createPr.comment.label")}
         </label>
         <Textarea
           id="create-pr-comment"
-          aria-label="Comment"
+          aria-label={t("createPr.comment.label")}
           rows={3}
           value={comment}
           onChange={(event) => setComment(event.target.value)}
-          placeholder="Anything the reviewer should know before reading the diff…"
+          placeholder={t("createPr.comment.placeholder")}
           className="text-sm"
         />
       </div>

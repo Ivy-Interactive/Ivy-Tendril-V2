@@ -1,0 +1,274 @@
+{
+  "plansView": {
+    "newPlanShortcut": "新建计划",
+    "empty": {
+      "title": "没有计划",
+      "description": "您创建的计划将显示在这里"
+    },
+    "noSelection": "从侧边栏选择一个计划"
+  },
+  "sidebar": {
+    "title": "计划"
+  },
+  "searchBadges": {
+    "verified": "已验证",
+    "unverified": "未验证"
+  },
+  "detail": {
+    "tabs": {
+      "plan": "计划",
+      "details": "详情",
+      "diff": "差异视图",
+      "recommendations": "建议（{{n}}）",
+      "git": "Git",
+      "gitCount": "Git（{{n}}）",
+      "gitAtRisk_other": "Git（{{n}}）· {{count}} 个有风险",
+      "gitAtRiskUncounted_other": "Git · {{count}} 个有风险"
+    },
+    "questions": {
+      "label": "问题",
+      "labelUnanswered_other": "问题（{{count}} 个未回答）"
+    },
+    "sourceLabel": {
+      "pr": "PR",
+      "issue": "Issue"
+    },
+    "meta": {
+      "position_other": "{{position}}/{{count}} 个计划",
+      "dependsOn": "依赖于 {{plans}}"
+    },
+    "errors": {
+      "saveAnswer": "保存回答失败：{{error}}",
+      "saveAnnotation": "保存批注失败：{{error}}",
+      "updateRecommendation": "更新建议“{{title}}”失败：{{error}}",
+      "completePlan": "无法完成计划 {{id}}：{{error}}"
+    },
+    "runActionFailed": {
+      "executePlan": "执行计划失败：{{error}}",
+      "updatePlan": "更新计划失败：{{error}}",
+      "expandPlan": "扩充计划失败：{{error}}",
+      "splitPlan": "拆分计划失败：{{error}}",
+      "copyPlanId": "复制计划 ID 失败：{{error}}",
+      "copyFolderPath": "复制文件夹路径失败：{{error}}",
+      "openFolder": "打开文件夹失败：{{error}}"
+    },
+    "discussDraft": {
+      "outcome": "在完成此计划之前，我想先讨论一下它的结果。请总结已完成的工作，并指出任何值得仔细查看的地方。",
+      "plan": "在执行此计划之前，我想先讨论一下。请总结该计划，并指出您会修改的任何地方。"
+    }
+  },
+  "actions": {
+    "discussWithAgent": "与智能体讨论",
+    "updatePlan": "更新计划",
+    "checking": "正在检查…",
+    "starting": "正在启动…",
+    "createPr": "创建 PR",
+    "completePlan": "完成计划",
+    "retryPlan": "重试计划",
+    "acceptPartialDelivery": "接受部分交付",
+    "resetToDraft": "重置为草稿…"
+  },
+  "draftActions": {
+    "execute": "执行计划",
+    "update": "更新计划…",
+    "expand": "扩充计划",
+    "split": "拆分计划",
+    "createIssue": "创建 Issue…",
+    "copyId": "复制计划 ID",
+    "copyPath": "复制文件夹路径",
+    "openFolder": "打开文件夹",
+    "delete": "删除计划…"
+  },
+  "failureCallout": {
+    "title": "执行失败",
+    "verification": "<bold>{{name}}</bold> {{status}}，详情请查看验证报告",
+    "noDetails": "没有可用的详情。请查看任务日志。"
+  },
+  "questionsPanel": {
+    "answered_other": "已回答 {{answered}}/{{count}}",
+    "optional": "{{label}}（可选）",
+    "saving": "正在保存…"
+  },
+  "planPane": {
+    "writing": "智能体仍在起草此计划。任务写入第一个修订版本后，计划正文将显示在这里。",
+    "neverWritten": "此计划没有任何修订版本。其文件夹已创建，但起草它的任务从未写入修订版本，因此没有可显示的计划正文。",
+    "neverWrittenUpdate": "更新计划",
+    "unreadable_other": "此计划在磁盘上记录了 {{count}} 个修订版本，但最新的修订版本内容为空。该文件可能无法读取。"
+  },
+  "recommendationsTab": {
+    "title": "计划建议",
+    "description": "执行期间发现的超出范围的后续工作与改进。",
+    "empty": "{{jobType}} 未为此计划登记任何建议。"
+  },
+  "gitTab": {
+    "loading": "正在加载 Git 状态…"
+  },
+  "details": {
+    "planId": "计划 ID",
+    "folder": "文件夹",
+    "initialPrompt": "初始提示词",
+    "revision": "修订版本",
+    "profile": "配置文件",
+    "relatedPlans": "关联计划",
+    "dependsOn": "依赖于",
+    "issue": "Issue",
+    "created": "创建时间",
+    "level": "级别",
+    "project": "项目",
+    "state": "状态",
+    "copyPlanIdTooltip": "复制到剪贴板",
+    "copyFolderTooltip": "复制到剪贴板",
+    "repositories": "仓库",
+    "noRepositories": "未指定仓库",
+    "commits": "提交",
+    "noCommits": "暂无提交"
+  },
+  "verificationStatus": {
+    "pass": "通过",
+    "fail": "失败",
+    "pending": "待处理",
+    "skipped": "已跳过"
+  },
+  "verifications": {
+    "empty": "没有验证",
+    "updateFailed": "更新验证 {{name}} 失败：{{error}}",
+    "viewReportTooltip": "查看 {{name}} 报告",
+    "viewReport": "查看报告",
+    "hideReport": "隐藏报告",
+    "noReport": "尚无报告"
+  },
+  "reportSheet": {
+    "title": "验证报告",
+    "description": "{{name}} 的验证报告详情",
+    "descriptionFallback": "计划的验证报告详情",
+    "loading": "正在加载验证报告…",
+    "notFound": "未找到“{{name}}”的验证报告文件。",
+    "empty": "{{name}} 没有可用的报告。"
+  },
+  "artifactSheet": {
+    "thumbnail": {
+      "openLabel": "打开 {{fileName}}",
+      "noPreview": "无预览",
+      "loadingLabel": "正在加载 {{fileName}}"
+    },
+    "fallbackTitle": "产物",
+    "noPreviewTitle": "无预览",
+    "showInFolder": "在文件夹中显示",
+    "loadingLabel": "正在加载 {{fileName}}",
+    "imageFailed": "Tendril 无法加载此图像。",
+    "imageFailedWithError": "Tendril 无法加载此图像：{{error}}",
+    "binary": "{{fileName}} 不是文本文件（{{size}}），因此此处无法预览。",
+    "tooLarge": "{{fileName}} 大小为 {{size}}，过大，此处无法预览。",
+    "plainNotice": "以纯文本显示：{{fileName}} 大小为 {{size}}，过大，无法高亮显示。",
+    "plainNotice_markdown": "以纯文本显示：{{fileName}} 大小为 {{size}}，过大，无法渲染为 Markdown。",
+    "copyPath": "复制路径",
+    "revealLabel": "在文件夹中显示"
+  },
+  "pullRequests": {
+    "title": "Pull Requests",
+    "refresh": "刷新",
+    "refreshing": "正在刷新…",
+    "unreachable": "无法为以下仓库连接到 GitHub：{{repos}}",
+    "syncInProgress": "同步已在进行中，完成后状态将会更新。",
+    "checked": "检查于 {{when}}",
+    "checkedJustNow": "刚刚检查",
+    "empty": "尚未创建 PR",
+    "state": {
+      "open": "开启",
+      "closed": "已关闭",
+      "merged": "已合并",
+      "unknown": "未知"
+    }
+  },
+  "revisionDiff": {
+    "singleRevision": "此计划只有一个修订版本，因此暂时没有可对比的内容。{{createPlan}} 或 {{retryPlan}} 写入新的修订版本后将显示差异。",
+    "compare": "<oldLabel><text>对比修订版本</text><oldSelect/></oldLabel><newLabel><text>与</text><newSelect/></newLabel>",
+    "oldRevisionLabel": "旧修订版本",
+    "newRevisionLabel": "新修订版本",
+    "onDisk_other": "磁盘上有 {{count}} 个修订版本",
+    "loading": "正在加载修订版本 {{from}} 和 {{to}}…",
+    "identical": "修订版本 {{from}} 和 {{to}} 完全相同。"
+  },
+  "icebox": {
+    "title": "待办箱",
+    "description": "已归档或暂缓、处于搁置状态的计划。",
+    "searchPlaceholder": "搜索待办箱中的计划…",
+    "projectFilterLabel": "项目",
+    "allProjects": "所有项目",
+    "levelFilterLabel": "级别",
+    "allLevels": "所有级别",
+    "empty": {
+      "title": "待办箱为空",
+      "description": "您搁置的计划将显示在这里"
+    },
+    "noMatch": {
+      "title": "没有匹配的计划",
+      "description": "没有符合当前筛选条件的待办箱计划。"
+    },
+    "card": {
+      "priority": "P{{priority}}",
+      "verificationTooltip": "{{name}}：{{status}}",
+      "deleteLabel": "删除计划 {{id}}",
+      "thawLabel": "解冻计划 {{id}}",
+      "thaw": "解冻",
+      "thawing": "正在解冻…"
+    },
+    "thawFailed": "无法解冻计划 {{id}}：{{error}}"
+  },
+  "newPlan": {
+    "title": "新建计划",
+    "closeLabel": "关闭对话框",
+    "projectPickerLabel": "目标项目",
+    "autoProject": "自动",
+    "addProject": "+ 添加新项目",
+    "submit": "创建",
+    "placeholder": "输入需求描述…",
+    "emptyDescription": "请输入新计划的描述。"
+  },
+  "planActions": {
+    "canExecute": {
+      "alreadyCompleted": "计划已完成。",
+      "executing": "计划正在执行中。",
+      "blockedByDependency": "被依赖项“{{dependency}}”阻塞，其状态为“{{state}}”（需要为已完成）。"
+    },
+    "canCreatePr": {
+      "wrongState": "仅当计划处于待审查或失败状态时才能创建 PR（当前：{{state}}）。",
+      "verificationsFailed": "无法创建 PR：有验证失败（{{names}}）。",
+      "verificationsPending": "无法创建 PR：仍有待处理的验证（{{names}}）。"
+    },
+    "canRetry": {
+      "wrongState": "仅可重试处于待审查或失败状态的计划（当前：{{state}}）。"
+    },
+    "canRefine": {
+      "wrongState": "计划完善（扩充/更新/拆分）仅适用于处于草稿状态的计划（当前：{{state}}）。"
+    },
+    "canDelete": {
+      "inFlight": "计划处于“{{state}}”状态时无法删除，请先取消任务。"
+    },
+    "canReset": {
+      "terminal": "计划处于“{{state}}”状态，无法重置为草稿。",
+      "inFlight": "计划处于“{{state}}”状态时无法重置，请先取消任务。",
+      "wrongState": "仅可将处于待审查、失败或已阻塞状态的计划重置为草稿（当前：{{state}}）。"
+    },
+    "canCompletePartial": {
+      "wrongState": "仅当计划处于待审查或失败状态时才能部分交付（当前：{{state}}）。",
+      "noFailures": "没有失败的验证，请改为正常完成计划。"
+    },
+    "canComplete": {
+      "alreadyCompleted": "计划已完成。",
+      "inFlight": "计划处于“{{state}}”状态时无法完成，请先取消任务。"
+    },
+    "errors": {
+      "completeBlocked": "完成计划被阻止",
+      "executeBlocked": "执行被阻止",
+      "retryBlocked": "重试被阻止",
+      "createPrBlocked": "创建 PR 被阻止",
+      "refineBlocked": "完善被阻止",
+      "repositoryRequired": "创建 Issue 需要指定仓库。"
+    }
+  },
+  "store": {
+    "rollbackField": "已回滚：更新 {{field}} 失败：{{error}}",
+    "rollbackVerification": "已回滚验证更新：{{error}}"
+  }
+}

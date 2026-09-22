@@ -1,0 +1,359 @@
+{
+  "view": {
+    "ariaLabel": "Configuration du projet",
+    "subtitle": "Configuration du projet",
+    "rename": "Renommer le projet"
+  },
+  "notifications": {
+    "saved": "Enregistré",
+    "cloned": "Cloné",
+    "renamed": "Renommé"
+  },
+  "saveError": "Impossible d'enregistrer le projet : {{error}}",
+  "rowActions": {
+    "edit": "Modifier"
+  },
+  "bladeFooter": {
+    "add": "Ajouter"
+  },
+  "basic": {
+    "title": "Paramètres de base",
+    "hint": "La couleur du projet et le contexte d'IA transmis à chaque agent qui travaille dessus.",
+    "color": {
+      "label": "Couleur",
+      "hint": "Un nom de couleur Ivy, tel que config.yaml l'enregistre."
+    },
+    "context": {
+      "label": "Contexte",
+      "placeholder": "Ce qu'un agent doit savoir sur ce projet…"
+    },
+    "saved": "Projet enregistré"
+  },
+  "repositories": {
+    "title": "Dépôts",
+    "hint": "Les dépôts sources et la branche de base à partir de laquelle chaque plan crée sa branche.",
+    "empty": "Aucun dépôt pour l'instant.",
+    "baseBranch": {
+      "ariaLabel": "Branche de base pour {{path}}",
+      "placeholder": "Branche de base",
+      "saved": "Branche de base enregistrée pour {{path}}"
+    },
+    "remove": {
+      "ariaLabel": "Retirer {{path}}",
+      "consequence": "La copie locale sur le disque n'est pas modifiée — cela empêche seulement les nouveaux plans de ce projet de s'appuyer dessus.",
+      "removed": "Retiré : {{path}}"
+    },
+    "add": {
+      "ariaLabel": "URL du dépôt ou chemin local",
+      "placeholder": "URL du dépôt ou chemin local",
+      "button": "Ajouter un dépôt",
+      "cloning": "Clonage…",
+      "invalidPath": "Chemin de dépôt non valide.",
+      "added": "Ajouté : {{path}}",
+      "cloned": "Dépôt cloné dans {{path}}",
+      "failed": "Impossible d'ajouter le dépôt : {{error}}"
+    },
+    "note": "Une URL distante est clonée dans TENDRIL_HOME, et la ligne affiche l'emplacement du clone plutôt que l'URL ; un chemin local est enregistré tel que saisi."
+  },
+  "reviewActions": {
+    "title": "Actions de revue",
+    "hint": "Boutons de lancement rapide affichés pendant la revue pour prévisualiser ou exécuter l'application.",
+    "addButton": "Ajouter une action de revue",
+    "addTitle": "Ajouter une action de revue",
+    "editTitle": "Modifier l'action de revue",
+    "columns": {
+      "name": "Nom de l'action",
+      "command": "Commande",
+      "condition": "Condition"
+    },
+    "empty": "Aucune action de revue pour ce projet.",
+    "removal": {
+      "consequence": "Elle n'est plus proposée sur les plans en revue de ce projet, et les actions restantes se resserrent pour combler sa place dans l'ordre d'exécution."
+    },
+    "saved": "Action de revue « {{name}} » enregistrée",
+    "deleted": "Action de revue « {{name}} » supprimée"
+  },
+  "verifications": {
+    "title": "Vérifications",
+    "hint": "Contrôles qualité requis avant que les plans soient marqués comme terminés. Faites glisser pour définir l'ordre d'exécution.",
+    "addButton": "Ajouter une vérification",
+    "addTitle": "Ajouter une vérification",
+    "empty": "Aucune vérification n'est définie dans config.yaml ; il n'y a donc rien à activer. Ajoutez-en une pour la créer et l'activer ici.",
+    "updated": "Vérifications mises à jour pour le projet {{project}}",
+    "orderSaved": "Ordre d'exécution des vérifications enregistré",
+    "added": "Vérification ajoutée",
+    "addFailed": "Impossible d'ajouter la vérification : {{error}}"
+  },
+  "ports": {
+    "title": "Ports",
+    "hint": "Ports de service nommés. Un plan utilise un port libre lorsque le port par défaut est déjà pris.",
+    "addButton": "Ajouter un port",
+    "addTitle": "Ajouter un port",
+    "editTitle": "Modifier le port",
+    "columns": {
+      "name": "Nom",
+      "defaultPort": "Port par défaut",
+      "description": "Description"
+    },
+    "empty": "Aucun port de service configuré. Définissez des ports nommés pour allouer dynamiquement les ports entre les revues de plans simultanées.",
+    "mergeLimitation": "Les ports forment un mappage, et PUT /api/config fusionne les mappages en profondeur : un port peut donc être ajouté ou modifié ici, mais ni supprimé ni renommé.",
+    "saved": "Port « {{name}} » enregistré"
+  },
+  "envFiles": {
+    "title": "Fichiers d'environnement",
+    "hint": "Fichiers recréés dans chaque worktree de plan, qui démarre sans les fichiers .env non suivis.",
+    "addButton": "Ajouter un fichier d'environnement",
+    "addTitle": "Ajouter un fichier d'environnement",
+    "editTitle": "Modifier le fichier d'environnement",
+    "columns": {
+      "path": "Chemin",
+      "template": "Modèle",
+      "overrides": "Surcharges"
+    },
+    "empty": "Aucun fichier d'environnement configuré. Définissez des fichiers d'environnement pour matérialiser des modèles .env et injecter des variables dans les worktrees de plans.",
+    "removal": {
+      "consequence": "Ses variables ne sont plus injectées dans les nouveaux worktrees de plans. Les fichiers déjà matérialisés dans les worktrees existants restent tels quels."
+    },
+    "saved": "Fichier d'environnement « {{path}} » enregistré",
+    "deleted": "Fichier d'environnement « {{path}} » supprimé"
+  },
+  "agentBehavior": {
+    "title": "Comportement de l'agent",
+    "autoImplement": {
+      "label": "Revue des artefacts / implémentation automatique",
+      "options": {
+        "autoImplementPlans": "Implémenter automatiquement les plans",
+        "alwaysAskReview": "Toujours demander une revue"
+      }
+    },
+    "saved": "Comportement de l'agent enregistré"
+  },
+  "security": {
+    "title": "Sécurité",
+    "hint": "Sandbox, règles de fichiers et de réseau, et confirmation dans le terminal pour ce projet.",
+    "preset": {
+      "label": "Profil de sécurité",
+      "hint": "Tout profil autre que Personnalisé remplace les champs sandbox et fichiers/réseau ci-dessous.",
+      "options": {
+        "custom": "Personnalisé",
+        "permissive": "Permissif",
+        "restricted": "Restreint",
+        "strict": "Strict"
+      }
+    },
+    "sandboxMode": {
+      "label": "Mode sandbox",
+      "hint": "« Hériter du paramètre général » signifie qu'aucun sandbox n'est utilisé. Valeur effective : {{effective}}.",
+      "options": {
+        "inheritGeneral": "Hériter du paramètre général",
+        "enabled": "Activé",
+        "disabled": "Désactivé"
+      }
+    },
+    "outsideFileAccess": {
+      "label": "Accès aux fichiers externes",
+      "hint": "« Refuser » ignore toutes les règles de fichiers ci-dessous. Valeur effective : {{effective}}.",
+      "options": {
+        "allow": "Autoriser",
+        "ask": "Demander",
+        "deny": "Refuser"
+      }
+    },
+    "terminalAutoExecution": {
+      "label": "Exécution automatique dans le terminal",
+      "hint": "Non affecté par le profil. Valeur effective : {{effective}}.",
+      "options": {
+        "inheritGeneral": "Hériter du paramètre général",
+        "alwaysProceed": "Toujours exécuter",
+        "alwaysAsk": "Toujours demander"
+      }
+    },
+    "filePermissions": {
+      "label": "Autorisations de fichiers",
+      "hint": "Une règle `{{syntax}}` par ligne. {{allow}} ajoute un répertoire accessible en écriture ; {{deny}} refuse {{write}} et {{edit}} sur le chemin."
+    },
+    "networkRules": {
+      "label": "Règles d'accès réseau",
+      "hintAllowed": "Une règle `{{syntax}}` par ligne. Un seul {{deny}} désactive entièrement l'accès réseau. Valeur effective : autorisé.",
+      "hintDenied": "Une règle `{{syntax}}` par ligne. Un seul {{deny}} désactive entièrement l'accès réseau. Valeur effective : refusé."
+    },
+    "allowedCommands": {
+      "label": "Commandes de terminal autorisées",
+      "hint": "Une commande par ligne, chacune autorisée sous la forme `{{syntax}}`."
+    },
+    "enforcement": {
+      "enforces": "{{agent}} applique : {{controls, list(style: narrow)}}.",
+      "enforcesNone": "{{agent}} n'applique aucun de ces contrôles.",
+      "ignored": "Ignorés par {{agent}} : {{controls, list(style: narrow)}}. Ces clés sont tout de même écrites et respectées par les agents qui les prennent en charge.",
+      "controls": {
+        "sandbox": "mode sandbox",
+        "network": "accès réseau",
+        "terminalPrompt": "confirmation dans le terminal",
+        "fileRules": "règles de fichiers et de commandes"
+      }
+    },
+    "saved": "Paramètres de sécurité enregistrés pour le projet {{project}}"
+  },
+  "mcpServers": {
+    "title": "Autorisations locales",
+    "hint": "Serveurs Model Context Protocol personnalisés pour ce projet.",
+    "addButton": "Ajouter un serveur MCP",
+    "addTitle": "Ajouter un serveur MCP",
+    "editTitle": "Modifier le serveur MCP",
+    "columns": {
+      "name": "Nom",
+      "command": "Commande",
+      "disabled": "Désactivé"
+    },
+    "disabledValue": {
+      "yes": "Oui",
+      "no": "Non"
+    },
+    "empty": "Aucun serveur MCP configuré pour ce projet.",
+    "removal": {
+      "consequence": "Les agents qui travaillent sur ce projet ne reçoivent plus ses outils. Cette action retire la référence du projet à ce serveur, pas la définition du serveur elle-même."
+    },
+    "saved": "Serveur MCP « {{name}} » enregistré",
+    "deleted": "Serveur MCP « {{name}} » supprimé"
+  },
+  "skills": {
+    "title": "Personnalisations",
+    "hint": "Compétences personnalisées et instructions de prompt pour les agents qui travaillent sur ce projet.",
+    "addButton": "Ajouter une compétence personnalisée",
+    "addTitle": "Ajouter une compétence personnalisée",
+    "editTitle": "Modifier la compétence personnalisée",
+    "columns": {
+      "name": "Nom",
+      "description": "Description",
+      "path": "Chemin"
+    },
+    "empty": "Aucune compétence personnalisée configurée pour ce projet.",
+    "removal": {
+      "consequence": "Les agents qui travaillent sur ce projet ne la reçoivent plus. Cette action retire la référence du projet à cette compétence, pas ses propres fichiers."
+    },
+    "saved": "Compétence « {{name}} » enregistrée",
+    "deleted": "Compétence « {{name}} » supprimée",
+    "memoryNote": "Les mémoires du projet sont stockées sous forme de fichiers Markdown sous {{path}}. Le démon n'expose aucune route pour elles ; elles ne peuvent donc pas encore être modifiées ici."
+  },
+  "dangerZone": {
+    "title": "Zone de danger",
+    "remove": {
+      "button": "Retirer le projet",
+      "description": "Retire le projet de config.yaml. Les dépôts clonés, les dossiers de plans et l'historique restent sur le disque : ajouter de nouveau le projet sous le même nom le restaure."
+    },
+    "delete": {
+      "button": "Supprimer le projet",
+      "description": "Supprime définitivement les plans du projet, ses dépôts clonés sous {{path}}, ses lignes en base de données et son entrée de configuration. Cette action est irréversible et vous demande d'abord de saisir le nom du projet."
+    }
+  },
+  "reviewActionBlade": {
+    "name": {
+      "label": "Nom",
+      "placeholder": "Nom de l'action…"
+    },
+    "command": {
+      "label": "Commande",
+      "placeholder": "par ex. dotnet test"
+    },
+    "condition": {
+      "label": "Condition",
+      "placeholder": "par ex. {{example}}"
+    }
+  },
+  "verificationBlade": {
+    "name": {
+      "label": "Nom",
+      "placeholder": "Nom de la vérification…",
+      "duplicate": "Une vérification nommée « {{name}} » existe déjà."
+    },
+    "prompt": {
+      "label": "Prompt",
+      "placeholder": "Prompt de vérification…"
+    }
+  },
+  "mcpServerBlade": {
+    "name": {
+      "label": "Nom",
+      "placeholder": "Nom du serveur (par ex. sqlite)…"
+    },
+    "command": {
+      "label": "Commande",
+      "placeholder": "Exécutable de la commande (par ex. npx)…"
+    },
+    "arguments": {
+      "label": "Arguments",
+      "placeholder": "Arguments (par ex. -y @modelcontextprotocol/server-sqlite)…",
+      "hint": "Séparés par les espaces, comme le fait EditMcpServerBladeView."
+    },
+    "environment": {
+      "label": "Variables d'environnement",
+      "hint": "Une paire KEY=VALUE par ligne."
+    },
+    "disabled": "Désactivé"
+  },
+  "skillBlade": {
+    "name": {
+      "label": "Nom",
+      "placeholder": "Nom de la compétence (par ex. code-review)…"
+    },
+    "description": {
+      "label": "Description",
+      "placeholder": "Brève description…"
+    },
+    "instructions": {
+      "label": "Instructions",
+      "placeholder": "Instructions Markdown pour l'agent…"
+    },
+    "path": {
+      "label": "Chemin du fichier/dossier",
+      "placeholder": "Chemin du dossier/fichier de la compétence (par ex. %TENDRIL_HOME%/Skills/my-skill)…"
+    },
+    "disabled": "Désactivée"
+  },
+  "portBlade": {
+    "name": {
+      "label": "Nom",
+      "placeholder": "par ex. backend",
+      "hint": "Identifiant du port, référencé dans les surcharges d'environnement via des espaces réservés {{placeholder}}."
+    },
+    "defaultPort": {
+      "label": "Port par défaut",
+      "invalid": "Le port par défaut doit être compris entre 1 et 65535.",
+      "hint": "Port préféré. S'il est déjà pris, Tendril en attribue un libre à la place."
+    },
+    "description": {
+      "label": "Description",
+      "placeholder": "Ce qui écoute sur ce port…"
+    }
+  },
+  "envFileBlade": {
+    "path": {
+      "label": "Chemin",
+      "placeholder": "par ex. apps/web/.env",
+      "hint": "Chemin relatif du fichier d'environnement recréé dans le worktree du plan."
+    },
+    "template": {
+      "label": "Modèle",
+      "placeholder": "par ex. .env.example",
+      "hint": "Modèle de base facultatif, copié dans le worktree avant l'application des surcharges."
+    },
+    "overrides": {
+      "label": "Surcharges",
+      "hint": "Lignes KEY=VALUE prenant en charge les espaces réservés {{ports}}, {{env}} et {{variable}}."
+    }
+  },
+  "nameEditor": {
+    "ariaLabel": "Nom du projet",
+    "confirm": "Confirmer le renommage",
+    "cancel": "Annuler le renommage",
+    "duplicate": "Un projet nommé « {{name}} » existe déjà.",
+    "renamed": "Projet renommé en « {{name}} »"
+  },
+  "removalKinds": {
+    "repository": "dépôt",
+    "reviewAction": "action de revue",
+    "environmentFile": "fichier d'environnement",
+    "mcpServer": "serveur MCP",
+    "customSkill": "compétence personnalisée"
+  }
+}

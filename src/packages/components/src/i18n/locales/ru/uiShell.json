@@ -1,0 +1,286 @@
+{
+  "agentButton": {
+    "label": "Агент",
+    "newChatTooltip": "Новый чат",
+    "flyout": {
+      "empty": "Чатов пока нет",
+      "newChat": "Новый чат"
+    }
+  },
+  "newPlanButton": {
+    "label": "Новый план"
+  },
+  "settingsButton": {
+    "label": "Настройки"
+  },
+  "nav": {
+    "resizeAriaLabel": "Изменить ширину навигации"
+  },
+  "railFlyout": {
+    "previous": "Назад",
+    "next": "Далее"
+  },
+  "sectionItems": {
+    "state": {
+      "working": "Работает",
+      "completed": "Завершено"
+    },
+    "menu": {
+      "label": "Параметры: {{title}}",
+      "tooltip": "Параметры",
+      "pin": "Закрепить чат",
+      "unpin": "Открепить чат",
+      "rename": "Изменить название",
+      "delete": "Удалить"
+    },
+    "titleEditor": {
+      "ariaLabel": "Название элемента"
+    }
+  },
+  "sidebarHeader": {
+    "openSidebar": "Открыть боковую панель",
+    "closeSidebar": "Закрыть боковую панель"
+  },
+  "sidebarSection": {
+    "searchLabel": "Поиск планов",
+    "searchButton": "Поиск"
+  },
+  "tabs": {
+    "closeAriaLabel": "Закрыть «{{title}}»",
+    "newSession": "Новая сессия агента"
+  },
+  "shell": {
+    "toggleSidebarShortcut": "Показать или скрыть боковую панель",
+    "resizer": {
+      "ariaLabel": "Изменить ширину боковой панели",
+      "title": "Перетащите, чтобы изменить ширину боковой панели; двойной щелчок — сброс"
+    }
+  },
+  "agentStatus": {
+    "starting": "Запуск…",
+    "completed": "Завершено",
+    "failed": "Сбой",
+    "thinking": "Думает…",
+    "working": "Работает…",
+    "runningCommand": "Выполняет команду",
+    "reading": "Читает",
+    "readingFile": "Читает {{file}}",
+    "editing": "Редактирует",
+    "editingFile": "Редактирует {{file}}",
+    "searching": "Ищет",
+    "runningTool": "Запускает {{name}}"
+  },
+  "resultSummary": {
+    "errorTitle": "❌ Ошибка",
+    "terminated": "Процесс агента был принудительно завершён или превысил таймаут (код выхода {{code}}).",
+    "terminatedUnknownCode": "Процесс агента был принудительно завершён или превысил таймаут (код выхода неизвестен).",
+    "cost": {
+      "billed": "Стоимость: {{cost}}",
+      "estimated": "Стоимость: ~{{cost}}",
+      "billedTooltip": "По счёту агента",
+      "estimatedTooltip": "Рассчитано по числу токенов по прейскурантной цене этой модели, без учёта вашего тарифа или уровня подписки"
+    },
+    "duration": "Длительность: {{seconds}} с",
+    "tokens": "Токены: {{input}} на входе / {{output}} на выходе",
+    "cache": "Кэш: {{read}} чтение / {{write}} запись",
+    "premium": "Премиум: {{value}}",
+    "exitCode": "Код выхода: {{code}}",
+    "denied": "Отклонено: {{value}}"
+  },
+  "metrics": {
+    "elapsed": {
+      "label": "Время вывода",
+      "reportedTooltip": "Время вывода: длительность по данным агента",
+      "measuredTooltip": "Время вывода: от первого события до последнего",
+      "runningTooltip": "Время вывода: с первого события"
+    },
+    "tokens": {
+      "label": "Токены",
+      "estimatedTooltip": "Токены: оценка по потоку на данный момент; по завершении агент сообщит собственное число",
+      "reportedTooltip": "Токены: по данным агента"
+    },
+    "cost": {
+      "label": "Стоимость",
+      "estimatedTooltip": "Стоимость: рассчитана по числу токенов по прейскурантной цене этой модели, без учёта вашего тарифа или уровня подписки",
+      "billedTooltip": "Стоимость: по счёту агента"
+    }
+  },
+  "toolCard": {
+    "file": "Файл: {{path}}",
+    "url": "URL: {{url}}",
+    "query": "Запрос: {{query}}",
+    "queryInPath": "Запрос: {{query}} в {{path}}",
+    "input": "ВХОД",
+    "output": "ВЫХОД"
+  },
+  "toolGroup": {
+    "count_one": "{{count}} вызов инструмента",
+    "count_few": "{{count}} вызова инструментов",
+    "count_many": "{{count}} вызовов инструментов",
+    "count_other": "{{count}} вызова инструмента"
+  },
+  "agentNode": {
+    "session": "сессия: {{session}}",
+    "sessionWithModel": "сессия: {{session}} ({{model}})",
+    "errorTitle": "❌ Ошибка"
+  },
+  "badgeSelect": {
+    "placeholder": "Выберите…",
+    "ariaLabel": "Выбор",
+    "remove": "Удалить {{label}}"
+  },
+  "contentInput": {
+    "placeholder": "Чем я могу помочь вам сегодня?",
+    "send": "Отправить",
+    "moreOptions": "Другие параметры",
+    "attachFiles": "Прикрепить файлы",
+    "voiceInput": "Голосовой ввод с распознаванием речи",
+    "dismissError": "Скрыть ошибку",
+    "removeFile": "Удалить файл",
+    "attachment": {
+      "document": "Документ",
+      "lineCount_one": "{{count}} строка",
+      "lineCount_few": "{{count}} строки",
+      "lineCount_many": "{{count}} строк",
+      "lineCount_other": "{{count}} строки",
+      "sizeBytes": "{{size}} Б",
+      "sizeKilobytes": "{{size}} КБ",
+      "sizeMegabytes": "{{size}} МБ"
+    },
+    "errors": {
+      "uploadStatus": "Не удалось загрузить файл: статус {{status}}",
+      "uploadFailed": "Не удалось загрузить файл: {{error}}",
+      "readFailed": "Не удалось прочитать файл",
+      "emptyTranscription": "В распознанной речи недостаточно информации для создания промпта. Попробуйте ещё раз и говорите чётко."
+    }
+  },
+  "voice": {
+    "errors": {
+      "insecureContext": "Для голосового ввода нужно защищённое соединение. Откройте Tendril по HTTPS или на localhost и повторите попытку.",
+      "mediaDevicesUnavailable": "Голосовой ввод недоступен в этом окне. На macOS после обновления закройте и снова откройте Ivy Tendril, затем разрешите доступ к микрофону, когда появится запрос. Также можно выполнить «{{command}}» и пользоваться голосовым вводом в браузере.",
+      "audioCaptureUnsupported": "Этот браузер не может записывать звук для голосового ввода.",
+      "captureInitFailed": "Не удалось инициализировать запись звука: {{error}}",
+      "websocket": "Ошибка WebSocket при подключении к сервису распознавания речи.",
+      "closedUnexpectedly": "Соединение WebSocket неожиданно закрыто (код {{code}}: {{reason}})",
+      "closedUnexpectedlyNoReason": "Соединение WebSocket неожиданно закрыто (код {{code}}: причина не указана)",
+      "connectionFailed": "Доступ к микрофону запрещён или не удалось подключиться: {{error}}",
+      "microphoneDenied": "Доступ к микрофону запрещён. Разрешите Ivy Tendril доступ к микрофону в разделе «Системные настройки > Конфиденциальность и безопасность > Микрофон», затем повторите попытку.",
+      "microphoneNotFound": "Микрофон не найден. Подключите устройство ввода и повторите попытку."
+    }
+  },
+  "dashboard": {
+    "status": {
+      "plans": "Планы",
+      "inProgress": "В работе",
+      "readyForReview": "Готово к ревью",
+      "completed": "Завершено",
+      "failed": "Сбой"
+    },
+    "kpi": {
+      "breakdownAriaLabel": "Показать детализацию расчёта: {{label}}",
+      "loadingAriaLabel": "Загрузка показателей"
+    },
+    "trend": {
+      "loading": "Загрузка динамики стоимости и планов",
+      "costTab": "Общая стоимость",
+      "plansTab": "Всего планов",
+      "currentName": "Последние 4 недели",
+      "rollingLegend": "Среднее за 7 дней",
+      "plansValue_one": "{{count}} план",
+      "plansValue_few": "{{count}} плана",
+      "plansValue_many": "{{count}} планов",
+      "plansValue_other": "{{count}} плана"
+    },
+    "gitActivity": {
+      "title": "Активность Git",
+      "loading": "Загрузка активности Git"
+    },
+    "pullRequests": {
+      "title": "Пулл-реквесты",
+      "weekTab": "Неделя",
+      "monthTab": "Месяц",
+      "loading": "Загрузка объединённых пулл-реквестов"
+    },
+    "tunnel": {
+      "title": "Туннель"
+    },
+    "factory": {
+      "title": "Фабрика ПО"
+    },
+    "jobs": {
+      "title": "Активные задания",
+      "empty": "Нет выполняемых заданий"
+    }
+  },
+  "trendChart": {
+    "axisDateWithYear": "{{date}} '{{year}}",
+    "currentRow": "{{name}}: {{value}}",
+    "rollingRow": "Среднее за 7 дней: {{value}}"
+  },
+  "activityGrid": {
+    "empty": "Объединённых пулл-реквестов пока нет",
+    "weekOf": "Неделя с {{date}}",
+    "merged_one": "{{count}} пулл-реквест объединён",
+    "merged_few": "{{count}} пулл-реквеста объединены",
+    "merged_many": "{{count}} пулл-реквестов объединено",
+    "merged_other": "{{count}} пулл-реквеста объединено"
+  },
+  "pullRequestBars": {
+    "empty": "Объединённых пулл-реквестов пока нет",
+    "weekOf": "Неделя с {{date}}",
+    "barLabel": "{{period}}: {{merged}}",
+    "merged_one": "{{count}} пулл-реквест объединён",
+    "merged_few": "{{count}} пулл-реквеста объединены",
+    "merged_many": "{{count}} пулл-реквестов объединено",
+    "merged_other": "{{count}} пулл-реквеста объединено",
+    "tooltipMerged_one": "{{count}} PR объединён",
+    "tooltipMerged_few": "{{count}} PR объединены",
+    "tooltipMerged_many": "{{count}} PR объединено",
+    "tooltipMerged_other": "{{count}} PR объединено"
+  },
+  "processViewer": {
+    "newPlan": "Новый план",
+    "plans": "Планы",
+    "review": "Ревью",
+    "creatingPr": "PR {{value}}"
+  },
+  "terminal": {
+    "loading": "Загрузка…"
+  },
+  "webViewer": {
+    "toolbar": {
+      "ariaLabel": "Элементы управления браузером",
+      "back": "Назад",
+      "forward": "Вперёд",
+      "reload": "Обновить",
+      "startSelecting": "Выбрать элемент для комментария",
+      "stopSelecting": "Отменить выбор",
+      "viewport": "Область просмотра: {{device}}",
+      "address": "Адрес",
+      "addressPlaceholder": "Введите URL"
+    },
+    "devices": {
+      "desktop": "Компьютер",
+      "tablet": "Планшет",
+      "mobile": "Телефон"
+    },
+    "empty": "Введите URL в адресной строке, чтобы загрузить страницу.",
+    "frameTitle": "Веб-содержимое",
+    "comment": {
+      "title": "Комментарий к",
+      "title_tag": "Комментарий к<tag>{{tag}}</tag>",
+      "title_text": "Комментарий к<snippet>«{{text}}»</snippet>",
+      "title_tagText": "Комментарий к<tag>{{tag}}</tag><snippet>«{{text}}»</snippet>",
+      "sourceLabel": "источник",
+      "resolvingSource": "определение источника по source map…",
+      "componentsLabel": "компоненты",
+      "xpathLabel": "xpath",
+      "selectorLabel": "селектор",
+      "placeholder": "Введите комментарий… ({{shortcut}} — отправить)",
+      "delete": "Удалить",
+      "cancel": "Отмена",
+      "save": "Сохранить",
+      "add": "Добавить"
+    }
+  }
+}

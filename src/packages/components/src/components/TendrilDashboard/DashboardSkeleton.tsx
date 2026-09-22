@@ -1,5 +1,6 @@
 import React from "react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useTranslation } from "@/i18n/uiShell";
 
 /**
  * The dashboard's first-paint placeholders.
@@ -43,23 +44,26 @@ const CHART_SKELETON_BARS = 8;
 const CHART_SKELETON_HEIGHTS = [38, 62, 45, 78, 55, 88, 48, 70];
 
 /** The four KPI tiles, in their real tones, with the label/value/hint stack blocked out. */
-export const KpiSkeletonGrid: React.FC = () => (
-  <div
-    className="tdb-kpis"
-    role="status"
-    aria-label="Loading metrics"
-    data-testid="tdb-kpis-skeleton"
-  >
-    {Array.from({ length: KPI_SKELETON_COUNT }, (_unused, index) => (
-      // Same `data-tone` cycle as a real tile, so the coloured cards do not change hue on arrival.
-      <div className="tdb-kpi" data-tone={index % 4} key={index}>
-        <Skeleton className="tdb-skel tdb-skel-kpi-label" />
-        <Skeleton className="tdb-skel tdb-skel-kpi-value" />
-        <Skeleton className="tdb-skel tdb-skel-kpi-hint" />
-      </div>
-    ))}
-  </div>
-);
+export const KpiSkeletonGrid: React.FC = () => {
+  const { t } = useTranslation("uiShell");
+  return (
+    <div
+      className="tdb-kpis"
+      role="status"
+      aria-label={t("dashboard.kpi.loadingAriaLabel")}
+      data-testid="tdb-kpis-skeleton"
+    >
+      {Array.from({ length: KPI_SKELETON_COUNT }, (_unused, index) => (
+        // Same `data-tone` cycle as a real tile, so the coloured cards do not change hue on arrival.
+        <div className="tdb-kpi" data-tone={index % 4} key={index}>
+          <Skeleton className="tdb-skel tdb-skel-kpi-label" />
+          <Skeleton className="tdb-skel tdb-skel-kpi-value" />
+          <Skeleton className="tdb-skel tdb-skel-kpi-hint" />
+        </div>
+      ))}
+    </div>
+  );
+};
 
 export interface ChartSkeletonProps {
   /** Announced to a screen reader, so "loading" names the card it belongs to. */

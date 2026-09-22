@@ -1,0 +1,229 @@
+{
+  "rail": {
+    "ariaLabel": "收件箱分类",
+    "myIssues": "我的 Issue",
+    "reviews": "审查请求",
+    "projects": "项目",
+    "noProjects": "设置中没有项目"
+  },
+  "header": {
+    "title": {
+      "myIssues": "我的 Issue",
+      "reviews": "审查请求",
+      "projectIssues": "{{project}} 的 Issue",
+      "projectIssues_noProject": "项目 Issue"
+    },
+    "refresh": "刷新",
+    "autoAccept": {
+      "on": "自动接受：开",
+      "off": "自动接受：关",
+      "onTooltip": "新分配的 Issue 一经发现便会启动计划",
+      "offTooltip": "新分配的 Issue 会在下方标记为“等待决定”，供您接受或忽略",
+      "settings": "自动接受设置"
+    },
+    "checkNow": {
+      "label": "立即检查",
+      "checking": "正在检查…",
+      "tooltip": "立即导入分配给您的 GitHub Issue，无需等待下一次定时检查"
+    }
+  },
+  "bulk": {
+    "selectAll": "全选",
+    "deselectAll": "取消全选",
+    "summary": "已选择 {{selected}} / {{total}} 项",
+    "openChat": {
+      "label": "打开聊天",
+      "labelWithCount": "打开聊天（{{selected}}）",
+      "tooltip": "与编程智能体讨论所选 Issue"
+    },
+    "fireOff": {
+      "label": "在 Tendril 中启动",
+      "labelWithCount": "在 Tendril 中启动（{{selected}}）"
+    }
+  },
+  "freshness": {
+    "repo": {
+      "label": "仓库：",
+      "ariaLabel": "按仓库筛选"
+    },
+    "updated": "更新于 {{when}}",
+    "updated_justNow": "刚刚更新",
+    "notYetUpdated": "尚未更新",
+    "autoRefresh": {
+      "label": "自动刷新：",
+      "ariaLabel": "自动刷新间隔",
+      "off": "关"
+    }
+  },
+  "fireNotice": {
+    "success_other": "已在 Tendril 中启动 {{count}} 个 Issue",
+    "partial": "已启动 {{fired}} / {{total}} 个。#{{number}} 失败：{{error}}",
+    "partial_unknownIssue": "已启动 {{fired}} / {{total}} 个。某个 Issue 失败：{{error}}"
+  },
+  "sweep": {
+    "alreadyRunning": "已有检查正在运行。",
+    "notMaster": "此守护进程不是主实例，因此未执行检查。",
+    "imported": "已导入 {{imported}} 个，已跳过 {{skipped}} 个。",
+    "accepted_other": "{{count}} 个已直接启动计划。",
+    "accepted_partial_other": "{{count}} 个已直接启动计划（其余等待您决定）。",
+    "errors_other": "{{count}} 个错误：{{error}}",
+    "join": "{{previous}}{{next}}"
+  },
+  "chatTitle_other": "{{count}} 个 Issue",
+  "errors": {
+    "noRemotes": "未能解析项目 {{project}} 的 Git 远程仓库。",
+    "noRemotes_noProject": "未能解析项目的 Git 远程仓库（未选择项目）。",
+    "loadFailed": "加载 GitHub Issue 失败"
+  },
+  "loading": "正在从 GitHub 加载 Issue…",
+  "empty": {
+    "reviews": {
+      "title": "全部处理完毕！",
+      "description": "目前没有需要您审查的 Pull Request。"
+    },
+    "issues": {
+      "title": "未找到 Issue",
+      "description": "没有与所选视图匹配的 Issue。"
+    },
+    "filtered": "没有与当前搜索和筛选条件匹配的 Issue。"
+  },
+  "filters": {
+    "search": {
+      "ariaLabel": "搜索 Issue",
+      "placeholder": "按标题、#编号、作者或描述搜索…"
+    },
+    "awaiting": {
+      "label": "待决定",
+      "tooltip": "仅显示等待您决定的已分配 Issue"
+    },
+    "labelPlaceholder": "按标签筛选…",
+    "assigneePlaceholder": "按负责人筛选…"
+  },
+  "issueTable": {
+    "columns": {
+      "issue": "Issue",
+      "repository": "仓库",
+      "labels": "标签",
+      "assignees": "负责人"
+    },
+    "awaitingMark": {
+      "ariaLabel": "等待决定",
+      "tooltip": "等待您决定。已分配 Issue 检查于 {{when}} 发现此项；“接受”将在 {{project}} 中启动计划。",
+      "tooltip_justNow": "等待您决定。已分配 Issue 检查刚刚发现此项；“接受”将在 {{project}} 中启动计划。"
+    },
+    "actions": {
+      "fireOff": {
+        "label": "在 Tendril 中启动",
+        "tooltip": "在 Tendril 中启动此 Issue"
+      },
+      "viewDetails": {
+        "label": "查看详情",
+        "tooltip": "查看 Issue 详情"
+      },
+      "openGitHub": {
+        "label": "在 GitHub 中打开",
+        "tooltip": "在 GitHub 上打开 Issue"
+      },
+      "accept": {
+        "label": "接受",
+        "tooltip": "接受：在 {{project}} 中为此 Issue 启动计划"
+      },
+      "more": {
+        "label": "更多操作",
+        "tooltip": "在 GitHub 中打开或忽略"
+      },
+      "dismiss": {
+        "label": "忽略"
+      }
+    }
+  },
+  "reviewTable": {
+    "columns": {
+      "pullRequest": "Pull Request",
+      "repository": "仓库",
+      "updated": "更新时间"
+    },
+    "actions": {
+      "openGitHub": {
+        "label": "在 GitHub 上审查",
+        "tooltip": "在 GitHub 上打开 Pull Request"
+      },
+      "viewDetails": {
+        "label": "查看详情",
+        "tooltip": "查看审查详情"
+      }
+    }
+  },
+  "sheet": {
+    "titleFallback": "Issue",
+    "assigned": "负责人：{{assignees}}",
+    "openOnGitHub": "在 GitHub 上打开",
+    "dismiss": {
+      "label": "忽略",
+      "tooltip": "永久忽略：已分配 Issue 检查将不再推荐此 Issue"
+    },
+    "accept": {
+      "label": "接受",
+      "tooltip": "在 {{project}} 中为此 Issue 启动计划"
+    },
+    "fireOff": "在 Tendril 中启动",
+    "noDescription": "未提供描述。"
+  },
+  "pullRequests": {
+    "title": "Pull Requests",
+    "status": {
+      "open": "开启",
+      "merged": "已合并",
+      "closed": "已关闭",
+      "unknown": "未知"
+    },
+    "statusTooltip": {
+      "unknown": "未知：守护进程无法解析此 Pull Request（上次检查：{{lastChecked}}）。请重新同步以重试。",
+      "unknown_neverChecked": "未知：守护进程无法解析此 Pull Request（从未检查）。请重新同步以重试。",
+      "merged": "已合并（上次检查：{{lastChecked}}）。已合并的 Pull Request 不会被重新检查。",
+      "merged_neverChecked": "已合并（从未检查）。已合并的 Pull Request 不会被重新检查。",
+      "other": "截至上次检查（{{lastChecked}}），状态为“{{status}}”。",
+      "other_neverChecked": "{{status}}（从未检查）。"
+    },
+    "syncNotice": {
+      "unreachableAll": "未能刷新任何状态：无法为 {{repos}} 连接到 GitHub。请检查 `{{cli}}` CLI 是否已安装并完成认证（`{{command}}`）。",
+      "unreachableSome": "部分状态未更新：无法为 {{repos}} 连接到 GitHub。请检查 `{{cli}}` CLI 是否已安装并完成认证（`{{command}}`）。",
+      "nothingToRefresh": "无需刷新：{{fresh}} 个最近已检查，{{merged}} 个已合并。",
+      "alreadyRunning": "已有同步正在运行。"
+    },
+    "columns": {
+      "plan": "计划",
+      "project": "项目",
+      "status": "状态",
+      "pr": "PR",
+      "tokens": "Token",
+      "cost": "成本",
+      "repository": "仓库",
+      "branch": "分支"
+    },
+    "actions": {
+      "viewPlan": "查看计划",
+      "followUp": "跟进",
+      "openPr": "打开 PR",
+      "resync": "重新同步"
+    },
+    "empty": {
+      "title": "没有 Pull Request",
+      "description": "尚无计划记录 Pull Request。在“审查”标签页中创建后，它将显示在这里。",
+      "loadFailed": "无法加载 Pull Request 列表，因此没有可显示的内容。",
+      "filtered": "没有与当前搜索查询或筛选条件匹配的 Pull Request。"
+    },
+    "search": {
+      "ariaLabel": "搜索 Pull Request",
+      "placeholder": "按计划、项目、仓库或分支搜索…"
+    },
+    "statusFilterPlaceholder": "按状态筛选…",
+    "resyncAll": "全部重新同步",
+    "resyncing": "正在重新同步…",
+    "sheet": {
+      "titleFallback": "计划",
+      "loadingRevision": "正在加载修订版本…",
+      "notFound": "计划未找到或为空。"
+    }
+  }
+}

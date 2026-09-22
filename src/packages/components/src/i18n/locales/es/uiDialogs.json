@@ -1,0 +1,324 @@
+{
+  "actions": {
+    "cancel": "Cancelar",
+    "close": "Cerrar"
+  },
+  "status": {
+    "starting": "Iniciando…"
+  },
+  "planStates": {
+    "draft": "Borrador",
+    "creating": "Creando",
+    "updating": "Actualizando",
+    "executing": "Ejecutando",
+    "review": "En revisión",
+    "failed": "Fallido",
+    "completed": "Completado",
+    "skipped": "Omitido",
+    "blocked": "Bloqueado",
+    "icebox": "Icebox"
+  },
+  "confirm": {
+    "working": "Procesando…"
+  },
+  "autoAcceptSettings": {
+    "title": "Ajustes de aceptación automática",
+    "save": "Guardar",
+    "saving": "Guardando…",
+    "intro": "Importa automáticamente, a intervalos regulares, los issues de GitHub recién asignados como planes de Tendril.",
+    "autoAcceptLabel": "Aceptar automáticamente los issues asignados",
+    "intervalLabel": "Intervalo de comprobación",
+    "intervalOption_one": "{{count}} minuto",
+    "intervalOption_many": "{{count}} minutos",
+    "intervalOption_other": "{{count}} minutos",
+    "checkNow": "Comprobar ahora",
+    "checking": "Comprobando…",
+    "checkAlreadyRunning": "Ya hay una comprobación en curso.",
+    "checkSummary": "Importados: {{imported}}; omitidos: {{skipped}}."
+  },
+  "createIssue": {
+    "title": "Crear issue de GitHub para #{{planId}}",
+    "titleForSubject": "Crear issue de GitHub a partir de {{kind}}",
+    "titleForSubject_recommendation": "Crear issue de GitHub a partir de una recomendación",
+    "description": "CreateIssue redacta el cuerpo del issue a partir del plan y lo abre con `gh` en el repositorio seleccionado.",
+    "descriptionForSubject": "CreateIssue lo abre con `gh` en el repositorio seleccionado. El issue se registra en el plan #{{planId}}, pero describe el elemento de tipo {{kind}}, no lo que aborda el propio plan.",
+    "descriptionForSubject_recommendation": "CreateIssue lo abre con `gh` en el repositorio seleccionado. El issue se registra en el plan #{{planId}}, pero describe la recomendación, no lo que aborda el propio plan.",
+    "submit": "Crear issue",
+    "issueTitle": {
+      "label": "Título",
+      "placeholder": "De qué trata el issue",
+      "required": "El título es obligatorio: aquí no se usa el título del propio plan."
+    },
+    "body": {
+      "label": "Cuerpo",
+      "placeholder": "Qué hay que hacer y por qué…",
+      "hint": "Edítalo antes de registrarlo si la redacción es escueta. El agente le da formato Markdown y conserva tus palabras en lugar de reescribirlas."
+    },
+    "repository": {
+      "label": "Repositorio",
+      "none": "Ni el plan ni su proyecto registran un repositorio, así que no hay dónde ejecutar <code>{{command}}</code>. Añade uno al plan primero.",
+      "hint": "La ruta local del repositorio en el que se abre el issue, no un identificador propietario/nombre."
+    },
+    "assignee": {
+      "label": "Responsable"
+    },
+    "labels": {
+      "label": "Etiquetas",
+      "hint": "Separadas por comas. El responsable y las etiquetas son texto libre: el servicio expone los metadatos del issue, no los usuarios asignables de la organización, así que no hay ninguna lista donde elegir."
+    },
+    "comment": {
+      "label": "Comentario",
+      "placeholder": "Contexto adicional para añadir al cuerpo del issue…"
+    }
+  },
+  "createPr": {
+    "title": "Crear PR para #{{planId}}",
+    "description": "CreatePr envía la rama del plan, abre la PR y — salvo que indiques lo contrario — la fusiona y elimina la rama.",
+    "submit": "Crear PR",
+    "toggles": {
+      "solveMergeConflicts": {
+        "label": "Resolver conflictos de fusión"
+      },
+      "merge": {
+        "label": "Fusionar",
+        "hint": "Si no se marca, la PR se abre sin fusionarla."
+      },
+      "deleteBranch": {
+        "label": "Eliminar rama",
+        "label_multiple": "Eliminar ramas",
+        "hint": "Elimina la rama enviada a origin tras una fusión correcta.",
+        "hint_multiple": "Elimina las ramas enviadas a origin tras una fusión correcta."
+      },
+      "includeArtifacts": {
+        "label": "Incluir artefactos"
+      },
+      "draft": {
+        "label": "Crear como borrador",
+        "hint": "Una PR en borrador no se puede fusionar."
+      }
+    },
+    "reviewers": {
+      "label": "Revisores",
+      "hint": "Logins de GitHub separados por comas. V2 no tiene un campo de responsable aparte — la CLI incorpora el responsable a la lista de revisores, así que ambos van por el mismo canal."
+    },
+    "comment": {
+      "label": "Comentario",
+      "placeholder": "Lo que el revisor debería saber antes de leer el diff…"
+    }
+  },
+  "deleteProject": {
+    "title": "Eliminar proyecto",
+    "confirm": "Eliminar proyecto",
+    "intro": "Esto elimina permanentemente el proyecto <name>{{name}}</name> y todo lo que tiene en el disco. No se puede deshacer.",
+    "plans": "Todos los planes de este proyecto, con sus revisiones e informes de verificación.",
+    "folder": "<code>{{root}}</code><code>{{name}}</code> — sus repositorios clonados, skills, definiciones MCP y memorias, incluido cualquier commit que nunca se haya enviado.",
+    "database": "Sus planes, trabajos y recomendaciones en la base de datos de Tendril.",
+    "config": "Su entrada en config.yaml.",
+    "logsKept": "Los registros de los trabajos se conservan: se almacenan por ID de trabajo, no por proyecto.",
+    "removeInstead": "Para quitar el proyecto de Tendril sin tocar nada en el disco, cancela y usa Quitar proyecto.",
+    "typeToConfirm": "Escribe <name>{{name}}</name> para confirmar",
+    "typeToConfirmAriaLabel": "Escribe {{name}} para confirmar"
+  },
+  "dirtyRepo": {
+    "title": "Cambios locales detectados",
+    "description_one": "⚠ {{count}} repositorio tiene cambios sin confirmar. No se incluirán en el worktree en el que trabaja el agente.",
+    "description_many": "⚠ {{count}} repositorios tienen cambios sin confirmar. No se incluirán en el worktree en el que trabaja el agente.",
+    "description_other": "⚠ {{count}} repositorios tienen cambios sin confirmar. No se incluirán en el worktree en el que trabaja el agente.",
+    "proceed": "Ejecutar de todos modos",
+    "changeCount_one": "{{count}} cambio sin confirmar",
+    "changeCount_many": "{{count}} cambios sin confirmar",
+    "changeCount_other": "{{count}} cambios sin confirmar",
+    "moreChanges_one": "+{{count}} más",
+    "moreChanges_many": "+{{count}} más",
+    "moreChanges_other": "+{{count}} más"
+  },
+  "jobDebug": {
+    "title": "Depuración del trabajo",
+    "loading": "Cargando detalles del trabajo…",
+    "copy": "Copiar detalles",
+    "copied": "Copiado",
+    "copyFailed": "No se pudo copiar al portapapeles",
+    "values": {
+      "duration": "{{seconds}} s",
+      "cost": "{{cost, currency(minimumFractionDigits: 4; maximumFractionDigits: 4; useGrouping: false)}}",
+      "tokens": "{{tokens, number}}"
+    },
+    "fields": {
+      "jobId": "ID del trabajo",
+      "planId": "ID del plan",
+      "planTitle": "Prompt/Título",
+      "status": "Estado",
+      "type": "Tipo",
+      "project": "Proyecto",
+      "provider": "Proveedor",
+      "model": "Modelo",
+      "started": "Iniciado",
+      "completed": "Completado",
+      "lastOutput": "Última salida",
+      "duration": "Duración",
+      "cost": "Coste",
+      "tokens": "Tokens",
+      "processId": "ID del proceso",
+      "detached": "Desvinculado",
+      "workingDirectory": "Directorio de trabajo",
+      "arguments": "Argumentos",
+      "args": "Args",
+      "failureReason": "Motivo del fallo",
+      "permissionDenials": "Permisos denegados",
+      "planFolder": "Carpeta del plan",
+      "jobLog": "Registro del trabajo",
+      "jobPrompt": "Prompt del trabajo",
+      "jobRawLog": "Registro sin procesar del trabajo",
+      "jobEventwireLog": "Registro de Eventwire del trabajo"
+    }
+  },
+  "noProjects": {
+    "title": "Sin proyectos",
+    "description": "Todo plan pertenece a un proyecto, y este directorio de Tendril aún no tiene ninguno.",
+    "openSettings": "Ir a Proyectos",
+    "body": "Añade un proyecto en <location>Ajustes → Proyectos</location> — un nombre, sus repositorios y las verificaciones que ejecutan sus planes — y vuelve a crear el plan."
+  },
+  "pendingAnnotations": {
+    "title": {
+      "changes": "Cambios sin incorporar",
+      "answers": "Respuestas sin incorporar",
+      "annotations": "Anotaciones sin incorporar"
+    },
+    "description": {
+      "items_one": "⚠ Este plan tiene {{count}} elemento que ninguna ejecución de UpdatePlan ha incorporado todavía.",
+      "items_many": "⚠ Este plan tiene {{count}} elementos que ninguna ejecución de UpdatePlan ha incorporado todavía.",
+      "items_other": "⚠ Este plan tiene {{count}} elementos que ninguna ejecución de UpdatePlan ha incorporado todavía.",
+      "annotations_one": "⚠ Este plan tiene {{count}} anotación que aún no se ha incorporado. Si lo ejecutas ahora, se ignorará.",
+      "annotations_many": "⚠ Este plan tiene {{count}} anotaciones que aún no se han incorporado. Si lo ejecutas ahora, se ignorarán.",
+      "annotations_other": "⚠ Este plan tiene {{count}} anotaciones que aún no se han incorporado. Si lo ejecutas ahora, se ignorarán.",
+      "answers_one": "⚠ Este plan tiene {{count}} pregunta respondida que aún no se ha incorporado. Si lo ejecutas ahora, el agente leerá la respuesta tal cual, no como parte del plan.",
+      "answers_many": "⚠ Este plan tiene {{count}} preguntas respondidas que aún no se han incorporado. Si lo ejecutas ahora, el agente leerá las respuestas tal cual, no como parte del plan.",
+      "answers_other": "⚠ Este plan tiene {{count}} preguntas respondidas que aún no se han incorporado. Si lo ejecutas ahora, el agente leerá las respuestas tal cual, no como parte del plan.",
+      "both": "⚠ Este plan tiene {{annotations}} y {{answers}} que aún no se han incorporado. Si lo ejecutas ahora, se ignorarán las anotaciones y el agente leerá las respuestas tal cual, no como parte del plan.",
+      "annotationCount_one": "{{count}} anotación",
+      "annotationCount_many": "{{count}} anotaciones",
+      "annotationCount_other": "{{count}} anotaciones",
+      "answerCount_one": "{{count}} pregunta respondida",
+      "answerCount_many": "{{count}} preguntas respondidas",
+      "answerCount_other": "{{count}} preguntas respondidas"
+    },
+    "updatePlan": "Actualizar plan",
+    "decline": {
+      "discardAnnotations": "Descartar anotaciones y ejecutar",
+      "withoutUpdating": "Ejecutar sin actualizar",
+      "anyway": "Ejecutar de todos modos"
+    },
+    "updateAndExecute": "Actualizar plan y ejecutar",
+    "body": "Si lo ejecutas ahora, el plan se ejecuta tal como está escrito, así que esas notas no influirán en lo que haga el agente. Ejecutar UpdatePlan primero las incorpora al cuerpo del plan."
+  },
+  "resetToDraft": {
+    "title": "Restablecer el plan #{{planId}} a borrador",
+    "confirm": "Restablecer a borrador",
+    "body": "El plan vuelve a <state>Borrador</state> y se eliminan sus worktrees, con lo que se descarta cualquier cambio sin confirmar que contengan. Los commits ya enviados no se ven afectados."
+  },
+  "partialDelivery": {
+    "title": "Verificación fallida",
+    "confirm": "Completar como entrega parcial",
+    "body": "El plan #{{planId}} se registra como <state>Completado</state> y se marca como entrega parcial, a pesar de estas verificaciones fallidas:"
+  },
+  "deletePlan": {
+    "title": "Eliminar plan",
+    "confirm": "Eliminar",
+    "body": "¿Seguro que quieres eliminar permanentemente el plan #{{planId}}? Esto elimina la carpeta del plan, todas las revisiones y todos los informes de verificación, y no se puede deshacer. Para conservar la carpeta, mueve el plan a Omitido o al Icebox.",
+    "skip": "Mover a Omitido",
+    "archive": "Mover al Icebox"
+  },
+  "planSearch": {
+    "title": "Buscar planes",
+    "inputLabel": "Buscar planes",
+    "placeholder": "Buscar planes",
+    "searching": "Buscando…",
+    "empty": "No se encontraron planes."
+  },
+  "removeProject": {
+    "title": "Quitar proyecto",
+    "confirm": "Quitar proyecto",
+    "question": "¿Seguro que quieres quitar el proyecto <name>{{name}}</name>?",
+    "consequence": "Esto quita el proyecto de config.yaml. Sus repositorios clonados, carpetas de planes e historial se quedan en el disco, así que no se elimina nada de tu equipo - pero Tendril dejará de mostrar el proyecto, y sus planes y trabajos existentes harán referencia a un proyecto que ya no conoce."
+  },
+  "shareTunnel": {
+    "title": "Compartir progreso",
+    "intro": "Comparte tu progreso con tus compañeros mediante un túnel de Cloudflare seguro y de solo lectura. Los revisores pueden inspeccionar planes y diffs y dejar comentarios sin tener acceso a tu terminal ni a tus ajustes.",
+    "errorTitle": "Error",
+    "connecting": {
+      "title": "Iniciando túnel",
+      "body": "Iniciando el túnel de uso compartido... Normalmente tarda entre 15 y 30 segundos."
+    },
+    "active": {
+      "title": "Uso compartido activo",
+      "body": "Tu túnel de uso compartido está activo con permisos de solo lectura y solo comentarios."
+    },
+    "copyLink": "Copiar enlace",
+    "openInBrowser": "Abrir en el navegador",
+    "stop": "Dejar de compartir",
+    "start": "Iniciar túnel de uso compartido",
+    "errors": {
+      "start": "No se pudo iniciar el túnel de uso compartido: {{error}}",
+      "stop": "No se pudo detener el túnel de uso compartido: {{error}}",
+      "copy": "No se pudo copiar el enlace: {{error}}"
+    },
+    "notifications": {
+      "stoppedTitle": "Desactivado",
+      "stoppedMessage": "Túnel de uso compartido detenido",
+      "copiedTitle": "Enlace copiado",
+      "copiedMessage": "URL para compartir copiada al portapapeles"
+    }
+  },
+  "suggestChanges": {
+    "notAllowed": {
+      "title": "El plan #{{planId}} no admite cambios",
+      "state": "El estado del plan es {{state}}. Una solicitud de cambios solo se acepta mientras está en revisión o mientras ya está aplicando una.",
+      "commentsKept_one": "{{count}} comentario sigue aquí — envíalo cuando el plan vuelva a estar en revisión.",
+      "commentsKept_many": "{{count}} comentarios siguen aquí — envíalos cuando el plan vuelva a estar en revisión.",
+      "commentsKept_other": "{{count}} comentarios siguen aquí — envíalos cuando el plan vuelva a estar en revisión."
+    },
+    "fromApp": {
+      "title": "Actualizar plan #{{planId}}",
+      "submit": "Actualizar",
+      "queue": "Poner actualización en cola",
+      "summary_one": "{{count}} comentario de la app en ejecución se enviará al agente como solicitud de cambios.",
+      "summary_many": "{{count}} comentarios de la app en ejecución se enviarán al agente como solicitud de cambios.",
+      "summary_other": "{{count}} comentarios de la app en ejecución se enviarán al agente como solicitud de cambios.",
+      "queueNote_one": "El plan #{{planId}} ya tiene {{count}} trabajo en curso, así que este se pone en cola detrás de él y empieza cuando termine.",
+      "queueNote_many": "El plan #{{planId}} ya tiene {{count}} trabajos en curso, así que este se pone en cola detrás de ellos y empieza cuando terminen.",
+      "queueNote_other": "El plan #{{planId}} ya tiene {{count}} trabajos en curso, así que este se pone en cola detrás de ellos y empieza cuando terminen.",
+      "untaggedElement": "elemento"
+    },
+    "diff": {
+      "title": "Solicitar cambios para el plan #{{planId}}",
+      "description": "Proporciona sugerencias o instrucciones para cambiar la implementación. RetryPlan se reanuda en el worktree existente y las aplica como un delta sobre lo que ya se ha confirmado.",
+      "submit": "Solicitar cambios",
+      "submitWithInline_one": "Solicitar cambios ({{count}} en línea)",
+      "submitWithInline_many": "Solicitar cambios ({{count}} en línea)",
+      "submitWithInline_other": "Solicitar cambios ({{count}} en línea)",
+      "inlineNote_one": "Se incluirá {{count}} comentario en línea sobre los diffs de archivos junto con tu solicitud.",
+      "inlineNote_many": "Se incluirán {{count}} comentarios en línea sobre los diffs de archivos junto con tu solicitud.",
+      "inlineNote_other": "Se incluirán {{count}} comentarios en línea sobre los diffs de archivos junto con tu solicitud.",
+      "requestLabel": "Solicitud de cambios",
+      "requestPlaceholder": "Describe qué hay que cambiar, corregir o reescribir en el worktree…"
+    }
+  },
+  "unansweredQuestions": {
+    "title": "Preguntas sin responder",
+    "description_one": "⚠ Este plan tiene {{count}} pregunta sin responder. Si lo ejecutas ahora, queda en manos del agente, que tomará la opción recomendada si la hay y decidirá por su cuenta si no.",
+    "description_many": "⚠ Este plan tiene {{count}} preguntas sin responder. Si lo ejecutas ahora, quedan en manos del agente, que tomará la opción recomendada donde la haya y decidirá por su cuenta donde no.",
+    "description_other": "⚠ Este plan tiene {{count}} preguntas sin responder. Si lo ejecutas ahora, quedan en manos del agente, que tomará la opción recomendada donde la haya y decidirá por su cuenta donde no.",
+    "updatePlan": "Actualizar plan…",
+    "proceed": "Ejecutar de todos modos",
+    "updateAndExecute": "Actualizar plan y ejecutar"
+  },
+  "updatePlan": {
+    "title": "Actualizar plan #{{planId}}",
+    "description": "Proporciona instrucciones para revisar este plan. UpdatePlan reescribe el plan en una nueva revisión — no toca el código.",
+    "submit": "Actualizar",
+    "alreadyRunning": "UpdatePlan ya se está ejecutando para este plan. Espera…",
+    "instructionsLabel": "Instrucciones",
+    "instructionsAriaLabel": "Instrucciones de actualización",
+    "instructionsPlaceholder": "Incorpora las preguntas respondidas y luego limita el alcance solo a la cadena de guardas…"
+  }
+}
