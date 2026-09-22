@@ -1,11 +1,12 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useRef, useState } from "react";
 import { ShellContext } from "./ShellContext.tsx";
-import { type ShellWidgetProps, isModKey } from "./types.ts";
+import { type ShellWidgetProps } from "./types.ts";
 import {
   useResizableSidebar,
   readStoredWidth as readStoredWidthHelper,
   writeStoredWidth as writeStoredWidthHelper,
 } from "../../hooks/use-resizable-sidebar";
+import { useShortcut } from "../../lib/useShortcut";
 import { TooltipScope } from "../ui/TuiTooltip";
 import "./shell.css";
 
@@ -108,16 +109,13 @@ export const TendrilShell: React.FC<TendrilShellProps> = ({
     });
   }, [events, eventHandler, id]);
 
-  useEffect(() => {
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (isModKey(e) && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "b") {
-        e.preventDefault();
-        toggle();
-      }
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [toggle]);
+  useShortcut("tendril-shell:toggle-sidebar", "mod+b", toggle, {
+    description: "Toggle sidebar",
+    skipInInputs: true,
+    // A toggle is not idempotent: two genuine presses inside the registry's 300ms debounce window
+    // must still flip the state twice (open -> closed -> open), not collapse into one fire.
+    debounce: false,
+  });
 
   const sessionPanes = React.Children.toArray(slots?.SessionContents ?? []);
   const hasActiveSession =

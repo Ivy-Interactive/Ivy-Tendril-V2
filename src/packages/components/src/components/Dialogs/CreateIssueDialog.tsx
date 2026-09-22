@@ -2,9 +2,9 @@ import * as React from "react";
 import { Button } from "../ui/button";
 import { Callout } from "../ui/callout";
 import { Input } from "../ui/input";
+import { NativeSelect } from "../ui/native-select";
 import { Textarea } from "../ui/textarea";
 import { DialogShell } from "./DialogShell";
-import { SELECT_FIELD_CLASS } from "./selectField";
 
 /**
  * A subject that is not the plan: the issue is filed about this instead, and the plan only decides
@@ -238,20 +238,19 @@ export function CreateIssueDialog({
             <code>gh</code>. Add one to the plan first.
           </p>
         ) : (
-          <select
+          <NativeSelect
             id="create-issue-repo"
             ref={repoRef}
             aria-label="Repository"
             value={repo}
             onChange={(event) => setRepo(event.target.value)}
-            className={SELECT_FIELD_CLASS}
           >
             {repos.map((path) => (
               <option key={path} value={path}>
                 {path}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         )}
         <p className="mt-1 text-xs text-muted-foreground">
           The local repository path the issue is opened against, not an owner/name slug.

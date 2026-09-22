@@ -13,7 +13,7 @@ import {
 import { ShellRailFlyout, type RailFlyoutTrigger } from "./ShellRailFlyout.tsx";
 import { ShellTooltip } from "./ShellTooltip.tsx";
 import { TuiBadge as Badge } from "../ui/TuiBadge";
-import { TuiKbd as Kbd } from "../ui/TuiKbd";
+import { TuiKbd } from "../ui/TuiKbd";
 import "./shell.css";
 
 const NEW_CHAT_LABEL = "New Chat";
@@ -144,7 +144,7 @@ export const ShellAgentButton: React.FC<ShellAgentButtonProps> = ({
               {count}
             </Badge>
           )}
-          <Kbd keys={hintKeys} variant="bare" className="tsh-kbd" />
+          <TuiKbd keys={hintKeys} variant="bare" className="tsh-kbd" />
         </span>
       </span>
     </button>

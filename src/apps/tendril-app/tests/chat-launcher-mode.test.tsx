@@ -140,8 +140,6 @@ describe("chatLauncher: every new-chat entry point honours chatMode", () => {
 describe("the mode buttons beside New chat", () => {
   const headerProps = {
     title: "Planning",
-    autoScrollEnabled: true,
-    onToggleAutoScroll: () => {},
   };
 
   beforeEach(() => {

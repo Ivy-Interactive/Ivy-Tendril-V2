@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   CircleCheck,
@@ -324,31 +324,17 @@ export const ShellSectionItems: React.FC<ShellSectionItemsProps> = ({
     );
   };
 
-  const hasPinned = items.some((item) => item.pinned);
-  const pinnedItems = hasPinned ? items.filter((item) => item.pinned) : [];
-  const recentItems = hasPinned ? items.filter((item) => !item.pinned) : [];
+  // Pinned items float to the top, but never re-sort within a group: a stable sort on a
+  // 0/1 pinned key keeps every item's relative order otherwise unchanged.
+  const orderedItems = useMemo(
+    () => [...items].sort((a, b) => Number(!!b.pinned) - Number(!!a.pinned)),
+    [items],
+  );
 
   return (
     <div className={`tsh-section-list ${className}`.trim()}>
       {items.length === 0 && emptyText && <div className="tsh-section-empty">{emptyText}</div>}
-      {hasPinned ? (
-        <>
-          {pinnedItems.length > 0 && (
-            <>
-              <div className="tsh-section-group-label">Pinned</div>
-              {pinnedItems.map(renderItem)}
-            </>
-          )}
-          {recentItems.length > 0 && (
-            <>
-              <div className="tsh-section-group-label">Recent</div>
-              {recentItems.map(renderItem)}
-            </>
-          )}
-        </>
-      ) : (
-        items.map(renderItem)
-      )}
+      {orderedItems.map(renderItem)}
     </div>
   );
 };

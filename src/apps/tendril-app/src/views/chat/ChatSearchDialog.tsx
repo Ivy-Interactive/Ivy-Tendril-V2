@@ -27,7 +27,7 @@ export const ChatSearchDialog: React.FC<{
       <DialogHeader>
         <DialogTitle>Search Chats</DialogTitle>
       </DialogHeader>
-      <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2 px-6 pb-2">
         <Input
           autoFocus
           type="search"
