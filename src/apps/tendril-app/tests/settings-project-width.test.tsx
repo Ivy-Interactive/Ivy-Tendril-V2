@@ -176,6 +176,62 @@ describe.each(CASES)("$what cannot widen the project screen", ({ table, cfg }) =
   });
 });
 
+/**
+ * The Edit/Delete buttons get a column wide enough for both, rather than overflowing to the left over
+ * the column before them.
+ *
+ * Under `table-fixed` the row actions column is exactly `--ivy-data-table-actions-width` wide, 5rem by
+ * default, and that fits one button. `Edit` + `Delete` measure 142px with the cell's padding, so `Edit`
+ * always sat over the end of the previous column. It showed once the project blade could shrink
+ * beside an open editor: at a 1280px window a review action's condition "always" and its `Edit` were
+ * printed on top of each other.
+ *
+ * jsdom does no layout and does not apply the Tailwind class, so what is pinned is that every table
+ * carrying both buttons sets the override, and that the one table with a single `Edit` does not need
+ * it. Where the buttons land was measured in Chromium against the real `ProjectSettingsView`.
+ */
+describe("the row buttons have a column of their own", () => {
+  const withEveryTable = () =>
+    projectConfig({
+      reviewActions: [{ name: "Docs", command: "pnpm run docs", condition: "always" }],
+      envFiles: [{ path: ".env.local" }],
+      mcpServers: [{ name: "fetch", command: "uvx mcp-server-fetch" }],
+      skills: [{ name: "release", path: ".claude/skills/release" }],
+      ports: { web: { defaultPort: 5173, description: "Vite dev server" } },
+    });
+
+  const actionsWidthHolder = (tableTestId: string) =>
+    screen.getByTestId(tableTestId).closest("[class*='--ivy-data-table-actions-width']");
+
+  it.each([
+    "project-review-actions-table",
+    "project-env-files-table",
+    "project-mcp-servers-table",
+    "project-skills-table",
+  ])("%s widens its actions column for Edit and Delete", async (tableTestId) => {
+    await renderProject(withEveryTable());
+
+    const table = screen.getByTestId(tableTestId);
+    const row = within(table).getAllByRole("row")[1];
+    expect(within(row).getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    expect(within(row).getByRole("button", { name: "Delete" })).toBeInTheDocument();
+
+    const holder = actionsWidthHolder(tableTestId);
+    expect(holder, "no ancestor sizes the actions column for two buttons").not.toBeNull();
+    expect(holder!.className).toMatch(/\[--ivy-data-table-actions-width:--spacing\(36\)\]/);
+  });
+
+  it("leaves the ports table, whose only row button is Edit, at the default width", async () => {
+    await renderProject(withEveryTable());
+
+    const table = screen.getByTestId("project-ports-table");
+    const row = within(table).getAllByRole("row")[1];
+    expect(within(row).getByRole("button", { name: "Edit" })).toBeInTheDocument();
+    expect(within(row).queryByRole("button", { name: "Delete" })).toBeNull();
+    expect(actionsWidthHolder("project-ports-table")).toBeNull();
+  });
+});
+
 describe("the repositories list, which is a flex row rather than a table", () => {
   it("lets the long path shrink instead of pushing the row wider", async () => {
     await renderProject(projectConfig({ repos: [{ path: LONG_URL }] }));

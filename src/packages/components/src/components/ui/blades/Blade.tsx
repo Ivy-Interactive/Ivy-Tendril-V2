@@ -192,7 +192,12 @@ export const Blade = React.forwardRef<HTMLElement, BladeProps>(function Blade(
         </div>
       </header>
       <div className="min-h-0 flex-1 bg-background">
-        <ScrollArea type="hover" className="h-full">
+        {/* `fitWidth`: the body is laid out at the blade's width, not at the widest thing in it.
+            Without it Radix's shrink-to-fit wrapper took its width from the content, so one table
+            with a long path in a `nowrap` column widened every callout and detail row with it,
+            past the blade's right edge — clipped there, since this area only scrolls downwards.
+            With it that table scrolls inside its own frame and nothing else moves. */}
+        <ScrollArea type="hover" fitWidth className="h-full">
           <div className="p-4">{content}</div>
         </ScrollArea>
       </div>

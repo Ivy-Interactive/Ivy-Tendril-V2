@@ -221,6 +221,38 @@ describe("DashboardView analytics", () => {
     expect(bladeHost).toHaveClass("flex-1", "min-h-0");
   });
 
+  /**
+   * The sheet's width, which the height case above says nothing about. The breakdown opened as wide as
+   * its longest sentence rather than as wide as the sheet: on a 1280px window the blade laid out at
+   * 1211px inside a 768px panel, scrolled so its right edge showed, so the callout read "s without a PR
+   * over the last 30 days…", the detail labels were off to the left, and the sheet grew a horizontal
+   * scrollbar. Two things let the content decide, both in the blade primitives, and one table column
+   * made the result cramped once they no longer did.
+   *
+   * jsdom does no layout, so these pin the classes that do it; the `Sheets/DashboardKpiSheet`
+   * `FeaturesShipped` story is where the fit itself was measured.
+   */
+  it("lays the breakdown out at the sheet's width, not its content's", async () => {
+    mockAnalytics(activity());
+    renderDashboard();
+
+    await clickKpi("Features Shipped");
+
+    const blade = screen.getByRole("region", { name: "Features Shipped" });
+    // A flex blade answers the row's "how wide would you like to be" as if it were empty, so the row
+    // takes the sheet's width and the blade fills it.
+    expect(blade).toHaveClass("flex-1", "contain-inline-size");
+    // Its body is a block at the blade's width, not Radix's shrink-to-fit table that grew to the
+    // widest table inside it.
+    const body = blade.querySelector("[data-radix-scroll-area-viewport]");
+    expect(body).toHaveClass("[&>div]:!block");
+    // The repo is a path with nothing to break on. Unwrapped, its cell's minimum was the whole path,
+    // and in a sheet-wide table that squeezed the title beside it to a word per line.
+    const repoCells = blade.querySelectorAll('td[data-column="repo"]');
+    expect(repoCells).toHaveLength(MERGED_PRS.length);
+    for (const cell of repoCells) expect(cell).toHaveClass("ivy-data-table-wrap");
+  });
+
   it("renders an unpriced plan cost as a dash, never $0.00", async () => {
     mockAnalytics(activity());
     renderDashboard();
