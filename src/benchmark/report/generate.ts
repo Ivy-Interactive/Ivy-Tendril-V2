@@ -1721,7 +1721,7 @@ function networkTables(model: Model): string[] {
 
   const ext = cmps.filter((c) => c.scenario === 'desktop-external');
   if (ext.length) {
-    out.push('**External traffic of the real desktop apps**, sampled with `nettop` (non-loopback TCP only) from launch. A lower bound: `nettop` sees only sockets still open at a 1 s sample.');
+    out.push('**External traffic of the real desktop apps** (KB), sampled with `nettop` (non-loopback TCP only) from launch. A lower bound: `nettop` sees only sockets still open at a 1 s sample. Remote addresses are shown as resolved by reverse DNS where that works (CDN-fronted hosts usually do not).');
     out.push('');
     for (const unit of ['bytes', 'count']) {
       const set = ext.filter((c) => c.unit === unit);
@@ -1731,7 +1731,7 @@ function networkTables(model: Model): string[] {
       const m = ext.find((c) => c.metric === 'ext_bytes_in')?.[app]?.m;
       const eps = (m?.meta?.perSample as Array<Record<string, unknown>> | undefined)?.[0]?.endpoints as Array<{ process: string; remote: string; name: string | null; bytesIn: number; bytesOut: number }> | undefined;
       if (!eps) continue;
-      out.push(`- ${app.toUpperCase()}: ${eps.length ? eps.slice(0, 6).map((e) => `${code(e.name ?? e.remote)} from ${code(e.process)}, ${fmtPayload(e.bytesIn)} in / ${fmtPayload(e.bytesOut)} out`).join('; ') : 'no external connection seen'}`);
+      out.push(`- ${app.toUpperCase()}: ${eps.length ? eps.slice(0, 6).map((e) => `${code(e.name ?? e.remote)} from ${code(e.process.replace(/\.\d+$/, ''))}, ${fmtPayload(e.bytesIn)} in / ${fmtPayload(e.bytesOut)} out`).join('; ') : 'no external connection seen'}`);
     }
     out.push('');
   }
