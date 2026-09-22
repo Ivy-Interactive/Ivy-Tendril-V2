@@ -44,4 +44,4 @@ En la ventana de chat del agente de Cursor:
 
 ## Licencia
 
-Las skills y plugins de Tendril están licenciados bajo la [Functional Source License (FSL-1.1-ALv2)](../LICENSE) de la raíz del repositorio.
+Las skills y plugins de Tendril están licenciados bajo la [Functional Source License (FSL-1.1-ALv2)](../../LICENSE) de la raíz del repositorio.

@@ -77,4 +77,4 @@ VS Code एक्सटेंशन के साथ Tendril स्किल्�
 
 ## लाइसेंस
 
-Tendril स्किल्स और प्लगइन्स रिपॉजिटरी रूट में मौजूद [Functional Source License (FSL-1.1-ALv2)](../LICENSE) के तहत लाइसेंस प्राप्त हैं।
+Tendril स्किल्स और प्लगइन्स रिपॉजिटरी रूट में मौजूद [Functional Source License (FSL-1.1-ALv2)](../../LICENSE) के तहत लाइसेंस प्राप्त हैं।

@@ -66,4 +66,4 @@ Lors d'un travail dans l'IDE Antigravity :
 
 ## Licence
 
-Les skills et plugins Tendril sont sous licence [Functional Source License (FSL-1.1-ALv2)](../LICENSE) à la racine du dépôt.
+Les skills et plugins Tendril sont sous licence [Functional Source License (FSL-1.1-ALv2)](../../LICENSE) à la racine du dépôt.

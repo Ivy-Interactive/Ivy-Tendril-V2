@@ -8,9 +8,9 @@
 
 ## オプトイン方式（オプトアウトではない）
 
-**明示的に有効にしない限り、テレメトリはオフです。** `config.yaml` 内で明示的に `telemetry: true` と設定されている場合のみ有効化されます。キーが存在しない場合および `telemetry: false` はまったく同じように動作します。クライアントは構築されず、イベントはキューイングされず、ネットワーク呼び出しも一切試行されません。このキーは [config.rs](../src/crates/tendril-core/src/config.rs) の `TendrilSettings::telemetry_enabled` という 1 箇所でのみ読み取られます。また、V2 が自動的にこのキーを*挿入*することはありません。キーが存在しない `config.yaml` を保存しても `telemetry: false` を書き込むのではなく未設定のまま保持するため、キーが存在しないことを「オン」と解釈する元のアプリと共有されたファイルを行き来しても、そのアプリのテレメトリをオフにしてしまうことはありません。明示的な値はそのまま保持されます。
+**明示的に有効にしない限り、テレメトリはオフです。** `config.yaml` 内で明示的に `telemetry: true` と設定されている場合のみ有効化されます。キーが存在しない場合および `telemetry: false` はまったく同じように動作します。クライアントは構築されず、イベントはキューイングされず、ネットワーク呼び出しも一切試行されません。このキーは [config.rs](../../src/crates/tendril-core/src/config.rs) の `TendrilSettings::telemetry_enabled` という 1 箇所でのみ読み取られます。また、V2 が自動的にこのキーを*挿入*することはありません。キーが存在しない `config.yaml` を保存しても `telemetry: false` を書き込むのではなく未設定のまま保持するため、キーが存在しないことを「オン」と解釈する元のアプリと共有されたファイルを行き来しても、そのアプリのテレメトリをオフにしてしまうことはありません。明示的な値はそのまま保持されます。
 
-**これは意図的な相違点です。** 元のアプリはオプトアウト方式であり、デフォルトで `Telemetry` を `true` に設定し、その `TELEMETRY.md` には「テレメトリはオプトアウト方式です。デフォルトでオンになっています」と記載されていました。V2 がデフォルトでオフにしているのは、データの収集を有効にすることは、移植版がユーザーに無断で決定すべきことではないためです。この仕様の違いは安全な方向（元のアプリと比較して過小に報告することはあっても、過剰に報告することはない）にのみ働きます。これを元に戻すには、[config.rs](../src/crates/tendril-core/src/config.rs) のフィールドのデフォルト値と `Default` 実装を `Some(true)` に戻してください。
+**これは意図的な相違点です。** 元のアプリはオプトアウト方式であり、デフォルトで `Telemetry` を `true` に設定し、その `TELEMETRY.md` には「テレメトリはオプトアウト方式です。デフォルトでオンになっています」と記載されていました。V2 がデフォルトでオフにしているのは、データの収集を有効にすることは、移植版がユーザーに無断で決定すべきことではないためです。この仕様の違いは安全な方向（元のアプリと比較して過小に報告することはあっても、過剰に報告することはない）にのみ働きます。これを元に戻すには、[config.rs](../../src/crates/tendril-core/src/config.rs) のフィールドのデフォルト値と `Default` 実装を `Some(true)` に戻してください。
 
 ユーザーは、`<TendrilHome>/.anonymous-id` に永続化されたランダムな UUID のみによって識別されます。ユーザー名、マシン名、リポジトリ名から生成されることは決してありません。（元のアプリでは `<LocalAppData>/Tendril/.anonymous-id` を優先するため、両方のアプリを実行しているマシンは 2 つのインストールとしてカウントされます。）
 
@@ -69,7 +69,7 @@
 
 ## すべてのイベントに付加される共通プロパティ
 
-[client.rs](../src/crates/tendril-core/src/telemetry/client.rs) でプロセスごとに 1 回設定されるスーパープロパティ：
+[client.rs](../../src/crates/tendril-core/src/telemetry/client.rs) でプロセスごとに 1 回設定されるスーパープロパティ：
 
 | プロパティ | ステータス | 備考 |
 |---|---|---|
@@ -83,7 +83,7 @@
 
 ## 現在のイベント監査
 
-すべてのイベントはこのポリシーに準拠しています。コンテキストは [events.rs](../src/crates/tendril-core/src/telemetry/events.rs) で型付けされた構造体であるため、プロパティセットはルーズなマップではなく、コンパイル時に決定されます。
+すべてのイベントはこのポリシーに準拠しています。コンテキストは [events.rs](../../src/crates/tendril-core/src/telemetry/events.rs) で型付けされた構造体であるため、プロパティセットはルーズなマップではなく、コンパイル時に決定されます。
 
 | イベント | プロパティ | 送信元 |
 |---|---|---|
@@ -98,12 +98,12 @@
 
 ### 定義されているが接続されていないもの
 
-`onboarding_completed` と `project_created` は [events.rs](../src/crates/tendril-core/src/telemetry/events.rs) にコンテキスト構造体が存在しますが、呼び出し箇所はありません。V2 にはオンボーディングフローがなく、プロジェクト作成はクライアントがインストールされていない CLI プロセスで行われるためです。これらが存在するのは、将来の計画でスキーマではなく呼び出し箇所を追加できるようにするためです。
+`onboarding_completed` と `project_created` は [events.rs](../../src/crates/tendril-core/src/telemetry/events.rs) にコンテキスト構造体が存在しますが、呼び出し箇所はありません。V2 にはオンボーディングフローがなく、プロジェクト作成はクライアントがインストールされていない CLI プロセスで行われるためです。これらが存在するのは、将来の計画でスキーマではなく呼び出し箇所を追加できるようにするためです。
 
 クライアントはデーモンプロセスにのみ存在します。CLI 呼び出しが `telemetry::install` を呼び出すことは決してないため、`tendril plan ...` は何も送信しません。
 
 ## 実装
 
-- [events.rs](../src/crates/tendril-core/src/telemetry/events.rs) — コンパイル時にこのポリシーを強制する型付きコンテキスト。新しいイベントはプロパティバッグではなく、ここで構造体を取得します。
-- [client.rs](../src/crates/tendril-core/src/telemetry/client.rs) — PostHog クライアント、anonymous_id、計画 UUID の導出。すべての `track_*` は独自のエラーを吸収し、バックグラウンドタスクが処理するキューにプッシュするだけです。テレメトリがジョブを失敗させたり遅延させたりすることは決してありません。
-- [telemetry_test.rs](../src/crates/tendril-core/tests/telemetry_test.rs) — 無効時のゼロネットワーク呼び出し、接続されたすべてのイベントの正確なプロパティセット、および計画 UUID の導出を検証します。
+- [events.rs](../../src/crates/tendril-core/src/telemetry/events.rs) — コンパイル時にこのポリシーを強制する型付きコンテキスト。新しいイベントはプロパティバッグではなく、ここで構造体を取得します。
+- [client.rs](../../src/crates/tendril-core/src/telemetry/client.rs) — PostHog クライアント、anonymous_id、計画 UUID の導出。すべての `track_*` は独自のエラーを吸収し、バックグラウンドタスクが処理するキューにプッシュするだけです。テレメトリがジョブを失敗させたり遅延させたりすることは決してありません。
+- [telemetry_test.rs](../../src/crates/tendril-core/tests/telemetry_test.rs) — 無効時のゼロネットワーク呼び出し、接続されたすべてのイベントの正確なプロパティセット、および計画 UUID の導出を検証します。

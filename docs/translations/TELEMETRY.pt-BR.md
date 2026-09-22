@@ -8,9 +8,9 @@ A política acompanha o código: ela foi portada do `TELEMETRY.md` do aplicativo
 
 ## Aceitação Explícita (Opt-in), Não Exclusão (Opt-out)
 
-**A telemetria está desativada, a menos que você a ative explicitamente.** Somente um `telemetry: true` explícito no `config.yaml` a habilita; uma chave ausente e `telemetry: false` se comportam de forma idêntica — nenhum cliente é construído, nenhum evento é colocado na fila e nenhuma chamada de rede é tentada. A chave é lida em exatamente um lugar: `TendrilSettings::telemetry_enabled` em [config.rs](../src/crates/tendril-core/src/config.rs), e a V2 nunca *introduz* a chave: salvar um `config.yaml` que não a possui a mantém ausente em vez de gravar `telemetry: false`. Dessa forma, o ciclo de leitura e gravação de um arquivo compartilhado com o aplicativo original — que interpreta uma chave ausente como "ativada" — não desativa a telemetria desse aplicativo. Um valor explícito permanece inalterado.
+**A telemetria está desativada, a menos que você a ative explicitamente.** Somente um `telemetry: true` explícito no `config.yaml` a habilita; uma chave ausente e `telemetry: false` se comportam de forma idêntica — nenhum cliente é construído, nenhum evento é colocado na fila e nenhuma chamada de rede é tentada. A chave é lida em exatamente um lugar: `TendrilSettings::telemetry_enabled` em [config.rs](../../src/crates/tendril-core/src/config.rs), e a V2 nunca *introduz* a chave: salvar um `config.yaml` que não a possui a mantém ausente em vez de gravar `telemetry: false`. Dessa forma, o ciclo de leitura e gravação de um arquivo compartilhado com o aplicativo original — que interpreta uma chave ausente como "ativada" — não desativa a telemetria desse aplicativo. Um valor explícito permanece inalterado.
 
-**Esta é uma divergência deliberada.** O aplicativo original funciona com opt-out: ele define `Telemetry` como `true` por padrão e seu próprio `TELEMETRY.md` declara "A telemetria é opt-out: ela fica ativada por padrão". A V2 adota desativada por padrão porque ativar a coleta de dados não é uma decisão que uma versão portada deva tomar silenciosamente em nome do usuário. A divergência é segura em apenas uma direção — a V2 reporta menos em relação ao original, nunca em excesso. Para revertê-la, altere o padrão do campo e a implementação de `Default` em [config.rs](../src/crates/tendril-core/src/config.rs) de volta para `Some(true)`.
+**Esta é uma divergência deliberada.** O aplicativo original funciona com opt-out: ele define `Telemetry` como `true` por padrão e seu próprio `TELEMETRY.md` declara "A telemetria é opt-out: ela fica ativada por padrão". A V2 adota desativada por padrão porque ativar a coleta de dados não é uma decisão que uma versão portada deva tomar silenciosamente em nome do usuário. A divergência é segura em apenas uma direção — a V2 reporta menos em relação ao original, nunca em excesso. Para revertê-la, altere o padrão do campo e a implementação de `Default` em [config.rs](../../src/crates/tendril-core/src/config.rs) de volta para `Some(true)`.
 
 Os usuários são identificados exclusivamente por um UUID aleatório persistido em `<TendrilHome>/.anonymous-id`. Ele nunca é derivado de um nome de usuário, nome da máquina ou repositório. (O original prefere `<LocalAppData>/Tendril/.anonymous-id`; portanto, uma máquina executando ambos os aplicativos conta como duas instalações.)
 
@@ -70,7 +70,7 @@ Nunca rastrear:
 
 ## Anexado a Cada Evento
 
-Superpropriedades, definidas uma vez por processo em [client.rs](../src/crates/tendril-core/src/telemetry/client.rs):
+Superpropriedades, definidas uma vez por processo em [client.rs](../../src/crates/tendril-core/src/telemetry/client.rs):
 
 | Propriedade | Status | Notas |
 |---|---|---|
@@ -84,7 +84,7 @@ O `distinct_id` (o ID anônimo) é anexado a todos os eventos. As propriedades `
 
 ## Auditoria de Eventos Atuais
 
-Todos os eventos estão em conformidade com esta política. Os contextos são structs tipadas em [events.rs](../src/crates/tendril-core/src/telemetry/events.rs), garantindo que a definição de propriedades seja uma decisão em tempo de compilação, e não um mapa dinâmico flexível.
+Todos os eventos estão em conformidade com esta política. Os contextos são structs tipadas em [events.rs](../../src/crates/tendril-core/src/telemetry/events.rs), garantindo que a definição de propriedades seja uma decisão em tempo de compilação, e não um mapa dinâmico flexível.
 
 | Evento | Propriedades | Emitido de |
 |---|---|---|
@@ -99,12 +99,12 @@ O `plan_uuid` é sempre o valor derivado com o sal de instalação: os pontos de
 
 ### Definido, mas não conectado
 
-`onboarding_completed` e `project_created` têm structs de contexto em [events.rs](../src/crates/tendril-core/src/telemetry/events.rs) sem pontos de chamada: a V2 não possui um fluxo de integração (onboarding) e a criação de projetos ocorre no processo de CLI, onde nenhum cliente é instalado. Eles existem para que um plano futuro adicione o ponto de invocação em vez de alterar o esquema.
+`onboarding_completed` e `project_created` têm structs de contexto em [events.rs](../../src/crates/tendril-core/src/telemetry/events.rs) sem pontos de chamada: a V2 não possui um fluxo de integração (onboarding) e a criação de projetos ocorre no processo de CLI, onde nenhum cliente é instalado. Eles existem para que um plano futuro adicione o ponto de invocação em vez de alterar o esquema.
 
 O cliente reside apenas no processo daemon. Uma invocação da CLI nunca executa `telemetry::install`, portanto `tendril plan ...` não transmite dados.
 
 ## Implementação
 
-- [events.rs](../src/crates/tendril-core/src/telemetry/events.rs) — contextos tipados que aplicam esta política em tempo de compilação. Novos eventos recebem uma struct aqui, não uma coleção genérica de propriedades.
-- [client.rs](../src/crates/tendril-core/src/telemetry/client.rs) — cliente PostHog, ID anônimo, derivação do UUID de plano. Cada método `track_*` trata seus próprios erros e apenas envia itens para uma fila consumida por uma tarefa em segundo plano: a telemetria nunca deve falhar nem lentificar um trabalho.
-- [telemetry_test.rs](../src/crates/tendril-core/tests/telemetry_test.rs) — assegura zero chamadas de rede quando desativada, o conjunto exato de propriedades de cada evento conectado e a correta derivação do UUID do plano.
+- [events.rs](../../src/crates/tendril-core/src/telemetry/events.rs) — contextos tipados que aplicam esta política em tempo de compilação. Novos eventos recebem uma struct aqui, não uma coleção genérica de propriedades.
+- [client.rs](../../src/crates/tendril-core/src/telemetry/client.rs) — cliente PostHog, ID anônimo, derivação do UUID de plano. Cada método `track_*` trata seus próprios erros e apenas envia itens para uma fila consumida por uma tarefa em segundo plano: a telemetria nunca deve falhar nem lentificar um trabalho.
+- [telemetry_test.rs](../../src/crates/tendril-core/tests/telemetry_test.rs) — assegura zero chamadas de rede quando desativada, o conjunto exato de propriedades de cada evento conectado e a correta derivação do UUID do plano.

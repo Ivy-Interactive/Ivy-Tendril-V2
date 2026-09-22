@@ -66,4 +66,4 @@ Vid arbete i Antigravity IDE:
 
 ## Licens
 
-Tendril skills och plugins licensieras under [Functional Source License (FSL-1.1-ALv2)](../LICENSE) i arkivets rot.
+Tendril skills och plugins licensieras under [Functional Source License (FSL-1.1-ALv2)](../../LICENSE) i arkivets rot.

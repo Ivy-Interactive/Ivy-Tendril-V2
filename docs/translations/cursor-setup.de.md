@@ -44,4 +44,4 @@ Im Chat-Fenster des Cursor-Agenten:
 
 ## Lizenz
 
-Tendril Skills und Plugins sind unter der im Repository-Stammverzeichnis befindlichen [Functional Source License (FSL-1.1-ALv2)](../LICENSE) lizenziert.
+Tendril Skills und Plugins sind unter der im Repository-Stammverzeichnis befindlichen [Functional Source License (FSL-1.1-ALv2)](../../LICENSE) lizenziert.
