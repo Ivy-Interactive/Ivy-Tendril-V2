@@ -10,7 +10,9 @@ import {
   Label,
   Switch,
 } from "@ivy-interactive/components/ui";
+import { formatRelativeTime } from "@ivy-interactive/components/i18n";
 import { bridge } from "../api/bridge";
+import { i18n, useTranslation } from "../i18n";
 import { describeBridgeError, type ModelCatalogStatus, type TendrilConfig } from "../types/api";
 import { SettingsSection } from "../views/settings/fields";
 
@@ -25,19 +27,24 @@ const DEFAULT_ENRICHMENT_INTERVAL_HOURS = 12;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * How long ago the cache was written, in the current language: "Just now" under a minute, then whole
+ * minutes, hours and days ("3 days ago", never "3 weeks ago"). A timestamp in the future - a clock
+ * that moved - reads as "Just now" rather than "in 5 minutes".
+ */
 export function formatRelativeAge(cachedAt: string | null, now: number = Date.now()): string {
-  if (cachedAt === null) return "Never (no cache file)";
+  if (cachedAt === null) return i18n.t("settings:modelCatalog.age.never");
 
   const cachedAtMs = new Date(cachedAt).getTime();
   const diffMs = Math.max(0, now - cachedAtMs);
-  const minutes = Math.floor(diffMs / (60 * 1000));
-  const hours = Math.floor(diffMs / (60 * 60 * 1000));
-  const days = Math.floor(diffMs / DAY_MS);
 
-  if (minutes < 1) return "Just now";
-  if (minutes < 60) return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
-  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
-  return `${days} day${days === 1 ? "" : "s"} ago`;
+  if (diffMs < 60 * 1000) return i18n.t("settings:modelCatalog.age.justNow");
+  return formatRelativeTime(now - diffMs, {
+    now,
+    numeric: "always",
+    minUnit: "minute",
+    maxUnit: "day",
+  });
 }
 
 /**
@@ -126,6 +133,7 @@ const Row: React.FC<{ label: string; children: React.ReactNode }> = ({ label, ch
 );
 
 export const ModelCatalogCard: React.FC = () => {
+  const { t } = useTranslation("settings");
   const [status, setStatus] = useState<ModelCatalogStatus | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
@@ -169,7 +177,7 @@ export const ModelCatalogCard: React.FC = () => {
       const result = await bridge.refreshModels();
       setStatus(result);
       setLoadError(null);
-      setRefreshMessage(`Refreshed: ${result.dynamicModelCount} models from models.dev`);
+      setRefreshMessage(t("modelCatalog.refreshed", { count: result.dynamicModelCount }));
     } catch (err) {
       setRefreshError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -192,7 +200,7 @@ export const ModelCatalogCard: React.FC = () => {
           const [min, max] = ENRICHMENT_BOUNDS[key];
           const value = form[key];
           if (!Number.isInteger(value) || value < min || value > max) {
-            setSaveError(`${key} must be between ${min} and ${max}, got ${value}.`);
+            setSaveError(t("shared.outOfRange", { key, min, max, value }));
             return;
           }
         }
@@ -201,7 +209,7 @@ export const ModelCatalogCard: React.FC = () => {
       applyConfig(await bridge.getConfig());
       setStatus(await bridge.getModelsStatus());
     } catch (err) {
-      setSaveError(`Failed to save: ${describeBridgeError(err)}`);
+      setSaveError(t("shared.saveFailed", { error: describeBridgeError(err) }));
     } finally {
       setIsSaving(false);
     }
@@ -215,6 +223,12 @@ export const ModelCatalogCard: React.FC = () => {
   const hasChanges = (Object.keys(form) as (keyof EnrichmentForm)[]).some(
     (key) => form[key] !== saved[key],
   );
+  /** The age, plus what the daemon does about it once it crosses either configured threshold. */
+  const cacheAge = (cachedAt: string | null): string => {
+    const age = formatRelativeAge(cachedAt);
+    const marker = stale && expired ? "staleExpired" : stale ? "stale" : expired ? "expired" : null;
+    return marker === null ? age : t("modelCatalog.age.marked", { context: marker, age });
+  };
 
   return (
     // Heading, hint and header action were hand-rolled here in exactly the markup
@@ -225,8 +239,8 @@ export const ModelCatalogCard: React.FC = () => {
     // equivalent screen at all, so the closest thing to its layout is for this not to occupy the
     // page until asked for.
     <SettingsSection
-      title="Model Catalog"
-      hint="Tendril merges the curated model table with a models.dev snapshot cached on disk."
+      title={t("modelCatalog.title")}
+      hint={t("modelCatalog.hint")}
       testId="model-catalog-card"
       action={
         <Button
@@ -236,7 +250,7 @@ export const ModelCatalogCard: React.FC = () => {
           disabled={isRefreshing}
           onClick={handleRefresh}
         >
-          {isRefreshing ? "Refreshing…" : "Refresh Now"}
+          {isRefreshing ? t("modelCatalog.refreshing") : t("modelCatalog.refresh")}
         </Button>
       }
     >
@@ -249,7 +263,7 @@ export const ModelCatalogCard: React.FC = () => {
             className="size-4 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180"
             aria-hidden
           />
-          {isOpen ? "Hide catalog status and settings" : "Show catalog status and settings"}
+          {isOpen ? t("modelCatalog.hide") : t("modelCatalog.show")}
         </CollapsibleTrigger>
 
         <CollapsibleContent className="overflow-hidden data-[state=closed]:animate-accordion-up data-[state=open]:animate-accordion-down">
@@ -267,47 +281,48 @@ export const ModelCatalogCard: React.FC = () => {
 
           {status && (
             <dl className="mt-4 space-y-3 text-sm">
-              <Row label="Source:">
+              <Row label={t("modelCatalog.sourceLabel")}>
                 {status.source === "models.dev" ? (
                   <Badge
                     variant="secondary"
-                    title="Catalog is enriched from models.dev"
-                    aria-label="Live (models.dev)"
+                    title={t("modelCatalog.liveTitle")}
+                    aria-label={t("modelCatalog.live")}
                   >
-                    Live (models.dev)
+                    {t("modelCatalog.live")}
                   </Badge>
                 ) : (
                   <Badge
                     variant="outline"
-                    title="Catalog is using the static fallback table"
-                    aria-label="Static fallback"
+                    title={t("modelCatalog.staticTitle")}
+                    aria-label={t("modelCatalog.static")}
                   >
-                    Static fallback
+                    {t("modelCatalog.static")}
                   </Badge>
                 )}
               </Row>
 
-              <Row label="Models:">
+              <Row label={t("modelCatalog.modelsLabel")}>
                 <div className="text-xs text-muted-foreground">
                   <div className="font-semibold text-foreground">{status.totalModelCount}</div>
                   <div>
-                    {status.dynamicModelCount} enriched / {status.staticModelCount} curated
+                    {t("modelCatalog.modelSplit", {
+                      dynamic: status.dynamicModelCount,
+                      static: status.staticModelCount,
+                    })}
                   </div>
                 </div>
               </Row>
 
-              <Row label="Cache updated:">
+              <Row label={t("modelCatalog.cacheUpdatedLabel")}>
                 <span
                   className={`text-xs ${stale ? "text-warning" : "text-muted-foreground"}`}
                   title={status.cachedAt ?? undefined}
                 >
-                  {formatRelativeAge(status.cachedAt)}
-                  {stale && " (Stale)"}
-                  {expired && " (Expired, using curated table)"}
+                  {cacheAge(status.cachedAt)}
                 </span>
               </Row>
 
-              <Row label="Cache file:">
+              <Row label={t("modelCatalog.cacheFileLabel")}>
                 <span
                   className="max-w-50 truncate font-mono text-xs text-muted-foreground"
                   title={status.cachePath}
@@ -342,7 +357,7 @@ export const ModelCatalogCard: React.FC = () => {
                 htmlFor="enrich-models-switch"
                 className="text-xs font-medium text-foreground"
               >
-                Enrich the catalog from models.dev
+                {t("modelCatalog.enrichLabel")}
               </Label>
             </div>
 
@@ -351,7 +366,7 @@ export const ModelCatalogCard: React.FC = () => {
                 htmlFor="model-enrichment-interval-input"
                 className="text-xs font-medium text-muted-foreground"
               >
-                Refresh Interval
+                {t("modelCatalog.intervalLabel")}
               </Label>
               <Input
                 id="model-enrichment-interval-input"
@@ -364,9 +379,7 @@ export const ModelCatalogCard: React.FC = () => {
                   set("modelEnrichmentIntervalHours", Number.parseInt(e.target.value, 10) || 0)
                 }
               />
-              <p className="text-xs text-muted-foreground">
-                Hours between background refreshes. 0 refreshes once at startup and never again.
-              </p>
+              <p className="text-xs text-muted-foreground">{t("modelCatalog.intervalHint")}</p>
             </div>
 
             <div className="space-y-1">
@@ -374,7 +387,7 @@ export const ModelCatalogCard: React.FC = () => {
                 htmlFor="model-cache-warn-age-input"
                 className="text-xs font-medium text-muted-foreground"
               >
-                Cache Warn Age
+                {t("modelCatalog.warnAgeLabel")}
               </Label>
               <Input
                 id="model-cache-warn-age-input"
@@ -386,9 +399,7 @@ export const ModelCatalogCard: React.FC = () => {
                   set("modelCacheWarnAgeDays", Number.parseInt(e.target.value, 10) || 0)
                 }
               />
-              <p className="text-xs text-muted-foreground">
-                Days after which the cache is still used but reported as stale. 0 never warns.
-              </p>
+              <p className="text-xs text-muted-foreground">{t("modelCatalog.warnAgeHint")}</p>
             </div>
 
             <div className="space-y-1">
@@ -396,7 +407,7 @@ export const ModelCatalogCard: React.FC = () => {
                 htmlFor="model-cache-max-age-input"
                 className="text-xs font-medium text-muted-foreground"
               >
-                Cache Max Age
+                {t("modelCatalog.maxAgeLabel")}
               </Label>
               <Input
                 id="model-cache-max-age-input"
@@ -408,10 +419,7 @@ export const ModelCatalogCard: React.FC = () => {
                   set("modelCacheMaxAgeDays", Number.parseInt(e.target.value, 10) || 0)
                 }
               />
-              <p className="text-xs text-muted-foreground">
-                Days after which the cache is ignored and the curated table is used instead. 0 never
-                expires.
-              </p>
+              <p className="text-xs text-muted-foreground">{t("modelCatalog.maxAgeHint")}</p>
             </div>
 
             {saveError && (
@@ -421,7 +429,7 @@ export const ModelCatalogCard: React.FC = () => {
             )}
 
             <Button type="submit" disabled={!hasChanges || isSaving}>
-              {isSaving ? "Saving..." : "Save"}
+              {isSaving ? t("shared.saving") : t("common:actions.save")}
             </Button>
           </form>
         </CollapsibleContent>

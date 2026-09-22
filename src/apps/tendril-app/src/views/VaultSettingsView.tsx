@@ -28,6 +28,7 @@ import {
   type VaultExportDraft,
 } from "@ivy-interactive/components/tendril";
 import { bridge } from "../api/bridge";
+import { i18n, useTranslation, type TFunction } from "../i18n";
 import type {
   DiscoveredVaultRepo,
   GitHubAccountOption,
@@ -94,16 +95,26 @@ function resultMessage(result: VaultActionResult): string {
   return result.errorMessage?.trim() || result.message?.trim() || "";
 }
 
+/** What kind of branch a mutation pushes when it cannot open a PR: an ordinary one, or a deletion. */
+type BranchKind = "branch" | "deletionBranch";
+
 /**
  * What a PR-opening call has to show for itself. `VaultSetupView.cs` falls back to the branch when the
  * PR could not be opened (no `gh` auth, for instance) — reporting only the message would leave the
  * operator with a pushed branch they have no way of finding.
  */
-function resultReference(result: VaultActionResult, branchLabel = "branch"): string {
+function resultReference(
+  result: VaultActionResult,
+  t: TFunction<"settings">,
+  branchKind: BranchKind = "branch",
+): string {
   const prUrl = result.prUrl?.trim();
-  if (prUrl) return `Created PR: ${prUrl}`;
+  if (prUrl) return t("vault.createdPr", { url: prUrl });
   const branch = result.branchName?.trim();
-  return branch ? `Created ${branchLabel} ${branch}` : "";
+  if (!branch) return "";
+  return branchKind === "deletionBranch"
+    ? t("vault.createdDeletionBranch", { branch })
+    : t("vault.createdBranch", { branch });
 }
 
 /**
@@ -118,6 +129,7 @@ function resultReference(result: VaultActionResult, branchLabel = "branch"): str
  * expander in it `.Small()`, and `max-w-240` is its `Size.Full().Max(Size.Units(240))`.
  */
 export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHome }) => {
+  const { t } = useTranslation("settings");
   const [vaults, setVaults] = React.useState<VaultStatus[]>([]);
   const [selectedVaultId, setSelectedVaultId] = React.useState("");
   const [status, setStatus] = React.useState<VaultStatus | null>(null);
@@ -137,14 +149,19 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
 
   const addError = (message: string) => setErrors((current) => [...new Set([...current, message])]);
 
-  /** Loads everything the section shows. Each call is independent, so one failure loses one panel. */
+  /**
+   * Loads everything the section shows. Each call is independent, so one failure loses one panel.
+   *
+   * Its messages go through `i18n.t` at the moment they are raised, because this loader is created
+   * once for the mount effect and a `t` captured here would stay in the language it started in.
+   */
   const refresh = React.useCallback(
     async (vaultId?: string) => {
       setIsLoading(true);
       setErrors([]);
 
       const loadedVaults = await bridge.listVaults().catch((error: unknown) => {
-        addError(`Could not list vaults: ${String(error)}`);
+        addError(i18n.t("settings:vault.errors.listVaults", { error: String(error) }));
         return [] as VaultStatus[];
       });
       setVaults(loadedVaults);
@@ -169,14 +186,14 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
       if (active) {
         const [loadedStatus, loadedCatalog] = await Promise.all([
           bridge.getVaultStatus(active.id).catch((error: unknown) => {
-            addError(`Could not read the vault status: ${String(error)}`);
+            addError(i18n.t("settings:vault.errors.status", { error: String(error) }));
             return active;
           }),
           bridge
             .getVaultCatalog(active.id)
             .then((result) => result.projects ?? [])
             .catch((error: unknown) => {
-              addError(`Could not read the vault catalog: ${String(error)}`);
+              addError(i18n.t("settings:vault.errors.catalog", { error: String(error) }));
               return [] as VaultCatalogItem[];
             }),
         ]);
@@ -233,20 +250,24 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
   /** Runs one mutation, keeping a failed result in the dialog and a successful one in the section. */
   const runVaultAction = async (
     work: () => Promise<VaultActionResult>,
-    { closeOnSuccess = true, branchLabel }: { closeOnSuccess?: boolean; branchLabel?: string } = {},
+    {
+      closeOnSuccess = true,
+      branchKind,
+    }: { closeOnSuccess?: boolean; branchKind?: BranchKind } = {},
   ): Promise<VaultActionResult | null> => {
     setIsBusy(true);
     setDialogError(null);
     try {
       const result = await work();
       if (!result.success) {
-        setDialogError(resultMessage(result) || "The vault service reported a failure.");
+        setDialogError(resultMessage(result) || t("vault.errors.failure"));
         return null;
       }
 
       setNotice(
-        [resultMessage(result), resultReference(result, branchLabel)].filter(Boolean).join(" — ") ||
-          "Done.",
+        [resultMessage(result), resultReference(result, t, branchKind)]
+          .filter(Boolean)
+          .join(" — ") || t("vault.done"),
       );
       if (closeOnSuccess) setDialog(null);
       await refresh(selectedVaultId);
@@ -389,8 +410,8 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
                 once a vault does — until then the section is the empty state and nothing else. */}
             <div className="flex flex-wrap items-center justify-between gap-2">
               <Select value={selectedVaultId} onValueChange={(id) => void handleSelectVault(id)}>
-                <SelectTrigger aria-label="Active vault" className="w-fit min-w-56">
-                  <SelectValue placeholder="Select vault" />
+                <SelectTrigger aria-label={t("vault.activeVault")} className="w-fit min-w-56">
+                  <SelectValue placeholder={t("vault.selectVault")} />
                 </SelectTrigger>
                 {/* Every vault, not only the configured ones: `vaultOptions` is built from the whole
                     `vaultsList`, so a vault that has not been cloned yet is still selectable. */}
@@ -407,7 +428,7 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
                 {/* Not in the original, which reloads off its own `VaultChanged` event: without it a
                     failed first load would have nothing to retry with. */}
                 <IconButton
-                  label="Refresh"
+                  label={t("vault.refresh")}
                   size="sm"
                   disabled={isLoading || isBusy}
                   onClick={() => void refresh(selectedVaultId)}
@@ -423,7 +444,7 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
                   onClick={() => void runVaultAction(() => bridge.pullVaultLatest(selectedVaultId))}
                 >
                   <RefreshCw className="mr-1.5 size-3.5" aria-hidden="true" />
-                  Sync
+                  {t("vault.sync")}
                 </GatedActionButton>
                 {hasChangesToPublish && (
                   <GatedActionButton
@@ -433,7 +454,7 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
                     onClick={() => void openPushDialog(null)}
                   >
                     <GitPullRequest className="mr-1.5 size-3.5" aria-hidden="true" />
-                    Open a PR
+                    {t("vault.openPr")}
                   </GatedActionButton>
                 )}
                 <GatedActionButton
@@ -443,7 +464,7 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
                   onClick={() => void openConnectDialog()}
                 >
                   <GitBranch className="mr-1.5 size-3.5" aria-hidden="true" />
-                  Connect Vault
+                  {t("vault.connect")}
                 </GatedActionButton>
                 <GatedActionButton
                   gate={createGate}
@@ -452,7 +473,7 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
                   onClick={openCreateDialog}
                 >
                   <Plus className="mr-1.5 size-3.5" aria-hidden="true" />
-                  Create Vault
+                  {t("vault.create")}
                 </GatedActionButton>
               </div>
             </div>
@@ -474,7 +495,7 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
             />
 
             <section className="space-y-2">
-              <h4 className="text-sm font-semibold text-foreground">Shared Projects</h4>
+              <h4 className="text-sm font-semibold text-foreground">{t("vault.sharedProjects")}</h4>
               <VaultProjectsTable
                 items={catalog}
                 isLoading={isLoading}
@@ -538,7 +559,7 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
         {dialog?.kind === "push" && (
           <PushToVaultDialog
             open
-            vaultDisplayName={status ? formatVaultRepo(status) : "Team Vault"}
+            vaultDisplayName={status ? formatVaultRepo(status) : t("vault.displayNameFallback")}
             targetVaultId={selectedVaultId}
             availableProjects={pushProjectNames(dialog.project)}
             assets={pushAssets}
@@ -583,7 +604,7 @@ export const VaultSettingsView: React.FC<VaultSettingsViewProps> = ({ tendrilHom
             onConfirm={() =>
               void runVaultAction(
                 () => bridge.deleteVaultProject(dialog.item.name, selectedVaultId),
-                { branchLabel: "deletion branch" },
+                { branchKind: "deletionBranch" },
               )
             }
           />

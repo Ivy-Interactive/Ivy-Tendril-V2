@@ -15,6 +15,7 @@ import {
   Textarea,
   ivyColorVar,
 } from "@ivy-interactive/components/ui";
+import { useTranslation } from "../../i18n";
 import { IVY_COLOR_NAMES, levelBadgeColor, type IvyColorName } from "../../utils/levelColor";
 
 /**
@@ -230,30 +231,33 @@ export const NativeSelectField: React.FC<{
   hint?: string;
   disabled?: boolean;
   onChange: (value: string) => void;
-}> = ({ id, label, value, options, hint, disabled, onChange }) => (
-  <div className="space-y-1">
-    <Label htmlFor={id} className="text-xs font-medium text-foreground">
-      {label}
-    </Label>
-    <NativeSelect
-      id={id}
-      aria-label={label}
-      value={value}
-      disabled={disabled}
-      onChange={(e) => onChange(e.target.value)}
-    >
-      {!options.some((option) => option.value === value) && (
-        <option value={value}>{value || "Default"}</option>
-      )}
-      {options.map((option) => (
-        <option key={option.value} value={option.value} lang={option.lang}>
-          {option.label}
-        </option>
-      ))}
-    </NativeSelect>
-    {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
-  </div>
-);
+}> = ({ id, label, value, options, hint, disabled, onChange }) => {
+  const { t } = useTranslation("settings");
+  return (
+    <div className="space-y-1">
+      <Label htmlFor={id} className="text-xs font-medium text-foreground">
+        {label}
+      </Label>
+      <NativeSelect
+        id={id}
+        aria-label={label}
+        value={value}
+        disabled={disabled}
+        onChange={(e) => onChange(e.target.value)}
+      >
+        {!options.some((option) => option.value === value) && (
+          <option value={value}>{value || t("fields.defaultOption")}</option>
+        )}
+        {options.map((option) => (
+          <option key={option.value} value={option.value} lang={option.lang}>
+            {option.label}
+          </option>
+        ))}
+      </NativeSelect>
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
+    </div>
+  );
+};
 
 /** A labelled multiline field, for the newline-separated lists V1 edits with `ToCodeInput`. */
 export const LinesField: React.FC<{
@@ -301,16 +305,20 @@ const DARK_TICK_COLORS: ReadonlySet<string> = new Set(["white", "yellow", "lime"
  * `config.yaml` stores a *name*, the daemon never validates it, and V1's `ConfigService` rewrites
  * anything that is not an enum member to `Slate`. A free text field let an operator type a value
  * that would be silently replaced; a grid of the 32 legal names cannot produce one.
+ *
+ * The swatches are named by the colour's `config.yaml` name, untranslated: it is the value the
+ * operator types into the Levels editor and reads back in `config.yaml`, not a description.
  */
 export const ColorSwatchGrid: React.FC<{
   value: string;
   disabled?: boolean;
   onSelect: (name: IvyColorName) => void;
 }> = ({ value, disabled, onSelect }) => {
+  const { t } = useTranslation("settings");
   const selected = levelBadgeColor(value);
 
   return (
-    <div className="grid grid-cols-6 gap-1 p-1" role="group" aria-label="Colors">
+    <div className="grid grid-cols-6 gap-1 p-1" role="group" aria-label={t("fields.colorsLabel")}>
       {IVY_COLOR_NAMES.map((name) => {
         const isSelected = selected === name;
         return (
@@ -368,6 +376,7 @@ export const ColorSwatchField: React.FC<{
   disabled?: boolean;
   onChange: (value: IvyColorName) => void;
 }> = ({ id, label, value, hint, disabled, onChange }) => {
+  const { t } = useTranslation("settings");
   const [open, setOpen] = React.useState(false);
   const selected = levelBadgeColor(value);
 
@@ -384,7 +393,7 @@ export const ColorSwatchField: React.FC<{
               type="button"
               disabled={disabled}
               aria-label={label}
-              title={selected ?? "Choose color"}
+              title={selected ?? t("fields.chooseColor")}
               data-testid={`${id}-trigger`}
               data-color={selected ?? ""}
               className={`size-9 shrink-0 rounded-field border border-input shadow-sm ${
@@ -404,7 +413,7 @@ export const ColorSwatchField: React.FC<{
             />
           </PopoverContent>
         </Popover>
-        <span className="text-sm text-foreground">{selected ?? "None"}</span>
+        <span className="text-sm text-foreground">{selected ?? t("common:status.none")}</span>
       </div>
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
     </div>

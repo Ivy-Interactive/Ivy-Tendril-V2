@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { Button, CodeEditor } from "@ivy-interactive/components/ui";
 import { PlanWorkspace } from "@ivy-interactive/components/tendril";
 import { configTextApi } from "../../api/configTextApi";
+import { useTranslation, type TFunction } from "../../i18n";
 import { ChatStore, type ChatStorePlanScope } from "../../state/chatStore";
 import { notificationsStore } from "../../state/notificationsStore";
 import { bridgeErrorCode, describeBridgeError } from "../../types/api";
@@ -75,19 +76,24 @@ const CONFIG_CHAT_SCOPE: ChatStorePlanScope = {
   sessionTitle: "config.yaml",
 };
 
-/** `SamplePrompts.ForChat`'s role for this page: the three things an operator opens the file to do. */
-const CONFIG_SAMPLE_PROMPTS: SamplePrompt[] = [
+/**
+ * `SamplePrompts.ForChat`'s role for this page: the three things an operator opens the file to do.
+ *
+ * Built with the current language's `t`, prompts included: a chip puts its prompt in the composer,
+ * where the operator reads and edits it before sending it as their own message.
+ */
+const configSamplePrompts = (t: TFunction<"settings">): SamplePrompt[] => [
   {
-    label: "Explain a setting",
-    prompt: "Explain what each top-level key in my config.yaml controls.",
+    label: t("configEditor.samplePrompts.explain.label"),
+    prompt: t("configEditor.samplePrompts.explain.prompt"),
   },
   {
-    label: "Add a project",
-    prompt: "Add a new project to config.yaml and tell me which fields I still have to fill in.",
+    label: t("configEditor.samplePrompts.addProject.label"),
+    prompt: t("configEditor.samplePrompts.addProject.prompt"),
   },
   {
-    label: "Check my config",
-    prompt: "Review my config.yaml for settings that look wrong or are missing a sensible default.",
+    label: t("configEditor.samplePrompts.check.label"),
+    prompt: t("configEditor.samplePrompts.check.prompt"),
   },
 ];
 
@@ -115,6 +121,7 @@ export interface ConfigEditorViewProps {
 }
 
 export const ConfigEditorView: React.FC<ConfigEditorViewProps> = ({ tendrilHome, onOpenPlan }) => {
+  const { t } = useTranslation("settings");
   /**
    * `loadedYaml` / `yamlText` from `RawConfigEditorView.cs:17-21`, and for the reason its comment
    * gives: `loaded` is the text as the daemon last served it, so `dirty` means "edited since then"
@@ -187,7 +194,7 @@ export const ConfigEditorView: React.FC<ConfigEditorViewProps> = ({ tendrilHome,
     try {
       await configTextApi.write(text);
       setLoaded(text);
-      notificationsStore.notifySuccess("Saved", "config.yaml saved and reloaded");
+      notificationsStore.notifySuccess(t("shared.toastSaved"), t("configEditor.saved"));
     } catch (err) {
       setError(describeBridgeError(err));
       setConflicted(isConflict(err));
@@ -217,9 +224,10 @@ export const ConfigEditorView: React.FC<ConfigEditorViewProps> = ({ tendrilHome,
 
   const maskedNote = useMemo(() => {
     if (maskedPaths.length === 0) return null;
-    const count = maskedPaths.length;
-    return `${count} secret ${count === 1 ? "value is" : "values are"} shown as ${SECRET_MASK}. Leave a placeholder as it is to keep the stored value; overtype it to set a new one.`;
-  }, [maskedPaths]);
+    return t("configEditor.maskedNote", { count: maskedPaths.length, mask: SECRET_MASK });
+  }, [maskedPaths, t]);
+
+  const samplePrompts = useMemo(() => configSamplePrompts(t), [t]);
 
   const editorPane = (
     <div
@@ -259,7 +267,7 @@ export const ConfigEditorView: React.FC<ConfigEditorViewProps> = ({ tendrilHome,
               onClick={requestReload}
               data-testid="config-editor-conflict-reload"
             >
-              Reload from disk
+              {t("configEditor.conflictReload")}
             </Button>
           )}
         </div>
@@ -284,7 +292,7 @@ export const ConfigEditorView: React.FC<ConfigEditorViewProps> = ({ tendrilHome,
           disabled={!dirty || busy}
           data-testid="config-editor-save"
         >
-          Save
+          {t("common:actions.save")}
         </Button>
         <Button
           variant="outline"
@@ -292,27 +300,22 @@ export const ConfigEditorView: React.FC<ConfigEditorViewProps> = ({ tendrilHome,
           disabled={busy}
           data-testid="config-editor-reload"
         >
-          Reload from disk
+          {t("configEditor.reload")}
         </Button>
       </div>
 
       <ConfirmDialog
         isOpen={confirmingReload}
         onClose={() => setConfirmingReload(false)}
-        title="Discard Unsaved Changes"
+        title={t("configEditor.discard.title")}
         testId="config-editor-reload-dialog"
-        confirmLabel="Discard and reload"
+        confirmLabel={t("configEditor.discard.confirm")}
         confirmVariant="destructive"
         onConfirm={() => {
           setConfirmingReload(false);
           void load();
         }}
-        body={
-          <p>
-            Reloading replaces the editor with the file on disk. The edits you have not saved are
-            lost.
-          </p>
-        }
+        body={<p>{t("configEditor.discard.body")}</p>}
       />
     </div>
   );
@@ -326,7 +329,7 @@ export const ConfigEditorView: React.FC<ConfigEditorViewProps> = ({ tendrilHome,
         // The same headline the plan panel uses, and the same promise: this chat can make the change
         // for you. One string rather than two so the two embedded chats cannot drift apart.
         headline={PLAN_CHAT_HEADLINE}
-        samplePrompts={CONFIG_SAMPLE_PROMPTS}
+        samplePrompts={samplePrompts}
         onOpenPlan={onOpenPlan}
       />
     </div>

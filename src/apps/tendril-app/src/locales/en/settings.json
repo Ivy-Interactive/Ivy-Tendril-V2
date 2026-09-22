@@ -1,4 +1,130 @@
 {
+  "shared": {
+    "toastSaved": "Saved",
+    "saving": "Saving...",
+    "saveFailed": "Failed to save: {{error}}",
+    "outOfRange": "{{key}} must be between {{min}} and {{max}}, got {{value}}.",
+    "notInteger": "{{key}} must be an integer, got '{{value}}'."
+  },
+  "sections": {
+    "codingAgent": "Coding Agent",
+    "plans": "Plans",
+    "appearance": "Appearance",
+    "projects": "Projects",
+    "vault": "Team Vault",
+    "promptwares": "Workflow Agents",
+    "levels": "Levels",
+    "notifications": "Notifications",
+    "security": "Security & Tunneling",
+    "advanced": "Advanced",
+    "newsletter": "Newsletter",
+    "fallback": "Configuration"
+  },
+  "nav": {
+    "ariaLabel": "Configuration sections",
+    "mobilePickerLabel": "Configuration section",
+    "addProject": "Add Project",
+    "openConfig": "Open config.yaml"
+  },
+  "projectToasts": {
+    "jobStartedTitle": "Job Started",
+    "backgroundJob": "Created background job for project '{{name}}'",
+    "addedTitle": "Success",
+    "added": "Project '{{name}}' added successfully",
+    "removedTitle": "Removed",
+    "removed": "Removed project '{{name}}'. Its files are still on disk.",
+    "deletedTitle": "Deleted",
+    "deleted": "Deleted project '{{name}}' and its data"
+  },
+  "plans": {
+    "title": "Plans",
+    "hint": "Configure the default plan template used when creating new plans.",
+    "templateLabel": "Plan Template",
+    "templatePlaceholder": "Plan template...",
+    "saved": "Plan template saved"
+  },
+  "vaultSection": {
+    "title": "Team Vault",
+    "hint": "Share and synchronize Tendril projects, custom skills, MCP servers, and security rules across your team via a versioned Git repository."
+  },
+  "notifications": {
+    "title": "Notifications",
+    "hint": "Configure how Tendril notifies you about job completions, failures, and other events.",
+    "desktopLabel": "Enable Desktop Notifications",
+    "saved": "Notification settings saved"
+  },
+  "advanced": {
+    "title": "Advanced",
+    "hint": "Configure timeouts and concurrency limits.",
+    "timeoutsHeading": "Timeouts",
+    "jobTimeout": "Job Timeout",
+    "staleOutputTimeout": "Stale Output Timeout",
+    "maxConcurrentJobs": "Max Concurrent Jobs",
+    "minutesSuffix": "min",
+    "betaHeading": "Beta Features",
+    "betaLabel": "Opt-in to beta features",
+    "restartNote": "A Tendril restart is required for changes to take effect.",
+    "saved": "Settings saved and applied"
+  },
+  "diagnostics": {
+    "title": "Daemon Diagnostics",
+    "ping": "Test Latency (Ping)",
+    "pinging": "Pinging...",
+    "pong": "Pong! Response in {{elapsed}}ms",
+    "pingFailed": "Ping failed: {{error}}",
+    "connectionState": "Connection State:",
+    "hostPort": "Daemon Host & Port:",
+    "pid": "Process PID:",
+    "tendrilHome": "{{name}}:",
+    "secret": "Security / Secret:",
+    "secretValue": "Managed natively (hidden from webview storage)",
+    "capabilities": "Capabilities:",
+    "noCapabilities": "None reported",
+    "notAvailable": "N/A",
+    "states": {
+      "connected": "Connected",
+      "disconnected": "Disconnected",
+      "unauthenticated": "Unauthenticated",
+      "notRunning": "NotRunning",
+      "foreignMaster": "ForeignMaster"
+    }
+  },
+  "newsletterSection": {
+    "title": "Newsletter",
+    "hint": "Subscribe to the Ivy & Tendril newsletter to receive updates, feature highlights, and release notes."
+  },
+  "promptwares": {
+    "title": "Workflow Agents",
+    "hint": "Read each agent's prompt, and configure the coding-agent profile and tool permissions it runs with.",
+    "agentLabel": "Agent",
+    "defaultOption": "{{key}} (every agent)",
+    "notConfigured": "Not configured yet. Saving creates the entry.",
+    "profileLabel": "Profile",
+    "profileDefault": "Default (unset)",
+    "profileTiers": {
+      "deep": "deep",
+      "balanced": "balanced",
+      "quick": "quick"
+    },
+    "profileHint": "Last writer wins: {{key}}, then this agent, then a per-plan or CLI override.",
+    "allowedLabel": "Allowed Tools",
+    "allowedHint": "Added on top of the base tool set, one rule per line. It never replaces it.",
+    "deniedLabel": "Denied Tools",
+    "deniedHint": "Subtracted from the merged allowlist, and unioned with {{key}} rather than narrowing it.",
+    "reset": "Reset",
+    "addLabel": "Add Agent",
+    "addPlaceholder": "Agent name (e.g. {{example}})...",
+    "add": "Add",
+    "saved": "Agent saved",
+    "saveFailed": "Failed to save agent: {{error}}",
+    "program": {
+      "title": "Prompt",
+      "hintOverlay": "From your overlay directory, which replaces the shipped prompt.",
+      "hintDeployed": "The deployed prompt this agent runs. Read-only: change it from your overlay directory.",
+      "defaultKey": "{{key}} is the fallback applied to every agent rather than an agent of its own, so it has no prompt. Select an agent to read one.",
+      "loading": "Loading prompt..."
+    }
+  },
   "appearance": {
     "language": {
       "title": "Language",
@@ -7,6 +133,248 @@
       "system": "System default",
       "saved": "Language set to {{language}}",
       "loadFailed": "Could not load {{language}}. Tendril stays in the language it was in."
+    },
+    "title": "Appearance",
+    "hint": "Choose how Tendril appears. System matches your OS setting.",
+    "themeMode": {
+      "light": "Light",
+      "dark": "Dark",
+      "system": "System",
+      "saved_light": "Appearance set to Light",
+      "saved_dark": "Appearance set to Dark",
+      "saved_system": "Appearance set to System"
+    },
+    "theme": {
+      "title": "Theme",
+      "hint": "Choose a color scheme preset for Tendril.",
+      "label": "Theme",
+      "vaultOption": "{{name}} (Vault: {{vault}})",
+      "vaultFallback": "Team",
+      "vaultBadge": "Team Vault",
+      "saved": "Theme set to {{name}}"
+    },
+    "sidebar": {
+      "title": "Main Sidebar",
+      "hint": "Choose the default state for the main sidebar for new client sessions.",
+      "expanded": "Expanded",
+      "collapsed": "Collapsed",
+      "saved_expanded": "Sidebar set to expanded by default",
+      "saved_collapsed": "Sidebar set to collapsed by default"
+    },
+    "chatMode": {
+      "title": "Chat",
+      "hint": "Choose how the Chat button talks to your coding agent: the chat view, or the agent's own terminal.",
+      "chat": "Chat",
+      "terminal": "Terminal",
+      "saved_chat": "Chat opens as chat",
+      "saved_terminal": "Chat opens as terminal"
+    },
+    "vaultThemesNote": "Themes published by a Team Vault are not listed: the vault theme subsystem is not part of this build, so only the shipped presets are offered."
+  },
+  "levels": {
+    "title": "Priority Levels",
+    "hint": "Define priority levels used to categorize plans.",
+    "addButton": "Add Level",
+    "columns": {
+      "name": "Name",
+      "color": "Color"
+    },
+    "unsetColor": "unset",
+    "editAction": "Edit",
+    "empty": "No levels defined.",
+    "editor": {
+      "addTitle": "Add Level",
+      "editTitle": "Edit Level",
+      "nameLabel": "Name",
+      "namePlaceholder": "Level name...",
+      "colorLabel": "Color",
+      "colorPlaceholder": "e.g. {{example}}",
+      "colorHint": "An Ivy colour name, as config.yaml stores it ({{examples}}...).",
+      "add": "Add"
+    },
+    "saved": "Level saved",
+    "deleted": "Level '{{name}}' deleted",
+    "saveFailed": "Failed to save level: {{error}}",
+    "removeConsequence": "Plans already categorised at this level keep the name in their plan.yaml; it simply stops being one of the levels offered.",
+    "noEffect": "Levels are stored in config.yaml and advertised over MCP, but nothing in this app reads them yet, so editing them here changes no behaviour you can see."
+  },
+  "removal": {
+    "title": "Remove {{kind}}",
+    "title_level": "Remove Level",
+    "title_repository": "Remove Repository",
+    "title_reviewAction": "Remove Review action",
+    "title_environmentFile": "Remove Environment file",
+    "title_mcpServer": "Remove MCP server",
+    "title_customSkill": "Remove Custom skill",
+    "body": "Remove {{kind}} <name>{{name}}</name> from this configuration?",
+    "body_level": "Remove level <name>{{name}}</name> from this configuration?",
+    "body_repository": "Remove repository <name>{{name}}</name> from this configuration?",
+    "body_reviewAction": "Remove review action <name>{{name}}</name> from this configuration?",
+    "body_environmentFile": "Remove environment file <name>{{name}}</name> from this configuration?",
+    "body_mcpServer": "Remove MCP server <name>{{name}}</name> from this configuration?",
+    "body_customSkill": "Remove custom skill <name>{{name}}</name> from this configuration?",
+    "confirm": "Remove"
+  },
+  "fields": {
+    "colorsLabel": "Colors",
+    "chooseColor": "Choose color",
+    "defaultOption": "Default"
+  },
+  "configEditor": {
+    "samplePrompts": {
+      "explain": {
+        "label": "Explain a setting",
+        "prompt": "Explain what each top-level key in my config.yaml controls."
+      },
+      "addProject": {
+        "label": "Add a project",
+        "prompt": "Add a new project to config.yaml and tell me which fields I still have to fill in."
+      },
+      "check": {
+        "label": "Check my config",
+        "prompt": "Review my config.yaml for settings that look wrong or are missing a sensible default."
+      }
+    },
+    "saved": "config.yaml saved and reloaded",
+    "maskedNote_one": "{{count}} secret value is shown as {{mask}}. Leave a placeholder as it is to keep the stored value; overtype it to set a new one.",
+    "maskedNote_other": "{{count}} secret values are shown as {{mask}}. Leave a placeholder as it is to keep the stored value; overtype it to set a new one.",
+    "conflictReload": "Reload from disk",
+    "reload": "Reload from disk",
+    "discard": {
+      "title": "Discard Unsaved Changes",
+      "confirm": "Discard and reload",
+      "body": "Reloading replaces the editor with the file on disk. The edits you have not saved are lost."
     }
+  },
+  "security": {
+    "title": "Security & Tunneling",
+    "hint": "Require a password to access Tendril, and expose this instance over a public tunnel.",
+    "cloudflared": {
+      "intro": "Both tunnels below run Cloudflare's <code>cloudflared</code>. It is not installed on the machine running Tendril yet.",
+      "configuredPathTitle": "Configured path",
+      "installingTitle": "Installing",
+      "downloadingPercent": "Downloading {{asset}} — {{percent, percent}}",
+      "downloadingSize": "Downloading {{asset}} — {{size}}",
+      "verifying": "Checking the download against Cloudflare's published SHA-256",
+      "installing": "Installing",
+      "resolving": "Looking up the latest release",
+      "cancelledTitle": "Cancelled",
+      "cancelledBody": "The download was cancelled and nothing was installed. You can start it again, or install cloudflared yourself.",
+      "failedTitle": "Install failed",
+      "retry": "Try again",
+      "install": "Install cloudflared",
+      "manualSummary": "Install it yourself instead",
+      "manualPackages": "macOS: <code>{{brew}}</code>. Linux: see <code>{{url}}</code>.",
+      "manualDownload": "Or download <code>{{asset}}</code> from <code>{{url}}</code> and save it as <code>{{path}}</code>."
+    },
+    "session": {
+      "heading": "Session Protection",
+      "blurb": "Require a password to access the Tendril interface.",
+      "enableLabel": "Enable Password Protection",
+      "currentLabel": "Current Password",
+      "currentPlaceholder": "Current password...",
+      "newLabel": "New Password",
+      "newPlaceholder": "New password...",
+      "confirmLabel": "Confirm Password",
+      "confirmPlaceholder": "Confirm password...",
+      "mismatch": "Passwords do not match",
+      "disabledToast": "Password protection disabled",
+      "enabledToast": "Password protection enabled"
+    },
+    "tunnel": {
+      "full": {
+        "heading": "Tunnel",
+        "blurb": "Expose your Tendril instance to the internet via a Cloudflare tunnel. Useful for accessing Tendril from mobile devices or sharing with others.",
+        "startingTitle": "Tunnel Starting",
+        "activeTitle": "Tunnel Active",
+        "activeBody": "Your tunnel is running and accessible at the URL below.",
+        "startingBody": "Starting tunnel and waiting for it to become routable. This typically takes 15-30 seconds.",
+        "stoppedToast": "Tunnel stopped",
+        "copiedToast": "Tunnel URL copied to clipboard",
+        "startFailed": "Failed to start tunnel: {{error}}",
+        "stopFailed": "Failed to stop tunnel: {{error}}"
+      },
+      "share": {
+        "heading": "Share Tunnel",
+        "blurb": "Expose a read-only, comment-only version of Tendril for team members to review plans and drafts.",
+        "startingTitle": "Share Tunnel Starting",
+        "activeTitle": "Share Tunnel Active",
+        "activeBody": "Your share tunnel is running and accessible at the URL below.",
+        "startingBody": "Starting share tunnel and waiting for it to become routable. This typically takes 15-30 seconds.",
+        "stoppedToast": "Share tunnel stopped",
+        "copiedToast": "Share tunnel URL copied to clipboard",
+        "startFailed": "Failed to start share tunnel: {{error}}",
+        "stopFailed": "Failed to stop share tunnel: {{error}}"
+      },
+      "warningTitle": "This publishes everything",
+      "warningBody": "A full-access tunnel puts this entire Tendril instance on a public URL. Anyone with the address and the session password can use it as if they were sitting at this machine, so a password is required before one will start. The Share Tunnel below is the read-only option.",
+      "deactivatedTitle": "Deactivated",
+      "copiedTitle": "URL Copied",
+      "copyFailed": "Could not copy the URL: {{error}}",
+      "deactivate": "Deactivate",
+      "copyUrl": "Copy URL",
+      "openInBrowser": "Open in Browser",
+      "activate": "Activate"
+    }
+  },
+  "vault": {
+    "errors": {
+      "listVaults": "Could not list vaults: {{error}}",
+      "status": "Could not read the vault status: {{error}}",
+      "catalog": "Could not read the vault catalog: {{error}}",
+      "failure": "The vault service reported a failure."
+    },
+    "createdPr": "Created PR: {{url}}",
+    "createdBranch": "Created branch {{branch}}",
+    "createdDeletionBranch": "Created deletion branch {{branch}}",
+    "done": "Done.",
+    "activeVault": "Active vault",
+    "selectVault": "Select vault",
+    "refresh": "Refresh",
+    "sync": "Sync",
+    "openPr": "Open a PR",
+    "connect": "Connect Vault",
+    "create": "Create Vault",
+    "sharedProjects": "Shared Projects",
+    "displayNameFallback": "Team Vault"
+  },
+  "modelCatalog": {
+    "title": "Model Catalog",
+    "hint": "Tendril merges the curated model table with a models.dev snapshot cached on disk.",
+    "refresh": "Refresh Now",
+    "refreshing": "Refreshing…",
+    "refreshed_one": "Refreshed: {{count}} models from models.dev",
+    "refreshed_other": "Refreshed: {{count}} models from models.dev",
+    "show": "Show catalog status and settings",
+    "hide": "Hide catalog status and settings",
+    "sourceLabel": "Source:",
+    "liveTitle": "Catalog is enriched from models.dev",
+    "live": "Live (models.dev)",
+    "staticTitle": "Catalog is using the static fallback table",
+    "static": "Static fallback",
+    "modelsLabel": "Models:",
+    "modelSplit": "{{dynamic}} enriched / {{static}} curated",
+    "cacheUpdatedLabel": "Cache updated:",
+    "cacheFileLabel": "Cache file:",
+    "age": {
+      "never": "Never (no cache file)",
+      "justNow": "Just now",
+      "marked_stale": "{{age}} (Stale)",
+      "marked_expired": "{{age}} (Expired, using curated table)",
+      "marked_staleExpired": "{{age}} (Stale) (Expired, using curated table)"
+    },
+    "enrichLabel": "Enrich the catalog from models.dev",
+    "intervalLabel": "Refresh Interval",
+    "intervalHint": "Hours between background refreshes. 0 refreshes once at startup and never again.",
+    "warnAgeLabel": "Cache Warn Age",
+    "warnAgeHint": "Days after which the cache is still used but reported as stale. 0 never warns.",
+    "maxAgeLabel": "Cache Max Age",
+    "maxAgeHint": "Days after which the cache is ignored and the curated table is used instead. 0 never expires."
+  },
+  "newsletter": {
+    "subscribed": "Subscribed!",
+    "emailLabel": "Email address",
+    "subscribing": "Subscribing…",
+    "subscribe": "Subscribe"
   }
 }
