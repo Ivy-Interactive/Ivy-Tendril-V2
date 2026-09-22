@@ -127,10 +127,11 @@ describe("PlanDetailView lifecycle actions", () => {
 
     // Execute now transitions the plan optimistically to `Creating`, mirroring V1's `LaunchExecute`,
     // and a mid-flight plan is offered no actions at all — V1 reaches that by never listing such a
-    // plan, and V2's detail view applies the same rule here. So the in-flight signal is the notice
-    // replacing the toolbar, not a "Starting…" label on a button that is no longer rendered.
-    await waitFor(() => expect(screen.getByTestId("plan-in-flight-notice")).toBeInTheDocument());
-    expect(screen.queryByRole("button", { name: /execute plan/i })).not.toBeInTheDocument();
+    // plan, and V2's detail view applies the same rule here. So the in-flight signal is the toolbar
+    // losing its actions, not a "Starting…" label on a button that is no longer rendered.
+    await waitFor(() =>
+      expect(screen.queryByRole("button", { name: /execute plan/i })).not.toBeInTheDocument(),
+    );
 
     reject(bridgeError({ code: "TIMEOUT", message: "service did not respond" }));
 

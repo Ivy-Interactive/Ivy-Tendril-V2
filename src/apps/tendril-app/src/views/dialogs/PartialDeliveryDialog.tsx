@@ -38,9 +38,7 @@ export function PartialDeliveryDialog({
     }
   }, [isOpen]);
 
-  const failing = (plan.verifications || [])
-    .filter((v) => v.status === "Fail")
-    .map((v) => v.name);
+  const failing = (plan.verifications || []).filter((v) => v.status === "Fail").map((v) => v.name);
 
   const handleAccept = async () => {
     setIsBusy(true);

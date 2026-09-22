@@ -122,6 +122,9 @@ export function SuggestChangesDialog({
   const typed = changeRequest.trim();
   const canSubmit = fromApp ? !isBusy : !isBusy && (typed !== "" || inlineCount > 0);
 
+  // V1 re-reads plan and jobs at the click as well as on render, because the dialog may have been
+  // open a while. Here both arrive as props from live state, so the value read at the click is
+  // already the current one and the guard needs no second read.
   const handleSubmit = () => {
     if (!canSubmit) return;
     // The caller's formatted request when it has one, otherwise assembled here: either way it is
@@ -170,7 +173,7 @@ export function SuggestChangesDialog({
         title={`Update Plan #${planId}`}
         width="rem32"
         shortcut="Enter"
-        onShortcut={() => void handleSubmit()}
+        onShortcut={() => handleSubmit()}
         testId="suggest-changes-dialog"
         initialFocusRef={primaryRef}
         footer={
@@ -185,7 +188,7 @@ export function SuggestChangesDialog({
             </Button>
             <Button
               ref={primaryRef}
-              onClick={() => void handleSubmit()}
+              onClick={() => handleSubmit()}
               data-testid="dialog-confirm"
               disabled={!canSubmit}
             >
@@ -239,7 +242,7 @@ export function SuggestChangesDialog({
       title={`Request Changes for Plan #${planId}`}
       width="rem30"
       shortcut="Ctrl+Enter"
-      onShortcut={() => void handleSubmit()}
+      onShortcut={() => handleSubmit()}
       description="Provide suggestions or instructions for changes to the implementation. RetryPlan resumes in the existing worktree and applies them as a delta on the work already committed."
       testId="suggest-changes-dialog"
       initialFocusRef={textareaRef}
@@ -248,11 +251,7 @@ export function SuggestChangesDialog({
           <Button variant="outline" onClick={onClose} data-testid="dialog-cancel" disabled={isBusy}>
             Cancel
           </Button>
-          <Button
-            onClick={() => void handleSubmit()}
-            data-testid="dialog-confirm"
-            disabled={!canSubmit}
-          >
+          <Button onClick={() => handleSubmit()} data-testid="dialog-confirm" disabled={!canSubmit}>
             {isBusy
               ? "Starting…"
               : inlineCount > 0

@@ -52,11 +52,14 @@ describe("ColorSwatchGrid", () => {
 
     const emerald = screen.getByRole("button", { name: "Emerald" });
     expect(emerald).toHaveAttribute("aria-pressed", "true");
-    expect(emerald.className).toContain("ring-foreground/30");
+    expect(emerald.className).toContain("border-foreground");
+    expect(emerald.className).toContain("ring-2 ring-foreground/30");
     expect(emerald.querySelector("svg")).not.toBeNull();
 
     const blue = screen.getByRole("button", { name: "Blue" });
     expect(blue).toHaveAttribute("aria-pressed", "false");
+    expect(blue.className).not.toContain("border-foreground");
+    expect(blue.className).not.toContain("ring-2 ring-foreground/30");
     expect(blue.querySelector("svg")).toBeNull();
   });
 

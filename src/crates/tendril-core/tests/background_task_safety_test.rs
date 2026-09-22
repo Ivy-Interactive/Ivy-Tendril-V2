@@ -36,6 +36,33 @@ fn test_find_abandoned_background_tasks_regex() {
     ];
     let abandoned4 = find_abandoned_background_tasks(&lines4);
     assert_eq!(abandoned4, vec!["beta"]);
+
+    // 5. Antigravity task ID with slash, manage_task RUNNING and terminating on exit
+    let lines5 = vec![
+        r#"{"event":"step_update","step_update":{"tool_name":"manage_task","output":"Task: 3a851ae0/task-58\nStatus: RUNNING\n"}}"#.to_string(),
+        "terminating 1 background task(s) on exit".to_string(),
+    ];
+    let abandoned5 = find_abandoned_background_tasks(&lines5);
+    assert_eq!(abandoned5, vec!["3a851ae0/task-58"]);
+
+    // 6. Antigravity manage_task that transitioned to DONE
+    let lines6 = vec![
+        r#"{"event":"step_update","step_update":{"tool_name":"manage_task","output":"Task: 3a851ae0/task-58\nStatus: RUNNING\n"}}"#.to_string(),
+        r#"{"event":"step_update","step_update":{"tool_name":"manage_task","output":"Task: 3a851ae0/task-58\nStatus: DONE\n"}}"#.to_string(),
+    ];
+    let abandoned6 = find_abandoned_background_tasks(&lines6);
+    assert!(abandoned6.is_empty());
+
+    // 7. Antigravity terminating notice without specific task id
+    let lines7 = vec!["terminating 1 background task(s) on exit".to_string()];
+    let abandoned7 = find_abandoned_background_tasks(&lines7);
+    assert_eq!(abandoned7, vec!["1 background task terminated on exit"]);
+
+    // 8. Antigravity message: Tool is running as a background task with task id
+    let lines8 =
+        vec!["Tool is running as a background task with task id: uuid-123/task-99".to_string()];
+    let abandoned8 = find_abandoned_background_tasks(&lines8);
+    assert_eq!(abandoned8, vec!["uuid-123/task-99"]);
 }
 
 #[tokio::test]

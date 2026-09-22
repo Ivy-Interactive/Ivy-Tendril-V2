@@ -126,7 +126,6 @@ describe("a job already holds the plan", () => {
   it("offers no plan-writing action while the plan is mid-flight", () => {
     render(<PlanDetailView plan={draft({ state: "Executing" })} />);
 
-    expect(screen.getByTestId("plan-in-flight-notice")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Execute Plan/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Discard Plan/ })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /Reset to Draft/ })).not.toBeInTheDocument();
@@ -135,7 +134,6 @@ describe("a job already holds the plan", () => {
   it("treats a running ExecutePlan job as mid-flight even while the plan still reads Draft", () => {
     render(<PlanDetailView plan={draft()} jobs={[job({ type: "ExecutePlan" })]} />);
 
-    expect(screen.getByTestId("plan-in-flight-notice")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Execute Plan/ })).not.toBeInTheDocument();
   });
 
@@ -161,7 +159,6 @@ describe("a job already holds the plan", () => {
 
     openWorkspaceMenu();
     expect(screen.getByRole("menuitem", { name: /^Expand Plan/ })).toBeEnabled();
-    expect(screen.queryByTestId("plan-in-flight-notice")).not.toBeInTheDocument();
   });
 
   // V1's `HasActiveJob` counts Running/Queued/Pending only.

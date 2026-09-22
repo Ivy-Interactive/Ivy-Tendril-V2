@@ -427,6 +427,14 @@ fn antigravity_injects_tool_schema_guardrails_into_prompt_file() {
         content
     );
     assert!(
+        content.contains("WaitMsBeforeAsync: 10000"),
+        "must carry WaitMsBeforeAsync guidance"
+    );
+    assert!(
+        content.contains("manage_task"),
+        "must carry manage_task polling guidance"
+    );
+    assert!(
         content.contains("Do the thing."),
         "must still carry the caller's prompt"
     );

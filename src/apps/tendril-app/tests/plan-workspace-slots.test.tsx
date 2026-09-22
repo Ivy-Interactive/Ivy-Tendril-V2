@@ -242,7 +242,6 @@ describe("the workspace topbar", () => {
   it("offers no plan-writing action while a job holds the plan", () => {
     const { container } = render(<PlanDetailView plan={plan({ state: "Executing" })} />);
 
-    expect(screen.getByTestId("plan-in-flight-notice")).toBeInTheDocument();
     expect(container.querySelector(".pws-btn--primary")).toBeNull();
     expect(screen.queryByRole("button", { name: "More actions" })).not.toBeInTheDocument();
   });

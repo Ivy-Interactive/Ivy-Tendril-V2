@@ -1068,26 +1068,13 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
            * does not have. So the banner the page already had lives here, above the tab strip, which
            * is where the slot renders.
            */
-          Toolbar: [
-            ...(isPlanInFlight
-              ? [
-                  <span
-                    key="in-flight"
-                    data-testid="plan-in-flight-notice"
-                    className="rounded-box border border-info/40 bg-info/10 px-3 py-1.5 text-xs font-medium text-info"
-                  >
-                    A job is running on this plan.
-                  </span>,
-                ]
-              : []),
-            ...(actionError
-              ? [
-                  <ErrorBanner key="error" data-testid="plan-action-error" className="flex-1">
-                    {actionError}
-                  </ErrorBanner>,
-                ]
-              : []),
-          ],
+          Toolbar: actionError
+            ? [
+                <ErrorBanner key="error" data-testid="plan-action-error" className="flex-1">
+                  {actionError}
+                </ErrorBanner>,
+              ]
+            : [],
           /**
            * `new VerificationsPanelView(selectedPlan, planService, config, chatExecution)` — the
            * corner dropdown, not a tab. This is also the first consumer the shared
