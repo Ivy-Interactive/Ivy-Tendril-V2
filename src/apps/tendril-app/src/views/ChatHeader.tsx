@@ -8,7 +8,6 @@ import {
 } from "@ivy-interactive/components/ui";
 import {
   Activity,
-  ArrowDownToLine,
   Check,
   ChevronDown,
   ChevronRight,
@@ -233,8 +232,6 @@ export interface ChatHeaderProps {
   title: string;
   /** Shows the options menu (rename/delete). False while no session is selected. */
   editable?: boolean;
-  autoScrollEnabled: boolean;
-  onToggleAutoScroll: () => void;
   /** The jobs this conversation spawned, resolved against the live job list. */
   jobs?: Job[];
   onOpenPlan?: (planId: string) => void;
@@ -260,8 +257,6 @@ export interface ChatHeaderProps {
 export const ChatHeader: React.FC<ChatHeaderProps> = ({
   title,
   editable = false,
-  autoScrollEnabled,
-  onToggleAutoScroll,
   jobs = [],
   onOpenPlan,
   onReviewJobs,
@@ -339,19 +334,6 @@ export const ChatHeader: React.FC<ChatHeaderProps> = ({
               direct pick, "same size" as requested. Both are `size="lg"`, which is what every other
               button in this header is. */}
           {onNewChat && <NewChatModeButtons onNewChat={onNewChat} size="lg" />}
-          {/* V2-only: V1 detaches from the tail on a scroll up and has no control for it. The
-              desktop app keeps an explicit lock, as an icon button so the header stays as V1's. */}
-          <IconButton
-            data-testid="chat-autoscroll-toggle"
-            label="Toggle auto-scrolling to streaming deltas"
-            size="lg"
-            tone={autoScrollEnabled ? "default" : "muted"}
-            aria-pressed={autoScrollEnabled}
-            onClick={onToggleAutoScroll}
-          >
-            <ArrowDownToLine className="size-4" aria-hidden="true" />
-            <span className="sr-only">Auto-scroll: {autoScrollEnabled ? "ON" : "OFF"}</span>
-          </IconButton>
           {editable && (
             <div className="relative" ref={menuRef}>
               <IconButton

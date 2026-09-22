@@ -42,8 +42,10 @@ const ChatMessageList = React.forwardRef<HTMLDivElement, ChatMessageListProps>(
           {...props}
         >
           {/* The thread is a single measured column: the scroller runs edge to edge, the content
-              is capped and centred, and the inset lives here rather than on the scroller. */}
-          <div className="flex grow shrink-0 flex-col gap-6 w-full max-w-3xl mx-auto px-2.5 pt-2.5">
+              is capped and centred, and the inset lives here rather than on the scroller. Top
+              padding is left to the consumer, who may need to account for it in its own scroll
+              geometry (as ChatView.tsx does for the message-pin math). */}
+          <div className="flex grow shrink-0 flex-col gap-6 w-full max-w-3xl mx-auto px-2.5">
             {children}
           </div>
         </div>

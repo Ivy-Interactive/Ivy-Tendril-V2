@@ -6,10 +6,21 @@ import { useState, useEffect, useLayoutEffect, useRef, useCallback, type RefObje
  */
 export const PIN_TOP_PADDING = 10;
 
+/** However unsettled the layout stays, the one-shot scroll gives up chasing it after this long. */
+const PIN_SCROLL_MAX_ATTEMPTS = 30;
+
 interface Pin {
   messageId: string;
   /** The one-off scroll that brings the pinned row to the top has already happened. */
   scrolled: boolean;
+  /**
+   * The `scrollTop` this chase itself last wrote, so the next frame can tell "the browser clamped
+   * my write" (chase again) apart from "the reader moved it" (stop touching it) — both look like
+   * "`scrollTop` isn't what I asked for" from the outside.
+   */
+  lastWrittenScrollTop: number | null;
+  /** Measurements taken while chasing the scroll, bounding the retry loop. */
+  attempts: number;
 }
 
 const escapeAttribute = (value: string): string => value.replace(/["\\]/g, "\\$&");
@@ -28,10 +39,8 @@ export interface UseChatAutoScrollReturn {
   anchorRef: RefObject<HTMLDivElement | null>;
   /** Sized by the pin so a just-sent message can sit at the top of the viewport. */
   spacerRef: RefObject<HTMLDivElement | null>;
-  autoScrollEnabled: boolean;
   isLockedToTail: boolean;
   isAtBottom: boolean;
-  toggleAutoScroll: () => void;
   scrollToTail: (smooth?: boolean) => void;
   resetToTail: () => void;
   notifyContentUpdate: () => void;
@@ -51,7 +60,6 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions = {}): UseCh
     spacerRef: externalSpacerRef,
   } = options;
 
-  const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
   const [isLockedToTail, setIsLockedToTail] = useState(true);
   const [isAtBottom, setIsAtBottom] = useState(true);
 
@@ -63,9 +71,8 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions = {}): UseCh
   const anchorRef = externalAnchorRef ?? internalAnchorRef;
   const spacerRef = externalSpacerRef ?? internalSpacerRef;
   const pinRef = useRef<Pin | null>(null);
-
-  const autoScrollEnabledRef = useRef(autoScrollEnabled);
-  autoScrollEnabledRef.current = autoScrollEnabled;
+  /** The id of the chase's currently queued `requestAnimationFrame`, if any — cancellable. */
+  const pendingFrameRef = useRef<number | null>(null);
 
   const isLockedToTailRef = useRef(isLockedToTail);
   isLockedToTailRef.current = isLockedToTail;
@@ -137,28 +144,8 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions = {}): UseCh
     }
   }, [anchorRef, scrollContainerRef]);
 
-  const toggleAutoScroll = useCallback(() => {
-    setAutoScrollEnabled((prev) => {
-      const next = !prev;
-      if (next) {
-        const container = scrollContainerRef.current;
-        const atBottom = container ? checkIsAtBottom(container) : true;
-        if (atBottom) {
-          setIsLockedToTail(true);
-          setIsAtBottom(true);
-          if (anchorRef.current) {
-            anchorRef.current.scrollIntoView?.({ behavior: "auto" });
-          } else if (container) {
-            container.scrollTop = container.scrollHeight;
-          }
-        }
-      }
-      return next;
-    });
-  }, [checkIsAtBottom, scrollContainerRef, anchorRef]);
-
   const notifyContentUpdate = useCallback(() => {
-    if (autoScrollEnabledRef.current && isLockedToTailRef.current) {
+    if (isLockedToTailRef.current) {
       if (anchorRef.current) {
         anchorRef.current.scrollIntoView?.({ behavior: "auto" });
       } else if (scrollContainerRef.current) {
@@ -178,30 +165,77 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions = {}): UseCh
    * reply is taller than the viewport the usual follow-the-tail behaviour takes over on its own.
    */
   const pinMessage = useCallback((messageId: string) => {
-    pinRef.current = { messageId, scrolled: false };
+    pinRef.current = {
+      messageId,
+      scrolled: false,
+      lastWrittenScrollTop: null,
+      attempts: 0,
+    };
     setIsLockedToTail(true);
     setIsAtBottom(true);
   }, []);
 
-  /** The pinned message was replaced by its server-side copy; keep the pin on the new row. */
-  const retargetPin = useCallback((fromMessageId: string, toMessageId: string) => {
-    const pin = pinRef.current;
-    if (pin && pin.messageId === fromMessageId) {
-      pinRef.current = { ...pin, messageId: toMessageId };
+  const cancelPendingMeasurement = useCallback(() => {
+    if (pendingFrameRef.current !== null) {
+      cancelAnimationFrame(pendingFrameRef.current);
+      pendingFrameRef.current = null;
     }
   }, []);
 
+  /**
+   * The pinned message was replaced by its server-side copy; keep the pin on the new row.
+   *
+   * The chase fields reset along with it: the server copy can land at a different offset (it may
+   * carry more or less content than the optimistic row did), so a chase that had already latched,
+   * or had already spent part of its attempt budget, has to start fresh against the new element
+   * rather than inherit progress measured against a row that no longer exists.
+   */
+  const retargetPin = useCallback(
+    (fromMessageId: string, toMessageId: string) => {
+      const pin = pinRef.current;
+      if (pin && pin.messageId === fromMessageId) {
+        cancelPendingMeasurement();
+        pinRef.current = {
+          messageId: toMessageId,
+          scrolled: false,
+          lastWrittenScrollTop: null,
+          attempts: 0,
+        };
+      }
+    },
+    [cancelPendingMeasurement],
+  );
+
   const clearPin = useCallback(() => {
+    cancelPendingMeasurement();
     pinRef.current = null;
     const spacer = spacerRef.current;
     if (spacer) spacer.style.height = "0px";
-  }, [spacerRef]);
+  }, [cancelPendingMeasurement, spacerRef]);
+
+  // A queued chase frame outlives the component if nothing cancels it on unmount: `measurePin`
+  // would then run against a detached tree once it fires, reading stale geometry off elements
+  // React has already thrown away.
+  useEffect(() => cancelPendingMeasurement, [cancelPendingMeasurement]);
 
   /**
-   * Sizes the spacer and, the first time round, scrolls the pinned row to the top.
+   * Sizes the spacer and, while the one-shot scroll is still chasing the pinned row, scrolls to it.
    *
-   * Everything here is geometry, so it is a single function called from two places: React's own
-   * render, and a ResizeObserver for the growth React never hears about.
+   * Everything here is geometry, so it is a single function called from three places: React's own
+   * render, a ResizeObserver for the growth React never hears about, and — only while the pin
+   * hasn't settled yet — a chain of `requestAnimationFrame` calls.
+   *
+   * The scroll can't just latch after the first write: `sendMessage` sets `isGenerating` in the
+   * same notify that appends the optimistic row, so the "Working…" row and the pin spacer both
+   * still have to grow into the layout pass that follows. Neither one moves the pinned row itself
+   * (both render below it) — what they change is `scrollHeight`, and until they've grown into it,
+   * the browser clamps the write to `scrollHeight - clientHeight`, short of where the pin belongs.
+   * So the chase keeps comparing the live `container.scrollTop` against the desired position and
+   * re-applying the write while they disagree, bounded by `PIN_SCROLL_MAX_ATTEMPTS` so a layout
+   * that never settles can't chase it forever. Reaching the desired position latches it immediately
+   * — nothing left to correct — and so does the reader scrolling away mid-chase: the next frame
+   * finds `container.scrollTop` no longer matches what this chase itself last wrote, reads that as
+   * "no longer mine to move", and latches without writing rather than yanking the view back.
    */
   const measurePin = useCallback(() => {
     const container = scrollContainerRef.current;
@@ -237,10 +271,44 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions = {}): UseCh
       spacer.style.height = `${height}px`;
     }
 
-    if (!pin.scrolled) {
+    if (pin.scrolled) return;
+
+    pin.attempts += 1;
+
+    const desired = Math.max(0, Math.round(targetTop) - PIN_TOP_PADDING);
+    const scrolledAwaySinceLastWrite =
+      pin.lastWrittenScrollTop !== null && container.scrollTop !== pin.lastWrittenScrollTop;
+    // Not locked to the tail any more means the reader (or a scroll elsewhere in this render, e.g.
+    // `handleScroll` reacting to a `scroll` event) has already claimed the scroll position; the pin
+    // has no more standing to move it than the chase noticing a manual scroll does below.
+    const noLongerOurs = scrolledAwaySinceLastWrite || !isLockedToTailRef.current;
+
+    if (noLongerOurs) {
       pin.scrolled = true;
-      container.scrollTop = Math.max(0, Math.round(targetTop - PIN_TOP_PADDING));
+      return;
     }
+
+    if (container.scrollTop !== desired) {
+      container.scrollTop = desired;
+      // What actually landed, not `desired`: the browser clamps a scroll past `scrollHeight -
+      // clientHeight`, and it's that clamped value the next frame has to recognise as "still mine".
+      pin.lastWrittenScrollTop = container.scrollTop;
+    } else {
+      pin.scrolled = true;
+      return;
+    }
+
+    if (pin.attempts >= PIN_SCROLL_MAX_ATTEMPTS) {
+      pin.scrolled = true;
+      return;
+    }
+
+    pendingFrameRef.current = requestAnimationFrame(() => {
+      pendingFrameRef.current = null;
+      // The pin may have been retargeted, cleared, or already settled by another caller
+      // (render, ResizeObserver) while this frame was pending.
+      if (pinRef.current === pin && !pin.scrolled) measurePinRef.current();
+    });
   }, [scrollContainerRef, spacerRef]);
 
   const measurePinRef = useRef(measurePin);
@@ -281,10 +349,8 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions = {}): UseCh
     scrollContainerRef,
     anchorRef,
     spacerRef,
-    autoScrollEnabled,
     isLockedToTail,
     isAtBottom,
-    toggleAutoScroll,
     scrollToTail,
     resetToTail,
     notifyContentUpdate,

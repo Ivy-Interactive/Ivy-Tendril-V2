@@ -10,25 +10,10 @@ describe("useChatAutoScroll hook unit tests", () => {
     window.HTMLElement.prototype.scrollIntoView = scrollIntoViewMock;
   });
 
-  it("initializes with default states: autoScrollEnabled=true, isLockedToTail=true, isAtBottom=true", () => {
+  it("initializes with default states: isLockedToTail=true, isAtBottom=true", () => {
     const { result } = renderHook(() => useChatAutoScroll());
-    expect(result.current.autoScrollEnabled).toBe(true);
     expect(result.current.isLockedToTail).toBe(true);
     expect(result.current.isAtBottom).toBe(true);
-  });
-
-  it("toggles autoScrollEnabled state via toggleAutoScroll", () => {
-    const { result } = renderHook(() => useChatAutoScroll());
-
-    act(() => {
-      result.current.toggleAutoScroll();
-    });
-    expect(result.current.autoScrollEnabled).toBe(false);
-
-    act(() => {
-      result.current.toggleAutoScroll();
-    });
-    expect(result.current.autoScrollEnabled).toBe(true);
   });
 
   it("detaches tail locking when scrolled up past threshold, and re-attaches when scrolled back to bottom", () => {
@@ -125,11 +110,11 @@ describe("useChatAutoScroll hook unit tests", () => {
     expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: "auto" });
   });
 
-  it("triggers notifyContentUpdate when content updates and autoScrollEnabled is true and isLockedToTail is true", () => {
+  it("triggers notifyContentUpdate when content updates and isLockedToTail is true", () => {
     const anchor = document.createElement("div");
     anchor.scrollIntoView = scrollIntoViewMock;
 
-    const { result, rerender } = renderHook(
+    const { rerender } = renderHook(
       ({ content, isGenerating }) =>
         useChatAutoScroll({
           content,
@@ -146,13 +131,6 @@ describe("useChatAutoScroll hook unit tests", () => {
 
     rerender({ content: "updated delta", isGenerating: true });
     expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: "auto" });
-    scrollIntoViewMock.mockClear();
-
-    act(() => {
-      result.current.toggleAutoScroll();
-    });
-    rerender({ content: "another delta", isGenerating: true });
-    expect(scrollIntoViewMock).not.toHaveBeenCalled();
   });
 });
 
