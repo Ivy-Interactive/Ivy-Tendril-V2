@@ -657,6 +657,55 @@ questions:
   });
 
   /**
+   * A suggestion chip pastes multi-line text into the composer, and the row has to grow with it —
+   * `applyComposerText` schedules the resize itself now, so every caller that writes through it
+   * (this chip, dictation, the review-jobs draft) gets it for free.
+   */
+  it("resizes the composer's textarea when a suggestion prompt is clicked", async () => {
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([]);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+    render(<ChatView />);
+
+    await waitFor(() => {
+      expect(screen.getByText("What Are We Producing Today?")).toBeInTheDocument();
+    });
+
+    const textarea = screen.getByPlaceholderText(/Ask Tendril anything/i) as HTMLTextAreaElement;
+    Object.defineProperty(textarea, "scrollHeight", { value: 96, configurable: true });
+    expect(textarea.style.height).not.toBe("96px");
+
+    const chip = screen.getByText("What should I work on next?");
+    fireEvent.click(chip);
+
+    await waitFor(() => {
+      expect(textarea.style.height).toBe("96px");
+    });
+  });
+
+  /**
+   * `items-end` bottom-aligned the textarea and the toolbar; the embedded composer's smaller buttons
+   * sat low against the taller textarea. The row centers its children instead, in both single-line
+   * and wrapped multiline layout.
+   */
+  it("vertically centers the composer's input row", async () => {
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([]);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+    render(<ChatView />);
+
+    await waitFor(() => {
+      expect(screen.getByText("What Are We Producing Today?")).toBeInTheDocument();
+    });
+
+    const textarea = screen.getByLabelText("Chat prompt");
+    const inputRow = textarea.closest("[data-multiline]");
+    expect(inputRow).not.toBeNull();
+    expect(inputRow).toHaveAttribute("data-multiline", "false");
+    expect(inputRow?.className).toContain("items-center");
+  });
+
+  /**
    * `ChatApp.BuildSidebarList`'s own `OnSearch` and `OnNew`, which the shell's Chats section calls:
    * search opens `Apps/Chat/Dialogs/ChatSearchDialog` (an absent `OnSearch` would open the *plan*
    * search dialog), and New is the new-chat action.

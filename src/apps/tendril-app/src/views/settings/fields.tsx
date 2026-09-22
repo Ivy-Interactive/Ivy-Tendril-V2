@@ -319,7 +319,7 @@ export const ColorSwatchGrid: React.FC<{
             title={name}
             data-color={name}
             onClick={() => onSelect(name)}
-            className={`flex size-6 items-center justify-center rounded-full border-2 transition-all hover:z-10 hover:scale-110 ${
+            className={`flex size-6 items-center justify-center rounded-full border-2 transition-all enabled:hover:ring-1 enabled:hover:ring-border ${
               isSelected ? "border-foreground ring-2 ring-foreground/30" : "border-transparent"
             } ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
             style={{ backgroundColor: ivyColorVar(name) }}
