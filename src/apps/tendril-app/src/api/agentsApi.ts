@@ -13,6 +13,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type {
   AgentOption,
+  AgentSignInHint,
   AgentUsageSnapshot,
   TestAgentRequest,
   TestAgentResult,
@@ -49,6 +50,17 @@ const httpTestAgent: TestAgentTransport = async (agent, request) => {
   });
   if (!response.ok) throw new Error(await readError(response, path));
   return (await response.json()) as TestAgentResult;
+};
+
+const httpAgentHints = async (): Promise<AgentSignInHint[]> => {
+  if (isTauri()) {
+    return await invoke<AgentSignInHint[]>("cmd_get_agent_hints");
+  }
+
+  const path = "/api/agents/hints";
+  const response = await fetch(path, { headers: { Accept: "application/json" } });
+  if (!response.ok) throw new Error(await readError(response, path));
+  return (await response.json()) as AgentSignInHint[];
 };
 
 const httpAgentUsage: AgentUsageTransport = async (agent) => {
@@ -91,6 +103,16 @@ export const agentsApi = {
    */
   testAgent(agent: string, request: TestAgentRequest): Promise<TestAgentResult> {
     return testAgentTransport(agent, request);
+  },
+
+  /**
+   * How to install and sign in to every card the pane offers (`GET /api/agents/hints`).
+   *
+   * Static, credential-free and the same table a failed auth probe hints from, which is the point:
+   * the Help section renders what the daemon says rather than keeping a second copy that drifts.
+   */
+  getHints(): Promise<AgentSignInHint[]> {
+    return httpAgentHints();
   },
 
   /** This agent's rate-limit windows, or `null` when its provider publishes none. */

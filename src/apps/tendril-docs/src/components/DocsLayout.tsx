@@ -111,11 +111,23 @@ export function DocsLayout({
 
   const normalized = normalizeRoute(route);
   const homeRoute = flattenNavRoutes(sections)[0] ?? defaultHomeRoute;
-  // `/docs` itself has no page of its own; it is the first page of the first section.
-  const effectiveRoute = normalized === ROUTE_BASE ? homeRoute : normalized;
+  const isRootOrBase =
+    normalized === ROUTE_BASE ||
+    normalized === "" ||
+    normalized === "/" ||
+    normalized === "/docs" ||
+    normalized === ROUTE_BASE.replace(/\/docs$/, "");
+  // The base route itself has no page of its own; it is the first page of the first section.
+  const effectiveRoute = isRootOrBase ? homeRoute : normalized;
   const page = lookupPage(effectiveRoute);
   const { previous, next } = useNeighbours(sections, effectiveRoute, lookupPage);
   const searchPages = allPages ?? pages.values();
+
+  useEffect(() => {
+    if (isRootOrBase && homeRoute !== normalized) {
+      navigate(homeRoute, { replace: true });
+    }
+  }, [isRootOrBase, homeRoute, normalized]);
 
   useEffect(() => {
     if (page) document.title = `${page.title} · Tendril Docs`;

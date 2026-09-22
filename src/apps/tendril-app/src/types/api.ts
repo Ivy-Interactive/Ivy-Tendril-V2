@@ -77,6 +77,18 @@ export interface Job {
   type: string;
   planId?: string;
   planTitle?: string;
+  /**
+   * What the operator actually asked for, in their own words, when the daemon could say — a
+   * `CreatePlan`'s description, a `RetryPlan`'s change request, an `ExecutePlan`'s note, and so on.
+   *
+   * The third link in V1's `GetPromptDisplay` chain (`JobsApp.Helpers.cs:139`), which walks the plan's
+   * title, then `ReportedPlanTitle`, then the job's typed args. V2's chain stopped at the second link,
+   * so a `CreatePlan` imported from the Inbox — whose description *is* the whole request and whose
+   * plan does not exist until the agent has run — showed an empty Prompt cell for its entire run.
+   *
+   * Absent for a job type that carries no prose of its own (`ExpandPlan`, `SplitPlan`).
+   */
+  prompt?: string;
   project: string;
   status: JobStatus;
   statusMessage?: string;
@@ -135,6 +147,8 @@ export interface JobDetail extends Job {
   provider?: string;
   /** The command line the agent was launched with. V1's `CliCommand`, labelled `Arguments` there. */
   cliCommand?: string;
+  /** Which execution profile the run used. V1's `Profile` row in the Cost & Tokens sheet. */
+  executionProfile?: string;
   /** The plan folder the job ran against. V1's `PlanFolder`. */
   planFolder?: string;
   /** The artifacts the run left on this machine, each present only when the file exists. */

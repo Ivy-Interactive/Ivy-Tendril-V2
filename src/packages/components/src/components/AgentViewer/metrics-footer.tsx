@@ -55,6 +55,16 @@ export interface AgentMetricsFooterProps {
    * keeps these figures off the last line of the log.
    */
   showDivider?: boolean;
+  /**
+   * When the run actually began, from whoever owns the run rather than from its log.
+   *
+   * `metrics.startedAt` is the timestamp of the first line folded out of the event stream, which is
+   * only the run's start while the log holds exactly one run. A job id that was reissued after its
+   * row was cleared inherits the kept log of the job before it, and the footer then anchors on that
+   * run's first line: a job two minutes old reported "20h 25m". The daemon's own `startedAt` for
+   * the job is authoritative, so a caller that has one passes it and the stream is the fallback.
+   */
+  startedAt?: string | null;
 }
 
 /**
@@ -77,6 +87,7 @@ export const AgentMetricsFooter: React.FC<AgentMetricsFooterProps> = ({
   metrics,
   isComplete,
   showDivider = true,
+  startedAt,
 }) => {
   // The agent's own duration outranks our reading of the clock, and once the run is over the span
   // between its first and last event is the measurement — neither is an estimate, so neither carries a
@@ -88,7 +99,7 @@ export const AgentMetricsFooter: React.FC<AgentMetricsFooterProps> = ({
   const reportedMs = metrics.durationMs;
   const frozenMs =
     reportedMs != null ? reportedMs : isComplete && Number.isFinite(streamSpan) ? streamSpan : null;
-  const elapsedMs = useElapsedMs(metrics.startedAt, frozenMs, isComplete);
+  const elapsedMs = useElapsedMs(startedAt ?? metrics.startedAt, frozenMs, isComplete);
 
   // A finished run whose whole life was one event has a span of 0 and nothing to say about duration;
   // "0s" under it is noise, not information.

@@ -75,6 +75,22 @@ impl TendrilClient {
                     .or_else(|| val.get("planTitle"))
                     .and_then(|v| v.as_str())
                     .map(|s| s.to_string());
+                // The third thing the Prompt cell can show, and the only one a job has before it has
+                // reported a plan. `GET /api/jobs` carries the whole `JobItem`, so the words are read
+                // out of its typed args here; `POST /api/jobs/query` has already derived them into
+                // `prompt`, so that spelling is accepted first.
+                let prompt = val
+                    .get("prompt")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+                    .or_else(|| {
+                        serde_json::from_value::<tendril_core::models::JobArgs>(
+                            val.get("typedArgs").cloned()?,
+                        )
+                        .ok()?
+                        .prompt_text()
+                        .map(|s| s.to_string())
+                    });
                 let project = val
                     .get("project")
                     .and_then(|v| v.as_str())
@@ -106,6 +122,7 @@ impl TendrilClient {
                     job_type,
                     plan_id,
                     plan_title,
+                    prompt,
                     project,
                     status,
                     status_message,
@@ -289,6 +306,7 @@ impl TendrilClient {
                 .unwrap_or_default(),
             provider: detail_text("provider"),
             cli_command: detail_text("cliCommand"),
+            execution_profile: detail_text("executionProfile"),
             // `planFile` is the plan *folder* — see `JobDetailDto::plan_folder`.
             plan_folder: detail_text("planFile"),
             last_output_at: detail_text("lastOutputAt"),

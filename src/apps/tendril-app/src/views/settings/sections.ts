@@ -62,7 +62,7 @@ export interface SettingsSection {
 
 /**
  * `SettingsApp.Build`'s `sections` list plus its `rows` list, in order: Coding Agent, Plans,
- * Appearance, Projects, Team Vault (beta only), Promptwares, Levels, Notifications, Security &
+ * Appearance, Projects, Team Vault (beta only), Workflow Agents, Levels, Notifications, Security &
  * Tunneling, Advanced, Newsletter. "Open config.yaml" is deliberately absent - V1 renders it as an
  * action row that never becomes the selection, so it is not a section.
  *
@@ -79,7 +79,14 @@ export function settingsSections(isBeta: boolean): SettingsSection[] {
     ...(isBeta
       ? [{ label: "Team Vault", tag: SettingsTag.Vault, icon: FolderGit2 } as SettingsSection]
       : []),
-    { label: "Promptwares", tag: SettingsTag.Promptwares, icon: Wand },
+    /**
+     * "Workflow Agents" rather than plain "Agents": `promptwares` is what config, the API and the
+     * daemon call these, but the operator-facing name is now "agent" — and this list already has a
+     * "Coding Agent" row five above, for the external CLI (Claude Code, Codex, ...) that a workflow
+     * agent *runs on*. Two rows both reading "Agent" would be two different things under one word,
+     * so the qualifier stays. The tag is untouched: it is the `settings:promptwares` deep link.
+     */
+    { label: "Workflow Agents", tag: SettingsTag.Promptwares, icon: Wand },
     { label: "Levels", tag: SettingsTag.Levels, icon: ListOrdered },
     { label: "Notifications", tag: SettingsTag.Notifications, icon: Bell },
     { label: "Security & Tunneling", tag: SettingsTag.Security, icon: Lock },

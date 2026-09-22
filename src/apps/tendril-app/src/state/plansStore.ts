@@ -1,4 +1,5 @@
 import { bridge } from "../api/bridge";
+import { isQueuedState } from "../utils/planQueues";
 import type {
   PlanDetail,
   PlanLifecycleState,
@@ -382,7 +383,17 @@ class PlansStore {
    * snapshot taken before the write and put the plan back in the queue it just left.
    */
   private planTransitioned(id: string, state: PlanLifecycleState): void {
-    this.plansBeforeChange = this.state.plans;
+    // Only for a move that takes the plan out of **every** queue. A snapshot is the one thing here
+    // that nothing retires — its only clearers are `setPlans` and the test seam below, and no
+    // production path calls either — so the most recent one survives until the next, and
+    // {@link listIncluding}'s state-difference guard is then guaranteed to prefer it. That is
+    // harmless for a departure, whose caller consumes the snapshot on the same tick, and wrong for an
+    // arrival: Reset and Thaw both land on `Draft`, which is a queue the plan is now *in*, so the live
+    // list still holds its index and nobody asks for the old one. The snapshot they left behind was
+    // consumed by whatever the operator did next — Update Plan on a just-reset plan measured a queue
+    // the plan was still recorded `Review` in, found it absent, and bounced to the Plans page instead
+    // of opening the next draft.
+    if (!isQueuedState(state)) this.plansBeforeChange = this.state.plans;
     this.pendingStates.set(id, state);
     this.invalidateInFlightPlanReads();
     this.state.plans = this.state.plans.map((plan) => (plan.id === id ? { ...plan, state } : plan));
@@ -495,6 +506,27 @@ class PlansStore {
       this.notify();
       throw err;
     }
+  }
+
+  /**
+   * Test seam: vitest keeps one module instance per file, and this store outlives a render.
+   *
+   * {@link setPlans} is not that seam even though it clears three of these fields, because the
+   * private request bookkeeping is deliberately not part of what asserting a list means. The one that
+   * bites is {@link detailRequestId}: `App.tsx`'s plan-nav effect skips its fetch when the store is
+   * already asking for that id, so a previous test's last `fetchPlanDetail` leaves the next test's
+   * navigation to the same plan silently doing nothing, and it fails on an empty selection rather
+   * than on what it was written to check.
+   */
+  public resetForTesting(): void {
+    this.state = { plans: [], selectedPlan: null, isLoading: false, error: null };
+    this.plansRequestSeq = 0;
+    this.detailRequestSeq = 0;
+    this.detailRequestId = null;
+    this.plansBeforeChange = [];
+    this.removedPlanIds.clear();
+    this.pendingStates.clear();
+    this.listeners.clear();
   }
 }
 

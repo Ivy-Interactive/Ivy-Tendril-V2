@@ -295,6 +295,11 @@ pub struct JobDto {
     pub plan_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plan_title: Option<String>,
+    /// What the operator actually asked for, in their own words, when the daemon could say. The Jobs
+    /// table's Prompt cell reads plan title, then this — and for a `CreatePlan` imported from the
+    /// Inbox, whose plan does not exist yet, this is the only one of the two that is ever filled.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
     pub project: String,
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -405,6 +410,10 @@ pub struct JobDetailDto {
     /// labels `Arguments`. Distinct from `args`, the submitted `JobArgs` JSON.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub cli_command: Option<String>,
+    /// Which execution profile the run used — V1's `Profile` row in the Cost & Tokens sheet. Detail
+    /// only: the list projection has no room for it and no cell that reads it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub execution_profile: Option<String>,
     /// The plan folder the job ran against — V1's `PlanFolder`. `planFile` on the wire, which is a
     /// folder path despite the name (`jobs::deliverable` reads it as one).
     #[serde(default, skip_serializing_if = "Option::is_none")]

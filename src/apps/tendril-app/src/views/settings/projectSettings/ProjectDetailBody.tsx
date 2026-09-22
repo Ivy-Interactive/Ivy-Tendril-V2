@@ -16,12 +16,12 @@ import { bridge } from "../../../api/bridge";
 import { notificationsStore } from "../../../state/notificationsStore";
 import { describeBridgeError } from "../../../types/api";
 import {
+  ColorSwatchField,
   LinesField,
   SETTINGS_CONTAINER,
   SaveError,
   SelectField,
   SubSection,
-  TextField,
   asOptions,
 } from "../fields";
 import { useRemovalConfirm } from "../useRemovalConfirm";
@@ -61,6 +61,7 @@ import {
 } from "../projectConfig";
 import { classifyRepoPath, isValidRepoPath, normalizeRepoPath } from "../../onboarding/validation";
 import { DeleteProjectDialog } from "../../dialogs/DeleteProjectDialog";
+import { RemoveProjectDialog } from "../../dialogs/RemoveProjectDialog";
 import {
   EnvFileBlade,
   McpServerBlade,
@@ -115,6 +116,7 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
   isBeta,
   onSaveRaw,
   onReloadConfig,
+  onRemoved,
   onDeleted,
 }) => {
   const { push, pop } = useBlades();
@@ -122,6 +124,7 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
   const [repoDraft, setRepoDraft] = React.useState("");
   const [repoError, setRepoError] = React.useState<string | null>(null);
   const [isAddingRepo, setIsAddingRepo] = React.useState(false);
+  const [isRemoving, setIsRemoving] = React.useState(false);
   const [isDeleting, setIsDeleting] = React.useState(false);
   const [basic, setBasic] = React.useState({ color: project.color, context: project.context });
   const [security, setSecurity] = React.useState<ProjectSecurityForm>(project.security);
@@ -461,15 +464,17 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
             void patch({ color: basic.color, context: basic.context }, "Project saved");
           }}
         >
-          {/* V1 uses `ToColorInput(SwatchPicker)` over the Ivy `Colors` enum. V2's palette is
-              generated and carries no per-name colour token, and the parity contract forbids adding
-              one, so the colour is edited as the enum name it is stored as. */}
-          <TextField
+          {/* V1's `projectColor.ToColorInput().Variant(ColorInputVariant.SwatchPicker)`
+              (`ProjectDetailView.cs:222`): the 32 Ivy `Colors` names as a swatch grid behind a
+              filled trigger. This was a free `TextField` on the reasoning that V2 carried no
+              per-name colour token - which has not been true since `tokens.css` grew the named
+              palette, and the free field let an operator type a value V1's own `ConfigService`
+              would rewrite to `Slate` on the next save. */}
+          <ColorSwatchField
             id="project-color"
             label="Color"
             value={basic.color}
-            placeholder="e.g. Emerald"
-            hint="An Ivy colour name, as config.yaml stores it (Red, Blue, Purple, Slate, Green...)."
+            hint="An Ivy colour name, as config.yaml stores it."
             onChange={(value) => setBasic((prev) => ({ ...prev, color: value }))}
           />
           <LinesField
@@ -1088,26 +1093,54 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
         </SubSection>
       )}
 
-      {/* Section 10: danger zone. */}
+      {/* Section 10: danger zone — two actions, because "delete" used to mean neither.
+          V1 offers one button, labelled "Delete Project", which calls `SettingsApp.onDeleteProject`
+          and only drops the `config.yaml` entry; V2 inherited both the label and the mismatch, and
+          patched it with the paragraph of copy that used to sit here. Copy is the wrong instrument:
+          it corrects the reader who reads it and nobody else. So the two things that were being
+          conflated are now two buttons with the verbs that happen, each saying its own consequence.
+          Remove is listed first and is the outline button: it is the one that is almost always
+          meant, and the destructive fill is reserved for the one that is not. */}
       <SubSection title="Danger Zone" testId="project-danger-zone">
-        <div className="space-y-2">
-          <Button
-            type="button"
-            variant="destructive"
-            onClick={() => setIsDeleting(true)}
-            data-testid="delete-project"
-          >
-            Delete Project
-          </Button>
-          {/* What the button does *not* do, said before it is pressed as well as in the dialog:
-              `delete_project` touches no file on disk, and an operator deciding whether to click
-              should not have to open the dialog to learn that. */}
-          <p className="text-xs text-muted-foreground">
-            Removes the project from config.yaml. Cloned repositories and plan folders are left on
-            disk.
-          </p>
+        <div className="space-y-4">
+          <div className="space-y-2">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => setIsRemoving(true)}
+              data-testid="remove-project"
+            >
+              Remove Project
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Removes the project from config.yaml. Cloned repositories, plan folders and history
+              are left on disk, so adding the project back by name restores it.
+            </p>
+          </div>
+          <div className="space-y-2">
+            <Button
+              type="button"
+              variant="destructive"
+              onClick={() => setIsDeleting(true)}
+              data-testid="delete-project"
+            >
+              Delete Project
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Permanently deletes the project&apos;s plans, its cloned repositories under
+              {" <TENDRIL_HOME>/Projects/"}, its database rows and its config entry. This cannot be
+              undone, and asks you to type the project name first.
+            </p>
+          </div>
         </div>
       </SubSection>
+
+      <RemoveProjectDialog
+        isOpen={isRemoving}
+        onClose={() => setIsRemoving(false)}
+        projectName={project.name}
+        onRemoved={onRemoved}
+      />
 
       <DeleteProjectDialog
         isOpen={isDeleting}

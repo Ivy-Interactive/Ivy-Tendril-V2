@@ -5,7 +5,7 @@
 [![TypeScript](https://img.shields.io/badge/TypeScript-7.0-blue)](https://www.typescriptlang.org/)
 [![Vite+](https://img.shields.io/badge/Vite+-0.3-646CFF)](https://github.com/voidzero/vite-plus)
 [![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-4.1-38B2AC)](https://tailwindcss.com/)
-[![Storybook](https://img.shields.io/badge/Storybook-8.6-FF4785)](https://storybook.js.org/)
+[![Storybook](https://img.shields.io/badge/Storybook-10.6-FF4785)](https://storybook.js.org/)
 [![React](https://img.shields.io/badge/React-19.2-61DAFB)](https://react.dev/)
 
 ## Architecture & Subpath Exports

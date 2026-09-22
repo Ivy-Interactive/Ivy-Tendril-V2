@@ -62,6 +62,17 @@ export const codeBlockPreStyle: React.CSSProperties = {
   overflowWrap: "break-word",
 };
 
+/**
+ * `codeBlockPreStyle` with the horizontal scroller traded for soft wrapping — see `wrapLines`. The
+ * overflow has to go with it: a `pre` that both wraps and scrolls keeps a scrollbar it can never use.
+ */
+export const wrappedCodeBlockPreStyle: React.CSSProperties = {
+  ...codeBlockPreStyle,
+  whiteSpace: "pre-wrap",
+  overflowX: "hidden",
+  wordBreak: "break-word",
+};
+
 /** Prism's own name for the markup family, which several fence languages map onto. */
 export const normalizeLanguage = (lang: string): string =>
   lang === "xml" || lang === "html" || lang === "svg" ? "markup" : lang;
@@ -99,34 +110,42 @@ interface CodeBlockProps {
   content: string;
   /** Fence language, or undefined for a fence that named none. */
   language?: string;
+  /**
+   * Soft-wrap long lines instead of scrolling them sideways — the legacy widget's `.WrapLines()`.
+   *
+   * Off by default, because a markdown fence is usually code, where a wrapped line is a line that
+   * lies about its indentation. On for prose held in a code block — an agent prompt, say — where
+   * there is no column structure to preserve and a horizontal scrollbar just hides the text.
+   */
+  wrapLines?: boolean;
 }
 
 /** The no-language rendering, reused as the Suspense fallback: same geometry as the highlighted
  * output, so the block does not reflow when the highlighter chunk arrives, and the code stays
  * readable and copyable in the meantime. */
-const PlainPre: React.FC<{ content: string }> = ({ content }) => (
-  <pre style={codeBlockPreStyle}>
+const PlainPre: React.FC<{ content: string; wrapLines?: boolean }> = ({ content, wrapLines }) => (
+  <pre style={wrapLines ? wrappedCodeBlockPreStyle : codeBlockPreStyle}>
     <code>{content}</code>
   </pre>
 );
 
-export const CodeBlock: React.FC<CodeBlockProps> = ({ content, language }) => (
+export const CodeBlock: React.FC<CodeBlockProps> = ({ content, language, wrapLines }) => (
   <div className="pmv-code-block">
     <CopyButton content={content} />
     {language ? (
-      <Suspense fallback={<PlainPre content={content} />}>
+      <Suspense fallback={<PlainPre content={content} wrapLines={wrapLines} />}>
         <SyntaxHighlighter
           style={prismTheme as unknown as { [key: string]: React.CSSProperties }}
           language={normalizeLanguage(language)}
           PreTag="pre"
-          customStyle={codeBlockPreStyle}
-          wrapLongLines={false}
+          customStyle={wrapLines ? wrappedCodeBlockPreStyle : codeBlockPreStyle}
+          wrapLongLines={Boolean(wrapLines)}
         >
           {content}
         </SyntaxHighlighter>
       </Suspense>
     ) : (
-      <PlainPre content={content} />
+      <PlainPre content={content} wrapLines={wrapLines} />
     )}
   </div>
 );

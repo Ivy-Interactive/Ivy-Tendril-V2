@@ -91,11 +91,13 @@ afterEach(() => {
  * One table-driven pass over all six, so a seventh destructive action added without a confirm shows
  * up as an obviously missing row rather than as nothing at all.
  *
- * Delete Project is deliberately not a seventh. Every row here is a `useRemovalConfirm` request:
- * synchronous, `PUT /api/config`, and closed before its `onConfirm` even runs. Deleting the project
- * is an awaited `DELETE /api/projects/:name` that can be refused, so it needs a busy state and
- * somewhere to put the rejection, neither of which that hook has - it composes `ConfirmDialog`
- * directly instead, and `settings-project-config.test.tsx` covers it.
+ * The danger zone's two actions are deliberately not a seventh and eighth. Every row here is a
+ * `useRemovalConfirm` request: synchronous, `PUT /api/config`, and closed before its `onConfirm`
+ * even runs. Removing a project is an awaited `DELETE /api/projects/:name` that can be refused, and
+ * deleting one is an awaited `DELETE /api/projects/:name/data` that is refused outright while a job
+ * still holds it - so both need a busy state and somewhere to put the rejection, neither of which
+ * that hook has. They compose `ConfirmDialog` directly instead, and `settings-project-config.test.tsx`
+ * covers them.
  */
 const CASES: {
   what: string;

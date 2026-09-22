@@ -530,11 +530,39 @@
   display: block;
 }
 
+/* A PDF that would not parse. A plain surface, not a drawn page: an invented page outline would be a
+   claim about content we failed to read. Reached only when no caller handled `onError`. */
+.civ-thumbnail-pdf-fallback {
+  width: 100%;
+  height: 100%;
+  background: var(--muted);
+}
+
+/* The scrim that keeps the card's own text readable over arbitrary pixels.
+ *
+ * Flat `--muted` at an opacity was tried first and cannot work in both themes at once: the token is
+ * near-white in light and near-black in dark, so the value that rescued dark text over a light photo
+ * washed the thumbnail out completely in the other theme. The two-ended gradient is keyed to
+ * `--background` instead, which is the surface `--foreground` is already contrast-audited against --
+ * so wherever the scrim is opaque the card's text has exactly the contrast it has anywhere else in
+ * the composer, and it darkens in dark theme and lightens in light theme without a second rule.
+ *
+ * Opaque at the two edges where text actually sits -- the filename runs along the top, the extension
+ * badge along the bottom -- and close to clear across the middle band, which is the part of the
+ * thumbnail worth seeing. 88% rather than 100% so a light and a dark image still read as different
+ * cards through the ends. */
 .civ-thumbnail-preview-overlay {
   position: absolute;
   inset: 0;
   z-index: 2;
-  background: transparent;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--background) 88%, transparent) 0%,
+    color-mix(in srgb, var(--background) 62%, transparent) 26%,
+    color-mix(in srgb, var(--background) 22%, transparent) 50%,
+    color-mix(in srgb, var(--background) 66%, transparent) 76%,
+    color-mix(in srgb, var(--background) 88%, transparent) 100%
+  );
   pointer-events: auto;
 }
 
@@ -568,5 +596,26 @@
 .civ-thumbnail-doc-badge {
   background: var(--card);
   border-color: var(--border);
+  color: var(--foreground);
+}
+
+/* The badge needs no rule of its own here: `.civ-thumbnail-doc-badge` above already fills it with
+   the opaque `--card`, which is exactly what it needs over image pixels.
+ *
+ * The filename does. The gradient does most of the work, but a thumbnail whose own top edge is
+ * high-contrast detail -- a screenshot of text, say -- can still fight it. A text shadow in the
+ * background colour is a per-glyph scrim: it costs no layout and vanishes against a flat area. Only
+ * the name is listed because `.civ-thumbnail-doc-meta` is not rendered on a previewed card. */
+.civ-thumbnail-card-previewed .civ-thumbnail-doc-name {
+  text-shadow:
+    0 1px 2px var(--background),
+    0 0 6px var(--background);
+}
+
+/* The remove button is the one control on the card, and on a previewed card it lands on unknown
+   pixels. It already carries an opaque `--background` fill from the rule above, so all it needs here
+   is the stronger glyph colour: `--muted-foreground` is tuned for the flat `--muted` card and goes
+   indistinct against a busy thumbnail, where `--foreground` keeps the × unambiguous. */
+.civ-thumbnail-card-previewed .civ-thumbnail-card-remove {
   color: var(--foreground);
 }

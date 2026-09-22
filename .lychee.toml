@@ -24,7 +24,13 @@ exclude = [
   # The VS Code extension is not published to the marketplace yet, so its
   # listing 404s for every README that links to it. Drop this once it ships.
   "^https://marketplace\\.visualstudio\\.com/items\\?itemName=ivy-interactive\\.ivy-tendril",
+  # OpenAI and ChatGPT services block automated CI runners with Cloudflare 403 Forbidden
+  "^https://([a-zA-Z0-9-]+\\.)?openai\\.com",
+  "^https://([a-zA-Z0-9-]+\\.)?chatgpt\\.com",
 ]
+
+# Exclude loopback and private IP addresses (e.g. localhost, 127.0.0.1)
+exclude_all_private = true
 
 # Excluded file paths
 exclude_path = [

@@ -39,13 +39,20 @@ CLI, so you do not need to care where it lands.
 |---|---|---|
 | `--no-watch` | `NO_WATCH=1` | Rust file watching off — the app does not rebuild when a crate changes |
 | `--no-hmr` | `NO_HMR=1` | Frontend HMR off — the webview does not hot-replace modules |
-| `--no-reload` | — | Both of the above. `--no-hotreload` is an accepted alias |
+| `--no-reload` | — | Both of the above. `--no-hotreload` is the same flag |
 
 It prints which of these are active on start-up, so a surprising rebuild is easy to rule out.
 
 Anything else beginning `--no-` is rejected by the runner before the daemon starts, because
 everything it does not recognise is forwarded to the Tauri CLI — so a near miss used to surface as
 Tauri's usage text, several build steps later, naming neither the real flag nor this script.
+
+The two reload spellings are genuinely interchangeable rather than one being tolerated: both have to
+be honoured in three separate places (detection, the strip that keeps them from reaching a Tauri CLI
+that knows neither, and the allowlist that decides what counts as a typo), so
+`tests/dev-desktop-flags.test.ts` asserts the two produce an *identical* parse rather than listing
+expected values that could be kept passing while the spellings drift apart. The flag logic itself is
+`parseRunnerFlags` in `dev-desktop.ts`, which is pure and exported for exactly that.
 
 | Env | Default | Effect |
 |---|---|---|
@@ -109,6 +116,14 @@ pnpm test             # every package's tests
 pnpm typecheck        # tsc --noEmit everywhere
 cargo test --workspace
 ```
+
+`pnpm typecheck` is `pnpm -r --if-present run typecheck`, and `pnpm -r` only visits projects matching
+`pnpm-workspace.yaml`'s globs — `src/apps/*`, `src/packages/*`, `src/extensions/*`. **`src/scripts/`
+matches none of them**, so nothing there is checked by being a package; `tsx` runs those scripts by
+stripping types without reading them. `src/apps/tendril-app/tsconfig.json` therefore lists
+`../../scripts/*.ts` in its `include`, which is what puts `dev-desktop.ts` and `generate-app-icons.ts`
+in front of `tsc` at all. If you add a `.ts` file under `src/scripts/`, it is covered automatically;
+if you move that `include` line, it stops being.
 
 Per package, from its own directory:
 

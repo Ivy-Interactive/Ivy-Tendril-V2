@@ -9,6 +9,9 @@ describe("imageUtils", () => {
     expect(isImageFile("diagram.webp")).toBe(true);
     expect(isImageFile("logo.svg")).toBe(true);
     expect(isImageFile("anim.gif")).toBe(true);
+    // AVIF decodes natively in every browser this ships in, so an `<img>` renders it like any other
+    // raster format; leaving it out only demoted an AVIF attachment to "cannot be previewed".
+    expect(isImageFile("shot.avif")).toBe(true);
     expect(isImageFile("document.pdf")).toBe(false);
     expect(isImageFile("notes.txt")).toBe(false);
   });
@@ -18,12 +21,16 @@ describe("imageUtils", () => {
     const jpegFile = new File(["bytes"], "photo.jpg", { type: "image/jpeg" });
     const svgFile = new File(["<svg></svg>"], "icon.svg", { type: "image/svg+xml" });
     const gifFile = new File(["gif"], "anim.gif", { type: "image/gif" });
+    const avifFile = new File(["bytes"], "shot.avif", { type: "" });
     const textFile = new File(["text"], "notes.txt", { type: "text/plain" });
 
     expect(isCompressibleImage(pngFile)).toBe(true);
     expect(isCompressibleImage(jpegFile)).toBe(true);
     expect(isCompressibleImage(svgFile)).toBe(false);
     expect(isCompressibleImage(gifFile)).toBe(false);
+    // Previewable but not compressible: re-encoding AVIF through a canvas to WebP is usually a size
+    // regression, not a saving, so `isImageFile` accepts it while this does not.
+    expect(isCompressibleImage(avifFile)).toBe(false);
     expect(isCompressibleImage(textFile)).toBe(false);
   });
 

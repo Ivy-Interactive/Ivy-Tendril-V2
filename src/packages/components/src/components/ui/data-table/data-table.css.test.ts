@@ -92,6 +92,39 @@ describe("data-table.css", () => {
     );
   });
 
+  it("tints a selected range visibly over an already-tinted row", () => {
+    /*
+     * A `color-mix` of `--primary`, not a second grey: this paints over a row that may already be
+     * hover- or selection-tinted, and grey on grey is invisible. The framework grid resolves its
+     * `accentColor` to `--primary` for the same stated reason
+     * (`widgets/dataTables/hooks/useTableTheme.ts:63`, "so selection reads as deliberate").
+     */
+    expect(ruleBody('.ivy-data-table td[data-selected="true"]')).toMatch(
+      /background:\s*color-mix\([^)]*var\(--primary\) 14%/,
+    );
+    // And over the opaque sticky actions cell, which would otherwise punch an unselected hole
+    // through the right-hand end of a selected row.
+    expect(css).toMatch(
+      /tr:hover > td\[data-selected="true"\],[\s\S]{0,120}\{\s*background:\s*color-mix\([^)]*var\(--primary\) 14%/,
+    );
+  });
+
+  it("suppresses text selection only while a range drag is live", () => {
+    // Without this the drag paints the range *and* highlights the text under it, and the Cmd+C that
+    // follows copies the text selection, which wins the `copy` event. Scoped to the drag so a
+    // careful drag inside one cell can still select that cell's text.
+    expect(ruleBody('.ivy-data-table[data-range-dragging="true"]')).toMatch(/user-select:\s*none/);
+    expect(css).not.toMatch(/\.ivy-data-table \{\s*user-select:\s*none/);
+  });
+
+  it("marks where a dragged column would land", () => {
+    // An inset border rather than a moving ghost column: a DOM table cannot reorder mid-drag without
+    // re-laying out every row, which at any real row count is a visible stutter.
+    expect(ruleBody('.ivy-data-table th[data-drop-target="true"]')).toMatch(
+      /box-shadow:\s*inset 2px 0 0 0 var\(--primary\)/,
+    );
+  });
+
   it("keeps spacer rows visually inert", () => {
     const block = ruleBody('.ivy-data-table tr[data-slot="data-table-spacer"]');
     expect(block).toMatch(/border:\s*0/);

@@ -32,6 +32,9 @@ const makePage = (
  */
 const PAGE_SIZE = 50;
 
+/** The user's "issues list can get long": a full page of rows for the layout to absorb. */
+const LONG_PAGE = PAGE_SIZE;
+
 /** A table row by its `data-row-id`, which the DataTable sets from `getRowId` (the issue number). */
 const issueRow = (number: number): HTMLElement | null =>
   document.querySelector<HTMLElement>(`[data-row-id="${number}"]`);
@@ -83,6 +86,17 @@ describe("InboxView Component & Triage Tests", () => {
       isPullRequest: false,
     },
   ];
+
+  /** `LONG_PAGE` rows off one fixture, each distinct enough to search for. */
+  const longIssuePage = (): GitHubIssuesPage =>
+    makePage(
+      Array.from({ length: LONG_PAGE }, (_, i) => ({
+        ...mockIssues[0],
+        number: 300 + i,
+        title: `Issue ${300 + i} in a list long enough to scroll`,
+      })),
+      { hasMore: true, totalCount: 600, perPage: PAGE_SIZE },
+    );
 
   beforeEach(() => {
     openUrl.mockReset();
@@ -683,6 +697,34 @@ describe("InboxView Component & Triage Tests", () => {
 
       await waitFor(() => expect(issueRow(103)).not.toBeNull());
     });
+
+    it("counts the dropped pull requests out of the footer and the selection summary", async () => {
+      // The user's report: "it says showing first 50, but lol wtf i made select all its only 44".
+      // A page of 50 that holds 6 pull requests renders 44 rows, and both numbers beside it used
+      // to come from the server instead: the footer read "Showing 1-50 of 51" and Select All
+      // filled 44 while the summary claimed 51. The PR drop is a client-side narrowing exactly as
+      // the search box is, so it has to count as one.
+      const page = Array.from({ length: 50 }, (_, i) => ({
+        ...mockIssues[0],
+        number: 200 + i,
+        title: `Issue ${200 + i}`,
+        isPullRequest: i >= 44,
+      }));
+      listGitHubIssuesSpy.mockResolvedValue(
+        makePage(page, { hasMore: true, totalCount: 51, perPage: PAGE_SIZE }),
+      );
+
+      render(<InboxView projects={mockProjects} />);
+      await waitForInboxIdle();
+      await waitFor(() => expect(issueRow(200)).not.toBeNull());
+
+      expect(issueRow(244)).toBeNull();
+      expect(document.querySelectorAll("[data-row-id]").length).toBe(44);
+      expect(screen.getByText("Showing 1–44 of 44")).toBeInTheDocument();
+
+      fireEvent.click(screen.getByRole("button", { name: "Select All" }));
+      expect(screen.getByTestId("inbox-selection-summary")).toHaveTextContent("44 of 44 selected");
+    });
   });
 
   describe("issue urls and target projects", () => {
@@ -1114,6 +1156,151 @@ describe("InboxView Component & Triage Tests", () => {
       expect(wrapper.className).toContain("flex-1");
       // No view-level scroller: the frame owns the page scroll, the table owns the rows'.
       expect(screen.getByTestId("inbox-view").className).not.toContain("overflow-y-auto");
+    });
+
+    /**
+     * The reported bug, as a test: "issues list can get long and then you scroll away the inbox
+     * sidebar". A long list must not lengthen the *view*, because the view sits inside the shell's
+     * `overflow-y-auto` frame (`CONTENT_PADDED_CLASS`, `ShellLayout.tsx:75`) and the rail sits
+     * inside that same frame — so the moment the view outgrows it, scrolling to read the list
+     * scrolls the rail off the top.
+     */
+    it("keeps the scroll inside the table when the list is long, not on the page", async () => {
+      listGitHubIssuesSpy.mockResolvedValue(longIssuePage());
+      render(<InboxView projects={mockProjects} />);
+      await waitForInboxIdle();
+      await waitFor(() => expect(issueRow(300)).not.toBeNull());
+      expect(document.querySelectorAll("[data-row-id]").length).toBe(LONG_PAGE);
+
+      // Every row is mounted — the rows are real height the layout has to absorb somewhere.
+      const table = screen.getByTestId("inbox-issue-table");
+      const viewport = table.parentElement as HTMLElement;
+      expect(viewport.className).toContain("overflow-auto");
+
+      // ...and the place it is absorbed is that viewport: it is the nearest scroller to the rows,
+      // and every ancestor between it and the view root either clips or refuses to grow.
+      let node = viewport.parentElement as HTMLElement;
+      const root = screen.getByTestId("inbox-view");
+      while (node !== root) {
+        expect(node.className).not.toContain("overflow-y-auto");
+        expect(node.className).not.toContain("overflow-auto");
+        node = node.parentElement as HTMLElement;
+      }
+      // The view root is `h-full`, so it is the frame's height whatever the row count is.
+      expect(root.className).toContain("h-full");
+      expect(root.className).not.toContain("h-auto");
+    });
+
+    it("leaves the rail in place, and scrolling itself, once the list is long", async () => {
+      listGitHubIssuesSpy.mockResolvedValue(longIssuePage());
+      render(<InboxView projects={mockProjects} />);
+      await waitForInboxIdle();
+      await waitFor(() => expect(issueRow(300)).not.toBeNull());
+
+      // Still mounted, still the view root's first child, still beside the content rather than
+      // above it: the rail cannot be pushed anywhere by a list it is not inside.
+      const root = screen.getByTestId("inbox-view");
+      const rail = screen.getByRole("tablist", { name: "Inbox categories" });
+      expect(rail.parentElement).toBe(root);
+      expect(root.firstElementChild).toBe(rail);
+      expect(root.className).toContain("flex");
+      expect(screen.getByTestId("category-my-issues")).toBeInTheDocument();
+
+      // `shrink-0` so the list cannot squeeze it, `overflow-y-auto` so a long project list scrolls
+      // the rail and not the page — the sidebar's half of the same bug.
+      expect(rail.className).toContain("shrink-0");
+      expect(rail.className).toContain("overflow-y-auto");
+      expect(rail.contains(screen.getByTestId("inbox-issue-table"))).toBe(false);
+    });
+
+    /**
+     * A filter you can only reach by scrolling past everything it filters is the same bug wearing a
+     * different hat. The filters live in the `DataTable` toolbar (as `PullRequestsView` puts them),
+     * which `fillHeight` renders `shrink-0` *above* the scroll viewport — so they are outside the
+     * thing that scrolls, not at the end of it.
+     */
+    it("keeps the filter bar above the rows instead of at the end of them", async () => {
+      listGitHubIssuesSpy.mockResolvedValue(longIssuePage());
+      render(<InboxView projects={mockProjects} />);
+      await waitForInboxIdle();
+      await waitFor(() => expect(issueRow(300)).not.toBeNull());
+
+      const search = screen.getByLabelText("Search issues");
+      const table = screen.getByTestId("inbox-issue-table");
+      const viewport = table.parentElement as HTMLElement;
+
+      // Not inside the scroller, so no amount of scrolling can move it off screen.
+      expect(viewport.contains(search)).toBe(false);
+      const labelFilter = screen.getByRole("button", { name: "Filter by label..." });
+      const assigneeFilter = screen.getByRole("button", { name: "Filter by assignee..." });
+      expect(viewport.contains(labelFilter)).toBe(false);
+      expect(viewport.contains(assigneeFilter)).toBe(false);
+
+      // The toolbar is the table's own `shrink-0` chrome, and it precedes the viewport's box.
+      const tableRoot = viewport.parentElement?.parentElement as HTMLElement;
+      const toolbar = tableRoot.firstElementChild as HTMLElement;
+      expect(toolbar.contains(search)).toBe(true);
+      expect(toolbar.className).toContain("shrink-0");
+      expect(
+        toolbar.compareDocumentPosition(viewport) & Node.DOCUMENT_POSITION_FOLLOWING,
+      ).toBeTruthy();
+
+      // And it still filters, from where it sits: the point of pinning it.
+      fireEvent.change(search, { target: { value: "Issue 301" } });
+      await waitFor(() => expect(issueRow(300)).toBeNull());
+      expect(issueRow(301)).not.toBeNull();
+      expect(screen.getByLabelText("Search issues")).toBeInTheDocument();
+    });
+
+    /**
+     * The panel that actually broke the page. An unbounded flex child keeps its content height as
+     * its flex basis, so shrink is distributed around it and the bounded table is handed nothing to
+     * fill — the column overflows and the frame becomes the scroller. `HeaderLayout` plus a cap is
+     * what makes the shrink resolve.
+     */
+    it("bounds the proposals panel and gives it its own scroller", async () => {
+      listInboxProposalsSpy.mockResolvedValue(
+        Array.from({ length: 25 }, (_, i) => ({
+          id: i + 1,
+          number: 500 + i,
+          repository: "SpaceCorps/Tendril-App",
+          title: `Swept issue ${500 + i}`,
+          body: "Assigned to me by someone else.",
+          issueUrl: `https://github.com/SpaceCorps/Tendril-App/issues/${500 + i}`,
+          project: "Tendril-App",
+          state: "Pending",
+          discovered: "2026-09-10T09:00:00Z",
+          updated: "2026-09-10T09:00:00Z",
+        })),
+      );
+      listGitHubIssuesSpy.mockResolvedValue(longIssuePage());
+      render(<InboxView projects={mockProjects} />);
+      await waitForInboxIdle();
+      const panel = await waitFor(() => screen.getByTestId("inbox-proposals"));
+
+      // The shared primitive, not a hand-rolled scroll container.
+      expect(panel.dataset.slot).toBe("header-layout");
+      // Capped, shrinkable, and not `h-full`: 25 cards cannot claim the column.
+      expect(panel.className).toContain("max-h-[min(16rem,33%)]");
+      expect(panel.className).toContain("min-h-0");
+      expect(panel.className).toContain("h-auto");
+      expect(panel.className).not.toContain("h-full ");
+
+      // Heading is the panel's fixed chrome; the cards scroll under it.
+      const header = panel.firstElementChild as HTMLElement;
+      expect(header.className).toContain("flex-none");
+      expect(header).toHaveTextContent("Assigned issues awaiting your decision");
+      const scroller = panel.lastElementChild as HTMLElement;
+      expect(scroller.className).toContain("min-h-0");
+      expect(scroller.className).toContain("flex-1");
+      expect(scroller.className).toContain("overflow-hidden");
+      expect(scroller.querySelector("[data-radix-scroll-area-viewport]")).not.toBeNull();
+      expect(scroller.contains(screen.getByTestId("proposal-card-25"))).toBe(true);
+
+      // The table keeps its own bound beside it, and the page still has no scroller of its own.
+      expect(screen.getByTestId("inbox-issue-table")).toBeInTheDocument();
+      expect(screen.getByTestId("inbox-content").className).toContain("min-h-0");
+      expect(screen.getByTestId("inbox-view").className).not.toContain("overflow");
     });
   });
 });

@@ -9,7 +9,7 @@ import {
   usePublishedSidebarList,
 } from "./state/sidebarListStore";
 import { seedChatSessionCount, useChatSessionCount } from "./state/chatSessionCount";
-import { toAddressArgs } from "./state/navigation";
+import { AGENT_APP_ID, toAddressArgs } from "./state/navigation";
 import { isPlanId, nextAfterRemoval, plansStore } from "./state/plansStore";
 import { jobsStore } from "./state/jobsStore";
 import { notificationsStore } from "./state/notificationsStore";
@@ -149,15 +149,6 @@ const REVIEW_ACTION_APP_ID = "review-action";
 const AgentTerminalView = React.lazy(() =>
   import("./views/AgentTerminalView").then((m) => ({ default: m.AgentTerminalView })),
 );
-
-/**
- * V1's `AgentApp`: the agent's own terminal, opened instead of the chat view when `chatMode` is
- * `terminal`. `allowDuplicateTabs: true` in the registry, so the router opens it as a session pane
- * keyed by the chat session it belongs to — reopening the same conversation reveals the pane already
- * running it rather than spawning a second agent, which is exactly why V1 keys its agent panes the
- * same way.
- */
-const AGENT_APP_ID = "agent";
 
 /**
  * The session a review action's pane is keyed by. Router rule 3 keys a pane by its session id, so
@@ -524,6 +515,11 @@ export const App: React.FC = () => {
    */
   useEffect(() => {
     chatLauncher.registerTerminalOpener(openTerminalPane);
+    // The pane registry is this component's state, but `chatStore.selectSession` is where the
+    // "terminal sessions belong to the AgentApp pane" check has to live -- it is the one point all
+    // three select paths converge on. Republished here, on the same every-commit schedule and for
+    // the same reason as the opener.
+    chatLauncher.registerOpenTerminals(Object.keys(terminalPanes));
   });
 
   /**
@@ -808,6 +804,20 @@ export const App: React.FC = () => {
 
     const sessionId = selectArgField(args, "sessionId");
     if (sessionId) {
+      /* V1's `ChatApp.SelectSession`: "Terminal sessions belong to the AgentApp pane, never here",
+         so a row whose conversation is already running as a terminal reveals that pane rather than
+         opening the chat view on a session that has no messages to show. This is also what keeps a
+         terminal reachable now that the bottom strip leaves agent panes out - the Chats list is the
+         only way back to one, which is the arrangement V1's strip comment describes.
+
+         `chatStore.selectSession` carries the same check, and has to: `buildSelectArgs` selects the
+         session as a side effect of producing the args this handler receives, so by the time we are
+         here the store has already been asked. This arm is what stops the *navigation* below from
+         opening the chat view over the pane, which the store cannot do from where it sits. */
+      if (terminalPanes[sessionId]) {
+        uiStore.navigate({ appId: AGENT_APP_ID, args: { sessionId } });
+        return;
+      }
       uiStore.navigate({ appId, args: toAddressArgs(args) });
       void import("./state/chatStore").then((m) => m.chatStore.selectSession(sessionId));
       return;
@@ -938,8 +948,27 @@ export const App: React.FC = () => {
           }}
           /* Reset to Draft is the exception: it puts the plan *into* the Plans queue rather than
              taking it out of one, so the page stays on the plan and just re-reads it. The store has
-             already patched the row to Draft; the detail is what this page renders from. */
+             already patched the row to Draft; the detail is what this page renders from.
+
+             Staying put is not the same as changing nothing, though. The plan has still left the
+             queue it was being triaged in — `ReviewView` says the same thing from the other side, and
+             advances *its* selection on reset — so the sidebar this page is showing still lists it.
+             That list is a frozen retained snapshot (`sidebarListStore.retainFor`) with no mounted
+             publisher to re-derive it, so without this the reset plan keeps a row in a Review sidebar
+             it no longer belongs to: the badge counts one fewer than the rows beneath it, and
+             clicking the stale row lands on an unrelated plan through `resolvePlanSelection`'s
+             bounce-to-newest. Dropping the row is all of `advanceWithinQueue` that applies here —
+             the navigation half is exactly what must not happen.
+
+             Only from a Review list, and read from the published list rather than from
+             `detail.state`. Reset is offered on Blocked as well (`PlanActionsController.canReset`),
+             and Blocked and Draft are both Plans-queue states, so that plan keeps its row and
+             dropping it would be the same defect pointed the other way. `detail.state` cannot answer
+             which queue it was: `resetPlanOptimistic` patches `selectedPlan` to Draft before this
+             callback runs, so by now the page's own copy has forgotten. The sidebar still knows, and
+             it is the thing being corrected. */
           onPlanReset={(id) => {
+            if (sidebarListStore.getState()?.appId === "review") sidebarListStore.removeItem(id);
             plansStore.fetchPlanDetail(id).catch(() => {});
           }}
           onPlanDeleted={(id) => {
@@ -961,7 +990,7 @@ export const App: React.FC = () => {
       const job = detail ??
         summary ?? {
           id: jobId,
-          type: "Promptware Job",
+          type: "Agent Job",
           project: "Tendril",
           status: "Running" as const,
         };
@@ -1207,7 +1236,14 @@ export const App: React.FC = () => {
         connectionStatus={serviceState.status}
         reconnectCountdown={serviceState.reconnectCountdown}
         onSelectNav={(nav) => uiStore.setActiveNav(nav)}
-        onSelectTab={(tab) => uiStore.setActiveNav(tab)}
+        /* V1 `SelectSession`, which redirects with `tabId: tab.Id` (`TendrilAppShell.SelectSession`).
+           `setActiveNav` was the wrong seam: it passes its argument as an *appId*, so navigation
+           rule 1 - the one that reveals an existing pane - was never reached and rule 4 fired
+           instead, setting `pageAppId` to a raw session id and `activeSessionId` to null. Every
+           pane then rendered `data-active="false"`, which is `pointer-events: none`, so the xterm
+           textarea could never take focus again, while the retired pane's pty went on writing ANSI
+           into a terminal now hidden behind the page. */
+        onSelectTab={(tab) => uiStore.navigate({ tabId: tab })}
         onCloseTab={(tab) => uiStore.closeTab(tab)}
         onShowPage={() => uiStore.showPage()}
         onNewPlan={() => {

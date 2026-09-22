@@ -14,7 +14,12 @@ import { Bug, CircleCheck, CircleDashed, CircleX, Info } from "lucide-react";
 
 import { agentsApi } from "../../api/agentsApi";
 import { describeBridgeError } from "../../types/api";
-import type { AgentAuthResult, ModelValidation, TestAgentResult } from "../../types/agents";
+import type {
+  AgentAuthResult,
+  AgentSignInHint,
+  ModelValidation,
+  TestAgentResult,
+} from "../../types/agents";
 import { DialogShell } from "../dialogs/DialogShell";
 
 /**
@@ -95,6 +100,25 @@ function installRow(result: TestAgentResult): AgentTestRow {
   };
 }
 
+/**
+ * The shortest honest rendering of a structured sign-in hint: the first documented route.
+ *
+ * The daemon lists every route, best first, and the Help section under the pane renders all of them
+ * with their alternatives and console links. This is one row in a results table, so it takes the
+ * best one only. `then` is a slash command typed at the prompt the shell line opens, so it is joined
+ * with "then" rather than concatenated - `copilot /login` would be a prompt, not a login. A hint
+ * with no command at all is a bring-your-own provider, whose answer is a console to open.
+ */
+function hintSentence(hint: AgentSignInHint): string | null {
+  const route = hint.auth.commands[0];
+  if (route) {
+    return route.then
+      ? `run \`${route.command}\`, then \`${route.then}\``
+      : `run \`${route.command}\``;
+  }
+  return hint.auth.url ? `create a key at ${hint.auth.url}` : null;
+}
+
 /** `results[1]`, from `CheckAuthAsync`. */
 function authRow(auth: AgentAuthResult): AgentTestRow {
   const provider = auth.provider ? ` (${auth.provider})` : "";
@@ -102,12 +126,15 @@ function authRow(auth: AgentAuthResult): AgentTestRow {
     return { label: "Authentication", status: "passed", message: `Authenticated${provider}` };
   }
   if (auth.status === "notAuthenticated") {
+    const hint = auth.signInHint ? hintSentence(auth.signInHint) : null;
     return {
       label: "Authentication",
       status: "failed",
       // V1 shows the flat "Not authenticated" and keeps the detail behind the Bug button; the hint is
-      // the one thing that says what to *do*, so it is appended where there is one.
-      message: auth.signInHint ? `Not authenticated - ${auth.signInHint}` : "Not authenticated",
+      // the one thing that says what to *do*, so it is appended where there is one. The hint is the
+      // daemon's structured value, rendered here as one line - the Help section under the pane
+      // renders the same value in full, which is the point of it being data rather than a sentence.
+      message: hint ? `Not authenticated - ${hint}` : "Not authenticated",
       ...(auth.error ? { rawOutput: auth.error } : {}),
     };
   }

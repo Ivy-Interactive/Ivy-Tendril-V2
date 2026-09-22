@@ -19,6 +19,7 @@ mod local_file;
 mod onboarding;
 mod plans;
 mod projects;
+mod promptwares;
 mod pull_requests;
 mod terminals;
 mod vault;

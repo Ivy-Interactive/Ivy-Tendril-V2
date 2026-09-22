@@ -523,6 +523,11 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
             // killed or timed-out run reports no terminal result, so the stream alone cannot tell that
             // it is over, and the timer would tick on against a start that may be days old.
             live={isRunning}
+            // The job row's own start, not the log's first line. They are the same only while the
+            // log holds one run, and a job id reissued after its row was cleared inherits the kept
+            // log of the job before it - which is how a two-minute-old job came to read
+            // "ELAPSED 20h 25m" under a header that read "1m 55s". Both now count from here.
+            startedAt={currentJob.startedAt}
             eventHandler={noop}
           />
         ) : isRunning ? (

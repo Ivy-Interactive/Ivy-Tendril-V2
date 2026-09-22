@@ -12,6 +12,9 @@ searchHints:
   - plan.yaml
   - revisions
   - plan folder
+  - annotations
+  - cleanup
+  - doctor
 ---
 
 # Plans
@@ -20,20 +23,20 @@ searchHints:
 
 A plan is always in exactly one of ten states:
 
-| State         | Description                                                                          |
-| ------------- | ------------------------------------------------------------------------------------ |
-| **Draft**     | Initial state. The plan exists but execution has not started.                        |
-| **Creating**  | `CreatePlan` or `ExpandPlan` is drafting the technical detail.                       |
-| **Updating**  | `UpdatePlan` is refining an existing, already-drafted plan.                          |
-| **Executing** | `ExecutePlan` is implementing the plan in a worktree.                                |
-| **Review**    | Execution finished and the required verifications passed. Ready for a human.         |
-| **Completed** | Reviewed, approved, and shipped — normally as a pull request.                        |
-| **Failed**    | Verifications kept failing, or an interrupted execution could not be recovered.      |
-| **Blocked**   | The plan cannot proceed without missing context, credentials or a decision from you. |
-| **Skipped**   | Abandoned, discarded or judged unnecessary.                                          |
-| **Icebox**    | Shelved for later.                                                                   |
+| State         | Description                                                                                                       |
+| ------------- | ----------------------------------------------------------------------------------------------------------------- |
+| **Draft**     | Initial state. The plan exists but execution has not started.                                                     |
+| **Creating**  | [CreatePlan](02_Promptwares.md) or [ExpandPlan](02_Promptwares.md) is drafting technical detail.                  |
+| **Updating**  | [UpdatePlan](02_Promptwares.md) is refining a plan with annotations and feedback.                                 |
+| **Executing** | [ExecutePlan](02_Promptwares.md) is implementing code in a [Git worktree](https://git-scm.com/docs/git-worktree). |
+| **Review**    | Execution finished and required verification gates passed. Ready for developer review.                            |
+| **Completed** | Reviewed, approved, and shipped — normally via a pull request opened by [CreatePr](02_Promptwares.md).            |
+| **Failed**    | Verifications failed, or an interrupted execution could not be recovered.                                         |
+| **Blocked**   | The plan cannot proceed without missing context, credentials, or user decisions.                                  |
+| **Skipped**   | Abandoned, discarded, or deemed unnecessary.                                                                      |
+| **Icebox**    | Shelved for future development.                                                                                   |
 
-The normal path is short:
+The normal lifecycle path:
 
 ```dot
 digraph plan_lifecycle {
@@ -60,65 +63,82 @@ digraph plan_lifecycle {
 ```
 
 > [!NOTE]
-> **Stopping or deleting a running job** returns the plan to the state it was in _before_ the job
-> started — a stopped `ExecutePlan` goes back to `Draft`, a stopped `RetryPlan` back to `Review`. A
-> stopped or failed run keeps its work product, so you can inspect or resume the worktree. Deleting an
-> `ExecutePlan` job is the exception: it discards the worktrees and artifacts and resets the plan to a
-> clean `Draft`.
+> **Stopping or cancelling a running job** restores the plan to its pre-job state — a stopped
+> [ExecutePlan](02_Promptwares.md) returns to `Draft`, and a stopped
+> [RetryPlan](02_Promptwares.md) returns to `Review`. Work product and worktrees
+> are preserved so you can inspect partial diffs or resume work.
 
 ## Creating a plan
 
-There are four pathways, and they all end in the same folder:
+There are four primary entry points to create a plan:
 
-1. **The app** — write a description in the **New Plan** modal to spawn `CreatePlan`.
-2. **The inbox** — `POST /api/inbox` on the running daemon starts a `CreatePlan` job from a task
-   description. This is what the GitHub and jam.dev webhook integrations use, and it is exposed to
-   coding agents as the `tendril_inbox` MCP tool.
-3. **Recommendations** — accept a recommendation an earlier job left behind.
-4. **The CLI** — `tendril plan create "<title>" <project>`.
+1. **The Desktop App** — write a prompt or feature brief in the **New Plan** dialog, triggering
+   [CreatePlan](02_Promptwares.md).
+2. **The Inbox API** — `POST /api/inbox` triggers automatic ingestion from [GitHub](https://github.com)
+   issues or [Jam.dev](https://jam.dev) bug reports. It is also exposed to autonomous agents as the
+   `tendril_inbox` [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) tool.
+3. **Recommendations** — promote follow-up suggestions generated by previous agent runs into independent plans.
+4. **The CLI** — run `tendril plan create "<title>" <project>`.
 
-Each plan is stored as a folder under `$TENDRIL_HOME/Plans/` with a numeric ID and a shortened name,
-for example `00524-RelocateMultilingualRead/`.
+Each plan is stored as a folder under `$TENDRIL_HOME/Plans/` with a sequential numeric ID and a slugified
+name (e.g. `00524-RelocateMultilingualRead/`).
 
 ## Plan structure
 
-A plan folder is fully transparent and entirely local:
+A plan directory is completely transparent, human-readable, and local:
 
 ```
 00524-RelocateMultilingualRead/
-├── plan.yaml        # state, project, title, repos, prs, commits, verifications, dependsOn
-├── Revisions/       # 001.md, 002.md … problem / solution / tests
-├── Verification/    # one report per verification
-├── Artifacts/       # screenshots and generated assets
-├── Worktrees/       # the git worktrees used during execution
-└── costs.csv        # token and cost tracking
+├── plan.yaml        # metadata: state, project, repos, pull requests, commits, verifications
+├── Revisions/       # immutable version history: 001.md, 002.md …
+├── Verification/    # individual report and test output per verification gate
+├── Artifacts/       # screenshots, diagrams, and generated binary assets
+├── Worktrees/       # isolated git worktrees per repository used during execution
+└── costs.csv        # token expenditure and dollar cost audit log
 ```
 
-Execution logs do **not** live here. Every job writes its log, its prompt and the raw agent output to
-`$TENDRIL_HOME/Jobs/`, in a folder named `{jobId}-{planId}-{promptware}` — so a plan's execution
-history survives even when the plan is reset to `Draft`.
+Execution logs and telemetry do **not** live in the plan folder. Every run logs raw transcripts, prompts,
+and stdout/stderr directly to `$TENDRIL_HOME/Jobs/{jobId}-{planId}-{promptware}/`.
 
-Because it is all plain files, the CLI, the app and your own tools see the same data:
+Inspect and manage plans directly via the CLI:
 
 ```bash
+# List all active plans and their current states
 tendril plan list
+
+# Inspect detailed metadata and repository attachments
 tendril plan get 00524
+
+# Validate directory integrity and schema conformity
 tendril plan validate 00524
+
+# Clean up worktrees for completed or terminal plans (--force overrides state)
+tendril plan cleanup 00524 --force
+
+# Diagnose and migrate plans to current schema versions
+tendril plan doctor --fix --prune-husks
 ```
 
-## Revisions
+## Revisions & inline annotations
 
-Each time a plan is drafted or refined, a new **revision** is written to `Revisions/` rather than
-overwriting the last one, so the reasoning is versioned alongside the code. A revision contains:
+Each time a plan specification is drafted or updated, a new immutable **revision** is recorded in
+`Revisions/` rather than replacing the previous file:
 
-- **Problem** — what needs to be fixed or built, and why it matters.
-- **Solution** — the technical approach, in enough detail to implement without guessing.
-- **Tests** — how correctness will be judged.
+- **Problem** — the user requirements, bug symptoms, and root cause analysis.
+- **Solution** — architectural decisions, phased implementation steps, and file modifications.
+- **Tests & Acceptance** — explicit criteria and automated test cases verifying correctness.
 
-Which checks actually gate the plan is recorded in `plan.yaml` under `verifications`, not in the
-revision text — see [Lifecycle & Jobs](03_Lifecycle.md).
+### Inline plan annotations
+
+In the desktop app, developers can highlight any line in a draft plan and add inline annotations.
+Rather than forcing you to rewrite your brief, Tendril packages these annotations alongside the active
+revision and executes [UpdatePlan](02_Promptwares.md). The workflow agent reads your
+critiques, resolves contradictions, and generates the next numbered revision in `Revisions/`.
+
+Which quality checks actually gate execution is defined in `plan.yaml` under `verifications` — see
+[Lifecycle & Jobs](03_Lifecycle.md).
 
 ## Next steps
 
-- [Promptwares](02_Promptwares.md) — the agents that move a plan between the states above.
-- [Lifecycle & Jobs](03_Lifecycle.md) — what happens during a single run.
+- [Promptwares](02_Promptwares.md) — explore workflow agent definitions, tool scoping, and memory.
+- [Lifecycle & Jobs](03_Lifecycle.md) — deep dive into job execution, worktree sandboxing, and verifications.

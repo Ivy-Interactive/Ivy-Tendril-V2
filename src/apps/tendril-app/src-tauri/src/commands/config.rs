@@ -140,10 +140,24 @@ pub async fn cmd_rename_project(
 /// route that removes it.
 ///
 /// Scope worth repeating wherever this is called: the config entry is all that goes. Plans, the
-/// project's database rows and any repository the daemon cloned for it remain on disk.
+/// project's database rows and any repository the daemon cloned for it remain on disk. That is why
+/// this is `remove` and [`cmd_delete_project_data`] is `delete` -- the command was called
+/// `cmd_delete_project` while it was the only one, and a name that promised a deletion it did not
+/// perform is what the split fixes.
 #[tauri::command]
-pub async fn cmd_delete_project(name: String) -> Result<serde_json::Value, BridgeError> {
-    get_client_from_master()?.delete_project(&name).await
+pub async fn cmd_remove_project(name: String) -> Result<serde_json::Value, BridgeError> {
+    get_client_from_master()?.remove_project(&name).await
+}
+
+/// Deletes a project **and everything it owns on disk** (`DELETE /api/projects/:name/data`).
+///
+/// The destructive sibling of [`cmd_remove_project`]. The daemon removes the project's plan folders
+/// (worktrees first), its directory under `<TENDRIL_HOME>/Projects/`, its Plans/Jobs/Recommendations
+/// rows, and last its `config.yaml` entry; job logs are keyed by job id rather than by project and
+/// are kept. Refused with 409 while a job of the project is still running.
+#[tauri::command]
+pub async fn cmd_delete_project_data(name: String) -> Result<serde_json::Value, BridgeError> {
+    get_client_from_master()?.delete_project_data(&name).await
 }
 
 /// Starts a review action and returns the session the webview must address to talk to it.

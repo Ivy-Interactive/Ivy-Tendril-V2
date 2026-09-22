@@ -15,6 +15,7 @@ pub use commands::inbox::*;
 pub use commands::jobs::*;
 pub use commands::local_file::*;
 pub use commands::plans::*;
+pub use commands::promptwares::*;
 pub use commands::pull_requests::*;
 pub use commands::state::*;
 pub use commands::tables::*;
@@ -172,11 +173,13 @@ pub fn run() {
             // never becomes a checkout. This route clones first.
             cmd_add_project_repo,
             cmd_rename_project,
-            cmd_delete_project,
+            cmd_remove_project,
+            cmd_delete_project_data,
             cmd_get_config,
             cmd_put_config,
             cmd_get_config_text,
             cmd_put_config_text,
+            cmd_get_promptware_program,
             cmd_get_onboarding_status,
             cmd_complete_onboarding,
             cmd_dismiss_onboarding,
@@ -217,6 +220,7 @@ pub fn run() {
             cmd_resize_agent_terminal,
             cmd_close_agent_terminal,
             cmd_list_agents,
+            cmd_get_agent_hints,
             cmd_fetch_provider_models,
             cmd_test_agent,
             cmd_get_agent_usage,

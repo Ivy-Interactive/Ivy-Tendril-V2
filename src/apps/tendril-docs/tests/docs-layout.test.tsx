@@ -65,9 +65,9 @@ describe("DocsLayout", () => {
       "href",
       "/docs/gettingstarted/introduction",
     );
-    expect(within(sidebar).getByRole("link", { name: "Plans" })).toHaveAttribute(
-      "aria-current",
-      "page",
+    expect(within(sidebar).getByRole("link", { name: "Plans", current: "page" })).toHaveAttribute(
+      "href",
+      "/docs/concepts/plans",
     );
   });
 

@@ -6,7 +6,7 @@
  * re-render when either the user or a link changes it. That is small enough to own outright.
  */
 import { useCallback, useEffect, useState } from "react";
-import { normalizeRoute } from "./slug";
+import { normalizeRoute, ROUTE_BASE } from "./slug";
 
 /** Fired after a programmatic {@link navigate}, since `pushState` raises no event of its own. */
 const NAVIGATE_EVENT = "tendril-docs:navigate";
@@ -19,7 +19,7 @@ export interface Location {
 }
 
 function readLocation(): Location {
-  if (typeof window === "undefined") return { route: "/docs", hash: "" };
+  if (typeof window === "undefined") return { route: ROUTE_BASE, hash: "" };
   return { route: normalizeRoute(window.location.pathname), hash: window.location.hash };
 }
 

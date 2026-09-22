@@ -16,6 +16,7 @@ pub mod onboarding;
 pub mod ping;
 pub mod plans;
 pub mod projects;
+pub mod promptwares;
 pub mod pull_requests;
 pub mod recommendations;
 pub mod tables;
@@ -216,6 +217,13 @@ pub fn create_router(state: Arc<AppState>) -> Router {
                 .put(projects::update_project)
                 .delete(projects::delete_project),
         )
+        // The destructive sibling of `DELETE /api/projects/:name`, as its own route rather than a
+        // flag on that one: they remove different things, and a boolean would put the irreversible
+        // one a character away from the reversible one.
+        .route(
+            "/api/projects/:name/data",
+            axum::routing::delete(projects::purge_project),
+        )
         .route(
             "/api/projects/:name/issues",
             get(projects::get_project_issues),
@@ -311,6 +319,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         )
         // Agents
         .route("/api/agents", get(agents::get_agents_handler))
+        // How to install and sign in to each agent. Static, credential-free and the same for every
+        // caller - the same table a failed auth probe returns a hint from, so the Coding Agent
+        // pane's Help section and the Test Agent dialog cannot drift apart.
+        .route("/api/agents/hints", get(agents::get_agent_hints_handler))
         // Live model discovery for a bring-your-own-LLM endpoint. A POST because it takes a body and
         // reaches a third party; the key it uses is read from config here rather than sent by the
         // webview whenever the operator has already saved one.
@@ -326,6 +338,12 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/agents/:agent/usage",
             get(agents::get_agent_usage_handler),
+        )
+        // The prompt a promptware runs, for the Settings pane that configures it. Read-only: editing a
+        // program is `promptwareOverlay`'s job, a directory the team owns and version-controls.
+        .route(
+            "/api/promptwares/:name/program",
+            get(promptwares::get_promptware_program_handler),
         )
         // Config
         .route(

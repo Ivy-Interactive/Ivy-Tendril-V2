@@ -4,14 +4,16 @@ packages:
   - "src/extensions/*"
 
 allowBuilds:
+  '@parcel/watcher': false
   "@swc/core": false
   '@vscode/vsce-sign': false
   esbuild: false
   keytar: false
+  unrs-resolver: false
 
 catalog:
-  vite: npm:@voidzero-dev/vite-plus-core@0.3.2
-  vite-plus: 0.3.2
+  vite: npm:@voidzero-dev/vite-plus-core@0.3.3
+  vite-plus: 0.3.3
 
 minimumReleaseAgeExclude:
   - playwright-core@1.63.0
@@ -20,6 +22,22 @@ minimumReleaseAgeExclude:
   - '@tanstack/virtual-core@3.17.11'
 
 overrides:
+  # jest-runtime 30.5.0 started hard-erroring on `module.register()`. Storybook 10's
+  # `serverRequire` - which is how @storybook/test-runner loads `.storybook/test-runner.ts` -
+  # registers its TypeScript loader that way, so every test-storybook suite fails to run on
+  # 30.5.x. 30.4.2 is the last release before that guard. Drop this once test-runner stops
+  # loading its config through Storybook's ESM loader.
+  jest@*: 30.4.2
+  jest-runtime@*: 30.4.2
+
+  # nwsapi 2.2.27 recurses into itself for the host-state pseudo-classes. Under jsdom nothing calls
+  # nwsapi's `install()`, so its saved `_matches` stays undefined and `matchesNative` falls back to
+  # `node.matches` - which *is* nwsapi. `:modal` therefore re-enters `isModal` -> `isFullscreen` ->
+  # `matchesNative(':fullscreen')` -> `node.matches` until the stack overflows, and the RangeError is
+  # swallowed by the try/catch, so it merely looks slow. floating-ui's `isTopLayer` asks `:modal` of
+  # every ancestor while positioning, which is how opening one Radix Select costs ~9s of CPU and 41M
+  # `matches` calls. 2.2.28 adds the re-entrancy guard. Drop this once jsdom's range pulls it in.
+  nwsapi@*: 2.2.28
   playwright@*: 1.63.0
   playwright-core@*: 1.63.0
   vite@*: "catalog:"

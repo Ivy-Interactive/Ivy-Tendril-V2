@@ -2,11 +2,16 @@ import type { Meta, StoryObj } from "@storybook/react";
 import { DeleteProjectDialog } from "./DeleteProjectDialog";
 
 /**
- * `ProjectDetailView.cs`'s Danger Zone button, and the only `WithConfirm` in V1. Had no test of any
- * kind before this file.
+ * The destructive half of the project Danger Zone, and the app's only typed-name gate.
  *
- * The project name is interpolated into the body and is also the path segment the route is
- * addressed by, so these stories are mostly about what a name can legally contain.
+ * Its non-destructive sibling is `RemoveProjectDialog`, which drops the config entry and leaves
+ * everything on disk. This one deletes, which is why it asks the operator to type the project name
+ * first.
+ *
+ * Every story below opens with the confirm **disabled**, and that is the state worth looking at:
+ * the primary action is visible and refused until the name is typed, and the Ctrl+Enter cap is
+ * absent for the same reason. The names chosen are the ones where typing is awkward — spaces, a
+ * leading dot, a single character — because the gate is only as good as the phrase it asks for.
  */
 const meta = {
   title: "Dialogs/Confirms/DeleteProjectDialog",
@@ -19,29 +24,35 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 /**
- * The base case. V1's body is a bare "This cannot be undone.", which is vaguer than the truth:
- * `delete_project` removes the config entry and nothing on disk.
+ * The base case, before anything is typed: the confirm is visible and refused, and the body lists
+ * what deletion actually removes.
  */
 export const OrdinaryProject: Story = {
   args: { projectName: "Ivy-Tendril-V2" },
 };
 
-/** A long name is a wrapping case, since the name sits inside a sentence. */
+/**
+ * The name appears in the body, in the path bullet, in the field label and as the placeholder —
+ * four wrapping cases from one string.
+ */
 export const LongName: Story = {
   args: { projectName: "Company.Product.Infrastructure.Provisioning" },
 };
 
-/** Spaces are legal and reach the route as a path segment, so they are worth seeing rendered. */
+/** A name the operator has to reproduce exactly, spaces and all, to arm the confirm. */
 export const NameWithSpaces: Story = {
   args: { projectName: "My Side Project" },
 };
 
-/** A leading dot reads as a hidden folder. Legal, and must render as itself. */
+/** A leading dot is easy to drop when retyping, which is the gate doing its job, not a defect. */
 export const DotPrefixedName: Story = {
   args: { projectName: ".scratch" },
 };
 
-/** The shortest legal name, where a layout that assumes width has nowhere to hide. */
+/**
+ * The weakest the gate ever is: one character. Still a deliberate act, and still not a slip of the
+ * mouse between two adjacent buttons.
+ */
 export const SingleCharacterName: Story = {
   args: { projectName: "x" },
 };

@@ -141,6 +141,99 @@ impl ProjectRenameOutcome {
 ///
 /// Returns [`ProjectRenameOutcome`] rather than `usize` so a partial sweep is something the caller
 /// can see and report. `Err` is now reserved for not being able to enumerate `plans_dir` at all.
+/// How deleting a project's plans landed on disk.
+///
+/// Same two-number shape as [`ProjectRenameOutcome`] and for the same reason: the sweep is
+/// exhaustive rather than fail-fast, so a caller that only saw `deleted` would read a partial sweep
+/// as a complete one. A partial sweep matters more here than it does for a rename — the config
+/// entry is already gone by the time this runs, so a folder left behind names a project nothing can
+/// list, and nothing will sweep for it again.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ProjectPlanDeleteOutcome {
+    /// Plan folders removed.
+    pub deleted: usize,
+    /// One entry per plan folder that belonged to the project and could not be removed, as
+    /// `(folder name, why)`.
+    pub failed: Vec<(String, String)>,
+}
+
+impl ProjectPlanDeleteOutcome {
+    /// True when at least one plan folder of the project is still on disk.
+    pub fn is_partial(&self) -> bool {
+        !self.failed.is_empty()
+    }
+
+    /// One line naming the count and the folders, for a log or a CLI warning.
+    ///
+    /// Folder names only, as [`ProjectRenameOutcome::failure_summary`]: a plan folder name is
+    /// derived from its title, never from a path the operator supplied, so it cannot carry a
+    /// credential the way a repo path can.
+    pub fn failure_summary(&self) -> String {
+        let folders: Vec<&str> = self.failed.iter().map(|(f, _)| f.as_str()).collect();
+        format!(
+            "{} plan folder(s) could not be removed ({})",
+            self.failed.len(),
+            folders.join(", ")
+        )
+    }
+}
+
+/// Removes every plan folder whose `plan.yaml` names `project`, worktrees first.
+///
+/// The counterpart to [`rename_project_in_plans`], for the destructive half of the project Danger
+/// Zone. It is a *sweep by content*, not by path: a plan folder is named for its id and title, so
+/// the only thing that ties one to a project is the `project` key inside its `plan.yaml`. Matching
+/// is case-insensitive, like every other project comparison in this codebase.
+///
+/// Worktrees go before the folder, the ordering [`crate::git::cleanup_worktrees`] exists for and the
+/// one `delete_plan_handler` already uses: a worktree still registered against a folder that no
+/// longer exists is the state git cannot recover from on its own. A worktree that cannot be cleaned
+/// is recorded as a failure and the folder is left standing, rather than removed anyway — removing
+/// it is what would create the unrecoverable state.
+///
+/// Exhaustive rather than fail-fast, for the reason on [`ProjectPlanDeleteOutcome`]. A folder that
+/// cannot be *read* is skipped without being counted, matching `rename_project_in_plans`: it is not
+/// a plan this function can identify as belonging to the project. `Err` is reserved for not being
+/// able to enumerate `plans_dir` at all.
+pub fn delete_project_plans(plans_dir: &Path, project: &str) -> Result<ProjectPlanDeleteOutcome> {
+    let mut outcome = ProjectPlanDeleteOutcome::default();
+    if !plans_dir.exists() {
+        return Ok(outcome);
+    }
+
+    for entry in std::fs::read_dir(plans_dir)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        let plan_folder = entry.path();
+        let Ok((plan, _)) = crate::plans::reader::read_plan_yaml(&plan_folder) else {
+            continue;
+        };
+        if !plan.project.eq_ignore_ascii_case(project) {
+            continue;
+        }
+
+        let folder_name = || {
+            plan_folder
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| plan_folder.display().to_string())
+        };
+
+        if let Err(e) = crate::git::cleanup_worktrees(&plan_folder) {
+            outcome.failed.push((folder_name(), e.to_string()));
+            continue;
+        }
+        match std::fs::remove_dir_all(&plan_folder) {
+            Ok(()) => outcome.deleted += 1,
+            Err(e) => outcome.failed.push((folder_name(), e.to_string())),
+        }
+    }
+
+    Ok(outcome)
+}
+
 pub fn rename_project_in_plans(
     plans_dir: &Path,
     old_name: &str,

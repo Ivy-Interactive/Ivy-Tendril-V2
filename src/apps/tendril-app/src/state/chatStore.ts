@@ -1,5 +1,6 @@
 import { agentsApi } from "../api/agentsApi";
 import { chatApi } from "../api/chatApi";
+import { chatLauncher } from "./chatLauncher";
 import { publishChatSessionCount } from "./chatSessionCount";
 import { navigation } from "./navigation";
 import { onChatEvent, type EventUnsubscribe } from "../api/events";
@@ -33,14 +34,18 @@ import {
   DRAFT_OWNERS_STORAGE_KEY,
   IN_PROGRESS_ANSWERS_STORAGE_KEY,
   PINNED_SESSIONS_STORAGE_KEY,
+  SESSION_SELECTIONS_STORAGE_KEY,
   loadStoredComposerDrafts,
   loadStoredDraftOwners,
   loadStoredInProgressAnswers,
   loadStoredPinnedSessions,
+  loadStoredSessionSelections,
   saveStoredComposerDrafts,
   saveStoredDraftOwners,
   saveStoredInProgressAnswers,
   saveStoredPinnedSessions,
+  saveStoredSessionSelections,
+  type StoredSessionSelection,
 } from "./chatStore/storage";
 import { sessionBelongsToPlan, type ChatStorePlanScope } from "./chatStore/planScope";
 
@@ -56,6 +61,14 @@ export const FALLBACK_AGENT_ID = "claude";
  * seconds `ChatExecutionService.InterruptAsync` waits on the execution task.
  */
 export const TURN_INTERRUPT_TIMEOUT_MS = 5000;
+
+/**
+ * How long a failed agent-catalog fetch waits before its one retry. See
+ * {@link ChatStore.loadAgents} for why it retries at all. Short on purpose: `init()` awaits the
+ * wait, so it has to be long enough for a daemon that is still starting to answer the second ask
+ * and short enough that nobody notices it on a startup that was going to fail anyway.
+ */
+export const AGENT_CATALOG_RETRY_DELAY_MS = 400;
 
 /** How a row in the Chats list reads while, or just after, its own turn runs. */
 export type ChatSessionRowState = "working" | "completed" | null;
@@ -162,6 +175,11 @@ export class ChatStore {
   private pinnedSessions: Record<string, string> = loadStoredPinnedSessions();
   private agentPreferences: AgentPreferences = loadStoredAgentPreferences();
   /**
+   * What each session runs with, keyed by session id. See
+   * {@link SESSION_SELECTIONS_STORAGE_KEY} for why the session record cannot serve as this in V2.
+   */
+  private sessionSelections: Record<string, StoredSessionSelection> = loadStoredSessionSelections();
+  /**
    * Which sessions are generating, and which finished one while the user was elsewhere. V1 keeps
    * both sets in `ChatHistoryService` (`SetSessionGenerating`) and every consumer asks about a
    * named session; `state.isGenerating` here is only the answer for the *active* one, so switching
@@ -248,6 +266,18 @@ export class ChatStore {
         // The picker reads the selected agent's model and effort off `state`, so adopting the map is
         // only half of it: the selection has to be re-resolved against it.
         this.applyAgentPreference(this.state.selectedAgentId);
+        this.notify();
+      } catch {
+        // Ignore malformed external writes
+      }
+    } else if (key === SESSION_SELECTIONS_STORAGE_KEY) {
+      try {
+        this.sessionSelections = newValue ? JSON.parse(newValue) : {};
+        // Re-resolved rather than merely adopted, for the same reason the agent preferences below
+        // are: the picker reads the live selection off `state`, not off this map.
+        if (this.state.activeSession) {
+          this.adoptSessionSelection(this.state.activeSession);
+        }
         this.notify();
       } catch {
         // Ignore malformed external writes
@@ -372,27 +402,58 @@ export class ChatStore {
    * Fetches the agent catalog and restores the last-used agent along with the model and effort
    * that agent is remembered with. A failure leaves the catalog empty and the selection on the
    * `claude` / `default` floor, which is what the backend would have used anyway.
+   *
+   * The first failure is retried once, after {@link AGENT_CATALOG_RETRY_DELAY_MS}, because an empty
+   * catalog here is permanent in a way the `claude` / `default` floor above makes easy to miss. This
+   * swallows rather than rethrows — deliberately, since a chat is usable without the catalog and V1
+   * likewise carried on when `ChatApp` could not fill its agent dropdown — so `runInit` completes,
+   * `init()`'s memo at {@link ChatStore.init} is never cleared, and nothing calls this a second
+   * time: there is no refresh, reconnect or focus path that reaches it, so the picker stays on
+   * `AgentPicker`'s synthetic single row, offering no models, until the process restarts. The
+   * failure this is really for is a race rather than an outage — the app's first paint beating the
+   * daemon to a `cmd_list_agents` it will happily answer a moment later.
+   *
+   * One retry, not a loop with backoff: `init()` is awaited by `ChatView`'s mount effect, so every
+   * millisecond spent here is a millisecond the conversation is not on screen. A daemon that is
+   * genuinely down should reach the empty-catalog floor fast rather than hold the view hostage.
+   *
+   * The wait is guarded by `generation` for the same reason `runInit`'s `onChatEvent` is: the delay
+   * is a second await window, and the plan panel is mounted, unmounted and mounted again inside one
+   * — so a store `destroy()`d mid-wait must not go on to `notify()` listeners that were cleared, or
+   * overwrite the agent selection belonging to the store that replaced it.
    */
   public async loadAgents(): Promise<AgentOption[]> {
+    const generation = this.generation;
     try {
-      const agents = await agentsApi.listAgents();
-      this.state.agents = agents;
-      const remembered = loadStoredSelectedAgent();
-      const restored =
-        agents.find((a) => a.id === remembered) ??
-        agents.find((a) => a.id === this.state.selectedAgentId) ??
-        agents[0];
-      if (restored) {
-        this.state.selectedAgentId = restored.id;
-      }
-      this.applyAgentPreference(this.state.selectedAgentId);
-      this.notify();
-      return agents;
+      return this.acceptAgents(await agentsApi.listAgents());
+    } catch {
+      // First failure only; a second one falls through to the empty floor below.
+    }
+    await new Promise((resolve) => setTimeout(resolve, AGENT_CATALOG_RETRY_DELAY_MS));
+    if (generation !== this.generation) return this.state.agents;
+    try {
+      return this.acceptAgents(await agentsApi.listAgents());
     } catch {
       this.state.agents = [];
       this.notify();
       return [];
     }
+  }
+
+  /** Takes a fetched catalog: restores the remembered agent and the model and effort it wears. */
+  private acceptAgents(agents: AgentOption[]): AgentOption[] {
+    this.state.agents = agents;
+    const remembered = loadStoredSelectedAgent();
+    const restored =
+      agents.find((a) => a.id === remembered) ??
+      agents.find((a) => a.id === this.state.selectedAgentId) ??
+      agents[0];
+    if (restored) {
+      this.state.selectedAgentId = restored.id;
+    }
+    this.applyAgentPreference(this.state.selectedAgentId);
+    this.notify();
+    return agents;
   }
 
   private agentById(agentId: string): AgentOption | undefined {
@@ -455,19 +516,89 @@ export class ChatStore {
    * whose agent differs also picks up that agent's remembered model and effort first, and the
    * session's own ids are validated against the catalog, both so the picker cannot end up showing
    * one agent wearing another's model.
+   *
+   * What this session was last *set* to wins over what the daemon recorded on it, because in V2
+   * those are not the same thing. V1's `ChatHistoryService.AddMessage` rewrites the session's
+   * `AgentId` / `ModelId` / `Effort` on every message, so its record always described the session's
+   * current provider and `ChatApp.SelectSession` could read it straight back. V2's `turn.rs` never
+   * writes those fields; `create_session` stamps them once from whatever the composer held as the
+   * chat was created, which - because a chat is opened before its provider is chosen - is normally
+   * the provider that belongs to the *previous* chat. Restoring that is what swapped the two chats'
+   * providers over. The daemon record is still the fallback, and is the only source for a session
+   * this client has never picked for: one created on another machine, or before this was recorded.
    */
   private adoptSessionSelection(session: ChatSession): void {
-    if (session.agentId && session.agentId !== this.state.selectedAgentId) {
-      this.state.selectedAgentId = session.agentId;
-      this.applyAgentPreference(session.agentId);
+    const own = this.sessionSelections[session.id];
+    const agentId = own?.agentId ?? session.agentId;
+    if (agentId && agentId !== this.state.selectedAgentId) {
+      this.state.selectedAgentId = agentId;
+      this.applyAgentPreference(agentId);
     }
-    const agentId = this.state.selectedAgentId;
-    if (session.modelId) {
-      this.state.selectedModelId = this.resolveModel(agentId, session.modelId);
+    const resolvedAgentId = this.state.selectedAgentId;
+    const modelId = own?.modelId ?? session.modelId;
+    if (modelId) {
+      this.state.selectedModelId = this.resolveModel(resolvedAgentId, modelId);
     }
-    if (session.effort) {
-      this.state.selectedEffort = this.resolveEffort(agentId, session.effort);
+    const effort = own?.effort ?? session.effort;
+    if (effort) {
+      this.state.selectedEffort = this.resolveEffort(resolvedAgentId, effort);
     }
+  }
+
+  /**
+   * Records the composer's current agent / model / effort against the session on screen - the write
+   * V1 gets for free from `AddMessage` and V2's daemon does not make.
+   *
+   * Called from the three setters rather than from the send, so a provider chosen and then switched
+   * away from without sending anything is still that chat's provider when it is reopened. Nothing is
+   * recorded when no session is active: the choice then belongs to the next chat created, which
+   * {@link createSession} already forwards through {@link turnOptions}.
+   */
+  private rememberSelectionForActiveSession(): void {
+    const sessionId = this.state.activeSessionId;
+    if (!sessionId) return;
+    const next = {
+      ...this.sessionSelections,
+      [sessionId]: {
+        agentId: this.state.selectedAgentId,
+        modelId: this.state.selectedModelId,
+        effort: this.state.selectedEffort,
+      },
+    };
+    this.persistSessionSelections(next);
+  }
+
+  private persistSessionSelections(selections: Record<string, StoredSessionSelection>): void {
+    this.sessionSelections = selections;
+    saveStoredSessionSelections(selections);
+    this.broadcastStorageChange(SESSION_SELECTIONS_STORAGE_KEY, selections);
+  }
+
+  /** Drops one session's recorded provider, used when the session itself goes away. */
+  private clearSessionSelection(sessionId: string): void {
+    if (!this.sessionSelections[sessionId]) return;
+    const next = { ...this.sessionSelections };
+    delete next[sessionId];
+    this.persistSessionSelections(next);
+  }
+
+  /**
+   * Forgets the recorded provider of sessions that no longer exist, so a map that is only ever added
+   * to cannot grow without bound. Mirrors {@link sweepComposerDraftsForMissingSessions}, including
+   * its exemption for the session on screen, which may have been created locally and not yet be in a
+   * fetched list.
+   */
+  private sweepSessionSelectionsForMissingSessions(sessions: ChatSession[]): void {
+    const liveIds = new Set(sessions.map((s) => s.id));
+    const next = { ...this.sessionSelections };
+    let changed = false;
+    for (const sessionId of Object.keys(next)) {
+      if (liveIds.has(sessionId)) continue;
+      if (sessionId === this.state.activeSessionId) continue;
+      delete next[sessionId];
+      changed = true;
+    }
+    if (changed) this.persistSessionSelections(next);
   }
 
   /**
@@ -620,6 +751,7 @@ export class ChatStore {
     this.state.selectedAgentId = agentId;
     saveStoredSelectedAgent(agentId);
     this.applyAgentPreference(agentId);
+    this.rememberSelectionForActiveSession();
     this.notify();
   }
 
@@ -633,6 +765,7 @@ export class ChatStore {
     this.broadcastStorageChange(AGENT_PREFERENCES_STORAGE_KEY, this.agentPreferences);
     if (agentId === this.state.selectedAgentId) {
       this.state.selectedModelId = modelId;
+      this.rememberSelectionForActiveSession();
     }
     this.notify();
   }
@@ -647,6 +780,7 @@ export class ChatStore {
     this.broadcastStorageChange(AGENT_PREFERENCES_STORAGE_KEY, this.agentPreferences);
     if (agentId === this.state.selectedAgentId) {
       this.state.selectedEffort = effort;
+      this.rememberSelectionForActiveSession();
     }
     this.notify();
   }
@@ -721,6 +855,8 @@ export class ChatStore {
     saveStoredPinnedSessions({});
     this.agentPreferences = {};
     saveStoredAgentPreferences({});
+    this.sessionSelections = {};
+    saveStoredSessionSelections({});
     saveStoredSelectedAgent(null);
     this.sessionsLoaded = false;
     this.generatingSessionIds = new Set();
@@ -730,6 +866,11 @@ export class ChatStore {
     this.optimisticMessageIds = new Set();
     // Drop the event subscription and the `init()` memo together: a test that reset the store and
     // called `init()` again would otherwise keep the previous test's listener and skip the reload.
+    // The `generation` bump is the same disowning `destroy()` does, and for the same reason: nulling
+    // the memo only stops a *future* `init()`, while a previous test's `runInit` may still be parked
+    // on an await — `loadAgents`' retry delay is one — and would otherwise wake after this reset and
+    // register its `chat-event` listener into the next test's store.
+    this.generation += 1;
     this.eventUnsubscribe?.();
     this.eventUnsubscribe = null;
     this.initPromise = null;
@@ -843,6 +984,7 @@ export class ChatStore {
         delete this.pinnedSessions[s.id];
         pinnedChanged = true;
       }
+      this.clearSessionSelection(s.id);
     }
     if (pinnedChanged) {
       saveStoredPinnedSessions(this.pinnedSessions);
@@ -1138,6 +1280,7 @@ export class ChatStore {
       this.backfillDraftOwners(sorted);
       this.sweepDraftsForMissingSessions(sorted);
       this.sweepComposerDraftsForMissingSessions(sorted);
+      this.sweepSessionSelectionsForMissingSessions(sorted);
 
       // Select first session if none active
       if (!this.state.activeSessionId && sorted.length > 0) {
@@ -1175,7 +1318,26 @@ export class ChatStore {
     return await chatApi.getSession(id);
   }
 
+  /**
+   * V1's `ChatApp.SelectSession`, including the check it opens with: "Terminal sessions belong to the
+   * AgentApp pane, never here."
+   *
+   * The guard lives here rather than at the callers because V2 has three of them and they are not
+   * interchangeable. `App.tsx`'s `handleSelectSidebarItem` cannot hold it alone: `ShellLayout` routes
+   * a click as `onSelectSidebarItem(appId, itemId, source.buildSelectArgs(itemId))`, and
+   * `chat/sidebarList.ts`'s `buildSelectArgs` calls `onSelect` *while computing the args* — so the
+   * selection has already happened by the time the handler receiving those args runs. `ChatView`'s
+   * own list action and `ChatSearchDialog` reach this directly and never pass through the handler at
+   * all. One check at the point every path converges is what V1 has.
+   *
+   * Returning without touching `activeSessionId` is the point: a terminal session holds no messages
+   * (`AgentTerminalView` writes none), so adopting one here paints the chat view as an empty
+   * conversation — and, because `selectSession` prunes an empty *previous* session on the way out,
+   * leaves that emptiness able to delete the chat the user came from.
+   */
   public async selectSession(id: string): Promise<void> {
+    if (chatLauncher.revealTerminal(id)) return;
+
     const prevId = this.state.activeSessionId;
     const prevSession = this.state.activeSession;
     if (
@@ -1328,6 +1490,9 @@ export class ChatStore {
       this.state.activeSessionId = newSession.id;
       this.state.activeSession = newSession;
       this.state.queuedItems = [];
+      // Recorded up front, so a chat created and switched away from before anything is picked in it
+      // still reopens on the provider it was created with rather than on a later chat's.
+      this.rememberSelectionForActiveSession();
       this.syncGenerating();
       this.notify();
       return newSession;
@@ -1404,8 +1569,9 @@ export class ChatStore {
       this.completedSessionIds.delete(id);
       this.cancellingSessionIds.delete(id);
       this.turnEndWaiters.delete(id);
-      // A draft belongs to its conversation, so it goes with it.
+      // A draft belongs to its conversation, so it goes with it. So does its provider.
       this.clearComposerDraft(id);
+      this.clearSessionSelection(id);
 
       if (this.state.activeSessionId === id) {
         if (this.state.sessions.length > 0) {

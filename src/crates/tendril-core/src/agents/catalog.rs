@@ -204,18 +204,15 @@ const CURSOR_DEFAULT: &str = "claude-opus-5";
 static CLAUDE_MODELS: &[CatalogModel] = &[
     model("claude-opus-5", "Claude Opus 5", CLAUDE_EFFORTS),
     model("claude-fable-5-1", "Claude Fable 5.1", CLAUDE_EFFORTS),
-    model("claude-opus-5-1", "Claude Opus 5.1", CLAUDE_EFFORTS),
     model("claude-opus-4-8", "Claude Opus 4.8", CLAUDE_EFFORTS),
     model("claude-opus-4-7", "Claude Opus 4.7", CLAUDE_EFFORTS),
     model("claude-opus-4-6", "Claude Opus 4.6", CLAUDE_EFFORTS),
     model("opus", "Claude Opus", CLAUDE_EFFORTS),
-    model("claude-sonnet-5-1", "Claude Sonnet 5.1", CLAUDE_EFFORTS),
     model("claude-sonnet-5", "Claude Sonnet 5", CLAUDE_EFFORTS),
     model("claude-sonnet-4-6", "Claude Sonnet 4.6", CLAUDE_EFFORTS),
     model("claude-3-7-sonnet", "Claude Sonnet 3.7", CLAUDE_EFFORTS),
     model("claude-3-5-sonnet", "Claude Sonnet 3.5", CLAUDE_EFFORTS),
     model("sonnet", "Claude Sonnet", CLAUDE_EFFORTS),
-    model("claude-haiku-5-1", "Claude Haiku 5.1", CLAUDE_EFFORTS),
     model("claude-haiku-4-5", "Claude Haiku 4.5", CLAUDE_EFFORTS),
     model("claude-3-5-haiku", "Claude Haiku 3.5", CLAUDE_EFFORTS),
     model("haiku", "Claude Haiku", CLAUDE_EFFORTS),
@@ -250,9 +247,7 @@ static COPILOT_MODELS: &[CatalogModel] = &[
     model("gpt-5-mini", "GPT-5 Mini", COPILOT_EFFORTS),
     model("gpt-4.1", "GPT-4.1", COPILOT_EFFORTS),
     model("claude-fable-5-1", "Claude Fable 5.1", CLAUDE_EFFORTS),
-    model("claude-opus-5-1", "Claude Opus 5.1", CLAUDE_EFFORTS),
     model("claude-opus-5", "Claude Opus 5", CLAUDE_EFFORTS),
-    model("claude-sonnet-5-1", "Claude Sonnet 5.1", CLAUDE_EFFORTS),
     model("claude-sonnet-5", "Claude Sonnet 5", CLAUDE_EFFORTS),
     model("claude-sonnet-4-6", "Claude Sonnet 4.6", CLAUDE_EFFORTS),
     model("claude-sonnet-4-5", "Claude Sonnet 4.5", CLAUDE_EFFORTS),
@@ -277,10 +272,8 @@ static ANTIGRAVITY_MODELS: &[CatalogModel] = &[
     model("gemini-3.6-flash", "Gemini 3.6 Flash", ANTIGRAVITY_EFFORTS),
     model("gemini-3.1-pro", "Gemini 3.1 Pro", ANTIGRAVITY_EFFORTS),
     model("claude-fable-5-1", "Claude Fable 5.1", CLAUDE_EFFORTS),
-    model("claude-opus-5-1", "Claude Opus 5.1", CLAUDE_EFFORTS),
     model("claude-opus-5", "Claude Opus 5", CLAUDE_EFFORTS),
     model("claude-opus-4-6", "Claude Opus 4.6", CLAUDE_EFFORTS),
-    model("claude-sonnet-5-1", "Claude Sonnet 5.1", CLAUDE_EFFORTS),
     model("claude-sonnet-5", "Claude Sonnet 5", CLAUDE_EFFORTS),
     model("claude-sonnet-4-6", "Claude Sonnet 4.6", CLAUDE_EFFORTS),
     model("gpt-oss-120b", "GPT-OSS 120B", ANTIGRAVITY_EFFORTS),
@@ -291,10 +284,8 @@ static ANTIGRAVITY_MODELS: &[CatalogModel] = &[
 static OPENCODE_MODELS: &[CatalogModel] = &[
     model("moonshotai/Kimi-K3", "Kimi k3", OPENCODE_EFFORTS),
     model("claude-fable-5-1", "Claude Fable 5.1", CLAUDE_EFFORTS),
-    model("claude-opus-5-1", "Claude Opus 5.1", CLAUDE_EFFORTS),
     model("claude-opus-5", "Claude Opus 5", CLAUDE_EFFORTS),
     model("claude-opus-4-7", "Claude Opus 4.7", CLAUDE_EFFORTS),
-    model("claude-sonnet-5-1", "Claude Sonnet 5.1", CLAUDE_EFFORTS),
     model("claude-sonnet-5", "Claude Sonnet 5", CLAUDE_EFFORTS),
     model("claude-sonnet-4-6", "Claude Sonnet 4.6", CLAUDE_EFFORTS),
     model("gpt-5.5", "GPT-5.5", OPENCODE_EFFORTS),
@@ -1391,12 +1382,13 @@ mod tests {
         // The pinned default leads; everything after it is in the sorter's order.
         assert_eq!(claude[0], CLAUDE_DEFAULT);
         let rest = &claude[1..];
-        // Opus before Sonnet before Haiku, and 5.1 before 5 inside a tier.
+        // Fable before Opus before Sonnet before Haiku, and the higher version first inside a tier.
         let position = |id: &str| rest.iter().position(|found| *found == id).unwrap();
-        assert!(position("claude-fable-5-1") < position("claude-opus-5-1"));
-        assert!(position("claude-opus-5-1") < position("claude-opus-4-8"));
-        assert!(position("claude-opus-4-8") < position("claude-sonnet-5-1"));
-        assert!(position("claude-sonnet-5-1") < position("claude-haiku-5-1"));
+        assert!(position("claude-fable-5-1") < position("claude-opus-4-8"));
+        assert!(position("claude-opus-4-8") < position("claude-opus-4-7"));
+        assert!(position("claude-opus-4-7") < position("claude-sonnet-5"));
+        assert!(position("claude-sonnet-5") < position("claude-sonnet-4-6"));
+        assert!(position("claude-sonnet-4-6") < position("claude-haiku-4-5"));
         // The bare aliases carry no version, so they trail their tier.
         assert!(position("claude-opus-4-6") < position("opus"));
 

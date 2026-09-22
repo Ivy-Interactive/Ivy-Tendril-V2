@@ -85,13 +85,21 @@ describe("rowsFromResult", () => {
       auth: {
         status: "notAuthenticated",
         error: "exit 1: Invalid API key",
-        signInHint: "run `claude login`",
+        signInHint: {
+          agent: "claude",
+          binary: "claude",
+          install: {
+            summary: "Install it.",
+            commands: [{ command: "brew install --cask claude-code" }],
+          },
+          auth: { summary: "Sign in.", commands: [{ command: "claude auth login" }] },
+        },
       },
       models: [],
     });
     expect(rows[1]).toMatchObject({
       status: "failed",
-      message: "Not authenticated - run `claude login`",
+      message: "Not authenticated - run `claude auth login`",
       rawOutput: "exit 1: Invalid API key",
     });
   });

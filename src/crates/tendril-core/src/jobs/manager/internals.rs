@@ -16,7 +16,7 @@ use crate::db::jobs::{get_job, list_jobs, list_non_terminal_jobs, max_numeric_jo
 use crate::db::open_database;
 use crate::error::Result;
 use crate::jobs::hooks::{shell_hook_executor, HookExecutor};
-use crate::jobs::logger::append_agent_log;
+use crate::jobs::logger::{append_agent_log, max_logged_job_id};
 use crate::jobs::queue::JobQueue;
 use crate::models::{JobItem, JobStatus, PlanStatus};
 use std::collections::HashMap;
@@ -260,11 +260,20 @@ impl JobManager {
         spawn_dispatcher(&self.ctx());
     }
 
+    /// Next free 5-digit job id.
+    ///
+    /// The database is not the only thing holding an id: `delete_job` keeps a job's logs on purpose
+    /// and only drops its row, so counting up from the table alone re-issues an id whose
+    /// `Logs/Jobs/{id}.eventwire.jsonl` is still there — and the appending writers then stack the
+    /// new run on top of the old one. See [`max_logged_job_id`] for what that corrupts. Taking the
+    /// larger of the two high-water marks means an id is free only when nothing anywhere still
+    /// answers to it.
     pub async fn allocate_job_id(&self) -> Result<String> {
         let db_path = crate::config::get_database_path(&self.tendril_home);
         let conn = open_database(&db_path)?;
-        let max_id = max_numeric_job_id(&conn)?;
-        Ok(format!("{:05}", max_id + 1))
+        let max_in_db = max_numeric_job_id(&conn)?.max(0) as u32;
+        let max_on_disk = max_logged_job_id(&self.tendril_home);
+        Ok(format!("{:05}", max_in_db.max(max_on_disk) + 1))
     }
 
     /// Pushes a `Queued` job onto the priority queue and wakes the dispatcher.

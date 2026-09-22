@@ -8,7 +8,7 @@
  */
 import { buildNavTree, flattenNavRoutes, type NavSection } from "./lib/nav";
 import { parsePages, type DocPage } from "./lib/page";
-import { normalizeRoute } from "./lib/slug";
+import { normalizeRoute, ROUTE_BASE } from "./lib/slug";
 
 const CONTENT_PREFIX = "../content/";
 
@@ -72,8 +72,23 @@ const pagesByRoute = new Map<string, DocPage>(
 
 /** Looks a page up by route, tolerating a trailing slash, a query string or a fragment. */
 export function pageForRoute(route: string): DocPage | undefined {
-  return pagesByRoute.get(normalizeRoute(route));
+  const normalized = normalizeRoute(route);
+  const direct = pagesByRoute.get(normalized);
+  if (direct) return direct;
+
+  // Resilient fallback: if route is accessed without ROUTE_BASE prefix (or with domain root)
+  if (!normalized.startsWith(ROUTE_BASE)) {
+    const withoutLeading = normalized.replace(/^\/+/, "");
+    const stripped = withoutLeading
+      .replace(/^docs\/?/, "")
+      .replace(/^ivy-tendril-v2\/?(docs\/?)?/i, "");
+    const candidate = `${ROUTE_BASE}/${stripped}`;
+    const fallback = pagesByRoute.get(normalizeRoute(candidate));
+    if (fallback) return fallback;
+  }
+
+  return undefined;
 }
 
-/** First page of the first section — where `/docs` and any unknown entry point land. */
-export const homeRoute: string = routes[0] ?? "/docs";
+/** First page of the first section — where the base route and any unknown entry point land. */
+export const homeRoute: string = routes[0] ?? ROUTE_BASE;

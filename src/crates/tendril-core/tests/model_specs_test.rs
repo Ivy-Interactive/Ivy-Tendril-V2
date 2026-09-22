@@ -64,8 +64,8 @@ fn test_normalization() {
     let upper = model_specs::find("CLAUDE-3-5-SONNET").expect("uppercase should be normalized");
     assert_eq!(upper.model_id, "claude-3-5-sonnet");
 
-    let mixed = model_specs::find("Claude-Opus-5.1").expect("mixed case and dot should normalize");
-    assert_eq!(mixed.model_id, "claude-opus-5-1");
+    let mixed = model_specs::find("Claude-Opus-4.8").expect("mixed case and dot should normalize");
+    assert_eq!(mixed.model_id, "claude-opus-4-8");
 }
 
 #[test]

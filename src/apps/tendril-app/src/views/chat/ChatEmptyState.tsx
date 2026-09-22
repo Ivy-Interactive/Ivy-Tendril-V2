@@ -66,13 +66,22 @@ export const ChatEmptyState: React.FC<{
 
                   Embedded, V1 switches to `flex-wrap: nowrap` + `overflow-x: auto`, but we keep
                   wrapping - the panel is only as wide as the plan page leaves it, so a nowrap row
-                  put the later chips off the edge with no room for a scrollbar to reach them. */}
-    <div
-      className={`mt-4 flex w-full flex-wrap gap-2 ${
-        embedded ? "justify-start" : "justify-center"
-      }`}
-      data-testid="sample-prompts"
-    >
+                  put the later chips off the edge with no room for a scrollbar to reach them.
+
+                  V1 pairs that nowrap scroller with `justify-content: flex-start`, and only because
+                  of it: "centering an overflowing nowrap scroller would push leading chips past the
+                  scroll origin". Dropping the scroller retires the reason, but the `flex-start`
+                  came across with it, which is why the panel's chips hung off the left while every
+                  other line of the empty state - the greeting, the headline, each `text-center` -
+                  was centred. Measured in Chromium at a 420px panel: the first row sat 32px left of
+                  centre and the wrapped row 103px. So both arms centre, and the embedded arm no
+                  longer needs an arm at all.
+
+                  Safe for a chip too wide for the panel, which is the case `flex-start` was
+                  protecting: a wrapping row overflows nothing - the chip is alone on its line at the
+                  row's own left edge under either rule (measured at 260px: left 16px both ways), and
+                  `max-w-full` on the chip keeps it there. Only the shorter siblings move. */}
+    <div className="mt-4 flex w-full flex-wrap justify-center gap-2" data-testid="sample-prompts">
       {samplePrompts.map((item) => (
         <button
           key={item.label}

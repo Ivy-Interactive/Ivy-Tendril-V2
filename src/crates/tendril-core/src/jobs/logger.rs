@@ -23,6 +23,43 @@ pub fn get_job_log_path(tendril_home: &Path, job_id: &str) -> PathBuf {
         .join(format!("{}.md", job_id))
 }
 
+/// Highest 5-digit job id that still has artifacts under `<TendrilHome>/Logs/Jobs/`, or 0 when the
+/// directory holds none (or does not exist yet).
+///
+/// Deleting a job drops its database row and deliberately keeps its logs — see
+/// `JobManager::delete_job`, "not the forensic record of what it did". Id allocation, though, counts
+/// up from the highest id in that table, so after a clear the next job is handed `00001` again and
+/// its output is *appended* to the kept log of the job that held the id before it. The two runs then
+/// share one file, and everything derived from it reads the pair as a single run: the metrics footer
+/// anchors elapsed on the first line and shows a two-minute-old job as "20h 25m", and the usage
+/// backfill sums both runs' tokens into the newer job's row.
+///
+/// So allocation asks the disk as well as the database, and an id whose log is still on disk is
+/// never handed out a second time. Ids go sparse after a clear, which is the cost of keeping the
+/// record under its own name.
+pub fn max_logged_job_id(tendril_home: &Path) -> u32 {
+    let dir = tendril_home.join("Logs").join("Jobs");
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return 0;
+    };
+    entries
+        .flatten()
+        .filter_map(|entry| {
+            let name = entry.file_name();
+            let name = name.to_str()?;
+            // `00007.eventwire.jsonl`, `00007.raw.jsonl`, `00007.md`, `00007.prompt.txt` — every
+            // artifact this module writes leads with the zero-padded id.
+            let (id, _) = name.split_once('.')?;
+            if id.len() == 5 && id.bytes().all(|b| b.is_ascii_digit()) {
+                id.parse::<u32>().ok()
+            } else {
+                None
+            }
+        })
+        .max()
+        .unwrap_or(0)
+}
+
 pub fn ensure_log_dirs(tendril_home: &Path) -> Result<()> {
     let dir = tendril_home.join("Logs").join("Jobs");
     std::fs::create_dir_all(dir)?;
@@ -449,5 +486,68 @@ mod tests {
         assert_eq!(lines.len(), 50);
         assert!(lines[49].contains("line 199999"));
         assert!(lines[0].contains("line 199950"));
+    }
+
+    /// The id high-water mark that keeps a cleared job's logs from being appended to.
+    mod logged_job_ids {
+        use super::*;
+
+        fn home(label: &str) -> TempDir {
+            let dir = TempDir::new(label);
+            std::fs::create_dir_all(dir.0.join("Logs").join("Jobs")).expect("create Logs/Jobs");
+            dir
+        }
+
+        fn log(home: &TempDir, name: &str) {
+            let path = home.0.join("Logs").join("Jobs").join(name);
+            std::fs::write(path, "{}\n").expect("write log");
+        }
+
+        #[test]
+        fn is_zero_when_nothing_has_run() {
+            let dir = home("empty");
+            assert_eq!(max_logged_job_id(&dir.0), 0);
+        }
+
+        #[test]
+        fn is_zero_when_the_log_directory_is_missing() {
+            // A first launch, before `ensure_log_dirs`. Allocation must not fail here.
+            let dir = TempDir::new("no-dir");
+            assert_eq!(max_logged_job_id(&dir.0), 0);
+        }
+
+        #[test]
+        fn finds_the_highest_id_across_every_artifact_kind() {
+            let dir = home("mixed");
+            log(&dir, "00001.eventwire.jsonl");
+            log(&dir, "00007.raw.jsonl");
+            log(&dir, "00004.md");
+            log(&dir, "00012.prompt.txt");
+            assert_eq!(max_logged_job_id(&dir.0), 12);
+        }
+
+        #[test]
+        fn ignores_names_that_are_not_a_padded_id() {
+            let dir = home("junk");
+            log(&dir, "00003.eventwire.jsonl");
+            log(&dir, "notes.md");
+            log(&dir, "123.md");
+            log(&dir, "0000x.md");
+            log(&dir, "000001.md");
+            assert_eq!(max_logged_job_id(&dir.0), 3);
+        }
+
+        #[test]
+        fn outlives_the_database_row_it_belonged_to() {
+            // The bug this exists for: the jobs table is cleared, so the next id would be 00001
+            // again, but 00010's log is still on disk and an appending writer would stack the new
+            // run onto it. The mark is what stops the id being reissued.
+            let dir = home("cleared");
+            for id in 1..=10 {
+                log(&dir, &format!("{:05}.eventwire.jsonl", id));
+            }
+            let max_in_db: u32 = 0;
+            assert_eq!(max_in_db.max(max_logged_job_id(&dir.0)) + 1, 11);
+        }
     }
 }

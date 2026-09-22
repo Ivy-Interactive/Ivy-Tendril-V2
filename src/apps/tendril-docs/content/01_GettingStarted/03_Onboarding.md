@@ -18,31 +18,32 @@ searchHints:
 
 # Onboarding a Codebase
 
-Tendril runs a coding agent against your repository inside an isolated git worktree, then builds,
-tests and opens a pull request. For that loop to succeed without a human in the seat, the machine and
-the repo have to be set up ahead of time. Work through the checklist below once per machine and once
-per repository.
+Tendril runs a coding agent against your repository inside an isolated
+[Git worktree](https://git-scm.com/docs/git-worktree), then builds, tests, and opens a pull request.
+For that loop to succeed without human intervention, the machine and the repository must be configured
+ahead of time. Work through the checklist below once per machine and once per codebase.
 
 > [!TIP]
 > When you are done, run `tendril doctor`. It confirms Tendril home, `config.yaml`, the database, the
-> plans directory, `git` and `gh`. It does **not** test your coding agent — check that yourself with
-> step 2.
+> plans directory, `git` and `gh`. It does **not** test your coding agent — verify that yourself with
+> step 2 below.
 
 ## Machine checklist
 
 ### 1. Required build software is installed
 
-Every tool needed to compile the project must be on the machine and on `PATH`. The agent cannot
-install a missing toolchain for you mid-run. For a Rust and pnpm repo like Tendril's own that means
-`rustup`, Node.js and pnpm; for your repo it means whatever your build scripts shell out to.
+Every tool needed to compile the project must be installed and available on your `PATH`. The agent cannot
+install a missing compiler or SDK mid-run. For a Rust and pnpm repo like Tendril's own, that means
+[Rustup](https://rustup.rs/), [Node.js](https://nodejs.org/), and [pnpm](https://pnpm.io/); for your
+project it means whatever build toolchain your scripts invoke.
 
 > [!NOTE]
-> The bar is: a fresh clone builds from a clean shell using the documented commands, with no manual
-> clicks and no IDE-only steps.
+> The target requirement: a fresh clone builds from a clean terminal using documented commands, with no
+> interactive prompts and no IDE-only manual steps.
 
 ### 2. The preferred coding CLI is installed and authenticated
 
-Install the agent you set as `codingAgent` and log in so it runs non-interactively.
+Install the agent you set as `codingAgent` in `config.yaml` and log in so it executes non-interactively:
 
 ```bash
 # Example: Claude Code
@@ -50,27 +51,38 @@ npm install -g @anthropic-ai/claude-code
 claude login
 ```
 
-Verify the CLI is on `PATH` (`claude`, `codex`, `copilot`, `gemini`, `opencode` or `antigravity`)
-and that a plain invocation does not stop to prompt for a login. The `apple` agent is the
-exception: it runs through the bundled OpenCode against Apple's on-device model, so what has to be
-present is `fm` (check with `fm available`) and an `fm serve` already listening.
+Verify the CLI is on `PATH` and that a plain invocation does not stop to prompt for credentials:
+
+- [Claude Code](https://code.claude.com/docs) (`claude`)
+- [OpenAI Codex](https://openai.com) (`codex`)
+- [GitHub Copilot](https://github.com/features/copilot) (`copilot`)
+- [Google Gemini](https://ai.google.dev) (`gemini`)
+- [OpenCode](https://opencode.ai) (`opencode`)
+- Antigravity (`antigravity` / `agy`)
+- [Cursor](https://www.cursor.com) (`cursor` / `cursor-agent`)
+- Apple Foundation Models (`apple` via on-device `fm`)
+
+The `apple` agent is the exception: it runs through the bundled OpenCode against Apple's on-device model,
+so ensure `fm` is installed (verify with `fm available`) and an `fm serve` process is already listening.
 
 ### 3. Git is installed and authorised for unattended use
 
-Tendril pulls code, creates worktrees, commits and pushes on your behalf. Confirm all of that works
+Tendril pulls code, creates worktrees, commits, and pushes on your behalf. Confirm all operations work
 without an interactive prompt:
 
-- A global identity is set (`git config --global user.name` and `user.email`).
-- Credentials are cached or a key is loaded, so `git pull` and `git push` never ask for a password.
-- Worktrees can be created and removed (`git worktree add` / `git worktree remove`).
+- A global identity is configured (`git config --global user.name` and `user.email`).
+- Credentials are cached via a credential helper or an SSH key loaded into an agent, so `git pull` and
+  `git push` never prompt for passwords.
+- Worktrees can be added and pruned (`git worktree add` and `git worktree remove`).
 
 > [!WARNING]
-> If pushing over HTTPS still prompts, configure a credential helper or use an SSH key with a
-> passphrase-less agent. A single interactive prompt will stall an otherwise successful run.
+> If pushing over HTTPS prompts for credentials, configure a credential helper or use an SSH key with an
+> active `ssh-agent`. A single interactive prompt will stall an otherwise unattended job.
 
 ### 4. The GitHub CLI is installed and authenticated
 
-`CreatePr` uses `gh` to open pull requests. Install it and authenticate:
+[CreatePr](../02_Concepts/02_Promptwares.md) uses [GitHub CLI](https://cli.github.com/)
+(`gh`) to open pull requests. Install it and verify authentication:
 
 ```bash
 gh auth login
@@ -79,9 +91,9 @@ gh auth status
 
 ### 5. Required MCP servers are installed globally
 
-If you rely on MCP servers — Jira for issue context, Figma for designs — install and register them at
-the user or global level so every worktree can reach them. MCP servers are configured on the coding
-agent, not inside Tendril.
+If you rely on [Model Context Protocol](https://modelcontextprotocol.io/) (MCP) servers — such as Jira
+for issue context or Figma for UI designs — install and register them globally so every worktree can access
+them. MCP servers are registered on the coding agent, not inside Tendril:
 
 ```bash
 # Example: register an MCP server globally for Claude Code
@@ -91,41 +103,37 @@ claude mcp list   # verify they are reachable
 ```
 
 > [!NOTE]
-> Use the global or user scope, not project scope, so servers survive the ephemeral worktree the agent
-> runs in. Store any tokens they need as environment variables on the machine.
+> Use the global or user scope, not project scope, so MCP servers survive the ephemeral git worktrees the
+> agent works in. Store any required API tokens as environment variables on your system.
 
-Make sure you are actually _authenticated_ to each MCP server, not merely that it is registered. The
-reliable check is end to end: execute a small plan from Tendril and confirm every server comes up
-authenticated rather than prompting for a login or returning auth errors. Some servers only complete
-their OAuth flow on first use, so verifying through Tendril catches an unauthenticated server before it
-stalls a real run.
+Make sure you are actually _authenticated_ to each MCP server, not merely that it is registered. Execute a
+small test plan from Tendril and confirm every server initializes without triggering OAuth modals.
 
 ## Repository checklist
 
 ### 6. The repo is worktree-ready
 
-`ExecutePlan` works in a fresh `git worktree`, not your open checkout. A worktree starts from a clean
-tree — no `target/`, no `node_modules/`, no `.env`, no restored packages. Make sure a brand-new
-worktree can build:
+[ExecutePlan](../02_Concepts/02_Promptwares.md) runs inside an isolated
+[Git worktree](https://git-scm.com/docs/git-worktree), not your active working directory. A worktree starts
+from a clean commit — no `target/`, `node_modules/`, or untracked `.env` files exist.
 
-- List any steps needed after checkout before the code compiles (restore, generate, copy an example
-  env file). Document them, and prefer a single script that performs them.
-- Do not depend on files that are gitignored and only exist in your main checkout.
-- Use a package manager with a shared cache so each worktree restores fast instead of downloading
-  everything again — the pnpm store, the Cargo registry cache, an npm cache.
+- Document any setup commands needed after checkout before the code compiles (e.g. dependency restores,
+  code generation, sample `.env` copies), and provide a committed setup script.
+- Do not depend on uncommitted files that exist only in your primary checkout.
+- Use a package manager with a centralized cache so each worktree restores in seconds rather than
+  re-downloading packages (e.g. the pnpm store, Cargo registry cache, or Go module cache).
 
 > [!TIP]
-> Quick test: `git worktree add ../repo-probe`, then run your documented build in that folder from a
-> clean shell. If it builds, Tendril will too. Remove it with `git worktree remove ../repo-probe`.
+> Quick test: run `git worktree add ../repo-probe`, then execute your documented build commands in that
+> directory from a clean shell. If it compiles and passes tests, Tendril will succeed too. Remove it with
+> `git worktree remove ../repo-probe`.
 
 ### 7. Write a run script for each app
 
-Give every app in the repo a small, committed script that starts it on configurable ports. Tendril can
-execute several plans across worktrees at once, so a hard-coded port makes the second instance fail to
-bind. Keep each port overridable and default it sensibly.
+Provide a small, committed launch script for each application in the repository with configurable ports.
+Tendril can run parallel plans across worktrees simultaneously, so hard-coded ports cause port collisions.
 
-Most apps have a backend and a frontend, so start both, each on its own port. For a Vite frontend in
-front of a Python API the script could look like this:
+For a [Vite](https://vite.dev) frontend paired with a Python API, the script might look like:
 
 ```bash
 #!/usr/bin/env bash
@@ -137,41 +145,38 @@ web_port="${WEB_PORT:-5173}"
 
 cd "$(dirname "$0")"
 
-# Backend: set up the virtualenv and install dependencies.
+# Backend: configure virtualenv and install dependencies
 python -m venv .venv
 source .venv/bin/activate
 pip install -q -r requirements.txt
 
-# Start the backend API in the background on its own port.
+# Start backend API on its dedicated port
 uvicorn app.main:app --port "$api_port" &
 api_pid=$!
 
-# Stop the backend when the frontend exits.
+# Terminate backend when the frontend process exits
 trap 'kill "$api_pid" 2>/dev/null' EXIT
 
-# Frontend: install and start the Vite dev server in the foreground. Vite
-# auto-picks the next free port if this one is taken, so concurrent
-# worktrees never collide.
+# Frontend: install dependencies and start Vite dev server
 npm --prefix web install --prefer-offline --no-audit
 npm --prefix web run dev -- --port "$web_port" --open
 ```
 
 > [!NOTE]
-> Keeping the launch logic in a committed script rather than a long inline command means people and
-> agents start the app the same way, and a fresh worktree runs with a single command.
+> Keeping startup commands in a committed script ensures both developers and autonomous workflow agents
+> launch the application identically.
 
 ### 8. Add an AGENTS.md (or README.md) at the repo root
 
-Give the agent the minimum context it needs to orient itself without guessing. At minimum, cover:
+Give workflow agents the foundational context they need to navigate the codebase without guesswork:
 
-- **Prerequisites** the machine needs to build and run the code.
-- **Apps in the codebase** and how they relate — for example, a web front end talking to an API that
-  talks to a database.
-- **How each app is compiled**, in commands that are obvious to an agent. A fresh clone should build
-  from these alone.
-- **How to run each app**, pointing at the run scripts from the previous step.
+- **Prerequisites** required to build and run the code.
+- **Architectural map** detailing applications, libraries, and communication protocols.
+- **Build and test commands** that compile and verify the repository.
+- **Run scripts** pointing to the launch scripts from the previous step.
 
 ## Next steps
 
-- Run the full loop end to end with the [Tutorial](04_Tutorial.md).
-- Read [Concepts](../02_Concepts/_Index.md) to understand what the agent is actually being handed.
+- Follow the end-to-end loop in the [Tutorial](04_Tutorial.md).
+- Explore [Concepts: Plans](../02_Concepts/01_Plans.md) and [Promptwares](../02_Concepts/02_Promptwares.md).
+- Understand the [Job Lifecycle](../02_Concepts/03_Lifecycle.md).

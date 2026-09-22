@@ -1,9 +1,10 @@
 ---
 title: Installation
-description: Build Tendril from source, run the desktop app and the CLI, and decide where your Tendril home lives.
+description: Install Tendril via pre-built binaries or build from source, run the desktop app and CLI, and configure your environment.
 icon: Download
 searchHints:
   - install
+  - pre-built binaries
   - build from source
   - prerequisites
   - cargo
@@ -15,133 +16,152 @@ searchHints:
 
 # Installation
 
-> [!IMPORTANT]
-> Tendril is built from source today. There are no published installers and no download script, so
-> ignore any `install-tendril.sh` / `install-tendril.ps1` one-liner you may have seen — those install
-> the previous generation of Tendril, not this one.
+Tendril can be installed via pre-built desktop packages and CLI binaries, or built locally from source.
 
-## Prerequisites
+## Quick install
 
-Install these first and make sure each one is on `PATH`:
+Download standalone desktop installers (`.dmg`, `.pkg`, `.exe`, `.AppImage`, `.deb`) directly from
+[GitHub Releases](https://github.com/Ivy-Interactive/Ivy-Tendril/releases/latest) or run one of the
+automated install scripts:
 
-| Tool                                         | Version                | Why                                                   |
-| -------------------------------------------- | ---------------------- | ----------------------------------------------------- |
-| [Rust](https://rustup.rs/)                   | edition 2021 toolchain | the CLI, the server and the desktop app's native side |
-| [Node.js](https://nodejs.org/)               | 22 or newer            | the front end build                                   |
-| [pnpm](https://pnpm.io/)                     | 11 or newer            | the workspace package manager                         |
-| [Vite+](https://viteplus.dev/) (`vp`)        | current                | build, check, test and format for every package       |
-| `git`                                        | any recent             | worktrees, commits, branches                          |
-| [GitHub CLI](https://cli.github.com/) (`gh`) | authenticated          | `CreatePr` opens pull requests through it             |
+**macOS / Linux:**
 
-You also need the CLI of the coding agent you intend to use, installed and logged in.
-[Onboarding a Codebase](03_Onboarding.md) walks through that.
+```bash
+curl -sSf https://cdn.ivy.app/install-tendril.sh | sh
+```
+
+**Windows (PowerShell):**
+
+```powershell
+irm https://cdn.ivy.app/install-tendril.ps1 | iex
+```
+
+The installer places the `tendril` CLI binary on your `PATH` and registers the desktop application in your
+system menu.
+
+## Prerequisites (for building from source)
+
+If building from source, ensure these dependencies are installed and available on your `PATH`:
+
+| Tool                                         | Version              | Role                                                                                    |
+| -------------------------------------------- | -------------------- | --------------------------------------------------------------------------------------- |
+| [Rust](https://www.rust-lang.org/)           | 1.80+ (2021 edition) | Compiles the native CLI, server daemon, and core.                                       |
+| [Node.js](https://nodejs.org/)               | 22 or newer          | Powers the front-end tooling and build scripts.                                         |
+| [pnpm](https://pnpm.io/)                     | 11 or newer          | Manages workspace packages and dependencies.                                            |
+| [Vite+](https://viteplus.dev/) (`vp`)        | current              | Orchestrates building, linting, formatting, testing.                                    |
+| [Git](https://git-scm.com/)                  | 2.30+                | Manages [git worktrees](https://git-scm.com/docs/git-worktree), commits, and branching. |
+| [GitHub CLI](https://cli.github.com/) (`gh`) | authenticated        | Opens pull requests and manages issues automatically.                                   |
+
+You will also need at least one authenticated coding agent CLI (e.g. [Claude Code](https://code.claude.com/docs),
+[GitHub Copilot](https://github.com/features/copilot), [Gemini](https://ai.google.dev),
+[OpenCode](https://opencode.ai), [Antigravity](https://github.com/google-deepmind), or
+[Cursor](https://www.cursor.com)). [Onboarding a Codebase](03_Onboarding.md) covers agent configuration in detail.
 
 ## Build from source
+
+Clone the repository and install workspace dependencies:
 
 ```bash
 git clone https://github.com/Ivy-Interactive/Ivy-Tendril-V2.git
 cd Ivy-Tendril-V2
 
 pnpm install
-pnpm --filter @ivy-interactive/components build   # the shared UI library, needed by the app
-cargo build --workspace                            # tendril-core, tendril-server, tendril-cli
+pnpm --filter @ivy-interactive/components build   # shared UI library, required by the desktop app
+node src/scripts/ensure-wireframe-payload.mjs      # prepares wireframe assets for native build
+cargo build --workspace                            # builds tendril-core, tendril-server, tendril-cli
 ```
 
-The components library has to be built before the app: the app imports it as a workspace package and
-consumes its build output.
+> [!NOTE]
+> The `@ivy-interactive/components` library and wireframe payload must be generated before compiling the
+> native workspace crates, as `tendril-app` and `tendril-wireframe` import these assets at build time.
 
 ## Run the desktop app
 
-For day-to-day development:
+For local development with hot module reloading:
 
 ```bash
-pnpm dev:app
+pnpm dev:desktop
 ```
 
-That starts the Vite dev server and the Tauri shell together. The app launches the `tendril serve`
-daemon itself and supervises it, so there is nothing else to start.
+This command builds the necessary sidecar binaries and launches Vite alongside the
+[Tauri 2](https://tauri.app) native window. The desktop app manages the background daemon (`tendril run`)
+automatically.
 
-To produce an installable bundle, stage both sidecars first:
+### Packaging a standalone release
+
+To package a standalone release bundle for your platform:
 
 ```bash
 cargo build --release --bin tendril
 
-# Tauri resolves a sidecar per target triple; ask rustc for yours.
+# Stage the native CLI sidecar for your target architecture
 triple=$(rustc -vV | sed -n 's/^host: //p')
 mkdir -p src/apps/tendril-app/src-tauri/binaries
 cp target/release/tendril "src/apps/tendril-app/src-tauri/binaries/tendril-$triple"
 
-# The bundled OpenCode agent (~140 MB, downloaded once).
+# Fetch the bundled OpenCode sidecar agent
 ./src/apps/tendril-app/scripts/release/fetch-opencode-sidecar.sh
 
+# Build the installer package (DMG on macOS, NSIS/MSI on Windows, AppImage/deb on Linux)
 pnpm --filter @ivy-interactive/tendril-app exec tauri build
 ```
 
-The app declares `binaries/tendril` and `binaries/opencode` as `externalBin`, which is why these
-steps are not optional — without them the build fails on the missing sidecar. Neither binary is
-committed; `src-tauri/binaries/` is gitignored.
-
-`pnpm dev:desktop` does both for you, so this is only needed for a manual bundle. Check your work
-with `cd src/apps/tendril-app && ./scripts/release/release_packaging_smoke_test.sh`.
-
-The OpenCode sidecar is what backs the `opencode`, `ivy`, `openaiproxy` and `proxy` coding agents.
-Bundling it means a fresh install has a working agent with nothing else on the machine; the pinned
-version lives at the top of `fetch-opencode-sidecar.sh`.
-
-Bundle targets are `nsis` and `msi` on Windows, `dmg` and `app` on macOS, `deb` and `appimage` on
-Linux.
-
 ## Install the CLI
 
-The same binary is the CLI:
+The `tendril` binary serves as both the command-line interface and the daemon server:
 
 ```bash
-cargo build --release --bin tendril     # ./target/release/tendril
-# or, to put it on PATH:
+cargo build --release --bin tendril
+# or install directly to ~/.cargo/bin:
 cargo install --path src/crates/tendril-cli
 ```
 
-Check it:
+Verify your installation with the health check doctor:
 
 ```bash
 tendril version
 tendril doctor
 ```
 
-`tendril doctor` prints one line per check — Tendril home, `config.yaml` validity, the SQLite
-database, the plans directory, `git` and `gh`. Fix anything marked `[FAIL]` before going further;
-`[WARN]` lines are usually optional pieces you have not configured yet.
+`tendril doctor` verifies `$TENDRIL_HOME`, `config.yaml` syntax, the [SQLite](https://www.sqlite.org) database,
+the plans directory, and your `git` and `gh` credentials.
 
-You can also run the daemon on its own:
+### Running the daemon headless
+
+To run Tendril as a headless server daemon without the desktop UI:
 
 ```bash
+# Recommended: checks port availability and executes pending database migrations
+tendril run
+
+# Or run the direct listener (supports --tls-cert and --tls-key)
 tendril serve --host 127.0.0.1 --port 5010
 ```
 
 > [!NOTE]
-> That address serves the REST and WebSocket API only. There is no web page at
-> `http://127.0.0.1:5010` to open in a browser — the user interface is the desktop app.
+> The server listens on `127.0.0.1:5010` by default, exposing REST and WebSocket endpoints. It does not
+> serve a static web interface; interact with it via the desktop app or the CLI.
 
-## Configuration
+## Configuration & directory layout
 
-Everything Tendril owns lives under one directory, `$TENDRIL_HOME`, resolved in this order:
+All Tendril runtime state is stored within `$TENDRIL_HOME`, resolved in the following precedence:
 
-1. the `TENDRIL_HOME` environment variable, if set;
-2. the path written in `~/.tendril_location`, if that file exists;
-3. `~/.tendril`.
+1. The `TENDRIL_HOME` environment variable;
+2. The path recorded in `~/.tendril_location` (if present);
+3. The default user location: `~/.tendril`.
 
-Inside it:
+Inside `$TENDRIL_HOME`:
 
 ```
 ~/.tendril/
-├── config.yaml     # agent, projects, verifications, promptware overrides
-├── tendril.db      # jobs, costs and telemetry (SQLite)
-├── Plans/          # one folder per plan
-├── Jobs/           # one folder per job: log, prompt, raw agent output
-└── Promptwares/    # the deployed promptwares
+├── config.yaml     # coding agent, project definitions, verifications, promptware overrides
+├── tendril.db      # SQLite database for jobs, costs, and execution telemetry
+├── Plans/          # structured plans and their isolated git worktrees
+├── Jobs/           # execution logs, agent prompts, and raw transcript recordings
+└── Promptwares/    # deployed workflow agent definitions
 ```
 
-The file must be called exactly `config.yaml`. A minimal one:
+A minimal `config.yaml`:
 
 ```yaml
 codingAgent: claude
@@ -158,34 +178,32 @@ projects:
         required: true
 ```
 
-> [!NOTE]
-> There is no onboarding wizard. Configure Tendril through the app's **Settings** view, by editing
-> `config.yaml`, or from the CLI with `tendril project add`, `tendril project add-repo` and
-> `tendril project add-verification`. [Tutorial](04_Tutorial.md) does it both ways.
-
-To deploy the standard set of promptwares into `$TENDRIL_HOME/Promptwares/`:
+Deploy the standard promptwares to initialize the agent definitions:
 
 ```bash
 tendril promptware deploy
 ```
 
 > [!WARNING]
-> Install and authenticate your coding agent's CLI before your first run. An agent that stops to ask
-> for a login will stall an otherwise healthy job.
+> Ensure your chosen coding agent CLI is authenticated before starting your first job. If an agent pauses
+> to prompt for credentials in an unattended background process, the job will block or time out.
 
 ## Updating
+
+If installed via the install script, re-run the one-liner to fetch the latest release.
+
+If working from a source checkout:
 
 ```bash
 git pull
 pnpm install
 pnpm --filter @ivy-interactive/components build
+node src/scripts/ensure-wireframe-payload.mjs
 cargo build --workspace
 ```
 
-Packaged installers and automatic background updates are not published for this generation of Tendril
-yet, so updating means pulling and rebuilding.
-
 ## Next steps
 
-- [Onboarding a Codebase](03_Onboarding.md) — prepare the machine and the repository.
-- [Troubleshooting](06_Troubleshooting.md) — if any of the above did not go to plan.
+- [Onboarding a Codebase](03_Onboarding.md) — configure repository prerequisites and verify agent access.
+- [Concepts: Plans](../02_Concepts/01_Plans.md) — understand plan structures and review lifecycles.
+- [Troubleshooting](06_Troubleshooting.md) — solutions for build and runtime errors.

@@ -136,7 +136,10 @@ describe("DataTable sort cycling", () => {
 
     const status = headerFor(container, "Status");
     expect(status.hasAttribute("aria-sort")).toBe(false);
-    expect(status.querySelector("button")).toBeNull();
+    // The *sort* control specifically. Every header also carries a reorder grip, whose accessible
+    // name deliberately never contains the column label (see `data-table-column-header.tsx`), so
+    // "a button named after this column" is still exactly the sort control.
+    expect(status.querySelector('button[aria-label^="Sort by"]')).toBeNull();
 
     fireEvent.click(status);
     expect(onSortChange).not.toHaveBeenCalled();
@@ -154,7 +157,7 @@ describe("DataTable sort cycling", () => {
       />,
     );
 
-    expect(container.querySelectorAll("thead button")).toHaveLength(0);
+    expect(container.querySelectorAll('thead button[aria-label^="Sort by"]')).toHaveLength(0);
     expect(headerLabels(container)).toEqual(["Name", "Status", "Score"]);
 
     fireEvent.click(headerFor(container, "Name"));

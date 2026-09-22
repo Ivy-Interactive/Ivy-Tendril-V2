@@ -7,6 +7,21 @@ pub async fn cmd_list_agents() -> Result<Vec<AgentOptionDto>, BridgeError> {
     get_client_from_master()?.list_agents().await
 }
 
+/// How to install and sign in to each coding agent, via `GET /api/agents/hints`.
+///
+/// The Coding Agent pane's Help section renders this. It comes from the daemon rather than living in
+/// the webview because the same table is what a failed auth probe hints from - keeping a second copy
+/// in TypeScript is what drifted, and three hints ended up naming commands their CLI does not have.
+///
+/// A command rather than a plain `fetch` for the same reason the others here are: there is no `/api`
+/// proxy outside the dev server, so a relative fetch in the packaged app resolves against the asset
+/// origin and reaches no daemon. Nothing here is credential-bearing - the route reads no config and
+/// takes no parameters - so it is only the transport that needs the native side.
+#[tauri::command]
+pub async fn cmd_get_agent_hints() -> Result<serde_json::Value, BridgeError> {
+    get_client_from_master()?.get_agent_hints().await
+}
+
 /// Live model discovery for a bring-your-own-LLM endpoint, via `POST /api/agents/models`.
 ///
 /// Only a command can make this call in the packaged app: the daemon's bearer secret is read from

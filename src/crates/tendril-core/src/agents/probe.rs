@@ -146,6 +146,11 @@ pub const TIMED_OUT: &str = "Timed out";
 /// How long output draining is given after a kill, so a wedged pipe cannot hang a probe.
 const POST_KILL_TIMEOUT: Duration = Duration::from_secs(5);
 
+/// What `codex exec … -` says, on stderr and with exit 1, when the stdin `run_probe` closed hands it
+/// EOF instead of a prompt. `classify_codex_model` reads it as the model being accepted; see there
+/// for why. Lowercase because the classifiers match against a lowercased haystack.
+const CODEX_NO_PROMPT: &str = "no prompt provided via stdin";
+
 /// One probe's process outcome. `exit_code` is `-1` for "never ran, or was killed", which is the
 /// convention every classifier below reads together with `stderr`.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -284,6 +289,408 @@ pub enum AuthStatus {
     Unknown,
 }
 
+// ---------------------------------------------------------------------------
+// Sign-in hints — how to install and authenticate each agent
+// ---------------------------------------------------------------------------
+
+/// One documented way to carry out a step.
+///
+/// [`Self::then`] exists because three of these CLIs have no sign-in *subcommand* at all: sign-in is
+/// a slash command typed inside a running TUI. Flattening that into the shell line would produce
+/// `copilot /login`, which is a prompt, not a login — so the two halves stay apart and the renderer
+/// decides how to say "then type this at the prompt".
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HintCommand {
+    /// The shell to run. Always a single runnable line.
+    pub command: String,
+    /// What to type at the prompt once [`Self::command`] is running, for a sign-in that happens
+    /// inside the TUI rather than as a subcommand. `None` when the shell line is the whole of it.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub then: Option<String>,
+}
+
+impl HintCommand {
+    fn run(command: &str) -> Self {
+        Self {
+            command: command.to_string(),
+            then: None,
+        }
+    }
+
+    /// A shell line plus the slash command to type at the prompt it opens.
+    fn run_then(command: &str, then: &str) -> Self {
+        Self {
+            command: command.to_string(),
+            then: Some(then.to_string()),
+        }
+    }
+}
+
+/// One half of a hint: what to do, and the routes that do it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HintStep {
+    /// Why the routes below are the ones to take, or — where there are none — what to do instead.
+    pub summary: String,
+    /// Every documented route, best first; the rest are alternatives. Empty when honesty requires
+    /// saying there is nothing to run, which is the case for a provider that has no CLI.
+    #[serde(default)]
+    pub commands: Vec<HintCommand>,
+    /// A page to open rather than a command to run — the console where a bring-your-own provider's
+    /// key is created. Separate from [`Self::commands`] because the two render differently, and a
+    /// URL shown as shell invites someone to paste it into one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub url: Option<String>,
+}
+
+/// How to install and sign in to one agent — the structured form of what V1 returned as a sentence.
+///
+/// # Why this is data rather than prose
+///
+/// V1's `IAgentHealthCheck` returned a pre-rendered `SignInHint` string, and the Coding Agent pane's
+/// Help section grew its own second copy of the same knowledge in TypeScript. The two drifted, which
+/// is what this shape exists to prevent: the daemon owns the *facts* (which binary, which command,
+/// which console), and each renderer — the Test Agent dialog's failure row and the settings pane's
+/// Help section — decides how to say them. There is one place to correct a vendor's renamed install
+/// script, and both surfaces move together.
+///
+/// # Two rules govern every entry, and both exist because a wrong one is worse than none
+///
+/// 1. **The binary named here is the binary a launch spawns.** [`probe_binary`] and the `command`
+///    fields in [`crate::agents::providers`] are the authority, not the vendor's own marketing name.
+///    So Antigravity is `agy`, Cursor is `cursor-agent` and not `cursor` (which is the editor),
+///    Copilot is `copilot` with `gh copilot` as the fallback, and Apple is `fm` rather than the
+///    OpenCode it delegates through. Telling someone to install a binary Tendril never looks for
+///    would send them away and leave the pane just as broken.
+///
+/// 2. **No `npm install -g` anywhere.** Every one of these CLIs also publishes an npm package, and
+///    every one of them publishes a Homebrew formula or a vendor install script that does not need
+///    Node at all. This repo's own rule is pnpm-only, and a settings pane that hands out npm
+///    commands reads as an endorsement of a package manager the project does not use. The forms
+///    chosen are the vendor's own first-listed install path in each case.
+///
+/// The `brew` forms are load-bearing and are pinned by a test. Homebrew rejects
+/// `brew install <cask>` outright, so the cask/formula split decides whether the line runs at all:
+/// `claude-code`, `codex` and `copilot-cli` are casks and take `--cask`; `gemini-cli` is a formula
+/// and must not.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentSignInHint {
+    /// The card or agent id this answers for, as [`sign_in_hint`] resolved it.
+    pub agent: String,
+    /// What [`probe_binary`] looks for, so "installed" in the pane and "installed" on disk mean the
+    /// same thing. `None` for the bring-your-own cards, which are providers rather than CLIs.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub binary: Option<String>,
+    pub install: HintStep,
+    pub auth: HintStep,
+}
+
+fn step(summary: &str, commands: Vec<HintCommand>) -> HintStep {
+    HintStep {
+        summary: summary.to_string(),
+        commands,
+        url: None,
+    }
+}
+
+/// A step whose answer is a page to open rather than a command to run.
+fn step_url(summary: &str, url: &str) -> HintStep {
+    HintStep {
+        summary: summary.to_string(),
+        commands: Vec::new(),
+        url: Some(url.to_string()),
+    }
+}
+
+/// The three bring-your-own cards share an install step: there is nothing to install, because all
+/// three run through the OpenCode sidecar that ships with Tendril.
+const BYO_NOTHING_TO_INSTALL: &str =
+    "Nothing to install. Bring-your-own providers run through the OpenCode sidecar that ships with \
+     Tendril.";
+
+/// How to install and sign in to `agent`, or `None` for an id that names no agent at all.
+///
+/// Keyed by **card** as well as by resolved agent id. `resolveFinalAgent` in the settings pane
+/// collapses all three bring-your-own cards onto `openaiproxy` (or `ivy`), so an id-keyed table
+/// would hand the Anthropic card OpenAI's console link — the card is what the operator clicked and
+/// what the help has to answer for. The three proxy ids resolve onto the generic OpenAI-compatible
+/// card, which is what a probe of one of them is really reporting about.
+///
+/// `None` rather than an invented entry for an unrecognised id: help for an agent that does not
+/// exist would be made up, and the pane already raises its own callout for a `codingAgent` value
+/// that is not a card.
+pub fn sign_in_hint(agent: &str) -> Option<AgentSignInHint> {
+    let normalized = normalize_agent_name(agent);
+    let key = match normalized.as_str() {
+        // The pane's own card keys, which are not agent ids and must survive the lookup unchanged.
+        "openaiproxy_card" | "anthropic_card" | "berget_card" => normalized.as_str(),
+        // Every proxy spelling is the same generic OpenAI-compatible provider.
+        other if is_proxy_agent(other) => "openaiproxy_card",
+        other => other,
+    };
+
+    let hint = match key {
+        "claude" => AgentSignInHint {
+            agent: key.to_string(),
+            binary: Some("claude".to_string()),
+            install: step(
+                "The native installer puts `claude` in ~/.local/bin and keeps it updated in the \
+                 background.",
+                vec![
+                    HintCommand::run("curl -fsSL https://claude.ai/install.sh | bash"),
+                    HintCommand::run("brew install --cask claude-code"),
+                ],
+            ),
+            // Not `claude login`, which V1 suggested and which is not a subcommand: the CLI's
+            // top-level commands are `agents`, `attach`, `auth`, `doctor`, `mcp`, `plugin` and
+            // friends, so a bare `login` is swallowed as the prompt positional and the user is
+            // answered *about* signing in rather than signed in. Sign-in is `claude auth login`.
+            auth: step(
+                "Opens a browser and signs in to your Anthropic account. Claude Code needs a Pro, \
+                 Max, Team, Enterprise or Console plan - the free claude.ai plan does not include \
+                 it.",
+                vec![HintCommand::run("claude auth login")],
+            ),
+        },
+
+        "copilot" => AgentSignInHint {
+            agent: key.to_string(),
+            binary: Some("copilot".to_string()),
+            // `resolve_copilot_binary` prefers a standalone `copilot` and only then falls back to
+            // `gh copilot`, so the standalone CLI is what to install -- but an operator who already
+            // has the GitHub CLI is not broken, and saying so saves a redundant install.
+            install: step(
+                "Installs the standalone `copilot` binary. An existing GitHub CLI also works: \
+                 Tendril falls back to `gh copilot` when nothing named `copilot` is on PATH.",
+                vec![
+                    HintCommand::run("curl -fsSL https://gh.io/copilot-install | bash"),
+                    HintCommand::run("brew install --cask copilot-cli"),
+                ],
+            ),
+            // Not `copilot login`, which V1 suggested and which does not exist: GitHub's install
+            // page says an unauthenticated first launch prompts for the `/login` slash command, so
+            // sign-in happens inside the TUI. V1's `gh auth login` alternative is dropped rather
+            // than carried over -- it authenticates the GitHub CLI, a separate credential from
+            // Copilot's even where the binary resolves to `gh copilot`, so following it leaves the
+            // user just as unauthenticated. The documented unattended route is a token instead, in
+            // GitHub's own precedence order: COPILOT_GITHUB_TOKEN, then GH_TOKEN, then GITHUB_TOKEN.
+            auth: step(
+                "Copilot has no login subcommand - start it and run the `/login` slash command. \
+                 For an unattended machine, put a token carrying the `Copilot Requests` permission \
+                 in COPILOT_GITHUB_TOKEN (or GH_TOKEN) instead.",
+                vec![
+                    HintCommand::run_then("copilot", "/login"),
+                    HintCommand::run("export COPILOT_GITHUB_TOKEN=..."),
+                ],
+            ),
+        },
+
+        "codex" => AgentSignInHint {
+            agent: key.to_string(),
+            binary: Some("codex".to_string()),
+            install: step(
+                "Installs `codex` to ~/.local/bin.",
+                vec![
+                    HintCommand::run("curl -fsSL https://chatgpt.com/codex/install.sh | sh"),
+                    HintCommand::run("brew install --cask codex"),
+                ],
+            ),
+            auth: step(
+                "Signs in with ChatGPT through the browser. `--with-api-key` reads an OpenAI \
+                 platform key from stdin instead, which is the route for a headless machine.",
+                vec![
+                    HintCommand::run("codex login"),
+                    HintCommand::run("printenv OPENAI_API_KEY | codex login --with-api-key"),
+                ],
+            ),
+        },
+
+        "gemini" => AgentSignInHint {
+            agent: key.to_string(),
+            binary: Some("gemini".to_string()),
+            install: step(
+                "Installs the `gemini` binary. The Homebrew formula is deprecated upstream and is \
+                 scheduled to be disabled on 2026-12-18, so it still installs today but will not \
+                 forever; MacPorts carries the same CLI under the same name.",
+                vec![
+                    HintCommand::run("brew install gemini-cli"),
+                    HintCommand::run("sudo port install gemini-cli"),
+                ],
+            ),
+            // Not `gemini auth`, which V1 suggested and which has never been a subcommand: the
+            // CLI's only subcommands are `mcp`, `extensions`, `skills`, `hooks` and `gemma`, so
+            // `gemini auth` is swallowed as a prompt query -- the CLI answers it as a *question*,
+            // telling the user to set GEMINI_API_KEY, and nobody is signed in. Sign-in is `/auth`,
+            // a slash command inside the session (gemini-cli's `authCommand`, whose subcommands are
+            // `signin`/`login` and `signout`/`logout` and which defaults to sign-in).
+            auth: step(
+                "There is no `gemini auth` subcommand. The first run offers `Sign in with Google`, \
+                 and `/auth` re-runs that choice later; a GEMINI_API_KEY from \
+                 aistudio.google.com/apikey skips the browser entirely.",
+                vec![
+                    HintCommand::run_then("gemini", "/auth"),
+                    HintCommand::run("export GEMINI_API_KEY=..."),
+                ],
+            ),
+        },
+
+        "antigravity" | "agy" => AgentSignInHint {
+            agent: "antigravity".to_string(),
+            binary: Some("agy".to_string()),
+            install: step(
+                "Installs `agy` to ~/.local/bin. That is the binary Tendril launches - there is \
+                 nothing named `antigravity` to install.",
+                vec![HintCommand::run(
+                    "curl -fsSL https://antigravity.google/cli/install.sh | bash",
+                )],
+            ),
+            auth: step(
+                "No login subcommand either: the first run signs in through the browser and stores \
+                 the credential in the system keyring.",
+                vec![HintCommand::run("agy")],
+            ),
+        },
+
+        "opencode" => AgentSignInHint {
+            agent: key.to_string(),
+            // `resolve_opencode_binary` prefers the sidecar next to the app over anything on PATH,
+            // and `tauri.conf.json` ships it as `binaries/opencode`, so the honest answer to "how do
+            // I install this" is that it is already installed.
+            binary: Some("opencode".to_string()),
+            install: step(
+                "Nothing to install. Tendril ships OpenCode as a sidecar beside the app and prefers \
+                 it over any copy on PATH, so this agent works on a fresh install. Install your own \
+                 only to run a different version.",
+                vec![HintCommand::run(
+                    "curl -fsSL https://opencode.ai/install | bash",
+                )],
+            ),
+            auth: step(
+                "OpenCode has no account of its own - it stores a credential for whichever provider \
+                 you pick. `opencode auth login` is an alias for the same command.",
+                vec![HintCommand::run("opencode providers login")],
+            ),
+        },
+
+        "cursor" => AgentSignInHint {
+            agent: key.to_string(),
+            binary: Some("cursor-agent".to_string()),
+            install: step(
+                "The installer symlinks both `agent` and `cursor-agent` into ~/.local/bin. Tendril \
+                 launches `cursor-agent`; `cursor` is the editor, not the CLI.",
+                vec![HintCommand::run("curl https://cursor.com/install -fsS | bash")],
+            ),
+            auth: step(
+                "Opens a browser; `cursor-agent status` then reports who is signed in. A key from \
+                 the Cursor dashboard in CURSOR_API_KEY works without one.",
+                vec![HintCommand::run("cursor-agent login")],
+            ),
+        },
+
+        "apple" => AgentSignInHint {
+            agent: key.to_string(),
+            // `probe_binary` resolves `apple` to `fm` rather than to the OpenCode it is launched
+            // through, precisely so a Mac with no `fm` reports the thing that is actually missing.
+            binary: Some("fm".to_string()),
+            install: step(
+                "Nothing to install: `fm` ships with macOS at /usr/bin/fm. What varies is whether \
+                 this Mac has the on-device model at all, which `fm available` answers.",
+                vec![HintCommand::run("fm available")],
+            ),
+            // This is the same answer the auth and model probes give when the local server is not
+            // answering, so the pane and the failure say one thing.
+            auth: step(
+                "No account and no key - the model runs on this Mac. Tendril reaches it over a \
+                 local Chat Completions server, which has to be running.",
+                vec![HintCommand::run("fm serve")],
+            ),
+        },
+
+        /* ----------------------------------------------------------- bring your own LLM
+         *
+         * All three run through the same bundled OpenCode, so none of them has an install step;
+         * what an operator actually needs is where the key comes from and what Save does with it.
+         * The variable names are the settings pane's `byoEnvironment`, not a guess: it writes the
+         * key to **both** spellings because the proxy may be reached by either SDK, and splits the
+         * URL into the bare host for Anthropic and the `/v1` form for OpenAI. */
+        "openaiproxy_card" => AgentSignInHint {
+            agent: key.to_string(),
+            binary: None,
+            install: step(BYO_NOTHING_TO_INSTALL, Vec::new()),
+            auth: step_url(
+                "Create a key, paste it into API Key above, and Save. It is written to the \
+                 `openaiproxy` entry as both OPENAI_API_KEY and ANTHROPIC_API_KEY, with the base \
+                 URL in OPENAI_BASE_URL and ANTHROPIC_BASE_URL.",
+                "https://platform.openai.com/api-keys",
+            ),
+        },
+
+        "anthropic_card" => AgentSignInHint {
+            agent: key.to_string(),
+            binary: None,
+            install: step(BYO_NOTHING_TO_INSTALL, Vec::new()),
+            auth: step_url(
+                "Create a key, paste it into API Key above, and Save. The default base URL is \
+                 https://api.anthropic.com/v1; Save stores it as ANTHROPIC_BASE_URL without the \
+                 `/v1` and OPENAI_BASE_URL with it, because the two SDKs disagree about where the \
+                 version segment belongs.",
+                "https://console.anthropic.com/settings/keys",
+            ),
+        },
+
+        "berget_card" => AgentSignInHint {
+            agent: key.to_string(),
+            binary: None,
+            install: step(
+                "Nothing to install. Berget is an OpenAI-compatible endpoint, reached through the \
+                 OpenCode sidecar that ships with Tendril.",
+                Vec::new(),
+            ),
+            // There is no base URL to choose: `withByoCredentials` forces this card back onto
+            // `api.berget.ai`.
+            auth: step_url(
+                "Create a key in the Berget console, paste it into API Key above, and Save. There \
+                 is no base URL to set: this card is pinned to https://api.berget.ai/v1.",
+                "https://console.berget.ai",
+            ),
+        },
+
+        _ => return None,
+    };
+
+    Some(hint)
+}
+
+/// Every card the Coding Agent pane offers, in the order it offers them, each with its hint.
+///
+/// The pane fetches this once rather than keeping its own copy. That the list is complete is pinned
+/// by [`tests::every_card_the_pane_offers_has_a_hint`]; that the pane offers exactly these cards is
+/// pinned on the TypeScript side by `agent-roster-parity.test.ts`, which reads the catalog directly.
+pub fn all_sign_in_hints() -> Vec<AgentSignInHint> {
+    SIGN_IN_HINT_CARDS
+        .iter()
+        .filter_map(|card| sign_in_hint(card))
+        .collect()
+}
+
+/// The cards [`all_sign_in_hints`] serves, in the pane's own display order: the bundled agents
+/// first, then the three bring-your-own providers.
+const SIGN_IN_HINT_CARDS: &[&str] = &[
+    "claude",
+    "copilot",
+    "codex",
+    "gemini",
+    "antigravity",
+    "opencode",
+    "cursor",
+    "apple",
+    "openaiproxy_card",
+    "anthropic_card",
+    "berget_card",
+];
+
 /// V1 `AgentAuthResult`.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -294,7 +701,11 @@ pub struct AgentAuthResult {
     /// How the credential is held (`oauth`, `api-key`, `auth-file`, `environment`).
     pub auth_method: Option<String>,
     pub error: Option<String>,
-    pub sign_in_hint: Option<String>,
+    /// How to sign in, as data. V1 returned a sentence here and the settings pane grew a second
+    /// copy of the same knowledge; this is [`sign_in_hint`]'s entry for the agent that was probed,
+    /// so the failure row and the Help section render one set of facts.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sign_in_hint: Option<AgentSignInHint>,
 }
 
 impl AgentAuthResult {
@@ -318,13 +729,29 @@ impl AgentAuthResult {
         self
     }
 
-    fn failed(status: AuthStatus, error: impl Into<String>, hint: Option<&str>) -> Self {
+    /// A failure with no actionable hint: the check itself broke, rather than the user being
+    /// signed out, so there is nothing to tell them to run.
+    fn failed(status: AuthStatus, error: impl Into<String>) -> Self {
         Self {
             status,
             provider: None,
             auth_method: None,
             error: Some(error.into()),
-            sign_in_hint: hint.map(str::to_string),
+            sign_in_hint: None,
+        }
+    }
+
+    /// A failure the operator can act on, carrying `agent`'s entry from [`sign_in_hint`].
+    ///
+    /// The agent id rather than a sentence: the wording lives in one table that both the Test Agent
+    /// dialog and the settings pane's Help section render, so a corrected install script moves both.
+    fn signed_out(status: AuthStatus, error: impl Into<String>, agent: &str) -> Self {
+        Self {
+            status,
+            provider: None,
+            auth_method: None,
+            error: Some(error.into()),
+            sign_in_hint: sign_in_hint(agent),
         }
     }
 }
@@ -488,11 +915,10 @@ pub async fn check_auth(agent: &str, creds: &ProbeCredentials) -> AgentAuthResul
         "opencode" => opencode_auth().await,
         "apple" => apple_auth().await,
         "cursor" => cursor_auth().await,
-        other if is_proxy_agent(other) => proxy_auth(creds).await,
+        other if is_proxy_agent(other) => proxy_auth(other, creds).await,
         other => AgentAuthResult::failed(
             AuthStatus::Unknown,
             format!("No authentication probe is defined for '{other}'"),
-            None,
         ),
     }
 }
@@ -513,15 +939,11 @@ async fn claude_auth() -> AgentAuthResult {
 
     let lower = out.stderr.to_ascii_lowercase();
     if lower.contains("auth") || lower.contains("login") || lower.contains("sign in") {
-        return AgentAuthResult::failed(
-            AuthStatus::NotAuthenticated,
-            out.stderr,
-            Some("Run 'claude login' to authenticate"),
-        )
-        .with_provider(provider);
+        return AgentAuthResult::signed_out(AuthStatus::NotAuthenticated, out.stderr, "claude")
+            .with_provider(provider);
     }
 
-    AgentAuthResult::failed(AuthStatus::CheckFailed, out.stderr, None).with_provider(provider)
+    AgentAuthResult::failed(AuthStatus::CheckFailed, out.stderr).with_provider(provider)
 }
 
 /// V1 `ClaudeHealthCheck.DetectProvider`: which backend the CLI is pointed at, read off the
@@ -559,14 +981,10 @@ async fn codex_auth() -> AgentAuthResult {
         || lower.contains("not logged in")
         || lower.contains("unauthorized")
     {
-        return AgentAuthResult::failed(
-            AuthStatus::NotAuthenticated,
-            out.stderr,
-            Some("Run 'codex login' to authenticate"),
-        );
+        return AgentAuthResult::signed_out(AuthStatus::NotAuthenticated, out.stderr, "codex");
     }
 
-    AgentAuthResult::failed(AuthStatus::CheckFailed, out.stderr, None)
+    AgentAuthResult::failed(AuthStatus::CheckFailed, out.stderr)
 }
 
 /// V1 `GeminiHealthCheck.CheckAuthAsync`: environment first, then the credential files the CLI
@@ -629,13 +1047,13 @@ async fn gemini_auth() -> AgentAuthResult {
         return AgentAuthResult::authenticated().with_method("oauth");
     }
     if out.timed_out() {
-        return AgentAuthResult::failed(AuthStatus::Unknown, "Gemini auth check timed out", None);
+        return AgentAuthResult::failed(AuthStatus::Unknown, "Gemini auth check timed out");
     }
 
-    AgentAuthResult::failed(
+    AgentAuthResult::signed_out(
         AuthStatus::NotAuthenticated,
         "OAuth credentials not found and no API key set",
-        Some("Run 'gemini auth' or set GEMINI_API_KEY"),
+        "gemini",
     )
 }
 
@@ -695,14 +1113,10 @@ async fn copilot_auth() -> AgentAuthResult {
 
     let lower = out.stderr.to_ascii_lowercase();
     if lower.contains("auth") || lower.contains("login") || lower.contains("sign in") {
-        return AgentAuthResult::failed(
-            AuthStatus::NotAuthenticated,
-            out.stderr,
-            Some("Run 'copilot login' or 'gh auth login' to authenticate"),
-        );
+        return AgentAuthResult::signed_out(AuthStatus::NotAuthenticated, out.stderr, "copilot");
     }
 
-    AgentAuthResult::failed(AuthStatus::CheckFailed, out.stderr, None)
+    AgentAuthResult::failed(AuthStatus::CheckFailed, out.stderr)
 }
 
 /// V1 `AntigravityHealthCheck.CheckAuthAsync`: a three-second `agy models`, then the onboarding
@@ -732,14 +1146,14 @@ async fn antigravity_auth() -> AgentAuthResult {
         }
     }
 
-    AgentAuthResult::failed(
+    AgentAuthResult::signed_out(
         AuthStatus::NotAuthenticated,
         if out.stderr.trim().is_empty() {
             "Not authenticated".to_string()
         } else {
             out.stderr
         },
-        Some("Run 'agy' and complete the browser-based auth flow"),
+        "antigravity",
     )
 }
 
@@ -774,14 +1188,10 @@ async fn cursor_auth() -> AgentAuthResult {
         || lower.contains("login")
         || lower.contains("sign in")
     {
-        return AgentAuthResult::failed(
-            AuthStatus::NotAuthenticated,
-            combined,
-            Some("Run 'cursor-agent login' to authenticate"),
-        );
+        return AgentAuthResult::signed_out(AuthStatus::NotAuthenticated, combined, "cursor");
     }
 
-    AgentAuthResult::failed(AuthStatus::CheckFailed, combined, None)
+    AgentAuthResult::failed(AuthStatus::CheckFailed, combined)
 }
 
 /// V1 `OpenCodeHealthCheck.CheckAuthAsync`: the credential file first, then the CLI's own count.
@@ -803,19 +1213,19 @@ async fn opencode_auth() -> AgentAuthResult {
     .await;
 
     if out.exit_code != 0 {
-        return AgentAuthResult::failed(
+        return AgentAuthResult::signed_out(
             AuthStatus::Unknown,
             format!("Failed to check OpenCode credentials: {}", out.stderr),
-            Some("Run 'opencode providers login' to authenticate"),
+            "opencode",
         );
     }
 
     match parse_opencode_auth_list(&out.stdout) {
         Some(method) => AgentAuthResult::authenticated().with_method(method),
-        None => AgentAuthResult::failed(
+        None => AgentAuthResult::signed_out(
             AuthStatus::NotAuthenticated,
             "No OpenCode credentials configured (auth.json empty and no provider environment variables)",
-            Some("Run 'opencode providers login' to authenticate"),
+            "opencode",
         ),
     }
 }
@@ -897,22 +1307,18 @@ async fn apple_auth() -> AgentAuthResult {
         Ok(response) if response.status().is_success() => AgentAuthResult::authenticated()
             .with_method("on-device")
             .with_provider(Some("apple".to_string())),
-        Ok(response) => AgentAuthResult::failed(
+        Ok(response) => AgentAuthResult::signed_out(
             AuthStatus::CheckFailed,
             format!("{} answered HTTP {}", url, response.status().as_u16()),
-            Some(APPLE_SERVE_HINT),
+            "apple",
         ),
-        Err(_) => AgentAuthResult::failed(
+        Err(_) => AgentAuthResult::signed_out(
             AuthStatus::NotAuthenticated,
             format!("No Apple Foundation Models server is listening at {base_url}"),
-            Some(APPLE_SERVE_HINT),
+            "apple",
         ),
     }
 }
-
-/// What to do about an `fm serve` that is not answering. One string, because the auth probe and the
-/// model probe reach the same wall and an operator should be told the same thing by both.
-const APPLE_SERVE_HINT: &str = "Start the on-device server with 'fm serve'.";
 
 /// Whether Cursor will serve this model, asked by launching the shortest real run there is.
 ///
@@ -1028,30 +1434,30 @@ async fn apple_model(model: &str) -> ModelValidation {
 /// This is the reuse the Coding Agent pane's "Fetch models" button already relies on: a proxy has no
 /// binary that knows whether its key is good, so the only test is a real five-token completion, and
 /// [`test_model_prompt`] is the one that already exists for exactly that.
-async fn proxy_auth(creds: &ProbeCredentials) -> AgentAuthResult {
+async fn proxy_auth(agent: &str, creds: &ProbeCredentials) -> AgentAuthResult {
     if creds.base_url.trim().is_empty() {
-        return AgentAuthResult::failed(
+        return AgentAuthResult::signed_out(
             AuthStatus::NotAuthenticated,
             "Base URL is not configured.",
-            Some("Specify the API Base URL under Settings -> Coding Agent."),
+            agent,
         );
     }
     if creds.api_key.trim().is_empty() {
-        return AgentAuthResult::failed(
+        return AgentAuthResult::signed_out(
             AuthStatus::NotAuthenticated,
             "API Key is not configured.",
-            Some("Specify an API Key under Settings -> Coding Agent."),
+            agent,
         );
     }
 
     let result = test_model_prompt(&creds.base_url, &creds.api_key, "default").await;
     match result.status {
-        ModelValidationStatus::AuthError => AgentAuthResult::failed(
+        ModelValidationStatus::AuthError => AgentAuthResult::signed_out(
             AuthStatus::NotAuthenticated,
             result
                 .error_message
                 .unwrap_or_else(|| "Invalid API key.".to_string()),
-            Some("Please check your API key in Settings -> Coding Agent."),
+            agent,
         ),
         ModelValidationStatus::Unknown
             if result
@@ -1059,10 +1465,10 @@ async fn proxy_auth(creds: &ProbeCredentials) -> AgentAuthResult {
                 .as_deref()
                 .is_some_and(|message| message.to_ascii_lowercase().contains("connect")) =>
         {
-            AgentAuthResult::failed(
+            AgentAuthResult::signed_out(
                 AuthStatus::CheckFailed,
                 result.error_message.unwrap_or_default(),
-                Some("Please check your API Base URL and network connection."),
+                agent,
             )
         }
         _ => AgentAuthResult::authenticated().with_method("api-key"),
@@ -1184,15 +1590,32 @@ fn classify_claude_model(model: &str, out: &ProbeOutput) -> ModelValidation {
     )
 }
 
-/// V1 `CodexHealthCheck.ValidateModelAsync`.
+/// V1 `CodexHealthCheck.ValidateModelAsync`, minus the timeout that V1's design turned on.
 ///
-/// Five seconds, and a timeout means **success**: `codex exec … -` reads the prompt from stdin, so a
-/// valid model leaves it waiting there while an invalid one errors immediately. Getting as far as
-/// the wait is the answer.
+/// V1 waited for `codex exec … -` to block reading the prompt from stdin and read the five-second
+/// kill as proof the model was accepted. `run_probe` closes stdin on every probe, so that wait never
+/// happens: codex reaches the read, gets EOF, prints `No prompt provided via stdin` and exits 1.
+/// That complaint *is* the V1 signal — codex only asks for a prompt once argument parsing and model
+/// resolution are behind it — so `classify_codex_model` treats it as the success case and the
+/// timeout branch survives only for a machine slow enough to be killed before it gets there.
+///
+/// `-s read-only` rather than V1's `--full-auto`, which codex-cli 0.153.0 rejects outright with
+/// `unexpected argument '--full-auto' found`. The successor spellings are `-s <mode>` and
+/// `--dangerously-bypass-approvals-and-sandbox`; a probe that exits before it has a prompt runs no
+/// model-generated command at all, so it takes the most restricted mode on offer and states it
+/// rather than inheriting whatever `--sandbox auto` resolves to from the user's config.
 async fn codex_model(model: &str) -> ModelValidation {
+    let args = codex_probe_args(model);
+    let out = run_probe("codex", &args, Duration::from_secs(5)).await;
+    classify_codex_model(model, &out)
+}
+
+/// Split out from `codex_model` so the flag set can be asserted on without running codex.
+fn codex_probe_args(model: &str) -> Vec<String> {
     let mut args = vec![
         "exec".to_string(),
-        "--full-auto".to_string(),
+        "-s".to_string(),
+        "read-only".to_string(),
         "--json".to_string(),
         "--skip-git-repo-check".to_string(),
     ];
@@ -1201,9 +1624,7 @@ async fn codex_model(model: &str) -> ModelValidation {
         args.push(explicit.to_string());
     }
     args.push("-".to_string());
-
-    let out = run_probe("codex", &args, Duration::from_secs(5)).await;
-    classify_codex_model(model, &out)
+    args
 }
 
 fn classify_codex_model(model: &str, out: &ProbeOutput) -> ModelValidation {
@@ -1213,6 +1634,15 @@ fn classify_codex_model(model: &str, out: &ProbeOutput) -> ModelValidation {
 
     let combined = out.combined();
     let lower = combined.to_ascii_lowercase();
+
+    // Ahead of the error classification, because this is the probe's ordinary success path and it
+    // arrives as a failure: exit 1 with the prompt complaint on stderr. Codex asks for a prompt only
+    // after it has parsed the arguments and resolved `--model`, so being asked is the furthest a
+    // probe carrying no prompt can get, and reading it as an error fails every model on the list.
+    if lower.contains(CODEX_NO_PROMPT) {
+        return validation(ModelValidationStatus::Ok, model, None);
+    }
+
     let detail = if out.stderr.trim().is_empty() {
         combined.trim().to_string()
     } else {
@@ -1425,6 +1855,292 @@ mod tests {
         }
     }
 
+    /// Every card the Coding Agent pane offers must have a hint.
+    ///
+    /// The parity assertion. A new agent added to the catalog with no entry here renders a Help
+    /// section with nothing in it, and nothing else on either side of the bridge would notice --
+    /// the same failure mode `agent-roster-parity.test.ts` exists for on the TypeScript side.
+    #[test]
+    fn every_card_the_pane_offers_has_a_hint() {
+        for card in SIGN_IN_HINT_CARDS {
+            let hint = sign_in_hint(card)
+                .unwrap_or_else(|| panic!("{card} is offered by the pane but has no hint"));
+            assert_eq!(
+                &hint.agent, card,
+                "a hint must answer for the card asked for"
+            );
+        }
+        assert_eq!(
+            all_sign_in_hints().len(),
+            SIGN_IN_HINT_CARDS.len(),
+            "every listed card must resolve"
+        );
+    }
+
+    /// An entry that exists but says nothing is a blank Help section by another route.
+    ///
+    /// Each half carries prose, and each carries either a route to run or a page to open. The one
+    /// exception is a bring-your-own provider's install step, which is honest about having nothing
+    /// to run and says so in the summary rather than inventing a command.
+    #[test]
+    fn every_hint_gives_both_halves_real_content() {
+        for hint in all_sign_in_hints() {
+            let agent = &hint.agent;
+            assert!(
+                hint.install.summary.len() > 20,
+                "{agent} install summary is too thin to help"
+            );
+            assert!(
+                hint.auth.summary.len() > 20,
+                "{agent} auth summary is too thin to help"
+            );
+            assert!(
+                !hint.auth.commands.is_empty() || hint.auth.url.is_some(),
+                "{agent} auth names neither a command nor a console"
+            );
+            // A card with no binary is a bring-your-own provider, which has nothing to install.
+            if hint.binary.is_some() {
+                assert!(
+                    !hint.install.commands.is_empty(),
+                    "{agent} has a binary but no way to install it"
+                );
+            } else {
+                assert!(
+                    hint.install.commands.is_empty(),
+                    "{agent} has no binary, so it must not offer an install command"
+                );
+            }
+            for command in hint.install.commands.iter().chain(&hint.auth.commands) {
+                assert!(
+                    !command.command.trim().is_empty(),
+                    "{agent} carries an empty command"
+                );
+                assert!(
+                    !command.command.contains('\n'),
+                    "{agent}: a command is one runnable line; a second route is its own entry: {}",
+                    command.command
+                );
+            }
+        }
+    }
+
+    /// No hint may name a command its CLI does not have.
+    ///
+    /// Three of these were carried over from V1 and all three were wrong, which is what makes this
+    /// worth pinning rather than trusting. A hint that names a command that does not run is worse
+    /// than no hint: it sends the operator to a dead end while the pane insists they are not
+    /// authenticated.
+    ///
+    /// * `claude login` is not a subcommand. The CLI's top-level commands are `agents`, `attach`,
+    ///   `auth`, `doctor`, `mcp`, `plugin` and friends, so a bare `login` is swallowed as the prompt
+    ///   positional and the user is answered *about* signing in. Sign-in is `claude auth login`.
+    /// * `gemini auth` is not a subcommand either -- the CLI's are `mcp`, `extensions`, `skills`,
+    ///   `hooks` and `gemma`. Sign-in is the `/auth` slash command inside the session.
+    /// * `copilot login` does not exist at all; GitHub's install page says an unauthenticated first
+    ///   launch prompts for the `/login` slash command.
+    #[test]
+    fn hints_name_commands_the_clis_actually_have() {
+        let auth_of = |agent: &str| sign_in_hint(agent).expect("a known agent").auth;
+
+        let claude = auth_of("claude");
+        assert!(
+            claude.commands.iter().all(|c| c.command != "claude login"),
+            "'claude login' is swallowed as a prompt; sign-in is 'claude auth login'"
+        );
+        assert!(
+            claude
+                .commands
+                .iter()
+                .any(|c| c.command == "claude auth login"),
+            "the real sign-in command must be offered"
+        );
+
+        let gemini = auth_of("gemini");
+        assert!(
+            !gemini
+                .commands
+                .iter()
+                .any(|c| c.command.contains("gemini auth")),
+            "the Gemini CLI has no 'auth' subcommand"
+        );
+        assert!(
+            gemini
+                .commands
+                .iter()
+                .any(|c| c.command == "gemini" && c.then.as_deref() == Some("/auth")),
+            "sign-in is the /auth slash command typed at a running 'gemini'"
+        );
+        assert!(
+            gemini
+                .commands
+                .iter()
+                .any(|c| c.command.contains("GEMINI_API_KEY")),
+            "the key route stays offered"
+        );
+
+        let copilot = auth_of("copilot");
+        assert!(
+            !copilot
+                .commands
+                .iter()
+                .any(|c| c.command.contains("copilot login")),
+            "there is no 'copilot login' command"
+        );
+        // `gh auth login` authenticates the GitHub CLI, not Copilot -- following it leaves the user
+        // exactly as unauthenticated as before.
+        assert!(
+            !copilot
+                .commands
+                .iter()
+                .any(|c| c.command.contains("gh auth login")),
+            "gh auth login is a different credential"
+        );
+        assert!(
+            copilot
+                .commands
+                .iter()
+                .any(|c| c.command == "copilot" && c.then.as_deref() == Some("/login")),
+            "sign-in is the /login slash command typed at a running 'copilot'"
+        );
+        assert!(
+            copilot
+                .commands
+                .iter()
+                .any(|c| c.command.contains("COPILOT_GITHUB_TOKEN")),
+            "the unattended route stays offered"
+        );
+    }
+
+    /// The binary a hint names is the binary a launch spawns.
+    ///
+    /// `probe_binary` resolves `cursor` to `cursor-agent` and `antigravity` to `agy`, so this is the
+    /// one fact the vendor's own docs cannot supply. Naming the wrong one sends someone to install a
+    /// CLI Tendril never looks for and leaves the pane reporting it as missing.
+    #[test]
+    fn a_hint_names_the_binary_the_daemon_spawns() {
+        for (agent, binary) in [
+            ("claude", "claude"),
+            ("codex", "codex"),
+            ("gemini", "gemini"),
+            ("copilot", "copilot"),
+            ("antigravity", "agy"),
+            ("cursor", "cursor-agent"),
+            ("apple", "fm"),
+            ("opencode", "opencode"),
+        ] {
+            let hint = sign_in_hint(agent).expect("a known agent");
+            assert_eq!(
+                hint.binary.as_deref(),
+                Some(binary),
+                "{agent} is launched as {binary}"
+            );
+        }
+
+        // A bring-your-own card is a provider, not a CLI: there is no binary to find and no login to
+        // run, so it offers the console that issues the key instead.
+        for card in ["openaiproxy_card", "anthropic_card", "berget_card"] {
+            let hint = sign_in_hint(card).expect("a known card");
+            assert_eq!(hint.binary, None, "{card} is a provider, not a CLI");
+            assert!(
+                hint.auth.url.is_some(),
+                "{card} must point at the console that issues its key"
+            );
+        }
+    }
+
+    /// pnpm-only is a repo rule, and a pane that prints `npm install -g` teaches every operator who
+    /// reads it the opposite. Every one of these CLIs has a Homebrew formula or a vendor script, so
+    /// the rule costs nothing to keep.
+    #[test]
+    fn no_hint_recommends_npm() {
+        for hint in all_sign_in_hints() {
+            for command in hint.install.commands.iter().chain(&hint.auth.commands) {
+                assert!(
+                    !command.command.split_whitespace().any(|word| word == "npm"),
+                    "{} names npm: {}",
+                    hint.agent,
+                    command.command
+                );
+            }
+        }
+    }
+
+    /// Homebrew rejects `brew install <cask>` outright, so the cask/formula split is the difference
+    /// between a command that works and one that errors in the operator's face. It is also invisible
+    /// on a machine that already has the CLI, which is how three of these shipped wrong.
+    ///
+    /// Verified against `brew info` on 2026-09-21: claude-code, codex and copilot-cli are casks;
+    /// gemini-cli is a formula (deprecated upstream, disabling 2026-12-18) and must NOT take --cask.
+    #[test]
+    fn brew_lines_split_casks_from_formulae() {
+        const CASKS: &[&str] = &["claude-code", "codex", "copilot-cli"];
+        const FORMULAE: &[&str] = &["gemini-cli"];
+
+        let mut seen = 0;
+        for hint in all_sign_in_hints() {
+            for command in hint.install.commands.iter().chain(&hint.auth.commands) {
+                let line = &command.command;
+                if !line.contains("brew install") {
+                    continue;
+                }
+                seen += 1;
+                let words: Vec<&str> = line.split_whitespace().collect();
+                for cask in CASKS {
+                    if words.contains(cask) {
+                        assert!(
+                            line.contains("--cask"),
+                            "{}: {cask} is a cask, not a formula: {line}",
+                            hint.agent
+                        );
+                    }
+                }
+                for formula in FORMULAE {
+                    if words.contains(formula) {
+                        assert!(
+                            !line.contains("--cask"),
+                            "{}: {formula} is a formula, not a cask: {line}",
+                            hint.agent
+                        );
+                    }
+                }
+            }
+        }
+        // Guard the guard: a refactor that drops every brew line must not leave this vacuously green.
+        assert!(seen > 0, "no brew lines were checked");
+    }
+
+    /// A failed auth probe carries the hint for the agent that was probed, not a sentence.
+    ///
+    /// This is the join the whole shape exists for: the Test Agent dialog's failure row and the
+    /// settings pane's Help section read the same entry, so a corrected install script moves both.
+    #[test]
+    fn a_signed_out_result_carries_that_agents_hint() {
+        let result = AgentAuthResult::signed_out(AuthStatus::NotAuthenticated, "nope", "claude");
+        let hint = result.sign_in_hint.expect("a signed-out result hints");
+        assert_eq!(hint.agent, "claude");
+        assert_eq!(hint.binary.as_deref(), Some("claude"));
+
+        // A check that broke is not a user who is signed out: there is nothing to tell them to run.
+        let broken = AgentAuthResult::failed(AuthStatus::CheckFailed, "boom");
+        assert_eq!(broken.sign_in_hint, None);
+    }
+
+    /// Every proxy spelling resolves onto the generic OpenAI-compatible card, and an id that names
+    /// no agent gets no invented help.
+    #[test]
+    fn proxy_ids_resolve_and_unknown_ids_do_not() {
+        for id in ["openaiproxy", "ivy", "proxy"] {
+            let hint = sign_in_hint(id).unwrap_or_else(|| panic!("{id} is a proxy spelling"));
+            assert_eq!(hint.agent, "openaiproxy_card");
+        }
+        // `claudecode` is `normalize_agent_name`'s alias for `claude`.
+        assert_eq!(
+            sign_in_hint("claudecode").map(|hint| hint.agent),
+            Some("claude".to_string())
+        );
+        assert_eq!(sign_in_hint("not-an-agent"), None);
+    }
+
     /// The probe must ask `fm` a question it answers. `--version` exits 64 with nothing on stdout,
     /// which reads as an uninstalled CLI, so a machine with a working Apple install would be told
     /// its install is broken.
@@ -1578,6 +2294,71 @@ mod tests {
             classify_codex_model("nope", &out(1, "", "invalid model 'nope'")).status,
             ModelValidationStatus::InvalidModel
         );
+    }
+
+    /// The other half of that rule, and the one that actually fires: `run_probe` closes stdin, so
+    /// codex never reaches the wait the timeout branch was written for. It asks for the prompt and
+    /// exits 1, and taking that at face value failed every model on the list -- issue #220.
+    #[test]
+    fn a_codex_prompt_complaint_also_means_the_model_was_accepted() {
+        let result =
+            classify_codex_model("gpt-5.6-sol", &out(1, "", "No prompt provided via stdin."));
+        assert_eq!(result.status, ModelValidationStatus::Ok);
+        assert_eq!(result.error_message, None);
+    }
+
+    /// Codex prints it on stderr today, but the classifiers all read both streams, and a `--json`
+    /// run putting it on stdout must not read as a failure either.
+    #[test]
+    fn the_codex_prompt_complaint_is_read_off_either_stream() {
+        assert_eq!(
+            classify_codex_model("gpt-5.6-sol", &out(1, "No prompt provided via stdin.", ""))
+                .status,
+            ModelValidationStatus::Ok
+        );
+        assert_eq!(
+            classify_codex_model("gpt-5.6-sol", &out(1, "", "NO PROMPT PROVIDED VIA STDIN")).status,
+            ModelValidationStatus::Ok
+        );
+    }
+
+    /// The success branch is ahead of the error classification, so it has to be the narrower of the
+    /// two: a run that got far enough to fail for a real reason still reports that reason.
+    #[test]
+    fn a_real_codex_failure_still_beats_the_prompt_complaint() {
+        assert_eq!(
+            classify_codex_model("nope", &out(1, "", "model 'nope' not supported")).status,
+            ModelValidationStatus::InvalidModel
+        );
+        assert_eq!(
+            classify_codex_model("gpt-5.6-sol", &out(1, "", "429 rate limit exceeded")).status,
+            ModelValidationStatus::RateLimit
+        );
+        assert_eq!(
+            classify_codex_model("gpt-5.6-sol", &out(1, "", "unauthorized")).status,
+            ModelValidationStatus::AuthError
+        );
+        // The flag defect itself: a rejected argument is not a verdict on the model.
+        assert_eq!(
+            classify_codex_model(
+                "gpt-5.6-sol",
+                &out(2, "", "error: unexpected argument '--full-auto' found")
+            )
+            .status,
+            ModelValidationStatus::Unknown
+        );
+    }
+
+    /// `--full-auto` is gone from codex-cli 0.153.0, which refuses to parse it at all. The probe
+    /// never runs a model-generated command, so it asks for the sandbox that allows none.
+    #[test]
+    fn the_codex_probe_names_a_sandbox_the_current_cli_accepts() {
+        let args = codex_probe_args("gpt-5.6-sol");
+        assert!(!args.iter().any(|arg| arg == "--full-auto"));
+        let sandbox = args.iter().position(|arg| arg == "-s").expect("-s");
+        assert_eq!(args[sandbox + 1], "read-only");
+        // Still the stdin form the whole classification depends on.
+        assert_eq!(args.last().unwrap(), "-");
     }
 
     #[test]

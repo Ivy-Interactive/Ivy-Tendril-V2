@@ -328,6 +328,36 @@ impl JobArgs {
     pub fn force_flag(&self) -> bool {
         matches!(self, Self::CreatePlan(a) if a.force)
     }
+
+    /// What the operator actually asked for, in their own words, or `None` for a job type whose args
+    /// carry no prose.
+    ///
+    /// This is V1's `JobsApp.Helpers.cs` `GetFullPrompt`, minus its plan-reading tail: the arms that
+    /// read a field off the typed args, which is the half a `JobItem` can answer on its own.
+    ///
+    /// It exists because the Jobs table's Prompt cell has nothing else to show for a job that has not
+    /// reported a plan yet. V1 walks plan title, then `ReportedPlanTitle`, then *this*; V2's chain
+    /// stopped at the second step, so a `CreatePlan` imported from the Inbox — which is exactly a job
+    /// whose description is the whole request and whose plan does not exist yet — rendered an empty
+    /// Prompt for its entire run.
+    ///
+    /// The whitespace-only guard matters: `Some("")` would present itself as a prompt and stop the
+    /// caller's fallback chain one step early, which is the same blank cell by another route.
+    pub fn prompt_text(&self) -> Option<&str> {
+        let text = match self {
+            Self::CreatePlan(a) => a.description.as_str(),
+            Self::RetryPlan(a) => a.change_request.as_str(),
+            Self::UpdatePlan(a) => a.instructions.as_deref()?,
+            Self::ExecutePlan(a) => a.note.as_deref()?,
+            Self::CreatePr(a) => a.comment.as_deref()?,
+            Self::CreateIssue(a) => a.comment.as_deref()?,
+            Self::SyncRepo(a) => a.repo_path.as_str(),
+            Self::AddProject(a) => a.project_name.as_str(),
+            Self::SetupProject(a) => a.folder_path.as_str(),
+            Self::ExpandPlan(_) | Self::SplitPlan(_) => return None,
+        };
+        (!text.trim().is_empty()).then_some(text)
+    }
 }
 
 /// Trim, collapse internal whitespace runs to one space, lowercase. Two descriptions that differ
@@ -515,5 +545,66 @@ impl JobItem {
         }
 
         String::new()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    mod prompt_text {
+        use super::*;
+
+        fn create_plan(description: &str) -> JobArgs {
+            JobArgs::CreatePlan(CreatePlanArgs {
+                description: description.to_string(),
+                project: "ivy-tendril".to_string(),
+                priority: 0,
+                force: false,
+                source_path: None,
+                upload_session_id: None,
+            })
+        }
+
+        #[test]
+        fn reads_a_create_plan_description() {
+            let args = create_plan("Task from GitHub Issue #2752: the timer never resets");
+            assert_eq!(
+                args.prompt_text(),
+                Some("Task from GitHub Issue #2752: the timer never resets")
+            );
+        }
+
+        /// The blank-cell bug by another route: `Some("")` looks like a prompt to the caller's
+        /// fallback chain, so it stops there and renders nothing.
+        #[test]
+        fn treats_a_whitespace_only_description_as_absent() {
+            assert_eq!(create_plan("   \n\t ").prompt_text(), None);
+        }
+
+        #[test]
+        fn reads_the_optional_arms_only_when_they_are_filled() {
+            let with_note = JobArgs::ExecutePlan(ExecutePlanArgs {
+                folder_path: "00007-Something".to_string(),
+                note: Some("rerun with the new base".to_string()),
+            });
+            assert_eq!(with_note.prompt_text(), Some("rerun with the new base"));
+
+            let without_note = JobArgs::ExecutePlan(ExecutePlanArgs {
+                folder_path: "00007-Something".to_string(),
+                note: None,
+            });
+            assert_eq!(without_note.prompt_text(), None);
+        }
+
+        /// Neither carries prose of its own — V1's `GetFullPrompt` has no arm for them either, and
+        /// falls through to the plan.
+        #[test]
+        fn has_nothing_to_say_for_expand_and_split() {
+            let expand = JobArgs::ExpandPlan(ExpandPlanArgs {
+                folder_path: "00007-Something".to_string(),
+            });
+            assert_eq!(expand.prompt_text(), None);
+        }
     }
 }

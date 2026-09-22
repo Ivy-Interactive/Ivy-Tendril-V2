@@ -38,7 +38,7 @@
 .pmv-markdown {
   min-width: 0;
   width: 100%;
-  max-width: 50rem; /* 200 units * 0.25rem */
+  max-width: var(--content-measure); /* 50rem == 200 Ivy units * 0.25rem */
   /* Top matches left. A deliberate divergence from V1, which has `padding: 0 0 1rem 1.5rem` here
      and leaves the first heading's own `margin-top: 2rem` to stand in for a top inset - so V1's
      content sits 32px from the top against 24px from the left, and the corner reads lopsided.

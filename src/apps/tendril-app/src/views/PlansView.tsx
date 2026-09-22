@@ -6,6 +6,8 @@ import { TendrilProcessWallpaper } from "../components/TendrilProcessWallpaper";
 import { usePublishSidebarList, type ShellSidebarList } from "../state/sidebarListStore";
 import { isPlanId, resolvePlanSelection } from "../state/plansStore";
 import { draftQueueFor, normalizePlanState } from "../utils/planQueues";
+import { resolveLevelColor, type LevelColors } from "../utils/levelColor";
+import { useLevelColors } from "../components/LevelBadge";
 
 /**
  * Which plans this page lists, and the state-name normalisation every read point needs, both from
@@ -108,15 +110,31 @@ export const parseProjects = (project: string | undefined): string[] =>
 /**
  * The badges a row carries, in `PlansApp.BuildRowBadges` order: the state unless it is Draft (where
  * every plan starts, so saying so is not news), then one badge per project, then the level.
+ *
+ * `levelColors` is the configured level palette (`useLevelColors`). V1's *Icebox* row is the one that
+ * colours the level — `new Badge(plan.Level).Color(config.GetLevelColor(plan.Level) ?? Colors.Gray)`
+ * (`Apps/Icebox/SidebarView.cs:25`) — while `PlansApp.BuildRowBadges` builds a bare
+ * `new ShellBadgeDto(plan.Level)` and leaves it neutral. That split is V1 being inconsistent with
+ * itself about one badge rather than two deliberate designs, so the colour is applied here too and
+ * the mapping is V1's own, read from the same `levels` config rather than invented.
+ *
+ * Omitting `levelColors` keeps the neutral badge, which is what a caller that has not read
+ * configuration (or could not) should render: a grey fallback asserted before the colours are known
+ * would flash the wrong colour on every row.
  */
-export const planRowBadges = (plan: PlanSummary): ShellBadgeDto[] => {
+export const planRowBadges = (plan: PlanSummary, levelColors?: LevelColors): ShellBadgeDto[] => {
   const badges: ShellBadgeDto[] = [];
   const state = normalizePlanState(plan.state);
   if (state !== "Draft") badges.push({ label: state, kind: "warning" });
   for (const project of parseProjects(plan.project)) {
     badges.push({ label: project, kind: "project" });
   }
-  if (plan.level) badges.push({ label: plan.level, kind: "neutral" });
+  if (plan.level) {
+    const color = resolveLevelColor(plan.level, levelColors);
+    badges.push(
+      color ? { label: plan.level, kind: "color", color } : { label: plan.level, kind: "neutral" },
+    );
+  }
   return badges;
 };
 
@@ -132,6 +150,7 @@ export const buildPlansSidebarList = (
   plans: PlanSummary[],
   selectedId: string | null,
   select: (planId: string) => void,
+  levelColors?: LevelColors,
 ): ShellSidebarList => ({
   appId: "plans",
   title: "Plans",
@@ -139,7 +158,7 @@ export const buildPlansSidebarList = (
     id: plan.id,
     title: plan.title,
     tag: formatPlanId(plan.id),
-    badges: planRowBadges(plan),
+    badges: planRowBadges(plan, levelColors),
   })),
   selectedId,
   buildSelectArgs: (planId) => {
@@ -254,13 +273,23 @@ export const PlansView: React.FC<PlansViewProps> = ({
     onSelectPlan(target);
   }, [defaultSelection?.id, onSelectPlan]);
 
+  /* The level badges' colours, read from `config.yaml`'s `levels` the way V1's rows read them off
+     `IConfigService`. Undefined until the read lands, which renders the neutral badge rather than a
+     grey one — see `planRowBadges`. */
+  const levelColors = useLevelColors();
+
   const sidebarList = useMemo(
     () =>
-      buildPlansSidebarList(listPlans, selectedId, (planId) => {
-        setOpenedPlanId(planId);
-        onSelectPlan(planId);
-      }),
-    [listPlans, selectedId, onSelectPlan],
+      buildPlansSidebarList(
+        listPlans,
+        selectedId,
+        (planId) => {
+          setOpenedPlanId(planId);
+          onSelectPlan(planId);
+        },
+        levelColors,
+      ),
+    [listPlans, selectedId, onSelectPlan, levelColors],
   );
 
   /* Published on every render, which `ShellSidebarListSignal`'s own doc comment says the shell

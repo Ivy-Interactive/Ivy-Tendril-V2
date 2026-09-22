@@ -1,7 +1,8 @@
 import React from "react";
-import { BrandIcon } from "@ivy-interactive/components/tendril";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { BrandIcon, CodeBlock } from "@ivy-interactive/components/tendril";
 import { Button, Callout, Input, Label, Switch } from "@ivy-interactive/components/ui";
-import { Check } from "lucide-react";
+import { Check, ExternalLink } from "lucide-react";
 import { agentsApi } from "../../api/agentsApi";
 import { providerModelsApi } from "../../api/providerModelsApi";
 import { notificationsStore } from "../../state/notificationsStore";
@@ -9,13 +10,16 @@ import { describeBridgeError, type TendrilConfig } from "../../types/api";
 import {
   DEFAULT_OPTION_ID,
   type AgentOption,
+  type AgentSignInHint,
   type DiscoveredModel,
+  type HintStep,
   type ProfileDefaults,
 } from "../../types/agents";
 import { formatEnvLines, parseEnvLines } from "./configValues";
 import { normalizeAgentName } from "./projectConfig";
 import { AgentTestDialog, type TestModelEntry } from "./AgentTestDialog";
 import { AgentUsageStrip } from "./AgentUsageStrip";
+import { cardLabel, helpForCard, useAgentHints } from "./agentHelp";
 import {
   LinesField,
   NativeSelectField,
@@ -129,6 +133,104 @@ const AgentCard: React.FC<{
   </button>
 );
 
+/**
+ * One numbered step of the Help block: what to do, and the shell or the link that does it.
+ *
+ * `CodeBlock` is passed no `language`, which is deliberate rather than an omission. With one it
+ * mounts the lazy `react-syntax-highlighter` and pulls the `vendor-syntax` chunk - 600 kB of
+ * refractor language packs to colour a `brew install` - and without one it renders the same geometry
+ * through `PlainPre` and keeps the copy button, which is the only part of it this block needs.
+ *
+ * Routes after the first are alternatives, and are labelled as such rather than folded into one
+ * block: the daemon sends them as separate commands precisely so the copy button copies something
+ * runnable. `then` is a slash command typed at the prompt the shell line opens - three of these CLIs
+ * have no sign-in subcommand at all - so it is shown beside the block, never inside it, because
+ * `copilot /login` is a prompt rather than a login.
+ */
+const HelpStep: React.FC<{ title: string; step: HintStep; testId: string }> = ({
+  title,
+  step,
+  testId,
+}) => (
+  <div className="space-y-2" data-testid={testId}>
+    <p className="text-xs font-medium text-muted-foreground">{title}</p>
+    <p className="text-xs text-foreground">{step.summary}</p>
+    {step.commands.map((route, index) => (
+      <div key={route.command} className="space-y-1">
+        {index > 0 && <p className="text-xs text-muted-foreground">or</p>}
+        <CodeBlock content={route.command} />
+        {route.then && (
+          <p className="text-xs text-muted-foreground" data-testid={`${testId}-then`}>
+            Then, at the prompt: <code className="font-mono">{route.then}</code>
+          </p>
+        )}
+      </div>
+    ))}
+    {/* `openUrl` rather than an `<a>`: this is a webview, and a target-less navigation replaces the
+        app with the vendor's console. Same call `SecurityTunnelingSection` and `InboxView` make. */}
+    {step.url && (
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        data-testid={`${testId}-link`}
+        onClick={() => void openUrl(step.url!)}
+      >
+        <ExternalLink className="size-4" aria-hidden="true" />
+        {step.url}
+      </Button>
+    )}
+  </div>
+);
+
+/**
+ * Install and sign-in instructions for the card in front of the operator.
+ *
+ * It sits below Extra Arguments rather than above the grid because it answers a question asked after
+ * a card is picked, and because everything above it is settings this pane writes while none of this
+ * is. The content comes from the daemon (`GET /api/agents/hints`) rather than from a table in the
+ * webview: `probe.rs` already owns these facts for the sign-in hint a failed auth check returns, and
+ * a second copy here is what drifted - it told people to run `claude auth login` while the probe
+ * told them `claude login`, which is not a command the CLI has.
+ *
+ * Renders nothing while the hints are in flight, for a daemon that did not answer, or for a card the
+ * daemon has no hint for. The last is only reachable through a `codingAgent` value that is not a
+ * card at all, which the `unknownAgent` callout at the top of the pane already names.
+ */
+const AgentHelpBlock: React.FC<{ card: string; hints: Record<string, AgentSignInHint> | null }> = ({
+  card,
+  hints,
+}) => {
+  const help = helpForCard(hints, card);
+  if (!help) return null;
+
+  return (
+    <SubSection
+      title="Help"
+      hint={`Getting ${cardLabel(card)} working on this machine.`}
+      testId="agent-help-block"
+    >
+      <div className="space-y-4" data-testid={`agent-help-${card}`}>
+        <HelpStep title="1. Install" step={help.install} testId="agent-help-install" />
+        <HelpStep
+          title={help.binary ? "2. Authenticate" : "2. API key"}
+          step={help.auth}
+          testId="agent-help-auth"
+        />
+        {/* The one fact an operator cannot get from the vendor's own docs: which binary *this* app
+            spawns. `probe_binary` resolves `cursor` to `cursor-agent` and `antigravity` to `agy`, so
+            following Cursor's or Google's instructions alone can leave a working CLI that Tendril
+            still reports as missing. */}
+        {help.binary && (
+          <p className="text-xs text-muted-foreground" data-testid="agent-help-binary">
+            Tendril looks for <code className="font-mono">{help.binary}</code> on your PATH.
+          </p>
+        )}
+      </div>
+    </SubSection>
+  );
+};
+
 export const CodingAgentSection: React.FC<{
   config: TendrilConfig | null;
   /** `config.yaml`'s `codingAgent`, i.e. what is on disk rather than what is selected. */
@@ -152,6 +254,9 @@ export const CodingAgentSection: React.FC<{
   const [isSaving, setIsSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
   const [isTestOpen, setIsTestOpen] = React.useState(false);
+
+  // The Help block's content, fetched once from the daemon rather than kept as a second copy here.
+  const agentHints = useAgentHints();
 
   // Live discovery (`POST /api/agents/models`). `discovered` is per endpoint rather than global: it is
   // what *this* URL answered, and switching cards discards it.
@@ -660,7 +765,7 @@ export const CodingAgentSection: React.FC<{
               : discovered && discovered.length > 0
                 ? // `CodingAgentStepView`'s wording for the same block once its fetch has come back.
                   "Select models from your endpoint for each profile level."
-                : "Promptwares are configured to use different profiles depending on the complexity of the task. You can specify what model and effort level to use for each profile."
+                : "Workflow agents are configured to use different profiles depending on the complexity of the task. You can specify what model and effort level to use for each profile."
           }
           testId="profile-models-block"
         >
@@ -796,6 +901,8 @@ export const CodingAgentSection: React.FC<{
             />
           </div>
         </SubSection>
+
+        <AgentHelpBlock card={card} hints={agentHints} />
 
         <SaveError message={error} />
 

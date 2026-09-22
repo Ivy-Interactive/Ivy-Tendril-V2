@@ -310,11 +310,89 @@ fn forget_session(id: &str) {
     lock(&SESSIONS).remove(id);
 }
 
+/// Kills every live pty session. Returns how many were still running.
+///
+/// Called from `run_server` on the way out, and this is what lets the daemon actually exit.
+///
+/// A pty session's reader lives on a `spawn_blocking` thread parked in `reader.read(..)`, which only
+/// returns when the *last slave fd* closes — that is, when the child and everything holding the pty
+/// have gone. `#[tokio::main]` drops the runtime when `main` returns, and dropping a runtime *joins*
+/// its blocking pool: a reader still parked in `read` therefore blocks the process from exiting
+/// forever, long after the listener is closed and `.master` is released.
+///
+/// Signalling the tree does not reach these children on its own. `portable_pty` puts each child in
+/// its own session (`setsid`) so it owns the terminal, so it is in neither the daemon's process
+/// group nor its session — a group-wide SIGINT of the kind `dev-desktop.ts` sends reaches the daemon
+/// and misses every pty child. Nothing else ever closes them, so the read never ends.
+///
+/// Hence killing them by pid explicitly. `PtySession::kill` takes the whole tree, so a review
+/// action's dev server goes with it; once the last one is gone the master sees EOF, each reader
+/// returns, and the blocking pool drains.
+pub fn kill_all_sessions() -> usize {
+    // Drained rather than iterated: the cleanup task calls `forget_session` as each child is reaped,
+    // and holding the lock across `kill` would deadlock against it.
+    let sessions: Vec<Arc<PtySession>> = {
+        let mut guard = lock(&SESSIONS);
+        guard.drain().map(|(_, session)| session).collect()
+    };
+
+    let mut killed = 0;
+    for session in sessions {
+        if session.kill() {
+            killed += 1;
+        }
+    }
+    killed
+}
+
 /// A spawned review action: the id its `input`/`resize` routes are keyed by, and the SSE frames it
 /// produces.
 pub struct PtyStream {
     pub session_id: String,
     pub frames: tokio::sync::mpsc::Receiver<SseFrame>,
+}
+
+/// Turns a session's frames into an SSE body that ends when the daemon does.
+///
+/// The frame channel alone has no terminal event — a terminal lives as long as its process, which is
+/// the point — and axum's graceful shutdown waits for every open connection. So a stream left
+/// attached at shutdown is counted as a connection to drain and holds the daemon on
+/// [`crate::SHUTDOWN_GRACE`] for the full ten seconds; `dev-desktop.ts` gives it five and then
+/// SIGKILLs, and a SIGKILL skips `MasterGuard::drop` and leaves `.master` behind.
+///
+/// This is the same treatment `/api/changes/events` and the job log streams already get, and the
+/// other half of [`kill_all_sessions`]: that one unblocks the *process*, this one unblocks *graceful
+/// shutdown*. Both are needed — killing the child ends the reader thread but does not retract a
+/// connection axum has already committed to waiting for.
+///
+/// The client is told nothing beyond the stream ending, which is correct: there is no outcome to
+/// report, and the daemon going away is not the session's own business.
+pub fn shutdown_aware_body(
+    mut frames: tokio::sync::mpsc::Receiver<SseFrame>,
+    mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
+) -> impl futures_util::Stream<Item = SseFrame> + Send + 'static {
+    futures_util::stream::poll_fn(move |cx| {
+        // Checked first and latched, so a stream opened after the signal ends immediately rather
+        // than attaching to a daemon that is already leaving.
+        if *shutdown_rx.borrow() {
+            return std::task::Poll::Ready(None);
+        }
+        // Registers this task for a wake on the signal, so shutdown is noticed the instant it
+        // happens rather than whenever the next frame arrives — a quiet terminal produces no frames
+        // at all, which is exactly the case that used to wait out the whole grace period.
+        let signalled = {
+            use std::future::Future as _;
+            let changed = shutdown_rx.changed();
+            futures_util::pin_mut!(changed);
+            // `Err` is the sender gone, which only happens with `AppState` itself, and means there
+            // is nothing left to stream to either way.
+            matches!(changed.poll(cx), std::task::Poll::Ready(_))
+        };
+        if signalled && *shutdown_rx.borrow() {
+            return std::task::Poll::Ready(None);
+        }
+        frames.poll_recv(cx)
+    })
 }
 
 /// Runs a shell `command` under a pty and returns its frame stream.

@@ -130,6 +130,54 @@ export interface AgentInstallStatus {
 /** Rust `probe::AuthStatus`. `checkFailed` is "the check itself broke", not "you are signed out". */
 export type AuthStatus = "authenticated" | "notAuthenticated" | "checkFailed" | "unknown";
 
+/* ------------------------------------- sign-in hints, `GET /api/agents/hints` */
+
+/**
+ * One documented way to carry out a step — Rust `probe::HintCommand`.
+ *
+ * `then` exists because three of these CLIs have no sign-in *subcommand*: sign-in is a slash command
+ * typed inside a running TUI. Flattening it into the shell line would produce `copilot /login`,
+ * which is a prompt, not a login — so the two halves stay apart and the renderer says "then type
+ * this at the prompt".
+ */
+export interface HintCommand {
+  /** The shell to run. Always a single runnable line. */
+  command: string;
+  /** What to type at the prompt `command` opens, or absent when the shell line is the whole of it. */
+  then?: string;
+}
+
+/** One half of a hint — Rust `probe::HintStep`. */
+export interface HintStep {
+  /** Why the routes below are the ones to take, or — where there are none — what to do instead. */
+  summary: string;
+  /** Every documented route, best first; the rest are alternatives. Empty for a provider with no CLI. */
+  commands: HintCommand[];
+  /**
+   * A page to open rather than a command to run — the console where a bring-your-own provider's key
+   * is created. Separate from `commands` because the two render differently, and a URL shown as
+   * shell invites someone to paste it into one.
+   */
+  url?: string;
+}
+
+/**
+ * How to install and sign in to one agent — Rust `probe::AgentSignInHint`.
+ *
+ * The daemon owns these facts and both surfaces render them: the Coding Agent pane's Help section
+ * and the Test Agent dialog's authentication row. It used to be a pre-rendered sentence from the
+ * probe plus a second hand-written copy in the webview, and the two drifted — three hints ended up
+ * naming commands their CLI does not have. Data rather than prose is what stops that recurring.
+ */
+export interface AgentSignInHint {
+  /** The card or agent id this answers for, keyed by card so a BYO card keeps its own console link. */
+  agent: string;
+  /** What `probe_binary` looks for. Absent for the BYO cards, which are providers rather than CLIs. */
+  binary?: string;
+  install: HintStep;
+  auth: HintStep;
+}
+
 export interface AgentAuthResult {
   status: AuthStatus;
   /** Which backend the credential is for: `bedrock`, `vertex`, `anthropic-api`. */
@@ -137,7 +185,12 @@ export interface AgentAuthResult {
   /** How it is held: `oauth`, `api-key`, `auth-file`, `environment`. */
   authMethod?: string | null;
   error?: string | null;
-  signInHint?: string | null;
+  /**
+   * How to sign in to this agent, on a probe that found it signed out. Structured rather than the
+   * sentence V1 returned: the dialog shows the first route as the thing to do, and the Help section
+   * renders the same value in full.
+   */
+  signInHint?: AgentSignInHint | null;
 }
 
 /**

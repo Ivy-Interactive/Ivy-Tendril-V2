@@ -57,6 +57,14 @@ interface AgentViewerProps {
    */
   showMetricsDivider?: boolean;
   /**
+   * When the run began, from whoever owns it rather than from its log.
+   *
+   * Threaded straight to {@link AgentMetricsFooterProps.startedAt}; see that prop for why the
+   * stream's own first timestamp is not always the run's start. A caller with no run record behind
+   * it — a chat pane, a story — passes nothing and the stream stands in, as before.
+   */
+  startedAt?: string | null;
+  /**
    * Whether more output is still expected.
    *
    * Only the elapsed timer cares, and only for one case the stream cannot settle by itself: a run that
@@ -104,6 +112,7 @@ export const AgentViewer: React.FC<AgentViewerProps> = ({
   showStatusEvents = true,
   showMetrics = true,
   showMetricsDivider = true,
+  startedAt,
   live,
   groupToolCalls = false,
   virtualized = true,
@@ -296,6 +305,7 @@ export const AgentViewer: React.FC<AgentViewerProps> = ({
           metrics={metrics}
           isComplete={noMoreOutput}
           showDivider={showMetricsDivider}
+          startedAt={startedAt}
         />
       )}
     </div>

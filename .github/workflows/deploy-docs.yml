@@ -1,0 +1,100 @@
+name: Deploy Docs
+
+on:
+  push:
+    branches:
+      - development
+      - main
+    paths:
+      - 'src/apps/tendril-docs/**'
+      - 'src/packages/components/**'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/deploy-docs.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build Documentation Site
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          run-install: false
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build components library
+        run: pnpm --filter @ivy-interactive/components build
+
+      - name: Run docs tests
+        run: pnpm --filter @ivy-interactive/tendril-docs test
+
+      - name: Run docs check
+        run: pnpm --filter @ivy-interactive/tendril-docs check
+
+      - name: Setup Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Build docs static site
+        run: pnpm --filter @ivy-interactive/tendril-docs build
+        env:
+          VITE_BASE_PATH: ${{ steps.pages.outputs.base_path }}/docs/
+
+      - name: Prepare Pages directory structure
+        run: |
+          mkdir -p dist-pages/docs
+          # Copy entire built docs distribution into /docs subpath (including hidden files)
+          cp -r src/apps/tendril-docs/dist/. dist-pages/docs/
+          # Also copy root assets (robots.txt, sitemap.xml, llms.txt, og-image.png, trust pages, .well-known) to root of Pages
+          cp -r src/apps/tendril-docs/dist/. dist-pages/
+          # Ensure .well-known is explicitly copied
+          cp -r src/apps/tendril-docs/dist/.well-known dist-pages/
+          cp -r src/apps/tendril-docs/dist/.well-known dist-pages/docs/
+          # Set the rich, agent-ready homepage with full HTML, JSON-LD, and sequential headings as dist-pages/index.html
+          cp src/apps/tendril-docs/dist/homepage.html dist-pages/index.html
+          # Set the agent-friendly 404 page as dist-pages/404.html
+          cp src/apps/tendril-docs/dist/404.html dist-pages/404.html
+          touch dist-pages/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist-pages
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

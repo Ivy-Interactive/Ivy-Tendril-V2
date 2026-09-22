@@ -28,4 +28,5 @@ _unattended_ against your own repository, which is where the value is.
 - [Troubleshooting](06_Troubleshooting.md) — symptoms and fixes, by area.
 
 When you are through these, [Concepts](../02_Concepts/_Index.md) explains the model underneath:
-plans, promptwares and the job lifecycle.
+[plans](../02_Concepts/01_Plans.md), [promptwares](../02_Concepts/02_Promptwares.md), and the
+[job lifecycle](../02_Concepts/03_Lifecycle.md).

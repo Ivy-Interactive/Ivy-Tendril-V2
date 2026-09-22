@@ -165,6 +165,13 @@
   --control-height-sm: 28px;
   --row-height: 38px;
 
+  /* Reading measure for long-form content.
+     V1's `Cap()` wraps every plan/review tab in `Width(Size.Full().Max(Size.Units(200)))`, and
+     200 Ivy units * 0.25rem = 50rem. `.pmv-markdown` already hard-codes the same number; this
+     token is what the tabs that are *not* markdown share with it, so a plan's prose, its Details
+     table and its Git list all break at the same column on a wide window. */
+  --content-measure: 50rem; /* 200 Ivy units * 0.25rem */
+
   /* Font weights */
   --font-weight-normal: 400;
   --font-weight-medium: 500;

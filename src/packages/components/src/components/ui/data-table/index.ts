@@ -33,6 +33,10 @@ export {
   type DataTableColumnOptionsProps,
 } from "./data-table-column-options";
 export {
+  DataTableColumnResizer,
+  type DataTableColumnResizerProps,
+} from "./data-table-column-resizer";
+export {
   DataTablePagination,
   DEFAULT_PAGE_SIZE_OPTIONS,
   type DataTablePaginationProps,
@@ -85,10 +89,44 @@ export type {
 } from "./types";
 
 export {
+  cellRangeContains,
+  cellRangeRect,
+  cellRangeSize,
+  cellRangeToHtml,
+  cellRangeToText,
+  escapeClipboardValue,
+  type DataTableCellAddress,
+  type DataTableCellRange,
+  type DataTableCellRect,
+} from "./cell-range";
+export {
+  clampColumnWidth,
+  parseDeclaredWidth,
+  useColumnLayout,
+  DATA_TABLE_DEFAULT_COLUMN_WIDTH,
+  DATA_TABLE_MAX_COLUMN_WIDTH,
+  DATA_TABLE_MIN_COLUMN_WIDTH,
+  DATA_TABLE_RESIZE_SHIFT_STEP,
+  DATA_TABLE_RESIZE_STEP,
+  type DataTableColumnWidths,
+  type UseColumnLayoutOptions,
+  type UseColumnLayoutResult,
+} from "./use-column-layout";
+export {
+  useColumnReorder,
+  type UseColumnReorderOptions,
+  type UseColumnReorderResult,
+} from "./use-column-reorder";
+export {
   useColumnVisibility,
   type UseColumnVisibilityOptions,
   type UseColumnVisibilityResult,
 } from "./use-column-visibility";
+export {
+  useDataTableCellSelection,
+  type UseDataTableCellSelectionOptions,
+  type UseDataTableCellSelectionResult,
+} from "./use-data-table-cell-selection";
 export {
   DATA_TABLE_LOAD_MORE_THRESHOLD_ROWS,
   useDataTableInfiniteScroll,

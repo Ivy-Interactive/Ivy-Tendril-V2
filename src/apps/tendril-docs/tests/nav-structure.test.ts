@@ -23,12 +23,39 @@ function everySection(sections: NavSection[]): NavSection[] {
 }
 
 describe("buildNavTree", () => {
-  it("has the two authored sections, in numeric order", () => {
-    expect(tree.map((section) => section.name)).toEqual(["01_GettingStarted", "02_Concepts"]);
-    expect(tree.map((section) => section.title)).toEqual(["Getting Started", "Concepts"]);
+  it("has the nine authored sections, in numeric order", () => {
+    expect(tree.map((section) => section.name)).toEqual([
+      "01_GettingStarted",
+      "02_Concepts",
+      "03_Configuration",
+      "04_Apps",
+      "05_ReleaseNotes",
+      "06_CodingAgents",
+      "07_Integrations",
+      "08_ModelProviders",
+      "09_Advanced",
+    ]);
+    expect(tree.map((section) => section.title)).toEqual([
+      "Getting Started",
+      "Concepts",
+      "Configuration",
+      "Apps",
+      "Release Notes",
+      "Coding Agents",
+      "Integrations",
+      "Model Providers",
+      "Advanced",
+    ]);
     expect(tree.map((section) => section.route)).toEqual([
       "/docs/gettingstarted",
       "/docs/concepts",
+      "/docs/configuration",
+      "/docs/apps",
+      "/docs/releasenotes",
+      "/docs/codingagents",
+      "/docs/integrations",
+      "/docs/modelproviders",
+      "/docs/advanced",
     ]);
   });
 

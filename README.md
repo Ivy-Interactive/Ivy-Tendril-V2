@@ -14,6 +14,8 @@
   <img src="https://img.shields.io/badge/macOS%20%7C%20Windows%20%7C%20Linux-4493F8?style=flat-square" alt="Supported platforms: macOS, Windows, and Linux" />
 </p>
 
+<h2>This is a WIP upgrade of Tendril. This repo will be deleted once we are done</h2>
+
 <h2>The Agentic Software Factory for 10x Builders</h2>
 
 <p>

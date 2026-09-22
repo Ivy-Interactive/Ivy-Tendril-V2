@@ -21,7 +21,7 @@ import { describeProjectNameError } from "../../onboarding/validation";
  * merges `projects` by name, so a renamed entry matches nothing and is appended beside the original,
  * and its own documentation says omission is not deletion. Both take their own daemon route -
  * `PUT /api/projects/:name` with `newName`, and `DELETE /api/projects/:name` - which the bridge
- * reaches directly as `renameProject` and `deleteProject`.
+ * reaches directly as `renameProject` and `removeProject`.
  */
 
 /** The Cancel/confirm pair every V1 `*BladeView` ends with. */

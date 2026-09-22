@@ -303,6 +303,63 @@ describe("plansStore transitions", () => {
 
     expect(plansStore.getState().plans.find((p) => p.id === "00031")?.state).toBe("Draft");
   });
+
+  /**
+   * A reset leaves no pre-action snapshot behind, because it is the one transition that is an
+   * **arrival**.
+   *
+   * `plansBeforeChange` exists so `nextAfterRemoval` can still read a *departing* plan's index after
+   * the row has moved, and its consumer reads it on the same tick. Nothing ever retires it —
+   * `setPlans` is the only clearer and no production path calls it — so whatever the last transition
+   * wrote survives indefinitely, and `listIncluding`'s guard prefers a snapshot whenever the recorded
+   * state differs from the live one. A reset guarantees that difference (Review to Draft) while the
+   * plan is now *in* the Plans queue with its index intact, so the stale list is served to whatever
+   * the operator does next: pressing Update Plan on a just-reset plan measured a queue that still
+   * recorded it as Review, concluded it was in no queue at all, and bounced to the Plans page instead
+   * of opening the next draft.
+   */
+  it("leaves no stale snapshot for the next action after a reset", async () => {
+    vi.spyOn(bridge, "resetPlan").mockResolvedValue(undefined);
+    vi.spyOn(bridge, "listPlans").mockReturnValue(new Promise(() => {}));
+
+    await plansStore.resetPlanOptimistic("00031");
+
+    // The reset plan is a Draft now, and the live list is the list that says so. Answering with the
+    // pre-reset one calls it `Review` again — one action out of date, exactly what the guard on
+    // `listIncluding` is meant to refuse.
+    expect(plansStore.listIncluding("00031").find((p) => p.id === "00031")?.state).toBe("Draft");
+  });
+
+  /**
+   * And the snapshot a genuine departure needs is still taken. Completing 00031 takes it out of the
+   * review queue, so the list that still holds its index is the only one an advance can measure.
+   */
+  it("still snapshots the queue a completed plan departed from", async () => {
+    vi.spyOn(bridge, "updatePlanField").mockResolvedValue(undefined);
+    vi.spyOn(bridge, "listPlans").mockReturnValue(new Promise(() => {}));
+
+    await plansStore.transitionPlanOptimistic("00031", "Completed");
+
+    expect(plansStore.listIncluding("00031").find((p) => p.id === "00031")?.state).toBe("Review");
+  });
+
+  /**
+   * Thaw is the other arrival, and reaches this through `transitionPlanOptimistic` rather than
+   * `resetPlanOptimistic`, so the rule has to live in what they share. `IceboxView.thaw` writes
+   * `Draft` on a plan that was in no queue and is now in the Plans one.
+   */
+  it("leaves no stale snapshot when a thawed plan joins the plans queue", async () => {
+    plansStore.setPlans([
+      planSummary({ id: "00031", title: "Frozen", state: "Icebox" }),
+      planSummary({ id: "00012", title: "Older review", state: "Review" }),
+    ]);
+    vi.spyOn(bridge, "updatePlanField").mockResolvedValue(undefined);
+    vi.spyOn(bridge, "listPlans").mockReturnValue(new Promise(() => {}));
+
+    await plansStore.transitionPlanOptimistic("00031", "Draft");
+
+    expect(plansStore.listIncluding("00031").find((p) => p.id === "00031")?.state).toBe("Draft");
+  });
 });
 
 /**

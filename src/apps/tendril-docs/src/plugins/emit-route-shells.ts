@@ -14,6 +14,7 @@ import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Plugin } from "vite";
 import { buildNavTree, flattenNavRoutes } from "../lib/nav";
+import { parsePages } from "../lib/page";
 import { ROUTE_BASE } from "../lib/slug";
 
 export interface EmitRouteShellsOptions {
@@ -103,13 +104,95 @@ export function emitRouteShells(options: EmitRouteShellsOptions): Plugin {
         return;
       }
 
+      const files = readContentFiles(options.contentDir);
+      const pages = parsePages(files);
+
       for (const route of routes) {
         const fileName = shellPathForRoute(route, base);
         if (!fileName) continue;
         const target = path.join(outDir, fileName);
         mkdirSync(path.dirname(target), { recursive: true });
-        writeFileSync(target, shell);
+
+        const page = [...pages.values()].find((p) => p.route === route);
+        if (page) {
+          const pageTitle = `${page.title} · Tendril Docs`;
+          const pageDesc = page.description || page.title;
+          const previewHtml = `<main style="max-width:850px;margin:2rem auto;padding:1.5rem;font-family:system-ui,-apple-system,sans-serif;color:#1f2937"><h1>${escapeHtml(page.title)}</h1>${page.description ? `<p style="font-size:1.15rem;color:#4b5563;margin-bottom:1.5rem">${escapeHtml(page.description)}</p>` : ""}<article>${renderSimpleMarkdownToHtml(page.body)}</article></main>`;
+          const customized = shell
+            .replace(/<title>.*?<\/title>/i, `<title>${escapeHtml(pageTitle)}</title>`)
+            .replace(
+              "</head>",
+              `  <meta name="description" content="${escapeHtml(pageDesc)}">\n  <link rel="canonical" href="${route}">\n</head>`,
+            )
+            .replace('<div id="root"></div>', `<div id="root">${previewHtml}</div>`);
+          writeFileSync(target, customized);
+        } else {
+          writeFileSync(target, shell);
+        }
       }
     },
   };
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+function renderSimpleMarkdownToHtml(markdown: string): string {
+  const lines = markdown.split("\n");
+  const htmlParts: string[] = [];
+  let inCodeBlock = false;
+  let codeBuffer: string[] = [];
+
+  for (const line of lines) {
+    if (line.trim().startsWith("```")) {
+      if (inCodeBlock) {
+        htmlParts.push(
+          `<pre style="background:#f3f4f6;padding:1rem;border-radius:6px;overflow-x:auto"><code>${escapeHtml(codeBuffer.join("\n"))}</code></pre>`,
+        );
+        codeBuffer = [];
+        inCodeBlock = false;
+      } else {
+        inCodeBlock = true;
+      }
+      continue;
+    }
+
+    if (inCodeBlock) {
+      codeBuffer.push(line);
+      continue;
+    }
+
+    const trimmed = line.trim();
+    if (!trimmed) continue;
+
+    if (trimmed.startsWith("### ")) {
+      htmlParts.push(`<h3>${escapeHtml(trimmed.slice(4))}</h3>`);
+    } else if (trimmed.startsWith("## ")) {
+      htmlParts.push(`<h2>${escapeHtml(trimmed.slice(3))}</h2>`);
+    } else if (trimmed.startsWith("# ")) {
+      htmlParts.push(`<h1>${escapeHtml(trimmed.slice(2))}</h1>`);
+    } else if (trimmed.startsWith("- ") || trimmed.startsWith("* ")) {
+      htmlParts.push(`<li>${escapeHtml(trimmed.slice(2))}</li>`);
+    } else if (trimmed.startsWith("> ")) {
+      htmlParts.push(
+        `<blockquote style="border-left:4px solid #3b82f6;padding-left:1rem;color:#4b5563">${escapeHtml(trimmed.slice(2))}</blockquote>`,
+      );
+    } else {
+      htmlParts.push(`<p>${escapeHtml(trimmed)}</p>`);
+    }
+  }
+
+  if (inCodeBlock && codeBuffer.length > 0) {
+    htmlParts.push(
+      `<pre style="background:#f3f4f6;padding:1rem;border-radius:6px;overflow-x:auto"><code>${escapeHtml(codeBuffer.join("\n"))}</code></pre>`,
+    );
+  }
+
+  return htmlParts.join("\n");
 }

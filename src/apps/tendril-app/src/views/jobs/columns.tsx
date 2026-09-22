@@ -131,6 +131,10 @@ export interface JobColumnsOptions {
   openPlan: (planId: string) => void;
   /** V1's `showOutput(id)`: the output sheet, over the table. */
   openJobOutput: (jobId: string) => void;
+  /** V1's `showCost(id)`: the Cost & Tokens sheet, opened by the Cost *and* Tokens cells. */
+  openJobCost: (jobId: string) => void;
+  /** V1's `showPrompt(...)`: the full, untruncated prompt. */
+  openJobPrompt: (jobId: string) => void;
   statusOptions: DataTableFilterOption[];
   typeOptions: DataTableFilterOption[];
   projectOptions: DataTableFilterOption[];
@@ -140,6 +144,8 @@ export function useJobColumns({
   onSelectPlan,
   openPlan,
   openJobOutput,
+  openJobCost,
+  openJobPrompt,
   statusOptions,
   typeOptions,
   projectOptions,
@@ -202,21 +208,27 @@ export function useJobColumns({
         // V1's Plan Id cell action navigates (`JobsApp.DataTable.cs:95-141`), so this is the framework's
         // *link* cell: `cursor: pointer` on the cell and blue underlined text in it.
         clickable: Boolean(onSelectPlan),
+        // The handler sits on the column so the whole cell navigates, not just the few characters the
+        // id occupies. A row with no plan declares none: an empty Plan Id cell has nowhere to go, and
+        // clicking it must fall through to the row rather than navigate to "".
+        onCellClick: onSelectPlan
+          ? (row) => {
+              if (row.planId) openPlan(row.planId);
+            }
+          : undefined,
         accessor: (row) => row.planId,
         cell: (_value, row) =>
           row.planId ? (
             onSelectPlan ? (
-              <button
-                type="button"
+              /* Still an element rather than bare text: this is the framework's *link* cell, so it
+                 carries the blue underline, and it stays focusable for keyboard reach. The click is
+                 the column's - this only has to not swallow it. */
+              <span
                 className={`font-mono text-xs ${dataTableLinkClass}`}
                 data-testid={`job-plan-${row.id}`}
-                onClick={(event) => {
-                  event.stopPropagation();
-                  openPlan(row.planId);
-                }}
               >
                 {row.planId}
-              </button>
+              </span>
             ) : (
               <span className="font-mono text-xs text-muted-foreground">{row.planId}</span>
             )
@@ -226,14 +238,18 @@ export function useJobColumns({
         name: "prompt",
         header: "Prompt",
         width: "250px",
-        // V1's free-text `[Prompt] contains "…"`, as a box. The daemon's column is
-        // `ReportedPlanTitle`, which is where the cell's text comes from.
-        filter: { kind: "text", column: "reportedPlanTitle" },
-        accessor: (row) => row.prompt,
+        // V1's free-text `[Prompt] contains "…"`, as a box. The cell reads `ReportedPlanTitle` when the
+        // agent has reported a plan and the launch arguments otherwise, so the filter has to reach both
+        // columns or it silently misses whichever jobs took the other route — which for a batch of
+        // `CreatePlan`s imported from the Inbox is all of them.
+        filter: { kind: "text", column: "reportedPlanTitle", alsoColumns: ["args"] },
         // V1's Prompt cell action opens a `PromptSheet` with the untruncated prompt
         // (`JobsApp.cs:51`), resolved from the job's typed args or the plan's `InitialPrompt`.
-        // Neither is on the DTO, so there is nothing longer to show than the cell already holds;
-        // the title carries it for a truncated one.
+        clickable: true,
+        onCellClick: (row) => openJobPrompt(row.id),
+        accessor: (row) => row.prompt,
+        // The cell still truncates to V1's 500 characters and still carries the full text as a
+        // `title`; the sheet is what shows it wrapped and selectable, which a tooltip cannot.
         cell: (_value, row) => (
           <span className="text-sm text-foreground" title={row.prompt || undefined}>
             {row.prompt}
@@ -310,17 +326,14 @@ export function useJobColumns({
         // V1's cell action here opens the output sheet rather than navigating, which is the framework's
         // plain clickable cell: the cursor, and no link styling.
         clickable: true,
+        // V1's cell action is `showOutput(id)`: the output sheet, over the table. On the column, so
+        // the whole cell opens it - the label here is often just "-", which is a very small target.
+        onCellClick: (row) => openJobOutput(row.id),
         accessor: (row) => row.agentOutput,
-        // V1's cell action is `showOutput(id)`: the output sheet, over the table.
         cell: (_value, row) => (
-          <button
-            type="button"
-            className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
+          <span
+            className="flex items-center gap-1 text-xs text-muted-foreground"
             data-testid={`job-output-${row.id}`}
-            onClick={(event) => {
-              event.stopPropagation();
-              openJobOutput(row.id);
-            }}
           >
             {row.agentOutput === "running" ? (
               <>
@@ -333,7 +346,7 @@ export function useJobColumns({
             ) : (
               row.agentOutputLabel
             )}
-          </button>
+          </span>
         ),
       },
       {
@@ -343,6 +356,10 @@ export function useJobColumns({
         align: "Right",
         // The real numeric column, so `> 5` means five dollars. V1 filtered its rendered `~$1.23`.
         filter: { kind: "text", column: "cost", placeholder: "Amount…" },
+        // V1's Cost cell action is `showCost(id)` - the Cost & Tokens sheet, which is where the `~`
+        // on this cell is explained. Same destination as Tokens below, as in V1.
+        clickable: true,
+        onCellClick: (row) => openJobCost(row.id),
         accessor: (row) => row.costValue,
         cell: (_value, row) => (
           <span
@@ -360,6 +377,10 @@ export function useJobColumns({
         width: "80px",
         align: "Right",
         filter: { kind: "text", column: "tokens", placeholder: "Count…" },
+        // V1's Tokens cell action is `showCost(id)` as well (`JobsApp.DataTable.cs:156`): the one
+        // sheet breaks both figures down, so both cells lead to it.
+        clickable: true,
+        onCellClick: (row) => openJobCost(row.id),
         accessor: (row) => row.tokens,
         cell: (_value, row) => (
           <span

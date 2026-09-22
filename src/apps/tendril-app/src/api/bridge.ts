@@ -714,9 +714,34 @@ const tauriClient = {
    * Removes the config entry and nothing else - the project's plans, its Plans/Jobs/Recommendations
    * rows and any repository the daemon cloned for it all stay on disk. Any caller must say so
    * before it asks the user to confirm.
+   *
+   * Named `removeProject` rather than `deleteProject`, which is what it was called while it was the
+   * only one of the two. The mismatch was the bug: a method called *delete* that deletes nothing sat
+   * behind a button called "Delete Project", and the copy explaining that nothing is deleted was the
+   * only thing standing between an operator and the wrong expectation. See
+   * {@link bridge.deleteProjectData} for the one that does delete.
    */
-  async deleteProject(this: void, name: string): Promise<void> {
-    await invoke<unknown>("cmd_delete_project", { name });
+  async removeProject(this: void, name: string): Promise<void> {
+    await invoke<unknown>("cmd_remove_project", { name });
+  },
+
+  /**
+   * Deletes a project **and its data** (`DELETE /api/projects/:name/data`).
+   *
+   * The destructive counterpart to {@link bridge.removeProject}, and a separate route rather than a
+   * flag on that one so that the irreversible call cannot be reached by getting a boolean wrong.
+   *
+   * The daemon removes, in order: every plan folder naming the project (worktrees cleaned first),
+   * `<TENDRIL_HOME>/Projects/<name>/` with the clones, skills, MCP definitions and memories inside
+   * it, the project's rows in `Plans`, `Jobs` and `Recommendations`, and last the `config.yaml`
+   * entry. Job logs under `Logs/Jobs/` are keyed by job id rather than by project and are kept,
+   * which the dialog says.
+   *
+   * 409 while a job of the project is still running, which is the daemon's refusal to delete a
+   * worktree out from under a live agent, and a message the caller should show rather than retry.
+   */
+  async deleteProjectData(this: void, name: string): Promise<void> {
+    await invoke<unknown>("cmd_delete_project_data", { name });
   },
 
   async getConfig(this: void): Promise<TendrilConfig> {
