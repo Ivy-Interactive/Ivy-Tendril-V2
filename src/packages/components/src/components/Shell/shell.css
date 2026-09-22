@@ -737,14 +737,19 @@
   align-items: stretch;
 }
 
+/* height, not min-height: this button's only content is a 16px icon, well under --row-height, so
+   min-height would size it correctly on its own - the mismatch is with its expanded sibling
+   below, whose "Search" label (line-height ~21px) pushes past --row-height and grows past a
+   min-height there. A fixed height on both, matching .tsh-agent's row, clips that label instead
+   of growing around it, so the two variants land on the same resolved height (#246). */
 .tsh-rail-search {
   display: flex;
   align-items: center;
   justify-content: flex-start;
   flex-shrink: 0;
   width: 100%;
-  min-height: var(--row-height);
-  padding: 6px var(--tsh-row-pad-x);
+  height: var(--row-height);
+  padding: 10px var(--tsh-row-pad-x);
   border: none;
   background: transparent;
   border-radius: var(--radius-lg);
@@ -933,12 +938,15 @@
   padding: 0;
 }
 
+/* height, not min-height: see .tsh-rail-search above - this row's own label content is what
+   grows past --row-height under a min-height, so a fixed height (matching .tsh-agent's row) is
+   what keeps this variant and the collapsed rail one at the same resolved height (#246). */
 .tsh-section-search-button {
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  min-height: var(--row-height);
+  height: var(--row-height);
   padding: 10px var(--tsh-row-pad-x);
   border: none;
   border-radius: var(--radius-lg);
