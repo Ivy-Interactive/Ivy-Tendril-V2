@@ -25,21 +25,41 @@
   }
 
   /*
-   * The header is one row tall, like its rows.
+   * The column divider: a hairline on each header cell's trailing edge, marking where to grab to
+   * resize. It is unconditional, so a table with column resizing off still paints it; there it
+   * simply reads as a column separator.
    *
-   * The shared `TableHead` takes its height from `densityHeight` (h-8 / h-10 / h-12 = 32 / 40 / 48px),
-   * a step above what a `TableCell` of the same density renders at (25 / 37 / 49). In a table whose
-   * whole point is rows, that difference is chrome — and the framework's grid draws its header at
-   * exactly `DENSITY_CONFIG.rowHeight`, the same height as a row
-   * (`widgets/dataTables/dataTableEditor/constants.ts`). `height: auto` hands the height back to the
-   * padding, and the padding is a body cell's.
+   * The resize handle is 6px wide and straddles the cell boundary (`-right-[3px] w-[6px]`), so it is
+   * invisible until pointed at — a drag target nobody can find. This paints the line the handle
+   * *would* highlight, at rest, in the same place: `right: 0` here and the handle's own `after` at
+   * its horizontal centre both land on the cell edge, so hovering brightens the very line the reader
+   * aimed at rather than revealing a second one beside it.
    *
-   * Scoped to `.ivy-data-table` so a plain `Table` elsewhere in the app is untouched.
+   * A `::after` on the `th` rather than `border-r`, because a border would be laid out inside the
+   * cell box and shift the label by a pixel at every column; and because the resizer's own `::after`
+   * has to paint *over* this one, which a border cannot lose to (the handle carries `z-10`).
+   *
+   * `top` and `bottom` inset it exactly as the handle's line is inset (`after:inset-y-1` = 4px), so
+   * the two are the same mark rather than two marks of different lengths. It stops short
+   * of the header's own bottom hairline for the same reason.
+   *
+   * `:last-child` is excluded so the divider never doubles with the table's outer border on the
+   * right-hand column — which is also why this is `right: 0` on the cell and not a left border on
+   * the next one: the *next* cell's absolutely positioned reorder grip sits at `-left-2` (8px into
+   * this cell's padding at Small), and a left border there would collide with the grip.
+   *
+   * Header only: `thead th` never matches a body cell, so rows keep the clean horizontal-rule look
+   * the reference asks for.
    */
-  .ivy-data-table thead th {
-    height: auto;
-    padding-top: 0.5rem;
-    padding-bottom: 0.5rem;
+  .ivy-data-table thead th:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    right: 0;
+    width: 1px;
+    background: var(--border);
+    pointer-events: none;
   }
 
   /* wrapText: false (the default) — single line, ellipsis on overflow. */
@@ -134,17 +154,18 @@
   /*
    * The row tints, re-applied over the opaque base above.
    *
-   * `hover:bg-muted/50` and `data-[state=selected]:bg-muted` are `TableRow`'s, painted on the `<tr>` and
-   * therefore behind every cell — including one that has had to become opaque to be sticky. Without
-   * these the actions cell stays background-coloured while the rest of its row lights up, which reads as
-   * a hole in the row. The 50% mix is `bg-muted/50` composited against what is actually behind it.
+   * `hover:bg-secondary/60` and `data-[state=selected]:bg-secondary` are `TableRow`'s, painted on the
+   * `<tr>` and therefore behind every cell — including one that has had to become opaque to be sticky.
+   * Without these the actions cell stays background-coloured while the rest of its row lights up, which
+   * reads as a hole in the row. The 60% mix is `bg-secondary/60` composited against what is actually
+   * behind it, so the two have to be changed together.
    */
   .ivy-data-table tbody tr:hover > td.ivy-data-table-fit-actions {
-    background: color-mix(in srgb, var(--muted) 50%, var(--background));
+    background: color-mix(in srgb, var(--secondary) 60%, var(--background));
   }
 
   .ivy-data-table tbody tr[data-state="selected"] > td.ivy-data-table-fit-actions {
-    background: var(--muted);
+    background: var(--secondary);
   }
 
   /*

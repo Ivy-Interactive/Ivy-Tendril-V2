@@ -305,6 +305,24 @@ export interface DataTableProps<TRow> extends Omit<
 
 const LOADING_ROW_CAP = 5;
 
+/**
+ * Whether the click that just landed is the tail of a text-selection drag.
+ *
+ * The cell-range tracker only counts a drag that crosses *into another cell*, so selecting a few
+ * words inside one cell reads as a plain click — and the row fallback would then open a sheet over
+ * the text the reader highlighted in order to copy it. Guarded for the environments where
+ * `getSelection` is absent or throws (jsdom without a selection implementation), where the honest
+ * answer is "no selection" rather than a crash.
+ */
+function hasTextSelection(): boolean {
+  if (typeof window === "undefined" || typeof window.getSelection !== "function") return false;
+  try {
+    return (window.getSelection()?.toString() ?? "").length > 0;
+  } catch {
+    return false;
+  }
+}
+
 function defaultCellContent(value: unknown): React.ReactNode {
   if (value === null || value === undefined) return null;
   if (typeof value === "string" || typeof value === "number") return value;
@@ -799,6 +817,30 @@ function DataTableInner<TRow>(
                   // Same rule as the per-cell handler below: a click that is the tail of a range
                   // drag selected cells and must not also activate the row.
                   if (cellSelection.shouldSuppressClick()) return;
+                  // A drag that selected text *within* one cell never crosses into a second, so the
+                  // range tracker above does not see it — but it still ends in a click, and opening
+                  // a sheet on top of the words somebody just highlighted to copy them is the same
+                  // bug. The cells that own their click are unaffected: this is the row fallback.
+                  if (hasTextSelection()) return;
+                  onRowClick(row, rowId);
+                }
+              : undefined
+          }
+          onKeyDown={
+            onRowClick
+              ? (event) => {
+                  // The row is focusable and draws a focus ring, so it has to activate from the
+                  // keyboard too — `cursor-pointer` and a roving tabIndex that lead nowhere on Enter
+                  // are an affordance the keyboard cannot take.
+                  if (event.key !== "Enter" && event.key !== " ") return;
+                  // The row activates only when it is itself the target. That is stricter than the
+                  // interactive-element check row focus uses: anything nested — a button, a checkbox,
+                  // an inline editor, or plain text a click landed on — keeps its own Enter and Space
+                  // without needing to be enumerated here.
+                  if (event.target !== event.currentTarget) return;
+                  // Space scrolls the container otherwise; Enter has no default here but is
+                  // prevented alongside it so neither key reaches the scroll parent.
+                  event.preventDefault();
                   onRowClick(row, rowId);
                 }
               : undefined

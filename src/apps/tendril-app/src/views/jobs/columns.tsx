@@ -159,7 +159,19 @@ export function useJobColumns({
   const columns = useMemo<DataTableColumn<JobRow>[]>(
     () => [
       // `.Filterable(t => t.Id, false)` (`:83`) as well as `.Hidden(...)`: no filter control.
-      { name: "id", header: "Id", width: "90px", hidden: true },
+      {
+        name: "id",
+        header: "Id",
+        width: "90px",
+        hidden: true,
+        accessor: (row) => row.id,
+        // Hidden by default, but the column options can bring it back — and a job id is an
+        // identifier, so it reads in the same restrained monospace as Timestamp (and as Plan Id when
+        // that has no destination to link to).
+        cell: (_value, row) => (
+          <span className="font-mono text-xs text-muted-foreground">{row.id}</span>
+        ),
+      },
       {
         name: "status",
         header: "Status",

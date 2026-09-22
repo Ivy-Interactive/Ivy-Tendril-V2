@@ -28,7 +28,7 @@ export const dataTableCellAlignVariant = cva("", {
 export const dataTableLinkClass =
   "text-info underline decoration-info/40 underline-offset-2 hover:decoration-info";
 
-/** Row affordances: clickable rows get a pointer, selected rows get the muted surface. */
+/** Row affordances: clickable rows get a pointer, selected rows get the secondary surface. */
 export const dataTableRowVariant = cva("", {
   variants: {
     interactive: {
@@ -36,7 +36,9 @@ export const dataTableRowVariant = cva("", {
       false: "",
     },
     selected: {
-      true: "bg-muted",
+      /* The same token `TableRow`'s own `data-[state=selected]` paints, and the same one the sticky
+         actions cell re-applies in `data-table.css`. Three places, one surface. */
+      true: "bg-secondary",
       false: "",
     },
   },

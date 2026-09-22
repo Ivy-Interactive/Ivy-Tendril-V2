@@ -7,12 +7,16 @@ import type { Job, JobDetail } from "../src/types/api";
 
 /**
  * V1's per-cell dispatch on the Jobs table (`JobsApp.DataTable.cs:95-175`), which hangs *five*
- * `.OnCellAction(t => t.Column, …)` handlers off five columns and sets `SelectionMode = None`.
+ * `.OnCellAction(t => t.Column, …)` handlers off five columns.
  *
- * The property under test is that a click goes to the cell's *own* destination and to nothing else.
- * V2 had one catch-all `onRowClick` opening the output sheet, so every cell in the row opened the
- * agent output — the Cost, Tokens, Prompt and Plan Id cells all led to the same place. Each test here
- * clicks one cell and asserts both halves: the right sheet opened, and the output sheet did not.
+ * The property under test is precedence: a cell that declares its own action runs that action and
+ * *only* that action, while a cell that declares none falls through to the row, which opens the agent
+ * output. Both halves matter. Route every cell to the row and the Cost, Tokens, Prompt and Plan Id
+ * cells all lead to the same place, which is the catch-all this replaced; drop the row fallback and
+ * the output stream is reachable only from the one narrow Agent Output cell.
+ *
+ * So each test here clicks one cell and asserts both: the destination that should have opened did,
+ * and the one that should not have did not.
  */
 
 const listRow: Job = {
@@ -85,7 +89,7 @@ describe("the Jobs table's cell actions", () => {
   });
 
   it(
-    "opens the agent output sheet from the Agent Output cell, and only from there",
+    "opens the agent output sheet from the Agent Output cell's own action",
     async () => {
       vi.spyOn(jobsStore, "fetchJobDetail").mockResolvedValue(fetched);
       renderJobs();
@@ -194,16 +198,52 @@ describe("the Jobs table's cell actions", () => {
   );
 
   it(
-    "leaves a cell with no action of its own inert - V1 selects nothing and activates nothing",
+    "opens the agent output sheet from a cell that declares no action of its own",
     async () => {
       vi.spyOn(jobsStore, "fetchJobDetail").mockResolvedValue(fetched);
       renderJobs();
 
+      // Project hangs no cell action, so the click falls through to the row.
       await clickCell("project");
-      // `SelectionModes.None` on V1's grid: the row is not a button, so nothing opens.
-      await waitFor(() => expect(screen.queryByTestId("job-output-sheet")).not.toBeInTheDocument());
+      await waitFor(() => expect(screen.getByTestId("job-output-sheet")).toBeInTheDocument());
       expect(screen.queryByTestId("job-cost-sheet-panel")).not.toBeInTheDocument();
       expect(screen.queryByTestId("job-prompt-sheet")).not.toBeInTheDocument();
+    },
+    RADIX_LAYER_TIMEOUT_MS,
+  );
+
+  it(
+    "opens the agent output sheet when Enter is pressed on a focused row",
+    async () => {
+      vi.spyOn(jobsStore, "fetchJobDetail").mockResolvedValue(fetched);
+      renderJobs();
+
+      const row = await waitFor(() => {
+        const found = document.querySelector("tbody [data-row-id]");
+        if (!found) throw new Error("no row yet");
+        return found as HTMLElement;
+      });
+      // The row carries a roving tabIndex and a focus ring, so the keyboard has to reach what the
+      // pointer reaches.
+      row.focus();
+      fireEvent.keyDown(row, { key: "Enter" });
+
+      await waitFor(() => expect(screen.getByTestId("job-output-sheet")).toBeInTheDocument());
+    },
+    RADIX_LAYER_TIMEOUT_MS,
+  );
+
+  it(
+    "runs a cell's own action instead of the row's when the cell declares one",
+    async () => {
+      vi.spyOn(jobsStore, "fetchJobDetail").mockResolvedValue(fetched);
+      renderJobs();
+
+      // `onCellClick` takes precedence over `onRowClick` (`data-table/types.ts`), so the Cost cell
+      // opens Cost & Tokens and the row's output sheet stays shut.
+      await clickCell("cost");
+      await waitFor(() => expect(screen.getByTestId("job-cost-sheet-panel")).toBeInTheDocument());
+      expect(screen.queryByTestId("job-output-sheet")).not.toBeInTheDocument();
     },
     RADIX_LAYER_TIMEOUT_MS,
   );

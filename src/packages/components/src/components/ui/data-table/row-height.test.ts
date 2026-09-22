@@ -14,16 +14,22 @@ import { DATA_TABLE_ROW_HEIGHT_ESTIMATES } from "./use-data-table-virtualization
  *
  * The framework's canvas grid has the same pair of numbers as one number, because it draws rows itself:
  * `DENSITY_CONFIG.rowHeight` of 30 / 38 / 48 at `cellVerticalPadding` of 4 / 8 / 12
- * (`widgets/dataTables/dataTableEditor/constants.ts`). V2 *used* to land within a pixel of that; it is
- * now deliberately tighter — 17 / 25 / 33 against 30 / 38 / 48 — because shorter rows were asked for
- * directly and repeatedly. Small sits on the floor: the text line box (16px) plus the row border, so it
- * cannot go lower without changing the font scale. That divergence is recorded at the variant, and this test still enforces the thing
- * that matters: whatever the padding is, the estimate matches it.
+ * (`widgets/dataTables/dataTableEditor/constants.ts`). V2 sits under that at every density — 25 / 29 /
+ * 37 — which the second test below pins. That relationship is recorded at the variant, and this test
+ * enforces the thing that matters: whatever the padding is, the estimate matches it.
  */
 
 /** Tailwind's `py-N` scale in px. Only the *vertical* padding contributes to row height, which is
  *  why the cell variant sets `px-*` and `py-*` separately rather than one `p-*`. */
-const PADDING_PX: Record<string, number> = { "py-0": 0, "py-0.5": 2, "py-1": 4, "py-1.5": 6 };
+const PADDING_PX: Record<string, number> = {
+  "py-0": 0,
+  "py-0.5": 2,
+  "py-1": 4,
+  "py-1.5": 6,
+  "py-2": 8,
+  "py-2.5": 10,
+  "py-3": 12,
+};
 
 /** Tailwind's default line-height per text size, in px. This is what fills a table row. */
 const LINE_HEIGHT_PX: Record<string, number> = {
@@ -55,11 +61,11 @@ describe("DATA_TABLE_ROW_HEIGHT_ESTIMATES", () => {
   });
 
   it("is no taller than the framework's own row, so the table is at least as compact", () => {
-    // `DENSITY_CONFIG.rowHeight`. Small is deliberately tighter than the framework's 30.
+    // `DENSITY_CONFIG.rowHeight`.
     const framework: Record<Densities, number> = {
       [Densities.Small]: 30,
       [Densities.Medium]: 38,
-      [Densities.Large]: 49,
+      [Densities.Large]: 48,
     };
     for (const density of [Densities.Small, Densities.Medium, Densities.Large]) {
       expect(DATA_TABLE_ROW_HEIGHT_ESTIMATES[density], density).toBeLessThanOrEqual(
