@@ -551,6 +551,7 @@
 .tsh-agent-actions {
   display: flex;
   align-items: center;
+  gap: 6px;
   flex-shrink: 0;
   color: var(--foreground);
 }
