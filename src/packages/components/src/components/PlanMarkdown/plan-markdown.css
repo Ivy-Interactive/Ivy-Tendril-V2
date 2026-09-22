@@ -373,6 +373,10 @@
   right: 0.5rem;
   z-index: 30;
   opacity: 0;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard);
 }
 .pmv-code-block:hover .pmv-code-copy,
 .pmv-code-copy:focus-visible,

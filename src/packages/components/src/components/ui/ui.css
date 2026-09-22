@@ -376,8 +376,7 @@
     cursor: pointer;
     transition:
       background-color var(--duration-fast) var(--ease-standard),
-      color var(--duration-fast) var(--ease-standard),
-      opacity var(--duration-fast) var(--ease-standard);
+      color var(--duration-fast) var(--ease-standard);
   }
 
   .tui-icon-btn[data-size="2xs"] {

@@ -191,7 +191,7 @@ export const Blade = React.forwardRef<HTMLElement, BladeProps>(function Blade(
           )}
         </div>
       </header>
-      <div className="min-h-0 flex-1 bg-background">
+      <div className="min-h-0 flex-1 bg-background contain-inline-size">
         {/* `fitWidth`: the body is laid out at the blade's width, not at the widest thing in it.
             Without it Radix's shrink-to-fit wrapper took its width from the content, so one table
             with a long path in a `nowrap` column widened every callout and detail row with it,

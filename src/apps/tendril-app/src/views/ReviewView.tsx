@@ -1233,7 +1233,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                       <Badge
                         data-testid={`review-verification-${v.name}`}
                         variant={VERIFICATION_BADGE_VARIANT[v.status]}
-                        className="cursor-pointer justify-self-start transition-opacity hover:opacity-80"
+                        className="cursor-pointer justify-self-start hover:opacity-80"
                         onClick={() => setOpenVerification(v.name)}
                         title={`View ${v.name} report`}
                       >
@@ -1429,7 +1429,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                               <React.Fragment key={v.name}>
                                 <Badge
                                   variant={VERIFICATION_BADGE_VARIANT[v.status]}
-                                  className="cursor-pointer justify-self-start transition-opacity hover:opacity-80"
+                                  className="cursor-pointer justify-self-start hover:opacity-80"
                                   onClick={() => setOpenVerification(v.name)}
                                   title={`View ${v.name} report`}
                                 >
