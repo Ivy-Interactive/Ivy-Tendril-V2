@@ -2,6 +2,11 @@ export type DeviceKey = "desktop" | "tablet" | "mobile";
 
 export const DEVICE_ORDER: DeviceKey[] = ["desktop", "tablet", "mobile"];
 
+/**
+ * The device names the viewer reports to its host (the `device` event, a comment's `device`). They
+ * are protocol values and stay English - a host writes the label back as the `device` prop, which
+ * {@link toDeviceKey} parses - and the toolbar shows translated labels of its own.
+ */
 export const DEVICE_LABELS: Record<DeviceKey, string> = {
   desktop: "Desktop",
   tablet: "Tablet",

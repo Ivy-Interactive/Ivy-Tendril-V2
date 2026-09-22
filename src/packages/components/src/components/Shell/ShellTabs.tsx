@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import type { ShellTabDto, ShellWidgetProps } from "./types.ts";
 import { IconButton } from "../ui/IconButton";
+import { useTranslation } from "@/i18n/uiShell";
 import "./shell.css";
 
 interface ShellTabsProps extends ShellWidgetProps {
@@ -56,6 +57,7 @@ export const ShellTabs: React.FC<ShellTabsProps> = ({
   tabs = [],
   selectedId,
 }) => {
+  const { t } = useTranslation("uiShell");
   const fire = (eventName: string, args: unknown[] = []) => {
     if (events.includes(eventName)) eventHandler(eventName, id, args);
   };
@@ -96,7 +98,7 @@ export const ShellTabs: React.FC<ShellTabsProps> = ({
             {closable && (
               <IconButton
                 className="tsh-tab-close"
-                label={`Close ${tab.title}`}
+                label={t("tabs.closeAriaLabel", { title: tab.title })}
                 tooltip={false}
                 size="2xs"
                 onClick={(e) => {
@@ -112,7 +114,7 @@ export const ShellTabs: React.FC<ShellTabsProps> = ({
       })}
       <IconButton
         className="tsh-tab-new"
-        label="New agent session"
+        label={t("tabs.newSession")}
         tooltip={false}
         size="xl"
         onClick={() => fire("OnNew")}

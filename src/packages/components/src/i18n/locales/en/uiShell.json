@@ -1,1 +1,274 @@
-{}
+{
+  "agentButton": {
+    "label": "Agent",
+    "newChatTooltip": "New Chat",
+    "flyout": {
+      "empty": "No chats yet",
+      "newChat": "New chat"
+    }
+  },
+  "newPlanButton": {
+    "label": "New Plan"
+  },
+  "settingsButton": {
+    "label": "Settings"
+  },
+  "nav": {
+    "resizeAriaLabel": "Resize navigation"
+  },
+  "railFlyout": {
+    "previous": "Previous",
+    "next": "Next"
+  },
+  "sectionItems": {
+    "state": {
+      "working": "Working",
+      "completed": "Completed"
+    },
+    "menu": {
+      "label": "{{title}} options",
+      "tooltip": "Options",
+      "pin": "Pin chat",
+      "unpin": "Unpin chat",
+      "rename": "Edit name",
+      "delete": "Delete"
+    },
+    "titleEditor": {
+      "ariaLabel": "Item name"
+    }
+  },
+  "sidebarHeader": {
+    "openSidebar": "Open sidebar",
+    "closeSidebar": "Close sidebar"
+  },
+  "sidebarSection": {
+    "searchLabel": "Search plans",
+    "searchButton": "Search"
+  },
+  "tabs": {
+    "closeAriaLabel": "Close {{title}}",
+    "newSession": "New agent session"
+  },
+  "shell": {
+    "toggleSidebarShortcut": "Toggle sidebar",
+    "resizer": {
+      "ariaLabel": "Resize sidebar",
+      "title": "Drag to resize sidebar, double-click to reset"
+    }
+  },
+  "agentStatus": {
+    "starting": "Starting…",
+    "completed": "Completed",
+    "failed": "Failed",
+    "thinking": "Thinking…",
+    "working": "Working…",
+    "runningCommand": "Running command",
+    "reading": "Reading",
+    "readingFile": "Reading {{file}}",
+    "editing": "Editing",
+    "editingFile": "Editing {{file}}",
+    "searching": "Searching",
+    "runningTool": "Running {{name}}"
+  },
+  "resultSummary": {
+    "errorTitle": "❌ Error",
+    "terminated": "Agent process was terminated or timed out (exit code {{code}}).",
+    "terminatedUnknownCode": "Agent process was terminated or timed out (exit code unknown).",
+    "cost": {
+      "billed": "Cost: {{cost}}",
+      "estimated": "Cost: ~{{cost}}",
+      "billedTooltip": "Billed by the agent",
+      "estimatedTooltip": "Priced from the token counts at this model's list price, which cannot know your plan or tier"
+    },
+    "duration": "Duration: {{seconds}}s",
+    "tokens": "Tokens: {{input}} in / {{output}} out",
+    "cache": "Cache: {{read}} read / {{write}} write",
+    "premium": "Premium: {{value}}",
+    "exitCode": "Exit: {{code}}",
+    "denied": "Denied: {{value}}"
+  },
+  "metrics": {
+    "elapsed": {
+      "label": "Output time",
+      "reportedTooltip": "Output time: the duration the agent reported",
+      "measuredTooltip": "Output time: measured from the first event to the last",
+      "runningTooltip": "Output time: measured from the first event"
+    },
+    "tokens": {
+      "label": "Tokens",
+      "estimatedTooltip": "Tokens: estimated from the stream so far; the agent reports its own count when it finishes",
+      "reportedTooltip": "Tokens: reported by the agent"
+    },
+    "cost": {
+      "label": "Cost",
+      "estimatedTooltip": "Cost: priced from the token counts at this model's list price, which cannot know your plan or tier",
+      "billedTooltip": "Cost: billed by the agent"
+    }
+  },
+  "toolCard": {
+    "file": "File: {{path}}",
+    "url": "URL: {{url}}",
+    "query": "Query: {{query}}",
+    "queryInPath": "Query: {{query}} in {{path}}",
+    "input": "IN",
+    "output": "OUT"
+  },
+  "toolGroup": {
+    "count_one": "{{count}} tool call",
+    "count_other": "{{count}} tool calls"
+  },
+  "agentNode": {
+    "session": "session: {{session}}",
+    "sessionWithModel": "session: {{session}} ({{model}})",
+    "errorTitle": "❌ Error"
+  },
+  "badgeSelect": {
+    "placeholder": "Select...",
+    "ariaLabel": "Select",
+    "remove": "Remove {{label}}"
+  },
+  "contentInput": {
+    "placeholder": "How can I help you today?",
+    "send": "Send",
+    "moreOptions": "More options",
+    "attachFiles": "Attach files",
+    "voiceInput": "Voice input transcription",
+    "dismissError": "Dismiss error",
+    "removeFile": "Remove file",
+    "attachment": {
+      "document": "Document",
+      "lineCount_one": "{{count}} line",
+      "lineCount_other": "{{count}} lines",
+      "sizeBytes": "{{size}} B",
+      "sizeKilobytes": "{{size}} KB",
+      "sizeMegabytes": "{{size}} MB"
+    },
+    "errors": {
+      "uploadStatus": "Upload failed with status {{status}}",
+      "uploadFailed": "Failed to upload file: {{error}}",
+      "readFailed": "Failed to read file",
+      "emptyTranscription": "The transcription did not contain enough information to generate a prompt. Please try again and speak clearly."
+    }
+  },
+  "voice": {
+    "errors": {
+      "insecureContext": "Voice input needs a secure connection. Open Tendril over HTTPS or on localhost, then try again.",
+      "mediaDevicesUnavailable": "Voice input is not available in this window. On macOS, quit and reopen Ivy Tendril after updating, then allow microphone access when prompted. You can also run '{{command}}' and use voice input in your browser.",
+      "audioCaptureUnsupported": "This browser cannot capture audio for voice input.",
+      "captureInitFailed": "Audio capture initialization failed: {{error}}",
+      "websocket": "WebSocket error occurred connecting to transcription service.",
+      "closedUnexpectedly": "WebSocket connection closed unexpectedly (code {{code}}: {{reason}})",
+      "closedUnexpectedlyNoReason": "WebSocket connection closed unexpectedly (code {{code}}: No reason given)",
+      "connectionFailed": "Microphone access denied or connection failed: {{error}}",
+      "microphoneDenied": "Microphone access was denied. Allow microphone access for Ivy Tendril in System Settings > Privacy and Security > Microphone, then try again.",
+      "microphoneNotFound": "No microphone was found. Connect an input device and try again."
+    }
+  },
+  "dashboard": {
+    "status": {
+      "plans": "Plans",
+      "inProgress": "In Progress",
+      "readyForReview": "Ready For Review",
+      "completed": "Completed",
+      "failed": "Failed"
+    },
+    "kpi": {
+      "breakdownAriaLabel": "View calculation breakdown for {{label}}",
+      "loadingAriaLabel": "Loading metrics"
+    },
+    "trend": {
+      "loading": "Loading cost and plan trend",
+      "costTab": "Total Cost",
+      "plansTab": "Total Plans",
+      "currentName": "Last 4 weeks",
+      "rollingLegend": "7-day average",
+      "plansValue_one": "{{count}} plan",
+      "plansValue_other": "{{count}} plans"
+    },
+    "gitActivity": {
+      "title": "Git Activity",
+      "loading": "Loading Git activity"
+    },
+    "pullRequests": {
+      "title": "Pull Requests",
+      "weekTab": "Week",
+      "monthTab": "Month",
+      "loading": "Loading merged pull requests"
+    },
+    "tunnel": {
+      "title": "Tunnel"
+    },
+    "factory": {
+      "title": "Software Factory"
+    },
+    "jobs": {
+      "title": "Active Jobs",
+      "empty": "No jobs running"
+    }
+  },
+  "trendChart": {
+    "axisDateWithYear": "{{date}} '{{year}}",
+    "currentRow": "{{name}}: {{value}}",
+    "rollingRow": "7-day average: {{value}}"
+  },
+  "activityGrid": {
+    "empty": "No merged pull requests yet",
+    "weekOf": "Week of {{date}}",
+    "merged_one": "{{count}} pull request merged",
+    "merged_other": "{{count}} pull requests merged"
+  },
+  "pullRequestBars": {
+    "empty": "No merged pull requests yet",
+    "weekOf": "Week of {{date}}",
+    "barLabel": "{{period}}: {{merged}}",
+    "merged_one": "{{count}} pull request merged",
+    "merged_other": "{{count}} pull requests merged",
+    "tooltipMerged_one": "{{count}} PR merged",
+    "tooltipMerged_other": "{{count}} PRs merged"
+  },
+  "processViewer": {
+    "newPlan": "New Plan",
+    "plans": "Plans",
+    "review": "Review",
+    "creatingPr": "PR {{value}}"
+  },
+  "terminal": {
+    "loading": "Loading..."
+  },
+  "webViewer": {
+    "toolbar": {
+      "ariaLabel": "Browser controls",
+      "back": "Back",
+      "forward": "Forward",
+      "reload": "Reload",
+      "startSelecting": "Select an element to comment on",
+      "stopSelecting": "Stop selecting",
+      "viewport": "Viewport: {{device}}",
+      "address": "Address",
+      "addressPlaceholder": "Enter a URL"
+    },
+    "devices": {
+      "desktop": "Desktop",
+      "tablet": "Tablet",
+      "mobile": "Mobile"
+    },
+    "empty": "Enter a URL in the address bar to load a page.",
+    "frameTitle": "Web content",
+    "comment": {
+      "title": "Comment on",
+      "title_tag": "Comment on<tag>{{tag}}</tag>",
+      "title_text": "Comment on<snippet>\"{{text}}\"</snippet>",
+      "title_tagText": "Comment on<tag>{{tag}}</tag><snippet>\"{{text}}\"</snippet>",
+      "sourceLabel": "source",
+      "resolvingSource": "resolving source map…",
+      "componentsLabel": "components",
+      "xpathLabel": "xpath",
+      "selectorLabel": "selector",
+      "placeholder": "Type a comment… ({{shortcut}} to submit)",
+      "delete": "Delete",
+      "cancel": "Cancel",
+      "save": "Save",
+      "add": "Add"
+    }
+  }
+}

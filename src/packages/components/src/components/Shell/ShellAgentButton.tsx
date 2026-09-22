@@ -14,9 +14,8 @@ import { ShellRailFlyout, type RailFlyoutTrigger } from "./ShellRailFlyout.tsx";
 import { ShellTooltip } from "./ShellTooltip.tsx";
 import { TuiBadge as Badge } from "../ui/TuiBadge";
 import { TuiKbd } from "../ui/TuiKbd";
+import { useTranslation } from "@/i18n/uiShell";
 import "./shell.css";
-
-const NEW_CHAT_LABEL = "New Chat";
 
 interface ShellAgentButtonProps extends ShellWidgetProps {
   label?: string;
@@ -40,7 +39,7 @@ export const ShellAgentButton: React.FC<ShellAgentButtonProps> = ({
   id,
   events = [],
   eventHandler,
-  label = "Agent",
+  label: labelProp,
   icon,
   shortcutKey = NEW_CHAT_SHORTCUT_KEY,
   isActive = false,
@@ -49,6 +48,8 @@ export const ShellAgentButton: React.FC<ShellAgentButtonProps> = ({
   selectedId,
   listTitle,
 }) => {
+  const { t } = useTranslation("uiShell");
+  const label = labelProp ?? t("agentButton.label");
   const { collapsed } = useShell();
 
   const fireOpen = useCallback(() => {
@@ -157,9 +158,9 @@ export const ShellAgentButton: React.FC<ShellAgentButtonProps> = ({
           title={listTitle}
           items={items}
           selectedId={selectedId}
-          emptyText="No chats yet"
+          emptyText={t("agentButton.flyout.empty")}
           onSelect={fireSelect}
-          newLabel="New chat"
+          newLabel={t("agentButton.flyout.newChat")}
           onNew={fireNewChat}
           onRename={fireRename}
           onDelete={fireDelete}
@@ -168,7 +169,7 @@ export const ShellAgentButton: React.FC<ShellAgentButtonProps> = ({
           {renderButton}
         </ShellRailFlyout>
       ) : (
-        <ShellTooltip content={NEW_CHAT_LABEL} shortcut={hintKeys} side="right">
+        <ShellTooltip content={t("agentButton.newChatTooltip")} shortcut={hintKeys} side="right">
           {renderButton()}
         </ShellTooltip>
       )}

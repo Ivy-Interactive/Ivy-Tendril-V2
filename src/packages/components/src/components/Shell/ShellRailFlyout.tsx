@@ -4,6 +4,7 @@ import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import type { ShellSectionItemDto } from "./types";
 import { ShellSectionItems } from "./ShellSectionItems";
 import { IconButton } from "../ui/IconButton";
+import { useTranslation } from "@/i18n/uiShell";
 import "./shell.css";
 
 const OPEN_DELAY_MS = 120;
@@ -60,6 +61,7 @@ export const ShellRailFlyout: React.FC<ShellRailFlyoutProps> = ({
   onTogglePin,
   children,
 }) => {
+  const { t } = useTranslation("uiShell");
   const [open, setOpen] = useState(false);
   const [pinned, setPinned] = useState(false);
   const [position, setPosition] = useState<MenuPosition | null>(null);
@@ -217,7 +219,7 @@ export const ShellRailFlyout: React.FC<ShellRailFlyoutProps> = ({
             <div className="tsh-rail-menu-bar">
               <span className="tsh-rail-menu-steps">
                 <IconButton
-                  label="Previous"
+                  label={t("railFlyout.previous")}
                   size="sm"
                   onClick={() => step(-1)}
                   disabled={!canStepBack}
@@ -225,7 +227,7 @@ export const ShellRailFlyout: React.FC<ShellRailFlyoutProps> = ({
                   <ChevronLeft size={14} />
                 </IconButton>
                 <IconButton
-                  label="Next"
+                  label={t("railFlyout.next")}
                   size="sm"
                   onClick={() => step(1)}
                   disabled={!canStepForward}

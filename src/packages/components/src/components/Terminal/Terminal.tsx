@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useImperativeHandle, useRef, useState } 
 import type { ITheme, Terminal as XTerm } from "@xterm/xterm";
 import type { FitAddon } from "@xterm/addon-fit";
 import { Spinner } from "../ui/spinner";
+import { useTranslation } from "@/i18n/uiShell";
 import "@xterm/xterm/css/xterm.css";
 import "./terminal.css";
 
@@ -161,10 +162,11 @@ export function Terminal({
   allowClipboard = true,
   autoFocus = true,
   loading = false,
-  loadingText = "Loading...",
+  loadingText,
   className,
   ref,
 }: TerminalProps) {
+  const { t } = useTranslation("uiShell");
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
   const fitRef = useRef<FitAddon | null>(null);
@@ -445,7 +447,7 @@ export function Terminal({
             trackColor="rgba(128, 128, 128, 0.3)"
             aria-hidden="true"
           />
-          <span>{loadingText}</span>
+          <span>{loadingText ?? t("terminal.loading")}</span>
         </div>
       )}
     </div>

@@ -8,7 +8,19 @@ import { clipboardFiles } from "../../lib/clipboard";
 import { isImageFile as isKnownImageType } from "../../lib/imageUtils";
 import { useOutsideClick } from "../../hooks/use-outside-click";
 import { useMenuKeyboard } from "../../hooks/use-menu-keyboard";
+import { useFormatters, useTranslation } from "@/i18n/uiShell";
 import "./content-input.css";
+
+/**
+ * Attachment sizes, in the current language's digits and decimal mark. Ungrouped, so English reads
+ * exactly as the `toFixed` figures these replaced ("1023 KB", "1536.0 MB").
+ */
+const SIZE_WHOLE: Intl.NumberFormatOptions = { maximumFractionDigits: 0, useGrouping: false };
+const SIZE_ONE_DECIMAL: Intl.NumberFormatOptions = {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+  useGrouping: false,
+};
 
 type PdfJsLib = typeof import("pdfjs-dist");
 let pdfjsPromise: Promise<PdfJsLib> | null = null;
@@ -249,7 +261,7 @@ export const ContentInput: React.FC<ContentInputProps> = ({
   id,
   width = "100%",
   height = "auto",
-  placeholder = "How can I help you today?",
+  placeholder: placeholderProp,
   value = "",
   transcriptionUrl = "wss://tendril-api.ivy.app/transcribe/ws",
   uploadUrl,
@@ -262,6 +274,9 @@ export const ContentInput: React.FC<ContentInputProps> = ({
   eventHandler,
   slots,
 }) => {
+  const { t } = useTranslation("uiShell");
+  const format = useFormatters();
+  const placeholder = placeholderProp ?? t("contentInput.placeholder");
   const dispatchEvent = onIvyEvent || eventHandler;
 
   const parsed = parseValue(value);
@@ -284,7 +299,8 @@ export const ContentInput: React.FC<ContentInputProps> = ({
    * extension pill, which is the honest rendering for content we could not show.
    */
   const [previewFailed, setPreviewFailed] = useState<Record<string, true>>({});
-  const [fileMeta, setFileMeta] = useState<Record<string, { lineCount?: number; size: string }>>(
+  // The size is kept in bytes and formatted when a chip renders, so it follows a language change.
+  const [fileMeta, setFileMeta] = useState<Record<string, { lineCount?: number; bytes: number }>>(
     {},
   );
 
@@ -439,6 +455,20 @@ export const ContentInput: React.FC<ContentInputProps> = ({
 
   const isPdfFile = (path: string) => isPdfName(path);
 
+  const formatSize = (bytes: number): string => {
+    if (bytes < 1024) {
+      return t("contentInput.attachment.sizeBytes", { size: format.number(bytes, SIZE_WHOLE) });
+    }
+    if (bytes < 1024 * 1024) {
+      return t("contentInput.attachment.sizeKilobytes", {
+        size: format.number(bytes / 1024, SIZE_WHOLE),
+      });
+    }
+    return t("contentInput.attachment.sizeMegabytes", {
+      size: format.number(bytes / (1024 * 1024), SIZE_ONE_DECIMAL),
+    });
+  };
+
   const getFileMetadata = (filePath: string) => {
     const fileName = filePath.split(/[/\\]/).pop() || "";
     const lowerName = fileName.toLowerCase();
@@ -449,7 +479,10 @@ export const ContentInput: React.FC<ContentInputProps> = ({
       if (lowerName.includes(origBase)) {
         return {
           name: origName,
-          metaText: meta.lineCount !== undefined ? `${meta.lineCount} lines` : meta.size,
+          metaText:
+            meta.lineCount !== undefined
+              ? t("contentInput.attachment.lineCount", { count: meta.lineCount })
+              : formatSize(meta.bytes),
           badge: ext,
         };
       }
@@ -458,7 +491,7 @@ export const ContentInput: React.FC<ContentInputProps> = ({
     const cleanName = fileName.replace(/_[a-f0-9]{8}(\.[^.]+)$/i, "$1");
     return {
       name: cleanName,
-      metaText: "Document",
+      metaText: t("contentInput.attachment.document"),
       badge: ext,
     };
   };
@@ -700,12 +733,14 @@ export const ContentInput: React.FC<ContentInputProps> = ({
         });
 
         if (!response.ok) {
-          throw new Error(`Upload failed with status ${response.status}`);
+          throw new Error(t("contentInput.errors.uploadStatus", { status: response.status }));
         }
       } catch (err) {
         console.error("[ContentInput] File upload failed:", err);
         setRecordError(
-          `Failed to upload file: ${err instanceof Error ? err.message : String(err)}`,
+          t("contentInput.errors.uploadFailed", {
+            error: err instanceof Error ? err.message : String(err),
+          }),
         );
         throw err;
       }
@@ -729,7 +764,7 @@ export const ContentInput: React.FC<ContentInputProps> = ({
           resolve();
         };
         reader.onerror = (err) => {
-          setRecordError("Failed to read file");
+          setRecordError(t("contentInput.errors.readFailed"));
           reject(err);
         };
         reader.readAsDataURL(file);
@@ -737,17 +772,10 @@ export const ContentInput: React.FC<ContentInputProps> = ({
     }
   };
 
-  const formatSize = (bytes: number) => {
-    if (bytes < 1024) return `${bytes} B`;
-    if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(0)} KB`;
-    return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
-  };
-
   const handleFiles = async (filesList: FileList | File[]) => {
     const list = Array.from(filesList);
 
     for (const file of list) {
-      const sizeStr = formatSize(file.size);
       let lineCount: number | undefined;
 
       if (
@@ -767,7 +795,7 @@ export const ContentInput: React.FC<ContentInputProps> = ({
 
       setFileMeta((prev) => ({
         ...prev,
-        [file.name]: { lineCount, size: sizeStr },
+        [file.name]: { lineCount, bytes: file.size },
       }));
 
       if (isImageFile(file.type) || isImageFile(file.name) || isPdfName(file.type || file.name)) {
@@ -888,9 +916,7 @@ export const ContentInput: React.FC<ContentInputProps> = ({
         onResult: (transcription) => {
           console.log("[ContentInput] Transcription result received:", transcription);
           if (transcription.trim() === "") {
-            setRecordError(
-              "The transcription did not contain enough information to generate a prompt. Please try again and speak clearly.",
-            );
+            setRecordError(t("contentInput.errors.emptyTranscription"));
             return;
           }
           setText((prev) => {
@@ -941,7 +967,7 @@ export const ContentInput: React.FC<ContentInputProps> = ({
           <span>{recordError}</span>
           <IconButton
             className="civ-error-close"
-            label="Dismiss error"
+            label={t("contentInput.dismissError")}
             size="2xs"
             onClick={() => setRecordError(null)}
           >
@@ -1005,7 +1031,7 @@ export const ContentInput: React.FC<ContentInputProps> = ({
                   {/* Overlaid Close Button */}
                   <IconButton
                     className="civ-thumbnail-card-remove"
-                    label="Remove file"
+                    label={t("contentInput.removeFile")}
                     size="2xs"
                     shape="round"
                     variant="outline"
@@ -1076,7 +1102,7 @@ export const ContentInput: React.FC<ContentInputProps> = ({
               />
               <IconButton
                 className="civ-plus-btn"
-                label="Attach files"
+                label={t("contentInput.attachFiles")}
                 size="lg"
                 shape="round"
                 variant="outline"
@@ -1108,7 +1134,7 @@ export const ContentInput: React.FC<ContentInputProps> = ({
               )}
               <IconButton
                 className={`civ-mic-btn civ-status-${voiceStatus}`}
-                label="Voice input transcription"
+                label={t("contentInput.voiceInput")}
                 size="lg"
                 shape="round"
                 variant="outline"
@@ -1158,7 +1184,7 @@ export const ContentInput: React.FC<ContentInputProps> = ({
                   onClick={handleSubmit}
                   disabled={!canSubmit}
                   type="button"
-                  title={submitLabel || "Send"}
+                  title={submitLabel || t("contentInput.send")}
                 >
                   <span className="civ-submit-text">{submitLabel}</span>
                   <TuiKbd
@@ -1174,7 +1200,7 @@ export const ContentInput: React.FC<ContentInputProps> = ({
                   onClick={() => setMenuOpen(!menuOpen)}
                   disabled={!canSubmit}
                   type="button"
-                  title="More options"
+                  title={t("contentInput.moreOptions")}
                   aria-haspopup="menu"
                   aria-expanded={menuOpen}
                 >
@@ -1209,7 +1235,7 @@ export const ContentInput: React.FC<ContentInputProps> = ({
                 onClick={handleSubmit}
                 disabled={!canSubmit}
                 type="button"
-                title={submitLabel || "Send"}
+                title={submitLabel || t("contentInput.send")}
               >
                 {submitLabel ? (
                   <>
