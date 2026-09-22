@@ -1,4 +1,3 @@
-"use client";
 import { useState, useEffect } from "react";
 import { IvyLogo } from "./IvyLogo";
 import type React from "react";

@@ -1,5 +1,3 @@
-"use client";
-
 import { m, LazyMotion, domAnimation } from "framer-motion";
 import { cn } from "@/lib/utils";
 import type React from "react";
