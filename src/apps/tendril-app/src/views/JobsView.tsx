@@ -750,46 +750,16 @@ export const JobsView: React.FC<JobsViewProps> = ({
         </SheetContent>
       </Sheet>
 
-      {/* V1's Job Debug sheet (`JobsApp.cs:62-70`), opened by the Debug row action at the same
-          `UxHelper.SheetWidth` as the output sheet and titled the way V1 titles it: "Job Debug". */}
-      <Sheet
-        open={debugJobId !== null}
-        onOpenChange={(open) => {
-          if (!open) setDebugJobId(null);
-        }}
-      >
-        <SheetContent
-          data-testid="job-debug-sheet"
-          className="inset-y-0 flex w-full flex-col overflow-hidden p-0 sm:w-3/4 sm:max-w-none lg:w-1/2 xl:w-2/5"
-        >
-          <HeaderLayout
-            className="min-h-0 flex-1"
-            header={
-              <SheetHeader className="pr-8">
-                <SheetTitle>Job Debug</SheetTitle>
-              </SheetHeader>
-            }
-          >
-            {debugJob ? (
-              <React.Suspense
-                fallback={
-                  <div className="flex h-32 items-center justify-center text-muted-foreground">
-                    <Spinner size="lg" className="text-success" aria-hidden="true" />
-                  </div>
-                }
-              >
-                <JobDebug job={debugJob} />
-              </React.Suspense>
-            ) : (
-              /* The detail is the sheet, so there is nothing to render until it lands — and if the
-                 daemon could not answer, this is the honest state rather than a table of blanks. */
-              <span className="text-xs text-muted-foreground" data-testid="job-debug-pending">
-                Loading job details…
-              </span>
-            )}
-          </HeaderLayout>
-        </SheetContent>
-      </Sheet>
+      {/* V1's Job Debug sheet (`JobsApp.cs:62-70`), opened by the Debug row action. The panel is
+          the sheet's own now rather than assembled here, so there is one Job Debug sheet rather
+          than one per call site. */}
+      <React.Suspense fallback={null}>
+        <JobDebug
+          isOpen={debugJobId !== null}
+          onClose={() => setDebugJobId(null)}
+          job={debugJob ?? undefined}
+        />
+      </React.Suspense>
 
       {/* V1's Cost & Tokens sheet (`JobsApp.cs:51`), opened by the Cost *and* Tokens cells
           (`JobsApp.DataTable.cs:149-162`) at the same `UxHelper.SheetWidth` as the sheets above. */}

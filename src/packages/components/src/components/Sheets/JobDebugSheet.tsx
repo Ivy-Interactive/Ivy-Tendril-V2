@@ -3,6 +3,7 @@ import { ClipboardCopy } from "lucide-react";
 import { copyToClipboard } from "../../lib/clipboard";
 import { Button } from "../ui/button";
 import { HeaderLayout } from "../ui/panel-layout";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../ui/sheet";
 /**
  * A job as this sheet renders it.
  *
@@ -163,7 +164,11 @@ export function formatJobDebugDetails(fields: readonly JobDebugField[]): string 
 }
 
 export interface JobDebugSheetProps {
-  job: JobDebugDetail;
+  isOpen: boolean;
+  onClose: () => void;
+  /** The job's detail. Absent while the read is still out, which the sheet says rather than
+   *  rendering a table of blanks. */
+  job?: JobDebugDetail;
 }
 
 /**
@@ -172,7 +177,53 @@ export interface JobDebugSheetProps {
  * `HeaderLayout` for the same reason the output sheet uses it — the actions stay put while a long
  * `Args` blob scrolls under them.
  */
-export const JobDebugSheet: React.FC<JobDebugSheetProps> = ({ job }) => {
+/**
+ * V1's Job Debug sheet (`JobsApp.cs:62-70`), opened by the Debug row action.
+ *
+ * **It owns its panel.** It used to be a body that `JobsView` wrapped in a `<Sheet>`, which made it
+ * the odd one out: `ErrorSheet` is a sheet, this was a detail table that only became one at its
+ * call site. So it could not be looked at on its own without a harness inventing the chrome, and
+ * two callers could have given it different panels. The `<Sheet>` below is `JobsView`'s own,
+ * moved — same `UxHelper.SheetWidth` ladder, same "Job Debug" title V1 uses, and the same
+ * `HeaderLayout` that keeps the title still while a long `Args` blob scrolls under it.
+ */
+export const JobDebugSheet: React.FC<JobDebugSheetProps> = ({ isOpen, onClose, job }) => {
+  return (
+    <Sheet
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <SheetContent
+        data-testid="job-debug-sheet"
+        className="inset-y-0 flex w-full flex-col overflow-hidden p-0 sm:w-3/4 sm:max-w-none lg:w-1/2 xl:w-2/5"
+      >
+        <HeaderLayout
+          className="min-h-0 flex-1"
+          header={
+            <SheetHeader className="pr-8">
+              <SheetTitle>Job Debug</SheetTitle>
+            </SheetHeader>
+          }
+        >
+          {job ? (
+            <JobDebugBody job={job} />
+          ) : (
+            /* The detail is the sheet, so there is nothing to render until it lands - and if the
+               daemon could not answer, this is the honest state rather than a table of blanks. */
+            <span className="text-xs text-muted-foreground" data-testid="job-debug-pending">
+              Loading job details…
+            </span>
+          )}
+        </HeaderLayout>
+      </SheetContent>
+    </Sheet>
+  );
+};
+
+/** The details table itself, which is what used to be the whole component. */
+const JobDebugBody: React.FC<{ job: JobDebugDetail }> = ({ job }) => {
   const fields = buildJobDebugFields(job);
   const [copied, setCopied] = useState(false);
   const [copyError, setCopyError] = useState<string | null>(null);
@@ -183,8 +234,8 @@ export const JobDebugSheet: React.FC<JobDebugSheetProps> = ({ job }) => {
       await copyToClipboard(formatJobDebugDetails(fields));
       setCopied(true);
     } catch (err) {
-      // A webview that refuses clipboard access is the one case worth a word: the whole point of the
-      // button is that the text left the app, and a silent failure looks identical to success.
+      // A webview that refuses clipboard access is the one case worth a word: the whole point of
+      // the button is that the text left the app, and a silent failure looks identical to success.
       setCopyError(err instanceof Error ? err.message : "Could not copy to the clipboard");
     }
   };

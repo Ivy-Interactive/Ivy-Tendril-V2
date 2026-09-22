@@ -190,7 +190,7 @@ describe("JobDebugSheet", () => {
     });
 
     const job = detail({ planId: "00638", args: '{"folderPath":"/plans/00638"}' });
-    render(<JobDebugSheet job={job} />);
+    render(<JobDebugSheet isOpen onClose={() => {}} job={job} />);
 
     expect(screen.getByTestId("job-debug-fields")).toHaveTextContent("Job Id");
     expect(screen.getByTestId("job-debug-fields")).toHaveTextContent("00158");
@@ -212,7 +212,7 @@ describe("JobDebugSheet", () => {
       value: { writeText: vi.fn().mockRejectedValue(new Error("clipboard blocked")) },
     });
 
-    render(<JobDebugSheet job={detail()} />);
+    render(<JobDebugSheet isOpen onClose={() => {}} job={detail()} />);
     fireEvent.click(screen.getByTestId("job-debug-copy"));
 
     // `copyToClipboard` tries the async Clipboard API and then an `execCommand` fallback before
