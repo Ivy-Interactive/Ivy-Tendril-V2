@@ -1,9 +1,9 @@
 use super::get_client_from_master;
 use crate::error::BridgeError;
 use crate::models::{
-    AnnotationDto, DraftCommentDto, PlanArtifactsDto, PlanChangesDto, PlanDetailDto, PlanGitDto,
-    PlanQueryDto, PlanSummaryDto, RecommendationDto, RepoStatusDto, RevisionResultDto,
-    VerificationReportDto,
+    AnnotationDto, DraftCommentDto, PlanArtifactContentDto, PlanArtifactsDto, PlanChangesDto,
+    PlanDetailDto, PlanGitDto, PlanQueryDto, PlanSummaryDto, RecommendationDto, RepoStatusDto,
+    RevisionResultDto, VerificationReportDto,
 };
 
 #[tauri::command]
@@ -132,7 +132,9 @@ pub async fn cmd_get_plan_summary(id: String) -> Result<Option<String>, BridgeEr
     }
     let home = crate::daemon::resolve_tendril_home();
     let plans_dir = home.join("Plans");
-    Ok(tendril_core::plans::read_plan_summary(&home, &plans_dir, &id))
+    Ok(tendril_core::plans::read_plan_summary(
+        &home, &plans_dir, &id,
+    ))
 }
 
 /// The plan's artifacts (screenshots and files) in the Artifacts folder.
@@ -150,6 +152,40 @@ pub async fn cmd_get_plan_artifacts(id: String) -> Result<PlanArtifactsDto, Brid
         screenshots: artifacts.screenshots,
         other: artifacts.other,
     })
+}
+
+/// One artifact's text for the Review app's artifact sheet, by the absolute path
+/// `cmd_get_plan_artifacts` listed.
+///
+/// Same shape as the listing above: the daemon first, then the same
+/// `tendril_core` read straight off disk when the daemon is unreachable or
+/// predates the route. Both refuse a path that does not resolve inside the
+/// plan's `Artifacts` folder, so the fallback widens nothing.
+#[tauri::command]
+pub async fn cmd_get_plan_artifact_content(
+    id: String,
+    path: String,
+) -> Result<PlanArtifactContentDto, BridgeError> {
+    if let Ok(client) = get_client_from_master() {
+        if let Ok(content) = client.get_plan_artifact_content(&id, &path).await {
+            return Ok(content);
+        }
+    }
+    let plans_dir = crate::daemon::resolve_tendril_home().join("Plans");
+    tendril_core::plans::read_plan_artifact(&plans_dir, &id, &path)
+        .map(PlanArtifactContentDto::from)
+        .map_err(|err| {
+            use tendril_core::plans::PlanArtifactReadError;
+            match err {
+                PlanArtifactReadError::PlanNotFound(_) | PlanArtifactReadError::NotFound(_) => {
+                    BridgeError::not_found(err.to_string())
+                }
+                PlanArtifactReadError::OutsideArtifacts(_) => {
+                    BridgeError::validation(err.to_string())
+                }
+                PlanArtifactReadError::Io(..) => BridgeError::internal(err.to_string()),
+            }
+        })
 }
 
 /// Read one verification report for a plan.

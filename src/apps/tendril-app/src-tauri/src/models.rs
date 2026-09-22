@@ -323,6 +323,27 @@ pub struct PlanArtifactsDto {
     pub other: Vec<String>,
 }
 
+/// Mirrors `tendril_core::plans::PlanArtifactContent`: one artifact as the Review app's artifact
+/// sheet shows it, tagged by `kind` (`text`, `binary`, `tooLarge`). Only `text` carries content.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum PlanArtifactContentDto {
+    Text { text: String, size: u64 },
+    Binary { size: u64 },
+    TooLarge { size: u64 },
+}
+
+impl From<tendril_core::plans::PlanArtifactContent> for PlanArtifactContentDto {
+    fn from(content: tendril_core::plans::PlanArtifactContent) -> Self {
+        use tendril_core::plans::PlanArtifactContent;
+        match content {
+            PlanArtifactContent::Text { text, size } => Self::Text { text, size },
+            PlanArtifactContent::Binary { size } => Self::Binary { size },
+            PlanArtifactContent::TooLarge { size } => Self::TooLarge { size },
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JobDto {

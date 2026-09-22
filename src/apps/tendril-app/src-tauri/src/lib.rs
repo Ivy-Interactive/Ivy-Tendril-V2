@@ -134,6 +134,7 @@ pub fn run() {
             cmd_get_plan_changes,
             cmd_get_plan_summary,
             cmd_get_plan_artifacts,
+            cmd_get_plan_artifact_content,
             cmd_get_revision,
             cmd_write_revision,
             cmd_update_latest_revision,

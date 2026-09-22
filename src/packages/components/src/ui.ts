@@ -56,6 +56,7 @@ export * from "./components/ui/native-select.tsx";
 export * from "./components/ui/native-select/variant";
 export * from "./components/ui/separator";
 export * from "./components/ui/sheet";
+export * from "./components/ui/sheet-panel";
 export * from "./components/ui/sidebar";
 export * from "./components/ui/skeleton";
 export * from "./components/ui/slider";
