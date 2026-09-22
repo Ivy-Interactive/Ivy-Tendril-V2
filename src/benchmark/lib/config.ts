@@ -240,18 +240,20 @@ export interface ProfileKnobs {
 }
 
 export const PROFILES: Readonly<Record<ProfileName, ProfileKnobs>> = {
+  // The published run: small iteration counts, but every dataset size the scaling claims need, and
+  // at least 3 samples per app for the cheap headline comparisons (so complete separation can show).
   quick: {
     name: 'quick',
-    serverDatasets: ['empty', 'small'],
+    serverDatasets: ['empty', 'small', 'large'],
     desktopDatasets: ['small'],
-    cliDatasets: ['small'],
-    startup: { firstStartRuns: 2, warmRuns: 3 },
-    idle: { runs: 1, settleSec: 20, durationSec: 20 },
-    api: { instances: 1, seqWarmup: 100, seqSamples: 50, concurrency: [1, 8], concurrencyDurationSec: 3, maxLatencySamples: 5000 },
-    ui: { instances: 1, coldLoads: 2, navCycles: 2, pushSamples: 4, fsPushSamples: 2, navUnderLoadCycles: 2 },
-    desktop: { warmupRuns: 1, runs: 1, durationSec: 30 },
+    cliDatasets: ['small', 'large'],
+    startup: { firstStartRuns: 3, warmRuns: 3 },
+    idle: { runs: 2, settleSec: 20, durationSec: 10 },
+    api: { instances: 3, seqWarmup: 100, seqSamples: 30, concurrency: [1, 8], concurrencyDurationSec: 2, maxLatencySamples: 3000 },
+    ui: { instances: 1, coldLoads: 3, navCycles: 3, pushSamples: 3, fsPushSamples: 3, navUnderLoadCycles: 2 },
+    desktop: { warmupRuns: 1, runs: 3, durationSec: 30 },
     cli: { warmup: 1, runs: 5 },
-    network: { coldLoads: 3, pushSamples: 4, idleWindows: 2, idleWindowSec: 30, sessions: 2, sessionPushes: 2, desktopIdleSec: 45, realHostSec: 30 },
+    network: { coldLoads: 3, pushSamples: 3, idleWindows: 1, idleWindowSec: 20, sessions: 1, sessionPushes: 2, desktopIdleSec: 30, realHostSec: 30 },
   },
   full: {
     name: 'full',

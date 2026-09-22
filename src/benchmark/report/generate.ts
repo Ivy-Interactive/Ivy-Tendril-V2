@@ -176,17 +176,17 @@ export async function main(ctx: CommandContext): Promise<number> {
     if (f.endsWith('.svg') && !written.has(f)) fs.rmSync(path.join(chartsDir, f));
   }
 
-  // Raw results next to the report (JSON only), copied byte for byte, unless the report is written
+  // Raw results next to the report (JSON only, redacted for publishing), unless the report is written
   // inside the run directory itself (its results are already there; copying would nest them).
   if (insideRun) log.info(`the report is inside the run directory; linking its results instead of copying them`);
   if (!fixtures && !insideRun) {
     const dest = path.join(outDir, 'results', info.runId);
     fs.mkdirSync(path.join(dest, 'results'), { recursive: true });
-    fs.copyFileSync(path.join(runDir, 'run.json'), path.join(dest, 'run.json'));
+    fs.writeFileSync(path.join(dest, 'run.json'), redactedJson(path.join(runDir, 'run.json')));
     const srcResults = path.join(runDir, 'results');
     const keep = new Set<string>();
     for (const f of fs.existsSync(srcResults) ? fs.readdirSync(srcResults).filter((x) => x.endsWith('.json')).sort() : []) {
-      fs.copyFileSync(path.join(srcResults, f), path.join(dest, 'results', f));
+      fs.writeFileSync(path.join(dest, 'results', f), redactedJson(path.join(srcResults, f)));
       keep.add(f);
     }
     for (const f of fs.readdirSync(path.join(dest, 'results'))) if (!keep.has(f)) fs.rmSync(path.join(dest, 'results', f));
@@ -200,6 +200,35 @@ export async function main(ctx: CommandContext): Promise<number> {
   log.info(`wrote ${doc.charts.length} SVG(s) to ${chartsDir}`);
   for (const w of doc.warnings) log.warn(w);
   return 0;
+}
+
+// ---------------------------------------------------------------------------------------------
+// Redaction of the committed results copy
+
+/** Keys whose values never belong in a published file. */
+const SECRET_KEY = /^(hostname|secret|token|password|authorization|apiKey|api_key|cookie)$/i;
+
+/**
+ * The raw JSON as published next to the report: every value intact except that home directories are
+ * shortened to `~` (they carry the user name), temp dirs to `<tmp>`, secret-like keys and the
+ * hostname are replaced, and the busiest processes keep only their executable name.
+ */
+function redactedJson(file: string): string {
+  const walk = (v: unknown, key: string, parent: string): unknown => {
+    if (typeof v === 'string') {
+      if (SECRET_KEY.test(key)) return '<redacted>';
+      const s = v.replace(/\/private\/var\/folders\/[^\s"'`,;)]*/g, '<tmp>').replace(/\/(?:private\/)?tmp\/claude-[^\s"'`,;)]*/g, '<tmp>').replace(/\/Users\/[^/\s"'`,;)]+/g, '~');
+      return parent === 'topProcesses' && key === 'command' ? path.basename(s) : s;
+    }
+    if (Array.isArray(v)) return v.map((x) => walk(x, key, key));
+    if (v && typeof v === 'object') {
+      const out: Record<string, unknown> = {};
+      for (const [k, x] of Object.entries(v as Record<string, unknown>)) out[k] = SECRET_KEY.test(k) && x !== null && typeof x !== 'object' ? '<redacted>' : walk(x, k, parent === 'topProcesses' ? parent : key);
+      return out;
+    }
+    return v;
+  };
+  return `${JSON.stringify(walk(JSON.parse(fs.readFileSync(file, 'utf8')), '', ''), null, 2)}\n`;
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -809,17 +838,18 @@ function dsLong(d: string | null): string {
   return spec ? `${d}, ${fmtInt(spec.plans)} plans` : d;
 }
 
+/** Table- and list-safe text; home directories (they carry the user name) become `~`. */
 function mdEscape(s: string): string {
-  return s.replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
+  return shortPath(s).replace(/\|/g, '\\|').replace(/\r?\n/g, ' ');
 }
 
 function code(s: string): string {
-  return `\`${s.replace(/`/g, "'")}\``;
+  return `\`${shortPath(s).replace(/`/g, "'")}\``;
 }
 
 /** Home directories are shortened so a committed report does not carry the user name. */
 function shortPath(p: string): string {
-  return p.replace(/^\/Users\/[^/]+/, '~').replace(/^\/private\/tmp\/[^ ]*/, '<tmp>');
+  return p.replace(/\/Users\/[^/\s)"'`,;]+/g, '~').replace(/\/private\/(?:tmp|var\/folders)\/[^ )"'`,;]*/g, '<tmp>');
 }
 
 function table(head: string[], align: Array<'l' | 'r' | 'c'>, rows: string[][]): string {
@@ -2893,7 +2923,7 @@ function reproduceBlock(model: Model, resultsLink: string | null): string[] {
   out.push('```');
   out.push('');
   const link = resultsLink ?? `results/${info.runId}/`;
-  out.push(`The \`run\` line${inv.length > 1 ? 's are' : ' is'} exactly what produced this run${inv.length > 1 ? ' (a resumed run has one line per invocation)' : ''}. The pins are V1 ${code(info.pins?.v1Ref ?? V1_REF)} (${code(String(info.pins?.v1Sha ?? V1_SHA))}) and V2 ${code(String(v2))}; \`setup\` clones and builds both into the workspace and records what it built in \`build-info.json\`. Raw results of this run are in ${model.fixtures ? '`src/benchmark/report/fixtures/`' : `[\`${link}\`](${link})`}, and \`report --run\` regenerates this file byte for byte from them.`);
+  out.push(`The \`run\` line${inv.length > 1 ? 's are' : ' is'} exactly what produced this run${inv.length > 1 ? ' (a resumed run has one line per invocation)' : ''}. The pins are V1 ${code(info.pins?.v1Ref ?? V1_REF)} (${code(String(info.pins?.v1Sha ?? V1_SHA))}) and V2 ${code(String(v2))}; \`setup\` clones and builds both into the workspace and records what it built in \`build-info.json\`. Raw results of this run are in ${model.fixtures ? '`src/benchmark/report/fixtures/`' : `[\`${link}\`](${link})`} (${model.fixtures ? 'synthetic' : 'published with home directories shortened to `~` and the hostname removed'}); \`report --run\` on the run directory regenerates this file byte for byte.`);
   return out;
 }
 

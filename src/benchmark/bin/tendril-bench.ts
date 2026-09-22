@@ -62,6 +62,17 @@ common flags:
   --profile quick|full   iteration counts and durations (default full)
   --v2-ref <sha>         V2 commit under test (default ${V2_REF_DEFAULT.slice(0, 12)})
 
+setup flags:
+  --only a,b             only these steps (or the groups v1, v2, clone)
+  --skip a,b             skip these steps
+  --force                rebuild even when a step's stamp says it is up to date
+  --smoke                also run the opt-in smoke test (puts a V2 window on screen)
+  --list                 print every step and whether it is up to date, then exit
+
+datasets flags:
+  --dataset a,b          only these datasets (default all four)
+  --force                rebuild even when the fingerprint matches
+
 run flags:
   --suite a,b|all        ${SUITE_NAMES.join(', ')} (default all)
   --dataset a,b          ${DATASET_NAMES.join(', ')} (default: per profile)
@@ -72,8 +83,9 @@ run flags:
 
 report flags:
   --run <runId>          (default: latest complete run)
-  --out <file.md>        where to write the report; charts/ and results/ go next to it
-                         (default src/benchmark/benchmark.md)
+  --out <file.md>        where to write the report; charts/ and results/<runId>/ go next to it
+                         (default src/benchmark/benchmark.md; inside the run dir, results are
+                         linked rather than copied)
   --analysis <file.md>   hand-written analysis to inject (default src/benchmark/analysis.md)
   --fixtures             render the synthetic fixtures in report/fixtures instead of a run
                          (default out: <ws>/runs/fixtures-report/benchmark.md)
