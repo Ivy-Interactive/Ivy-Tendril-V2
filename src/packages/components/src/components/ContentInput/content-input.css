@@ -234,8 +234,7 @@
   cursor: pointer;
   transition:
     background-color var(--duration-moderate),
-    color var(--duration-moderate),
-    opacity var(--duration-moderate);
+    color var(--duration-moderate);
   line-height: 1;
 }
 

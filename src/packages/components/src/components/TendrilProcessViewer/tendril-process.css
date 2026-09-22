@@ -62,9 +62,7 @@
   cursor: pointer;
   font-size: var(--text-sm);
   font-weight: var(--font-weight-medium);
-  transition:
-    opacity var(--duration-base),
-    box-shadow var(--duration-base);
+  transition: box-shadow var(--duration-base);
   white-space: nowrap;
 }
 
