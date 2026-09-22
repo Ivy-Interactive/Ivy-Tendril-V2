@@ -54,12 +54,6 @@ jobs:
       - name: Build components library
         run: pnpm --filter @ivy-interactive/components build
 
-      - name: Run docs tests
-        run: pnpm --filter @ivy-interactive/tendril-docs test
-
-      - name: Run docs check
-        run: pnpm --filter @ivy-interactive/tendril-docs check
-
       - name: Determine version
         id: version
         run: |
@@ -82,6 +76,12 @@ jobs:
         run: pnpm --filter @ivy-interactive/tendril-docs build
         env:
           VITE_BASE_PATH: ${{ steps.pages.outputs.base_path }}/docs/
+
+      - name: Run docs tests
+        run: pnpm --filter @ivy-interactive/tendril-docs test
+
+      - name: Run docs check
+        run: pnpm --filter @ivy-interactive/tendril-docs check
 
       - name: Prepare Pages & Release distribution
         run: |
