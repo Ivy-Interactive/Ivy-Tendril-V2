@@ -1,5 +1,7 @@
 import { Bug, EllipsisVertical, Pause, RotateCw, Trash, Zap } from "lucide-react";
 import type { DataTableRowAction, StackedProgressSegment } from "@ivy-interactive/components/ui";
+import type { TFunction } from "../../i18n";
+import { jobStatusLabel } from "../../i18n/enumLabels";
 import type { Job, JobDetail, JobStatus } from "../../types/api";
 import { isActiveStatus } from "../../state/jobsStore";
 import { JOB_STATUS_SEGMENT_COLOR } from "../../utils/jobStatus";
@@ -8,6 +10,7 @@ import {
   agentOutputLabel,
   formatJobCost,
   jobStatusMessage,
+  jobsT,
   truncatePrompt,
   type AgentOutputState,
 } from "./format";
@@ -24,6 +27,9 @@ import {
  * only occasionally; here it is the permanent state of every job, because `JobDto`/`JobDetailDto`
  * (`src-tauri/src/models.rs`) do not carry `typedArgs` at all, so the entry is disabled and carries
  * the reason instead of pretending to work.
+ *
+ * The English text, which is what the tests hold the entry to. The menu shows
+ * `jobs:actions.rerun.unavailable`, in the current language; this constant is never rendered.
  */
 export const RERUN_UNAVAILABLE_REASON = "Cannot rerun: original args were not preserved.";
 
@@ -100,17 +106,19 @@ function agentOutputState(status: JobStatus): AgentOutputState {
  * bill on any long run, so the short `45K` in the cell would understate what was actually spent
  * without this behind it.
  */
-function tokenBreakdown(job: Job): string | null {
+function tokenBreakdown(job: Job, t: TFunction<"jobs">): string | null {
   const parts: string[] = [];
   const add = (label: string, value: number | undefined) => {
     if (value === undefined || value === null) return;
-    parts.push(`${label} ${value.toLocaleString("en-US")}`);
+    // `{{tokens, number}}`: grouped in the current language, which for English is the
+    // `toLocaleString("en-US")` figure this used to build by hand.
+    parts.push(t("tokens.breakdownEntry", { label, tokens: value }));
   };
-  add("Input", job.inputTokens);
-  add("Output", job.outputTokens);
-  add("Cache read", job.cacheReadTokens);
-  add("Cache write", job.cacheWriteTokens);
-  add("Reasoning", job.reasoningTokens);
+  add(t("tokens.buckets.input"), job.inputTokens);
+  add(t("tokens.buckets.output"), job.outputTokens);
+  add(t("tokens.buckets.cacheRead"), job.cacheReadTokens);
+  add(t("tokens.buckets.cacheWrite"), job.cacheWriteTokens);
+  add(t("tokens.buckets.reasoning"), job.reasoningTokens);
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
@@ -152,6 +160,11 @@ export interface BuildJobRowsOptions {
    * endpoint needs to carry the flag for this to be reliable.
    */
   details?: Record<string, JobDetail>;
+  /**
+   * The `t` the row's text is built with. A component that memoizes the rows passes its own, so the
+   * memo recomputes when the language changes; anything else gets the current language at the call.
+   */
+  t?: TFunction<"jobs">;
 }
 
 /**
@@ -168,6 +181,7 @@ export interface BuildJobRowsOptions {
 export function buildJobRows(jobs: readonly Job[], options: BuildJobRowsOptions = {}): JobRow[] {
   const now = options.now ?? Date.now();
   const details = options.details ?? {};
+  const t = options.t ?? jobsT;
 
   return jobs.map((job) => {
     const completed = job.completedAt ? Date.parse(job.completedAt) : NaN;
@@ -183,13 +197,13 @@ export function buildJobRows(jobs: readonly Job[], options: BuildJobRowsOptions 
       project: parseProjects(job.project).join(", "),
       timerSeconds: timerSeconds(job, now),
       agentOutput: agentOutputState(job.status),
-      agentOutputLabel: agentOutputLabel(job, now),
-      cost: formatJobCost(job),
+      agentOutputLabel: agentOutputLabel(job, now, t),
+      cost: formatJobCost(job, t),
       costValue: job.cost ?? null,
       tokens: job.tokens ?? null,
-      tokenBreakdown: tokenBreakdown(job),
+      tokenBreakdown: tokenBreakdown(job, t),
       completedAtMs: Number.isNaN(completed) ? null : completed,
-      statusMessage: jobStatusMessage(job),
+      statusMessage: jobStatusMessage(job, t),
       detached: Boolean(job.detached ?? details[job.id]?.detached),
       processId: job.processId ?? details[job.id]?.processId,
     };
@@ -223,24 +237,25 @@ export interface JobRowActionCapabilities {
 export function buildJobRowActions(
   row: Pick<JobRow, "status">,
   capabilities: JobRowActionCapabilities,
+  t: TFunction<"jobs"> = jobsT,
 ): DataTableRowAction<JobRow>[] {
   const items: DataTableRowAction<JobRow>[] = [];
 
   if (isActiveStatus(row.status)) {
     items.push({
       tag: "stop-job",
-      label: "Stop",
+      label: t("actions.stop.label"),
       icon: <Pause aria-hidden="true" />,
-      tooltip: "Stop this job",
+      tooltip: t("actions.stop.tooltip"),
     });
   }
 
   if (row.status === "Failed" || row.status === "Timeout" || row.status === "Stopped") {
     items.push({
       tag: "rerun-job",
-      label: "Rerun",
+      label: t("actions.rerun.label"),
       icon: <RotateCw aria-hidden="true" />,
-      tooltip: RERUN_UNAVAILABLE_REASON,
+      tooltip: t("actions.rerun.unavailable"),
       disabled: true,
     });
   }
@@ -248,9 +263,9 @@ export function buildJobRowActions(
   if (row.status === "Blocked" && capabilities.canForceStart) {
     items.push({
       tag: "force-start-job",
-      label: "Force Start",
+      label: t("actions.forceStart.label"),
       icon: <Zap aria-hidden="true" />,
-      tooltip: "Force start this blocked job",
+      tooltip: t("actions.forceStart.tooltip"),
     });
   }
 
@@ -258,17 +273,17 @@ export function buildJobRowActions(
   // the detail the store already fetches for every opened job.
   items.push({
     tag: "debug-job",
-    label: "Debug",
+    label: t("actions.debug.label"),
     icon: <Bug aria-hidden="true" />,
-    tooltip: "Show debug details for this job",
+    tooltip: t("actions.debug.tooltip"),
   });
 
   if (capabilities.canDelete) {
     items.push({
       tag: "delete-job",
-      label: "Delete",
+      label: t("actions.delete.label"),
       icon: <Trash aria-hidden="true" />,
-      tooltip: "Delete this job",
+      tooltip: t("actions.delete.tooltip"),
       variant: "destructive",
     });
   }
@@ -285,7 +300,7 @@ export function buildJobRowActions(
   return [
     {
       tag: "job-menu",
-      label: "Job actions",
+      label: t("actions.menu"),
       icon: <EllipsisVertical aria-hidden="true" />,
       children: items,
     },
@@ -295,8 +310,14 @@ export function buildJobRowActions(
 /**
  * `JobsApp.Data.cs` `BuildStatusProgress`: one segment per status, largest first, with labels on.
  * V1 renders none at all for an empty list (`JobsApp.cs:110`).
+ *
+ * @param statusLabel The segment's label for a status. A component passes `useEnumLabels().jobStatus`,
+ *   which changes with the language; the default reads the language at the call.
  */
-export function buildStatusSegments(jobs: readonly Job[]): StackedProgressSegment[] {
+export function buildStatusSegments(
+  jobs: readonly Job[],
+  statusLabel: (status: JobStatus) => string = jobStatusLabel,
+): StackedProgressSegment[] {
   const counts = new Map<JobStatus, number>();
   for (const job of jobs) counts.set(job.status, (counts.get(job.status) ?? 0) + 1);
 
@@ -304,7 +325,7 @@ export function buildStatusSegments(jobs: readonly Job[]): StackedProgressSegmen
     .sort((a, b) => b[1] - a[1])
     .map(([status, count]) => ({
       value: count,
-      label: status,
+      label: statusLabel(status),
       color: JOB_STATUS_SEGMENT_COLOR[status] ?? "muted",
     }));
 }

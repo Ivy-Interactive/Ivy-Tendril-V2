@@ -1,5 +1,7 @@
 import { bridge } from "../api/bridge";
 import { subscribeToJobStream, type EventUnsubscribe, type JobStreamEvent } from "../api/events";
+import { i18n } from "../i18n";
+import { jobTypeLabel } from "../i18n/enumLabels";
 import { serviceStore } from "./serviceStore";
 import type { JobNotification } from "./notificationBurst";
 import type { Job, JobDetail, JobStatus, StartJobArgs, StartJobResponse } from "../types/api";
@@ -84,6 +86,9 @@ function optionalBridge(): OptionalJobBridge {
 /**
  * Port of `JobCompletionHandler.SendCompletionNotification`. V2's `Job` has no `PlanFile`, so
  * `planTitle` is the readable stand-in and `planId` the fallback.
+ *
+ * Runs outside React, from the job stream, so the text is translated here, at the exit, in the
+ * language current then. The daemon's `statusMessage` is quoted as it came.
  */
 export function describeJobExit(
   job: Pick<Job, "type" | "status" | "planId" | "planTitle"> & {
@@ -91,15 +96,20 @@ export function describeJobExit(
   },
 ): JobNotification {
   const isSuccess = job.status === "Completed";
+  // Guarded: an entry `applyJobPatch` made for a job never fetched has a status and no type.
+  const type = job.type ? jobTypeLabel(job.type) : "";
   const title =
     job.status === "Timeout"
-      ? `${job.type} Timed Out`
+      ? i18n.t("jobs:notifications.exit.timedOut", { type })
       : isSuccess
-        ? `${job.type} Completed`
-        : `${job.type} Failed`;
+        ? i18n.t("jobs:notifications.exit.completed", { type })
+        : i18n.t("jobs:notifications.exit.failed", { type });
 
-  let message = job.planTitle ?? job.planId ?? job.type;
-  if (!isSuccess && job.statusMessage) message += `: ${job.statusMessage}`;
+  const subject = job.planTitle ?? job.planId ?? type;
+  const message =
+    !isSuccess && job.statusMessage
+      ? i18n.t("jobs:notifications.exit.withReason", { subject, reason: job.statusMessage })
+      : subject;
 
   return { title, message, isSuccess };
 }
