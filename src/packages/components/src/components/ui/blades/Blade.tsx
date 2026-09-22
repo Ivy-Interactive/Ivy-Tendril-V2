@@ -191,8 +191,8 @@ export const Blade = React.forwardRef<HTMLElement, BladeProps>(function Blade(
           )}
         </div>
       </header>
-      <div className="min-h-0 flex-1 bg-background">
-        <ScrollArea type="hover" className="h-full">
+      <div className="min-h-0 flex-1 bg-background contain-inline-size">
+        <ScrollArea type="hover" className="h-full" viewportClassName="[&>div]:!block">
           <div className="p-4">{content}</div>
         </ScrollArea>
       </div>

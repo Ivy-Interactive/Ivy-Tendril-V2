@@ -452,6 +452,27 @@ describe("BladeContainer", () => {
     });
   });
 
+  describe("the blade body's width", () => {
+    const bodyOf = (section: HTMLElement): HTMLElement => {
+      const body = section.querySelector<HTMLElement>(":scope > [data-blade-header] + div");
+      if (!body) throw new Error("blade body not found");
+      return body;
+    };
+
+    it("contributes no intrinsic width, so long content cannot widen a flex blade", () => {
+      renderStack({ root: { ...root, width: "flex" } });
+
+      expect(bodyOf(sectionAt(0))).toHaveClass("contain-inline-size");
+    });
+
+    it("lays its content out at the blade's width instead of Radix's shrink-to-fit table", () => {
+      renderStack();
+
+      const viewport = bodyOf(sectionAt(0)).querySelector("[data-radix-scroll-area-viewport]");
+      expect(viewport).toHaveClass("[&>div]:!block");
+    });
+  });
+
   it("closes a blade on a middle-click of its header", () => {
     const { ref } = renderStack();
     pushAll(ref, blade("Detail"));
