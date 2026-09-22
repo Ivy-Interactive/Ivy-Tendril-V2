@@ -2,6 +2,7 @@ import React from "react";
 import { Progress } from "@ivy-interactive/components/ui";
 
 import { agentsApi } from "../../api/agentsApi";
+import { useTranslation } from "../../i18n";
 import type { AgentUsageSnapshot, AgentUsageWindow } from "../../types/agents";
 import {
   formatCountdown,
@@ -9,6 +10,7 @@ import {
   formatRelative,
   formatWindow,
   isUsageStale,
+  minutesUntil,
   usageSeverity,
   type UsageSeverity,
 } from "./agentUsage";
@@ -53,20 +55,29 @@ const SEVERITY_BAR: Record<UsageSeverity, string> = {
  * draw outside 0-100 even if a provider reports having overshot its own limit.
  */
 const WindowMetric: React.FC<{ window: AgentUsageWindow; now: Date }> = ({ window, now }) => {
+  const { t } = useTranslation("settingsAgents");
   const remaining = window.remainingPercent;
   const severity = usageSeverity(remaining);
   const countdown = window.resetsAt ? formatCountdown(window.resetsAt, now) : "";
+  // A window that has already rolled over is a sentence of its own rather than "resets in" + "now",
+  // which reads as English word order in every other language.
+  const resetsNow = window.resetsAt ? (minutesUntil(window.resetsAt, now) ?? 1) <= 0 : false;
+  const vars = { window: formatWindow(window.windowMinutes), percent: formatPercent(remaining) };
 
   return (
     <div className="w-38 space-y-0.5" data-testid={`usage-window-${window.windowMinutes}`}>
-      <p className="text-xs text-muted-foreground">{formatWindow(window.windowMinutes)} window</p>
-      <p className={`text-sm ${SEVERITY_TEXT[severity]}`}>{formatPercent(remaining)} left</p>
+      <p className="text-xs text-muted-foreground">{t("usage.window", vars)}</p>
+      <p className={`text-sm ${SEVERITY_TEXT[severity]}`}>{t("usage.left", vars)}</p>
       <Progress
         value={Math.min(100, Math.max(0, remaining))}
-        aria-label={`${formatWindow(window.windowMinutes)} window, ${formatPercent(remaining)} left`}
+        aria-label={t("usage.ariaLabel", vars)}
         className={SEVERITY_BAR[severity]}
       />
-      {countdown !== "" && <p className="text-xs text-muted-foreground">resets in {countdown}</p>}
+      {countdown !== "" && (
+        <p className="text-xs text-muted-foreground">
+          {t("usage.resetsIn", { countdown, context: resetsNow ? "now" : undefined })}
+        </p>
+      )}
     </div>
   );
 };
@@ -79,6 +90,7 @@ export interface AgentUsageStripProps {
 }
 
 export const AgentUsageStrip: React.FC<AgentUsageStripProps> = ({ agent, nowFn }) => {
+  const { t } = useTranslation("settingsAgents");
   const [snapshot, setSnapshot] = React.useState<AgentUsageSnapshot | null>(null);
   /* Read once per refresh and held, rather than called during render: a countdown computed from a
      fresh `new Date()` on every render would change whenever anything else in the pane re-rendered,
@@ -133,7 +145,7 @@ export const AgentUsageStrip: React.FC<AgentUsageStripProps> = ({ agent, nowFn }
       )}
       {stale && (
         <p className="text-xs text-muted-foreground" data-testid="agent-usage-stale">
-          as of {formatRelative(snapshot.capturedAt, now)}
+          {t("usage.asOf", { relative: formatRelative(snapshot.capturedAt, now) })}
         </p>
       )}
     </div>
