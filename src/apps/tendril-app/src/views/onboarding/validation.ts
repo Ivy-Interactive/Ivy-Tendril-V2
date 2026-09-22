@@ -9,6 +9,7 @@
  *   `ProjectRepoPickerView.AddAsync` normalizes, then rejects anything `IsValid` says no to before
  *   the path can reach a project's `repos`.
  */
+import { i18n } from "../../i18n";
 
 /** V1 `InputSanitizer.SanitizeProjectName`: everything outside the allowed set is dropped. */
 export function sanitizeProjectName(input: string): string {
@@ -24,12 +25,19 @@ export function isValidProjectName(name: string | null | undefined): boolean {
   return /^[A-Za-z0-9._-]+$/.test(trimmed);
 }
 
-/** V1 `InputSanitizer.DescribeProjectNameError`, wording included. */
+/**
+ * V1 `InputSanitizer.DescribeProjectNameError`, wording included. Translated when it is called, so
+ * the message is in the language current at that moment.
+ */
 export function describeProjectNameError(name: string | null | undefined): string | null {
   if (isValidProjectName(name)) return null;
   const suggestion = sanitizeProjectName(name ?? "");
-  const suggestionClause = suggestion ? ` Suggested: '${suggestion}'.` : "";
-  return `Invalid project name '${name ?? ""}'. Use only letters, digits, dots, dashes and underscores (no slashes or spaces).${suggestionClause}`;
+  return suggestion
+    ? i18n.t("onboarding:validation.invalidProjectNameWithSuggestion", {
+        name: name ?? "",
+        suggestion,
+      })
+    : i18n.t("onboarding:validation.invalidProjectName", { name: name ?? "" });
 }
 
 /** V1 `RepoPathKind`. */

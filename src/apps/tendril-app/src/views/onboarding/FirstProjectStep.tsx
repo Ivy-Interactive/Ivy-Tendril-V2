@@ -2,6 +2,7 @@ import React from "react";
 import { Button, IconButton } from "@ivy-interactive/components/ui";
 import { FolderOpen, Plus, X } from "lucide-react";
 import { open } from "@tauri-apps/plugin-dialog";
+import { useTranslation } from "../../i18n";
 import {
   classifyRepoPath,
   describeProjectNameError,
@@ -50,6 +51,7 @@ export function FirstProjectStep({
   onUseExisting,
   busy,
 }: FirstProjectStepProps) {
+  const { t } = useTranslation("onboarding");
   const [repoInput, setRepoInput] = React.useState("");
   const [addError, setAddError] = React.useState<string | null>(null);
 
@@ -64,7 +66,7 @@ export function FirstProjectStep({
 
     if (!isValidRepoPath(path)) {
       // V1's wording, verbatim. A bare `foo` or a relative `../x` lands here.
-      setAddError("Invalid repository path.");
+      setAddError(t("repoPicker.invalidPath"));
       return;
     }
 
@@ -105,29 +107,26 @@ export function FirstProjectStep({
       const selected = await open({
         directory: true,
         multiple: false,
-        title: "Select repository folder",
+        title: t("firstProject.browseTitle"),
       });
       if (typeof selected === "string" && selected) setRepoInput(selected);
     } catch (err) {
       // The native picker is unavailable outside the Tauri shell; typing a path still works.
       setAddError(
-        `Folder picker unavailable (${err instanceof Error ? err.message : String(err)}). Type a path instead.`,
+        t("firstProject.browseUnavailable", {
+          error: err instanceof Error ? err.message : String(err),
+        }),
       );
     }
   };
 
   return (
     <div className="space-y-4" data-testid="onboarding-step-project">
-      <h3 className="text-base font-semibold text-foreground">Setup your first project</h3>
-      <p className="text-sm text-muted-foreground">
-        A project groups one or more repositories together so Tendril can plan and verify changes
-        across them.
-      </p>
+      <h3 className="text-base font-semibold text-foreground">{t("firstProject.title")}</h3>
+      <p className="text-sm text-muted-foreground">{t("firstProject.description")}</p>
 
       <div className="space-y-2">
-        <span className="block text-xs font-medium text-foreground">
-          Add one or more Git repositories
-        </span>
+        <span className="block text-xs font-medium text-foreground">{t("repoPicker.label")}</span>
 
         {addError && (
           <p className="text-xs text-destructive" data-testid="onboarding-picker-error">
@@ -140,7 +139,7 @@ export function FirstProjectStep({
             type="text"
             value={repoInput}
             onChange={(e) => setRepoInput(e.target.value)}
-            placeholder="Repository URL or Local Path"
+            placeholder={t("repoPicker.placeholder")}
             disabled={locked}
             data-testid="onboarding-repo-input"
             className="w-full rounded-field border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground"
@@ -160,7 +159,7 @@ export function FirstProjectStep({
             className="shrink-0 text-xs"
           >
             <FolderOpen className="size-3.5" aria-hidden="true" />
-            Browse
+            {t("firstProject.browse")}
           </Button>
         </div>
 
@@ -172,14 +171,14 @@ export function FirstProjectStep({
                   {path}
                   {classifyRepoPath(path) !== "local" && (
                     <span className="ml-2 font-sans text-muted-foreground">
-                      will be cloned on Create Project
+                      {t("repoPicker.willClone")}
                     </span>
                   )}
                 </span>
                 {/* The path, not "Remove repository": a list of them all offering the same name
                     is unusable by voice or by screen reader. */}
                 <IconButton
-                  label={`Remove ${path}`}
+                  label={t("repoPicker.remove", { path })}
                   size="sm"
                   variant="outline"
                   tone="muted"
@@ -203,7 +202,7 @@ export function FirstProjectStep({
           className="self-start text-xs"
         >
           <Plus className="size-3.5" aria-hidden="true" />
-          Add Repository
+          {t("repoPicker.add")}
         </Button>
       </div>
 
@@ -212,7 +211,7 @@ export function FirstProjectStep({
           className="block text-xs font-medium text-foreground"
           htmlFor="onboarding-project-name"
         >
-          Project Name <span className="text-destructive">*</span>
+          {t("firstProject.nameLabel")} <span className="text-destructive">*</span>
         </label>
         <input
           id="onboarding-project-name"
@@ -237,14 +236,8 @@ export function FirstProjectStep({
           className="space-y-2 rounded-box border border-destructive p-2"
           data-testid="onboarding-project-name-exists"
         >
-          <p className="text-xs font-bold text-destructive">
-            A project with this name already exists.
-          </p>
-          <p className="text-xs text-muted-foreground">
-            To resolve this conflict, you can either enter a different name above, or proceed using
-            the existing project&apos;s configuration (its repository path and settings will be
-            preserved).
-          </p>
+          <p className="text-xs font-bold text-destructive">{t("firstProject.nameExists.title")}</p>
+          <p className="text-xs text-muted-foreground">{t("firstProject.nameExists.body")}</p>
           <Button
             type="button"
             variant="outline"
@@ -254,14 +247,14 @@ export function FirstProjectStep({
             data-testid="onboarding-use-existing-project"
             className="text-xs"
           >
-            Use Existing Project Configuration
+            {t("firstProject.nameExists.useExisting")}
           </Button>
         </div>
       )}
 
       {projectRegistered && (
         <p className="text-xs text-muted-foreground" data-testid="onboarding-project-registered">
-          {projectName} is registered. Next shows its setup run.
+          {t("firstProject.registered", { name: projectName })}
         </p>
       )}
     </div>

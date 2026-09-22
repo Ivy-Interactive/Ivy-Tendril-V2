@@ -181,6 +181,26 @@ describe("OnboardingWizard", () => {
     expect(screen.getByTestId("onboarding-agent-claude")).toHaveAttribute("aria-pressed", "true");
   });
 
+  it("names every missing required tool in one sentence in the prerequisite list", async () => {
+    runDoctor.mockResolvedValue([
+      ...checks,
+      {
+        name: "Node",
+        status: "Fail",
+        message: "Node not found on PATH",
+        required: true,
+        installUrl: "https://nodejs.org",
+        category: "Prerequisite",
+      },
+    ]);
+    await renderWizard();
+
+    // The prerequisite list names them all; the pick gate below it reports only the first.
+    expect(screen.getByTestId("onboarding-prerequisites")).toHaveTextContent(
+      "Tendril needs Git and Node but they aren't installed. Install them, then press Re-check.",
+    );
+  });
+
   it("advances on the pick itself when nothing required is missing", async () => {
     await renderWizard();
 

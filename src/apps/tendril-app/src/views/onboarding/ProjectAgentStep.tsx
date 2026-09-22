@@ -1,5 +1,6 @@
 import React from "react";
 import { Spinner } from "@ivy-interactive/components/ui";
+import { useTranslation } from "../../i18n";
 
 /**
  * V1's `ProjectAgentStepView`, the middle of the project section's three sub-steps: the wizard has
@@ -42,21 +43,18 @@ export interface ProjectAgentStepProps {
 }
 
 export function ProjectAgentStep({ jobId, onFinished }: ProjectAgentStepProps) {
+  const { t } = useTranslation("onboarding");
   return (
     <div className="space-y-4" data-testid="onboarding-step-project-agent">
-      <h3 className="text-base font-semibold text-foreground">Setting up your project</h3>
+      <h3 className="text-base font-semibold text-foreground">{t("agentRun.title")}</h3>
 
       {jobId === null ? (
         <p className="text-sm text-muted-foreground" data-testid="onboarding-agent-no-run">
-          No setup run is attached to this project. You can configure its verifications and review
-          actions from the project&apos;s own screen once setup is finished.
+          {t("agentRun.noRun")}
         </p>
       ) : (
         <>
-          <p className="text-sm text-muted-foreground">
-            Tendril is detecting your tech stack and configuring your agentic harness. This will
-            take a few minutes, so treat yourself to a ☕ while you wait.
-          </p>
+          <p className="text-sm text-muted-foreground">{t("agentRun.wizardHint")}</p>
           <React.Suspense
             fallback={
               <div
