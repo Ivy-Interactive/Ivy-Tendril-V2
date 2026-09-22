@@ -1,5 +1,12 @@
 import * as React from "react";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "../ui/dialog";
 import { TuiKbd } from "../ui/TuiKbd";
 import { DIALOG_WIDTH, type DialogWidth } from "./fieldStyles";
 
