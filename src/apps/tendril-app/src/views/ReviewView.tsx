@@ -5,7 +5,6 @@ import { copyToClipboard } from "@ivy-interactive/components";
 import {
   PlanChangesView,
   PlanGitView,
-  PlanMarkdown,
   PlanWorkspace,
   useShortcut,
   type PlanActionDto,
@@ -52,6 +51,7 @@ import { PartialDeliveryDialog } from "./dialogs/PartialDeliveryDialog";
 import { ResetToDraftDialog } from "./dialogs/ResetToDraftDialog";
 import { SuggestChangesDialog } from "./dialogs/SuggestChangesDialog";
 import { DetailRow, ExecutionFailedCallout, planLinkLabel } from "./planDetail/helpers";
+import { PlanDocumentPane } from "./planDetail/tabPanes";
 import { PlanPullRequests } from "./PlanPullRequests";
 
 /** The triage dialogs this view owns, at most one open at a time. */
@@ -1223,46 +1223,42 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
               />,
             ],
             Content: [
+              /* `SummaryTabView` and `Review/Tabs/PlanTabView`: the same bare `PlanMarkdown` the
+                 Plans app's Plan tab is, rendered through the same `PlanDocumentPane`, so the summary
+                 starts where the plan page's document does. They used to get the `Cap()` treatment
+                 the Details tab below gets, which inset them a second time. */
               activeTab === SUMMARY_TAB && (
-                <div
+                <PlanDocumentPane
                   key="summary"
                   data-testid="review-tab-summary"
-                  className="flex min-h-0 flex-1 flex-col overflow-y-auto"
-                >
-                  <div className="w-full max-w-[var(--content-measure)] px-8 py-6">
-                    {summaryLoading && !summaryContent ? (
+                  placeholder={
+                    summaryLoading && !summaryContent ? (
                       <p className="text-sm text-muted-foreground">Loading summary…</p>
-                    ) : (
-                      <PlanMarkdown
-                        id="review-summary-markdown"
-                        content={typeof summaryContent === "string" && summaryContent ? summaryContent : FALLBACK_SUMMARY_MARKDOWN}
-                        article
-                        dangerouslyAllowLocalFiles
-                      />
-                    )}
-                  </div>
-                </div>
+                    ) : null
+                  }
+                  id="review-summary-markdown"
+                  content={
+                    typeof summaryContent === "string" && summaryContent
+                      ? summaryContent
+                      : FALLBACK_SUMMARY_MARKDOWN
+                  }
+                />
               ),
 
               activeTab === PLAN_TAB && (
-                <div
+                <PlanDocumentPane
                   key="plan"
                   data-testid="review-tab-plan"
-                  className="flex min-h-0 flex-1 flex-col overflow-y-auto"
-                >
-                  <div className="w-full max-w-[var(--content-measure)] px-8 py-6">
-                    {selectedPlan.state === "Failed" && planDetail && (
-                      <ExecutionFailedCallout plan={planDetail} jobs={jobs ?? []} />
-                    )}
-                    <PlanMarkdown
-                      id="review-plan-markdown"
-                      content={planDetail?.latestRevisionContent || "# No plan specification available."}
-                      wireframeBaseUrl={wireframeBaseUrl}
-                      article
-                      dangerouslyAllowLocalFiles
-                    />
-                  </div>
-                </div>
+                  lead={
+                    selectedPlan.state === "Failed" &&
+                    planDetail && <ExecutionFailedCallout plan={planDetail} jobs={jobs ?? []} />
+                  }
+                  id="review-plan-markdown"
+                  content={
+                    planDetail?.latestRevisionContent || "# No plan specification available."
+                  }
+                  wireframeBaseUrl={wireframeBaseUrl}
+                />
               ),
 
               activeTab === DETAILS_TAB && (
