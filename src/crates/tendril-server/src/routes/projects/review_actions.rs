@@ -1,21 +1,26 @@
-//! A project's review actions — both the configuration of them and running one.
+//! A project's review actions — the configuration of them, whether each one's condition holds for a
+//! plan, and running one.
 //!
 //! `execute_review_action` starts a PTY session; the session plumbing itself lives in
 //! [`crate::pty`], and only the keystroke and resize routes that drive a running one are here.
 
-use super::payloads::ExecuteReviewActionParams;
+use super::payloads::{ExecuteReviewActionParams, ReviewActionConditionsParams};
 use crate::state::AppState;
 use axum::extract::{Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 use base64::Engine;
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::path::PathBuf;
 use std::sync::Arc;
-use tendril_core::config::{load_config, save_config};
-use tendril_core::models::ReviewActionConfig;
+use std::time::Duration;
+use tendril_core::config::{expand_variables, load_config, save_config};
+use tendril_core::jobs::hooks::{
+    evaluate_condition, shell_hook_executor, ConditionVerdict, HookCommandSpec, HookExecutor,
+};
+use tendril_core::models::{ProjectConfig, ReviewActionConfig};
 use tendril_core::plans::helpers::resolve_plan_folder;
 
 #[derive(Debug, Deserialize)]
@@ -214,6 +219,217 @@ pub async fn remove_project_review_action(
         .into_response()
 }
 
+/// How long a review action's shell condition may run before it is killed and reported as
+/// unevaluable. V1's `PlatformHelper.EvaluatePowerShellCondition(..., timeoutMs = 5000)`: half the
+/// hooks' budget, because a reviewer is looking at the button while it is decided, and inside the
+/// app's own 10s request timeout with room to spare.
+pub const REVIEW_ACTION_CONDITION_TIMEOUT: Duration = Duration::from_secs(5);
+
+/// How a review action's condition stands for one plan — what decides whether its button can be
+/// pressed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum ReviewActionConditionState {
+    /// The condition holds, or the action has none.
+    Met,
+    /// The condition was evaluated and does not hold. V1 disabled the button on exactly this.
+    NotMet,
+    /// The condition could not be evaluated at all. Not folded into `NotMet`: a condition nobody
+    /// could check has not failed, and a button disabled "because the condition is not met" when it
+    /// was never run would be a false statement to the reviewer.
+    Unknown,
+}
+
+/// One review action's condition verdict, as `GET /api/projects/:name/review-actions` returns it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewActionCondition {
+    pub name: String,
+    /// The condition as configured, before variable expansion — what the reviewer wrote and would
+    /// recognise in a tooltip.
+    pub condition: String,
+    pub state: ReviewActionConditionState,
+    /// Why the condition could not be evaluated. Present only for `Unknown`: a condition that does
+    /// not hold is explained by the condition itself, which is all V1's
+    /// `Disabled: Condition not met (<condition>)` tooltip ever said.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
+/// Every review action of a project, each with its `condition` evaluated for one plan.
+///
+/// V1's `ContentView` precomputed `ReviewActionStates` with
+/// `PlatformHelper.EvaluatePowerShellCondition(action.Condition, folderPath)` and
+/// `ReviewActionsBarView.BuildActionButton` disabled every button whose condition did not hold. The
+/// webview has neither a filesystem nor a shell, so it cannot answer that itself — this route is
+/// where the answer comes from.
+///
+/// The evaluation is the hooks' own ([`evaluate_condition`]), not a second copy of it: V1 ran both
+/// kinds of condition as PowerShell against the plan folder, and so does this. A PowerShell-shaped
+/// condition (`Test-Path "Worktrees/Repo/src"`) is decided in-process against the plan folder; any
+/// other is run through the shell from the plan folder, with the environment the action's own
+/// command would get, and killed after [`REVIEW_ACTION_CONDITION_TIMEOUT`]. All of them run
+/// concurrently, so one slow condition costs its own timeout rather than the sum of them.
+///
+/// `400` without a `planId`, `404` for an unknown project or plan. The answer is in config order.
+pub async fn review_action_conditions(
+    State(state): State<Arc<AppState>>,
+    Path(project_name): Path<String>,
+    Query(params): Query<ReviewActionConditionsParams>,
+) -> impl IntoResponse {
+    let Some(plan_id) = params
+        .plan_id
+        .map(|p| p.to_string_val())
+        .filter(|s| !s.trim().is_empty())
+    else {
+        return (
+            StatusCode::BAD_REQUEST,
+            Json(json!({
+                "error": "planId is required: a review action's condition is evaluated against a plan folder"
+            })),
+        )
+            .into_response();
+    };
+
+    let settings = match load_config(&state.config_path) {
+        Ok(s) => s,
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to load config: {}", e) })),
+            )
+                .into_response();
+        }
+    };
+
+    let Some(project) = settings
+        .projects
+        .iter()
+        .find(|p| p.name.eq_ignore_ascii_case(&project_name))
+    else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": format!("Project '{}' not found", project_name) })),
+        )
+            .into_response();
+    };
+
+    let Ok(plan_folder) = resolve_plan_folder(&plan_id, &state.plans_dir) else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": format!("Plan '{}' not found", plan_id) })),
+        )
+            .into_response();
+    };
+
+    let ActionEnvironment { env, .. } =
+        action_environment(&state, project, Some(&plan_id), Some(plan_folder.as_path()));
+    let tendril_home = state.tendril_home.to_string_lossy().to_string();
+    let executor = shell_hook_executor();
+
+    let evaluations = project.review_actions.iter().map(|action| {
+        evaluate_review_action_condition(
+            action,
+            HookCommandSpec {
+                hook_name: action.name.clone(),
+                command: expand_variables(&action.condition, &tendril_home),
+                working_dir: plan_folder.clone(),
+                env: env.clone(),
+                timeout: REVIEW_ACTION_CONDITION_TIMEOUT,
+            },
+            &executor,
+        )
+    });
+    let conditions = futures_util::future::join_all(evaluations).await;
+
+    (StatusCode::OK, Json(conditions)).into_response()
+}
+
+/// One action's verdict. `spec.command` is its already-expanded condition.
+async fn evaluate_review_action_condition(
+    action: &ReviewActionConfig,
+    spec: HookCommandSpec,
+    executor: &HookExecutor,
+) -> ReviewActionCondition {
+    let (state, reason) = if spec.command.trim().is_empty() {
+        // V1: `if (string.IsNullOrEmpty(action.Condition)) actionStates[i] = (action.Name, true)`.
+        (ReviewActionConditionState::Met, None)
+    } else {
+        match evaluate_condition(spec, executor).await {
+            ConditionVerdict::Holds => (ReviewActionConditionState::Met, None),
+            ConditionVerdict::NotMet { .. } => (ReviewActionConditionState::NotMet, None),
+            ConditionVerdict::Unevaluable { why, .. } => {
+                (ReviewActionConditionState::Unknown, Some(why))
+            }
+        }
+    };
+
+    ReviewActionCondition {
+        name: action.name.clone(),
+        condition: action.condition.clone(),
+        state,
+        reason,
+    }
+}
+
+/// The ports a review action runs with and the environment it runs in.
+struct ActionEnvironment {
+    ports: Vec<(String, u16)>,
+    env: Vec<(String, String)>,
+}
+
+/// What [`execute_review_action`] hands the pty, and what [`review_action_conditions`] hands a shell
+/// condition — the same, so a condition asking about `$WORKTREE_DIR` asks about the directory the
+/// command it gates would run against.
+///
+/// `plan_folder` is the resolved folder of `plan_id`, when there is one.
+fn action_environment(
+    state: &AppState,
+    project: &ProjectConfig,
+    plan_id: Option<&str>,
+    plan_folder: Option<&std::path::Path>,
+) -> ActionEnvironment {
+    let plan_yaml = plan_folder
+        .and_then(|folder| tendril_core::plans::reader::read_plan_yaml(folder).ok())
+        .map(|(plan, _)| plan);
+
+    let ports = crate::pty::resolve_ports(
+        Some(project),
+        plan_yaml.as_ref().and_then(|p| p.allocated_ports.as_ref()),
+    );
+
+    // `PLAN_ID` is the padded form a plan is known by everywhere else, so a review action can build
+    // a path out of it.
+    let padded_plan_id = plan_id.map(|pid| {
+        let trimmed = pid.trim();
+        trimmed
+            .parse::<u32>()
+            .map(|n| format!("{n:05}"))
+            .unwrap_or_else(|_| trimmed.to_string())
+    });
+    let plan_context = match (padded_plan_id.as_deref(), plan_folder, plan_yaml.as_ref()) {
+        (Some(id), Some(folder), Some(plan)) => Some(crate::pty::PlanEnvContext {
+            plan_id: id,
+            plan_folder: folder,
+            project: &project.name,
+            repos: &plan.repos,
+        }),
+        _ => None,
+    };
+
+    let mut env = vec![(
+        "TENDRIL_HOME".to_string(),
+        state.tendril_home.to_string_lossy().to_string(),
+    )];
+    env.extend(crate::pty::build_environment(
+        &ports,
+        plan_context.as_ref(),
+        Some(&project.name),
+    ));
+
+    ActionEnvironment { ports, env }
+}
+
 pub async fn execute_review_action(
     State(state): State<Arc<AppState>>,
     Path((project_name, action_name)): Path<(String, String)>,
@@ -363,51 +579,12 @@ pub async fn execute_review_action(
     let plan_folder = plan_id
         .as_deref()
         .and_then(|pid| resolve_plan_folder(pid, &state.plans_dir).ok());
-    let plan_yaml = plan_folder
-        .as_deref()
-        .and_then(|folder| tendril_core::plans::reader::read_plan_yaml(folder).ok())
-        .map(|(plan, _)| plan);
+    let ActionEnvironment { ports, env } =
+        action_environment(&state, project, plan_id.as_deref(), plan_folder.as_deref());
 
-    let ports = crate::pty::resolve_ports(
-        Some(project),
-        plan_yaml.as_ref().and_then(|p| p.allocated_ports.as_ref()),
-    );
     // `sh` will not expand `%PORT%`, so the command has to carry the resolved values before it is
     // handed over; the injected environment covers only what the command reads itself.
     let command = crate::pty::interpolate_command(&action.command, &ports);
-
-    // `PLAN_ID` is the padded form a plan is known by everywhere else, so a review action can build
-    // a path out of it.
-    let padded_plan_id = plan_id.as_deref().map(|pid| {
-        let trimmed = pid.trim();
-        trimmed
-            .parse::<u32>()
-            .map(|n| format!("{n:05}"))
-            .unwrap_or_else(|_| trimmed.to_string())
-    });
-    let plan_context = match (
-        padded_plan_id.as_deref(),
-        plan_folder.as_deref(),
-        plan_yaml.as_ref(),
-    ) {
-        (Some(id), Some(folder), Some(plan)) => Some(crate::pty::PlanEnvContext {
-            plan_id: id,
-            plan_folder: folder,
-            project: &project.name,
-            repos: &plan.repos,
-        }),
-        _ => None,
-    };
-
-    let mut env = vec![(
-        "TENDRIL_HOME".to_string(),
-        state.tendril_home.to_string_lossy().to_string(),
-    )];
-    env.extend(crate::pty::build_environment(
-        &ports,
-        plan_context.as_ref(),
-        Some(&project.name),
-    ));
 
     let stream = match crate::pty::spawn_review_action(
         &command,

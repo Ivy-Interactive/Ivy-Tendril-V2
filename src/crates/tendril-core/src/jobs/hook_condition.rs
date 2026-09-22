@@ -23,9 +23,18 @@
 //! directory — the plan folder, else `TENDRIL_HOME`, matching legacy's `pwsh` `WorkingDirectory`).
 //! Do not "fix" this back into a substring match; it is the whole point of running natively instead
 //! of through a shell.
+//!
+//! The path itself is read the way legacy's `PlatformHelper.TryEvaluateTestPathCondition` read it,
+//! which is what decided every review-action `Test-Path` V1 had: `\` and `/` are both separators, a
+//! leading `~` is the user's home, a stray leading separator before `Worktrees/` or `artifacts/` is
+//! dropped (`SanitizeConditionPath`), and `*`/`?` in the last segment match any entry of its
+//! directory. Configs written on Windows (`Test-Path "worktrees\Repo\src"`,
+//! `Test-Path "artifacts\sample\*.csproj"`) are the norm rather than the exception, and without this
+//! every one of them would read as "does not exist" on macOS and Linux — which for a review action
+//! means a button disabled for a reason that is not true. See [`resolve_test_path`].
 
 use regex::Regex;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
 
 /// Cmdlets that unambiguously mark a condition as PowerShell even without `-or`/`-and`, e.g.
@@ -117,12 +126,110 @@ fn eval(expr: &Expr, base_dir: &Path) -> bool {
 }
 
 fn test_path_exists(path: &str, base_dir: &Path) -> bool {
-    let candidate = Path::new(path);
-    if candidate.is_absolute() {
-        candidate.exists()
+    let resolved = resolve_test_path(path, base_dir);
+    let pattern = match resolved.file_name().and_then(|name| name.to_str()) {
+        Some(name) if has_wildcard(name) => name.to_string(),
+        _ => return resolved.exists(),
+    };
+
+    // Legacy's `Directory.EnumerateFileSystemEntries(dir, pattern, TopDirectoryOnly).Any()`: the
+    // pattern matches entries of its own directory only, and a directory that is not there matches
+    // nothing.
+    let dir = resolved.parent().unwrap_or(base_dir);
+    std::fs::read_dir(dir)
+        .map(|entries| {
+            entries
+                .filter_map(Result::ok)
+                .any(|entry| wildcard_matches(&pattern, &entry.file_name().to_string_lossy()))
+        })
+        .unwrap_or(false)
+}
+
+/// Where a `Test-Path` argument points, read the way legacy's `TryEvaluateTestPathCondition` read
+/// it: separators normalised, `~` expanded, V1's `SanitizeConditionPath` applied, and a relative
+/// path resolved against `base_dir`.
+fn resolve_test_path(path: &str, base_dir: &Path) -> PathBuf {
+    // PowerShell takes either separator on every platform, and legacy normalised to the native one
+    // before touching the disk. Windows already reads both.
+    let normalized = if cfg!(windows) {
+        path.to_string()
     } else {
-        base_dir.join(candidate).exists()
+        path.replace('\\', "/")
+    };
+
+    if let Some(rest) = normalized.strip_prefix('~') {
+        if rest.is_empty() || rest.starts_with(['/', '\\']) {
+            if let Some(home) = crate::config::dirs_home() {
+                return home.join(rest.trim_start_matches(['/', '\\']));
+            }
+        }
     }
+
+    let candidate = Path::new(strip_misplaced_root(&normalized));
+    if candidate.is_absolute() {
+        candidate.to_path_buf()
+    } else {
+        base_dir.join(candidate)
+    }
+}
+
+/// Legacy's `SanitizeConditionPath`: `Test-Path "/Worktrees/Repo"` is a plan-relative path an agent
+/// wrote with a leading separator, not a directory at the filesystem root, so the separator goes.
+/// Only in front of `Worktrees/` and `artifacts/`, as there; any other absolute path stays absolute.
+fn strip_misplaced_root(path: &str) -> &str {
+    let trimmed = path.trim_start_matches(['/', '\\']);
+    if trimmed.len() == path.len() {
+        return path;
+    }
+    let lower = trimmed.to_ascii_lowercase();
+    let plan_relative = ["worktrees/", "worktrees\\", "artifacts/", "artifacts\\"]
+        .iter()
+        .any(|prefix| lower.starts_with(prefix));
+    if plan_relative {
+        trimmed
+    } else {
+        path
+    }
+}
+
+fn has_wildcard(segment: &str) -> bool {
+    segment.contains(['*', '?'])
+}
+
+/// `*` (any run, including none) and `?` (exactly one character) against one directory entry's
+/// name. Case-insensitive where the platform's default filesystem is, so a pattern agrees with what
+/// `exists()` would have said about the same name spelled out.
+fn wildcard_matches(pattern: &str, name: &str) -> bool {
+    let fold = |s: &str| -> Vec<char> {
+        if cfg!(any(windows, target_os = "macos")) {
+            s.to_lowercase().chars().collect()
+        } else {
+            s.chars().collect()
+        }
+    };
+    let pattern = fold(pattern);
+    let name = fold(name);
+
+    // Iterative glob match with single-star backtracking: linear in practice, and no recursion for a
+    // pathological pattern to blow the stack with.
+    let (mut p, mut n) = (0usize, 0usize);
+    let mut star: Option<(usize, usize)> = None;
+    while n < name.len() {
+        if p < pattern.len() && (pattern[p] == '?' || pattern[p] == name[n]) {
+            p += 1;
+            n += 1;
+        } else if p < pattern.len() && pattern[p] == '*' {
+            star = Some((p, n));
+            p += 1;
+        } else if let Some((star_p, star_n)) = star {
+            p = star_p + 1;
+            n = star_n + 1;
+            star = Some((star_p, star_n + 1));
+        } else {
+            return false;
+        }
+    }
+    pattern[p..].iter().all(|c| *c == '*')
 }
 
 fn parse_expr(s: &str) -> Result<Expr, String> {
@@ -167,6 +274,7 @@ fn parse_term(s: &str) -> Result<Expr, String> {
     }
 
     if let Some(path) = parse_test_path(trimmed)? {
+        reject_directory_wildcards(&path)?;
         return Ok(Expr::TestPath(path));
     }
 
@@ -174,6 +282,21 @@ fn parse_term(s: &str) -> Result<Expr, String> {
         "unsupported expression in condition: `{}`",
         trimmed
     ))
+}
+
+/// A wildcard anywhere but the last segment is outside what [`test_path_exists`] (and legacy's
+/// native `Test-Path`, which it ports) can answer. Refused as unsupported rather than evaluated to
+/// `false`, so it is reported as a condition nobody could check instead of one that failed.
+fn reject_directory_wildcards(path: &str) -> Result<(), String> {
+    let segments: Vec<&str> = path.split(['/', '\\']).collect();
+    let directories = &segments[..segments.len().saturating_sub(1)];
+    if directories.iter().any(|segment| has_wildcard(segment)) {
+        return Err(format!(
+            "Test-Path supports wildcards only in the last segment of the path: `{}`",
+            path
+        ));
+    }
+    Ok(())
 }
 
 /// Whether `s` is `(...)` where the leading `(` and trailing `)` are actually a matching pair
@@ -453,6 +576,117 @@ mod tests {
         );
 
         let _ = fs::remove_dir_all(base);
+    }
+
+    /// `src/Ivy.Tendril.TeamIvyConfig/config.yaml` writes `Test-Path "worktrees\Ivy-Tendril\src"`:
+    /// a config authored on Windows. Read literally on macOS that is one file name with backslashes
+    /// in it, which never exists, and every such review action would be disabled for nothing.
+    #[test]
+    fn reads_backslashes_as_separators() {
+        let base = temp_dir("backslashes");
+        fs::create_dir_all(base.join("Worktrees/Repo/src")).unwrap();
+
+        assert_eq!(
+            evaluate_powershell_condition(r#"Test-Path "Worktrees\Repo\src""#, &base),
+            Ok(true)
+        );
+        assert_eq!(
+            evaluate_powershell_condition(r#"Test-Path "Worktrees\Repo\missing""#, &base),
+            Ok(false)
+        );
+
+        let _ = fs::remove_dir_all(base);
+    }
+
+    /// Legacy's `SanitizeConditionPath`: a leading separator in front of `Worktrees/` or
+    /// `artifacts/` is a plan-relative path written sloppily, not the filesystem root.
+    #[test]
+    fn drops_a_misplaced_root_before_plan_relative_folders_only() {
+        let base = temp_dir("misplaced-root");
+        fs::create_dir_all(base.join("Worktrees/Repo")).unwrap();
+        fs::create_dir_all(base.join("artifacts/sample")).unwrap();
+
+        assert_eq!(
+            evaluate_powershell_condition(r#"Test-Path "/Worktrees/Repo""#, &base),
+            Ok(true)
+        );
+        assert_eq!(
+            evaluate_powershell_condition(r#"Test-Path "\artifacts\sample""#, &base),
+            Ok(true)
+        );
+        // Anything else that looks absolute is absolute, as it was in V1.
+        assert_eq!(strip_misplaced_root("/usr/local"), "/usr/local");
+        assert_eq!(strip_misplaced_root("Worktrees/Repo"), "Worktrees/Repo");
+
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn expands_a_leading_tilde_to_the_home_directory() {
+        let Some(home) = crate::config::dirs_home() else {
+            return;
+        };
+        assert_eq!(resolve_test_path("~", Path::new("/base")), home);
+        assert_eq!(
+            resolve_test_path("~/projects/x", Path::new("/base")),
+            home.join("projects/x")
+        );
+        // Only a leading `~` segment is the home directory.
+        assert_eq!(
+            resolve_test_path("~backup/x", Path::new("/base")),
+            Path::new("/base").join("~backup/x")
+        );
+    }
+
+    /// `Test-Path "artifacts\sample\*.csproj"`, verbatim from the team config.
+    #[test]
+    fn matches_wildcards_in_the_last_segment() {
+        let base = temp_dir("wildcards");
+        fs::create_dir_all(base.join("artifacts/sample")).unwrap();
+        fs::write(base.join("artifacts/sample/App.csproj"), b"").unwrap();
+
+        assert_eq!(
+            evaluate_powershell_condition(r#"Test-Path "artifacts\sample\*.csproj""#, &base),
+            Ok(true)
+        );
+        assert_eq!(
+            evaluate_powershell_condition(r#"Test-Path "artifacts/sample/App.?sproj""#, &base),
+            Ok(true)
+        );
+        assert_eq!(
+            evaluate_powershell_condition(r#"Test-Path "artifacts/sample/*.sln""#, &base),
+            Ok(false)
+        );
+        // A directory that is not there matches nothing, rather than erroring.
+        assert_eq!(
+            evaluate_powershell_condition(r#"Test-Path "artifacts/gone/*.csproj""#, &base),
+            Ok(false)
+        );
+
+        let _ = fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn refuses_wildcards_outside_the_last_segment_as_unsupported() {
+        let condition = r#"Test-Path "Worktrees/*/src""#;
+        match classify_hook_condition(condition) {
+            HookConditionLanguage::PowerShellUnsupported(why) => {
+                assert!(why.contains("last segment"), "{why}")
+            }
+            other => panic!("expected PowerShellUnsupported, got {other:?}"),
+        }
+        assert!(evaluate_powershell_condition(condition, &std::env::temp_dir()).is_err());
+    }
+
+    #[test]
+    fn wildcard_matching_follows_star_and_question_mark() {
+        assert!(wildcard_matches("*", ""));
+        assert!(wildcard_matches("*.csproj", "App.csproj"));
+        assert!(wildcard_matches("a*b*c", "aXXbYYc"));
+        assert!(wildcard_matches("a?c", "abc"));
+        assert!(!wildcard_matches("a?c", "ac"));
+        assert!(!wildcard_matches("*.csproj", "App.csproj.bak"));
+        assert!(wildcard_matches("*.csproj*", "App.csproj.bak"));
     }
 
     #[test]

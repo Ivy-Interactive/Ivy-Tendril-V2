@@ -235,6 +235,28 @@ export interface ReviewActionConfig {
   paths?: string[];
 }
 
+/**
+ * Whether one review action's condition holds for a plan, as the daemon decided it
+ * (`GET /api/projects/:name/review-actions?planId=...`).
+ *
+ * The daemon evaluates it against the plan folder, as V1's `ContentView` did with
+ * `PlatformHelper.EvaluatePowerShellCondition(action.Condition, folderPath)` — a `Test-Path` needs a
+ * filesystem and a POSIX condition needs a shell, and the webview has neither.
+ */
+export interface ReviewActionConditionResult {
+  name: string;
+  /** The condition as configured. */
+  condition: string;
+  /**
+   * `met`: holds, or there is no condition. `notMet`: evaluated and does not hold, which is what V1
+   * disabled the button on. `unknown`: could not be evaluated at all (unsupported syntax, a timeout).
+   * Typed as `string` too, because an older or newer daemon's value must not be read as one of these.
+   */
+  state: "met" | "notMet" | "unknown" | (string & {});
+  /** Why the condition could not be evaluated. Present only for `unknown`. */
+  reason?: string | null;
+}
+
 export interface ProjectSummary {
   name: string;
   /**

@@ -96,8 +96,18 @@ export const Tooltip: React.FC<TooltipProps> = ({
       <TooltipPrimitive.Trigger asChild={asChild || wrapTrigger}>
         {wrapTrigger ? (
           /* Focusable only while the control is: otherwise the wrapper would be a tab stop
-             in front of a perfectly reachable button. */
-          <span className="tui-tooltip-trigger-wrap" tabIndex={triggerDisabled ? 0 : undefined}>
+             in front of a perfectly reachable button.
+
+             `data-disabled` for the cursor. A control that lets the hover through to this wrapper
+             (`disabled:pointer-events-none`, as `buttonVariant` does) makes the wrapper the thing
+             under the pointer, and a wrapper that says nothing shows the arrow, so the
+             `not-allowed` its own `button:disabled` asked for never appeared. base.css's
+             `[data-disabled]` clause restores it here, once, for every wrapped control. */
+          <span
+            className="tui-tooltip-trigger-wrap"
+            tabIndex={triggerDisabled ? 0 : undefined}
+            data-disabled={triggerDisabled ? "" : undefined}
+          >
             {children}
           </span>
         ) : (
