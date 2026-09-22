@@ -2,6 +2,7 @@ import React, { useMemo, useState } from "react";
 import type { IvyEventHandler } from "../TendrilProcessViewer/types";
 import { parseQuestions } from "../PlanMarkdown/questionsSchema";
 import { QuestionsForm } from "./QuestionsForm";
+import { useTranslation } from "@/i18n/uiPlanWorkspace";
 import {
   buildAnswersSummary,
   canSubmitAnswers,
@@ -39,6 +40,8 @@ export const TendrilQuestions: React.FC<TendrilQuestionsProps> = ({
   showSubmit = false,
   submitLabel,
 }) => {
+  // Also what re-renders the widget, and so re-writes `submitNote`, when the language changes.
+  const { t } = useTranslation("uiPlanWorkspace");
   const parsed = useMemo(() => parseQuestions(content), [content]);
   const questions = parsed.kind === "questions" ? parsed.questions : [];
 
@@ -104,7 +107,7 @@ export const TendrilQuestions: React.FC<TendrilQuestionsProps> = ({
       submit={
         showSubmit
           ? {
-              label: submitLabel || "Submit response",
+              label: submitLabel || t("questions.submit"),
               disabled: !submitEnabled,
               note: submitNote(questions, answers),
               onSubmit: () =>

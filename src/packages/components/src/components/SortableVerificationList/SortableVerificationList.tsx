@@ -6,7 +6,9 @@ import {
   PointerSensor,
   useSensor,
   useSensors,
+  type Announcements,
   type DragEndEvent,
+  type ScreenReaderInstructions,
 } from "@dnd-kit/core";
 import {
   arrayMove,
@@ -17,6 +19,7 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import { GripVertical } from "lucide-react";
+import { useTranslation, type TFunction } from "@/i18n/uiPlanWorkspace";
 import "./sortable-verification-list.css";
 
 type IvyEventHandler = (eventName: string, widgetId: string, args: unknown[]) => void;
@@ -36,6 +39,40 @@ export interface SortableVerificationListProps {
 
 const EMPTY_EVENTS: string[] = [];
 
+/**
+ * What dnd-kit tells a screen reader: the handle's instructions and the pick-up, move, drop and
+ * cancel announcements. dnd-kit's own are English only; these say the same in the current language.
+ * The ids are verification names, so they go in as variables.
+ */
+function dragAccessibility(t: TFunction): {
+  announcements: Announcements;
+  screenReaderInstructions: ScreenReaderInstructions;
+} {
+  return {
+    screenReaderInstructions: { draggable: t("verificationList.a11y.instructions") },
+    announcements: {
+      onDragStart: ({ active }) =>
+        t("verificationList.a11y.pickedUp", { active: String(active.id) }),
+      onDragOver: ({ active, over }) =>
+        over
+          ? t("verificationList.a11y.movedOver", {
+              active: String(active.id),
+              over: String(over.id),
+            })
+          : t("verificationList.a11y.movedAway", { active: String(active.id) }),
+      onDragEnd: ({ active, over }) =>
+        over
+          ? t("verificationList.a11y.droppedOver", {
+              active: String(active.id),
+              over: String(over.id),
+            })
+          : t("verificationList.a11y.dropped", { active: String(active.id) }),
+      onDragCancel: ({ active }) =>
+        t("verificationList.a11y.cancelled", { active: String(active.id) }),
+    },
+  };
+}
+
 function SortableItem({
   item,
   onChange,
@@ -43,8 +80,10 @@ function SortableItem({
   item: VerificationItem;
   onChange?: (item: VerificationItem) => void;
 }) {
+  const { t } = useTranslation("uiPlanWorkspace");
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: item.name,
+    attributes: { roleDescription: t("verificationList.a11y.roleDescription") },
   });
 
   const style = {
@@ -55,7 +94,12 @@ function SortableItem({
 
   return (
     <div ref={setNodeRef} style={style} className="svl-row">
-      <button {...attributes} {...listeners} className="svl-handle" aria-label="Drag handle">
+      <button
+        {...attributes}
+        {...listeners}
+        className="svl-handle"
+        aria-label={t("verificationList.dragHandle")}
+      >
         <GripVertical className="svl-handle-icon" />
       </button>
 
@@ -79,7 +123,7 @@ function SortableItem({
             onChange={(e) => onChange?.({ ...item, required: e.target.checked })}
             className="svl-checkbox"
           />
-          <span>Required</span>
+          <span>{t("verificationList.required")}</span>
         </label>
       )}
     </div>
@@ -92,6 +136,8 @@ export function SortableVerificationList({
   events = EMPTY_EVENTS,
   eventHandler,
 }: SortableVerificationListProps) {
+  const { t } = useTranslation("uiPlanWorkspace");
+  const accessibility = React.useMemo(() => dragAccessibility(t), [t]);
   const [items, setItems] = React.useState<VerificationItem[]>(() => {
     try {
       return JSON.parse(itemsJson);
@@ -150,7 +196,12 @@ export function SortableVerificationList({
   };
 
   return (
-    <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
+    <DndContext
+      sensors={sensors}
+      collisionDetection={closestCenter}
+      onDragEnd={handleDragEnd}
+      accessibility={accessibility}
+    >
       <SortableContext
         items={items.map((item) => item.name)}
         strategy={verticalListSortingStrategy}

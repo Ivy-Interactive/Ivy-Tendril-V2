@@ -1,4 +1,5 @@
 import { parse } from "yaml";
+import { i18n, type TFunction } from "@/i18n/uiPlanWorkspace";
 
 /**
  * The `wireframe` fence: a live preview of one of the plan's wireframes.
@@ -46,12 +47,32 @@ export const VIEWPORT_WIDTHS: Record<WireframeViewport, number> = {
 
 export const MAX_HEIGHT = 4000;
 
-export function parseWireframeFence(source: string): WireframeParse {
+/** The current language's `t`, for a caller that has none of its own to pass. */
+const currentT: TFunction = i18n.getFixedT(null, "uiPlanWorkspace");
+
+/**
+ * The grammar's own words - the keys and the viewport names - which a message quotes but a
+ * translation must never change: they are what the fence has to say, in any language.
+ */
+const KEYWORDS = {
+  name: "name",
+  height: "height",
+  viewport: "viewport",
+  desktop: "Desktop",
+  tablet: "Tablet",
+  mobile: "Mobile",
+} as const;
+
+/**
+ * Parses a fence body. The error, when there is one, is a sentence for the reviewer, written in the
+ * language of `t` - the caller's, so a component re-parses when the language changes.
+ */
+export function parseWireframeFence(source: string, t: TFunction = currentT): WireframeParse {
   const text = source.trim();
   if (text.length === 0)
     return {
       ok: false,
-      error: "The block names no wireframe. Add a line such as `name: checkout-payment`.",
+      error: t("wireframe.errors.empty", { example: "name: checkout-payment" }),
     };
   if (NAME.test(text)) return { ok: true, spec: { name: text } };
 
@@ -59,26 +80,29 @@ export function parseWireframeFence(source: string): WireframeParse {
   try {
     doc = parse(text);
   } catch {
-    return { ok: false, error: "The block is not valid YAML." };
+    return { ok: false, error: t("wireframe.errors.notYaml") };
   }
 
   if (!doc || typeof doc !== "object" || Array.isArray(doc)) {
     return {
       ok: false,
-      error: "Write the block as `name: <wireframe>`, optionally with height and viewport.",
+      error: t("wireframe.errors.notMapping", { ...KEYWORDS, example: "name: <wireframe>" }),
     };
   }
 
   const record = doc as Record<string, unknown>;
   for (const key of Object.keys(record)) {
     if (!KEYS.has(key))
-      return { ok: false, error: `Unknown key '${key}'. Use name, height or viewport.` };
+      return { ok: false, error: t("wireframe.errors.unknownKey", { ...KEYWORDS, key }) };
   }
 
   const { name, height, viewport } = record;
 
   if (typeof name !== "string" || !NAME.test(name)) {
-    return { ok: false, error: "name must be a lowercase slug such as checkout-payment." };
+    return {
+      ok: false,
+      error: t("wireframe.errors.badName", { ...KEYWORDS, example: "checkout-payment" }),
+    };
   }
 
   const spec: WireframeSpec = { name };
@@ -92,7 +116,7 @@ export function parseWireframeFence(source: string): WireframeParse {
     ) {
       return {
         ok: false,
-        error: `height must be a whole number of pixels between 1 and ${MAX_HEIGHT}.`,
+        error: t("wireframe.errors.badHeight", { ...KEYWORDS, max: MAX_HEIGHT }),
       };
     }
     spec.height = height;
@@ -100,7 +124,7 @@ export function parseWireframeFence(source: string): WireframeParse {
 
   if (viewport !== undefined && viewport !== null) {
     if (typeof viewport !== "string" || !(viewport in VIEWPORT_WIDTHS)) {
-      return { ok: false, error: "viewport must be Desktop, Tablet or Mobile." };
+      return { ok: false, error: t("wireframe.errors.badViewport", KEYWORDS) };
     }
     spec.viewport = viewport as WireframeViewport;
   }

@@ -1,15 +1,16 @@
 import React from "react";
 import { parseGitHubAlert, type GitHubAlertType } from "@/lib/markdown-utils";
+import { useTranslation } from "@/i18n/uiPlanWorkspace";
 
 type AlertType = GitHubAlertType;
 
-const alertConfig: Record<AlertType, { title: string; className: string }> = {
-  NOTE: { title: "Note", className: "pmv-alert pmv-alert--note" },
-  TIP: { title: "Tip", className: "pmv-alert pmv-alert--tip" },
-  IMPORTANT: { title: "Important", className: "pmv-alert pmv-alert--important" },
-  WARNING: { title: "Warning", className: "pmv-alert pmv-alert--warning" },
-  CAUTION: { title: "Caution", className: "pmv-alert pmv-alert--caution" },
-};
+const alertConfig = {
+  NOTE: { titleKey: "alert.note", className: "pmv-alert pmv-alert--note" },
+  TIP: { titleKey: "alert.tip", className: "pmv-alert pmv-alert--tip" },
+  IMPORTANT: { titleKey: "alert.important", className: "pmv-alert pmv-alert--important" },
+  WARNING: { titleKey: "alert.warning", className: "pmv-alert pmv-alert--warning" },
+  CAUTION: { titleKey: "alert.caution", className: "pmv-alert pmv-alert--caution" },
+} as const satisfies Record<AlertType, { titleKey: string; className: string }>;
 
 const InfoIcon = () => (
   <svg
@@ -78,6 +79,7 @@ function getIcon(type: AlertType) {
 }
 
 export const AlertBlockquote: React.FC<React.HTMLAttributes<HTMLQuoteElement>> = ({ children }) => {
+  const { t } = useTranslation("uiPlanWorkspace");
   const alert = parseGitHubAlert(children);
 
   if (alert) {
@@ -86,7 +88,7 @@ export const AlertBlockquote: React.FC<React.HTMLAttributes<HTMLQuoteElement>> =
       <div className={config.className} role="alert">
         <div className="pmv-alert-header">
           {getIcon(alert.type)}
-          <span className="pmv-alert-title">{config.title}</span>
+          <span className="pmv-alert-title">{t(config.titleKey)}</span>
         </div>
         <div className="pmv-alert-content">{alert.content}</div>
       </div>

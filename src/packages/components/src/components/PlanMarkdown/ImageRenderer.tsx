@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { IconButton } from "../ui/IconButton";
+import { useTranslation } from "@/i18n/uiPlanWorkspace";
 
 interface ImageRendererProps extends React.ImgHTMLAttributes<HTMLImageElement> {
   src?: string;
@@ -28,6 +29,7 @@ const BrokenImageIcon = () => (
 );
 
 export const ImageRenderer: React.FC<ImageRendererProps> = ({ src, alt, title, ...props }) => {
+  const { t } = useTranslation("uiPlanWorkspace");
   const [loadState, setLoadState] = useState<"loading" | "loaded" | "error">("loading");
   const [isOverlayOpen, setIsOverlayOpen] = useState(false);
 
@@ -79,7 +81,7 @@ export const ImageRenderer: React.FC<ImageRendererProps> = ({ src, alt, title, .
     return (
       <div className="pmv-img-error">
         <BrokenImageIcon />
-        <div className="pmv-img-error-text">{alt || "Image failed to load"}</div>
+        <div className="pmv-img-error-text">{alt || t("image.loadFailed")}</div>
         {title && <div className="pmv-img-error-title">{title}</div>}
       </div>
     );
@@ -102,7 +104,7 @@ export const ImageRenderer: React.FC<ImageRendererProps> = ({ src, alt, title, .
           <div className="pmv-img-overlay" onClick={handleBackdropClick}>
             <IconButton
               className="pmv-img-overlay-close"
-              label="Close"
+              label={t("image.close")}
               tooltip={false}
               size="2xl"
               shape="round"

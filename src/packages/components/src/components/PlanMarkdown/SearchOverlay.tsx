@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from "react";
 import { IconButton } from "../ui/IconButton";
+import { useTranslation } from "@/i18n/uiPlanWorkspace";
 
 interface SearchOverlayProps {
   query: string;
@@ -20,6 +21,7 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({
   onPrevious,
   onClose,
 }) => {
+  const { t } = useTranslation("uiPlanWorkspace");
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -43,8 +45,8 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({
 
   const counterText = query.trim()
     ? matchCount === 0
-      ? "No matches"
-      : `${currentIndex + 1} of ${matchCount}`
+      ? t("search.noMatches")
+      : t("search.position", { current: currentIndex + 1, total: matchCount })
     : "";
 
   return (
@@ -66,8 +68,8 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({
           ref={inputRef}
           type="text"
           className="pmv-search-input"
-          placeholder="Find in document..."
-          aria-label="Find in document"
+          placeholder={t("search.placeholder")}
+          aria-label={t("search.ariaLabel")}
           value={query}
           onChange={(e) => onQueryChange(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -80,7 +82,7 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({
           className="pmv-search-btn"
           onClick={onPrevious}
           disabled={matchCount === 0}
-          label="Previous match"
+          label={t("search.previous")}
           shortcut="Shift+Enter"
         >
           <svg
@@ -99,7 +101,7 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({
           className="pmv-search-btn"
           onClick={onNext}
           disabled={matchCount === 0}
-          label="Next match"
+          label={t("search.next")}
           shortcut="Enter"
         >
           <svg
@@ -118,7 +120,7 @@ export const SearchOverlay: React.FC<SearchOverlayProps> = ({
           size="md"
           className="pmv-search-btn pmv-search-btn--close"
           onClick={onClose}
-          label="Close search"
+          label={t("search.close")}
           shortcut="Escape"
         >
           <svg
