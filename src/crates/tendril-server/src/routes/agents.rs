@@ -281,6 +281,11 @@ mod tests {
             .unwrap()
             .iter()
             .any(|model| model["id"] == "default"));
+        assert!(claude["models"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|model| model["id"] == "claude-opus-5-5"));
         assert!(claude["efforts"]
             .as_array()
             .unwrap()

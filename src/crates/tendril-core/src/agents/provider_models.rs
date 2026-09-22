@@ -151,6 +151,7 @@ const fn priorities(kind: ModelProviderKind, tier: ProfileTier) -> &'static [&'s
     match (kind, tier) {
         (K::Ivy, T::Deep) => &[
             "claude-fable-5-1",
+            "claude-opus-5-5",
             "claude-opus-5-1",
             "claude-opus-5",
             "claude-opus-4-8",
@@ -191,6 +192,7 @@ const fn priorities(kind: ModelProviderKind, tier: ProfileTier) -> &'static [&'s
 
         (K::Anthropic, T::Deep) => &[
             "claude-fable-5-1",
+            "claude-opus-5-5",
             "claude-opus-5-1",
             "claude-opus-5",
             "claude-opus-4-8",

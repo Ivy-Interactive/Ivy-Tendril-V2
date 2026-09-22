@@ -202,6 +202,7 @@ const CURSOR_DEFAULT: &str = "claude-opus-5";
 /// V1 `ClaudeModelCatalog`. Also the list the proxy serves when pointed at `api.anthropic.com`, and
 /// the first third of `IvyModelCatalog`.
 static CLAUDE_MODELS: &[CatalogModel] = &[
+    model("claude-opus-5-5", "Claude Opus 5.5", CLAUDE_EFFORTS),
     model("claude-opus-5", "Claude Opus 5", CLAUDE_EFFORTS),
     model("claude-fable-5-1", "Claude Fable 5.1", CLAUDE_EFFORTS),
     model("claude-opus-4-8", "Claude Opus 4.8", CLAUDE_EFFORTS),
@@ -246,6 +247,7 @@ static COPILOT_MODELS: &[CatalogModel] = &[
     model("gpt-5.2", "GPT-5.2", COPILOT_EFFORTS),
     model("gpt-5-mini", "GPT-5 Mini", COPILOT_EFFORTS),
     model("gpt-4.1", "GPT-4.1", COPILOT_EFFORTS),
+    model("claude-opus-5-5", "Claude Opus 5.5", CLAUDE_EFFORTS),
     model("claude-fable-5-1", "Claude Fable 5.1", CLAUDE_EFFORTS),
     model("claude-opus-5", "Claude Opus 5", CLAUDE_EFFORTS),
     model("claude-sonnet-5", "Claude Sonnet 5", CLAUDE_EFFORTS),
@@ -271,6 +273,7 @@ static ANTIGRAVITY_MODELS: &[CatalogModel] = &[
     model("gemini-3.7-flash", "Gemini 3.7 Flash", ANTIGRAVITY_EFFORTS),
     model("gemini-3.6-flash", "Gemini 3.6 Flash", ANTIGRAVITY_EFFORTS),
     model("gemini-3.1-pro", "Gemini 3.1 Pro", ANTIGRAVITY_EFFORTS),
+    model("claude-opus-5-5", "Claude Opus 5.5", CLAUDE_EFFORTS),
     model("claude-fable-5-1", "Claude Fable 5.1", CLAUDE_EFFORTS),
     model("claude-opus-5", "Claude Opus 5", CLAUDE_EFFORTS),
     model("claude-opus-4-6", "Claude Opus 4.6", CLAUDE_EFFORTS),
@@ -283,6 +286,7 @@ static ANTIGRAVITY_MODELS: &[CatalogModel] = &[
 /// prepends one to every list, and V1's proxy splices this list only after dropping it.
 static OPENCODE_MODELS: &[CatalogModel] = &[
     model("moonshotai/Kimi-K3", "Kimi k3", OPENCODE_EFFORTS),
+    model("claude-opus-5-5", "Claude Opus 5.5", CLAUDE_EFFORTS),
     model("claude-fable-5-1", "Claude Fable 5.1", CLAUDE_EFFORTS),
     model("claude-opus-5", "Claude Opus 5", CLAUDE_EFFORTS),
     model("claude-opus-4-7", "Claude Opus 4.7", CLAUDE_EFFORTS),
@@ -316,6 +320,12 @@ static OPENCODE_MODELS: &[CatalogModel] = &[
 /// which is why they are separate rows here. They price onto their non-thinking sibling's card,
 /// which is right: it is the same model with extended thinking turned on.
 static CURSOR_MODELS: &[CatalogModel] = &[
+    model("claude-opus-5-5", "Claude Opus 5.5", CURSOR_OPUS_5_EFFORTS),
+    model(
+        "claude-opus-5-5-thinking",
+        "Claude Opus 5.5 (Thinking)",
+        CURSOR_EFFORTS,
+    ),
     model("claude-opus-5", "Claude Opus 5", CURSOR_OPUS_5_EFFORTS),
     model(
         "claude-opus-5-thinking",
@@ -1384,7 +1394,8 @@ mod tests {
         let rest = &claude[1..];
         // Fable before Opus before Sonnet before Haiku, and the higher version first inside a tier.
         let position = |id: &str| rest.iter().position(|found| *found == id).unwrap();
-        assert!(position("claude-fable-5-1") < position("claude-opus-4-8"));
+        assert!(position("claude-fable-5-1") < position("claude-opus-5-5"));
+        assert!(position("claude-opus-5-5") < position("claude-opus-4-8"));
         assert!(position("claude-opus-4-8") < position("claude-opus-4-7"));
         assert!(position("claude-opus-4-7") < position("claude-sonnet-5"));
         assert!(position("claude-sonnet-5") < position("claude-sonnet-4-6"));
