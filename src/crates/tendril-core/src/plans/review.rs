@@ -23,7 +23,8 @@ pub fn read_plan_changes(
         Err(_) => return crate::git::PlanChangesData::default(),
     };
 
-    let mut repos: Vec<std::path::PathBuf> = plan.repos.iter().map(std::path::PathBuf::from).collect();
+    let mut repos: Vec<std::path::PathBuf> =
+        plan.repos.iter().map(std::path::PathBuf::from).collect();
     if repos.is_empty() {
         let config_path = crate::config::get_config_path(tendril_home);
         if let Ok(settings) = crate::config::load_config(&config_path) {
@@ -32,7 +33,11 @@ pub fn read_plan_changes(
                 .iter()
                 .find(|p| p.name.eq_ignore_ascii_case(&plan.project))
             {
-                repos = project.repo_paths().into_iter().map(std::path::PathBuf::from).collect();
+                repos = project
+                    .repo_paths()
+                    .into_iter()
+                    .map(std::path::PathBuf::from)
+                    .collect();
             }
         }
     }
@@ -159,15 +164,11 @@ pub fn resolve_diagnostic_summary(tendril_home: &Path, folder: &Path) -> Option<
     let (job_id, job_type, status, status_msg, failure_reason) = row;
 
     let mut agent_output: Option<String> = None;
-    if let Ok(Some(lines)) =
-        crate::jobs::logger::read_eventwire_log(tendril_home, &job_id, None)
-    {
+    if let Ok(Some(lines)) = crate::jobs::logger::read_eventwire_log(tendril_home, &job_id, None) {
         agent_output = extract_last_agent_text(&lines);
     }
     if agent_output.is_none() {
-        if let Ok(Some(lines)) =
-            crate::jobs::logger::read_raw_log(tendril_home, &job_id, None)
-        {
+        if let Ok(Some(lines)) = crate::jobs::logger::read_raw_log(tendril_home, &job_id, None) {
             agent_output = extract_last_agent_text(&lines);
         }
     }
@@ -181,7 +182,10 @@ pub fn resolve_diagnostic_summary(tendril_home: &Path, folder: &Path) -> Option<
         Some(format!(
             "# Execution Summary\n\n> [!CAUTION]\n> No summary was generated because execution did not complete successfully.\n>\n> **Job {job_id} ({job_type}):** {detail}\n>\n> `Reset to Draft` or `Request Changes` to retry the plan.\n\n### Last Agent Output\n\n```\n{output}\n```\n"
         ))
-    } else if matches!(status.as_str(), "Failed" | "Timeout" | "Stopped" | "Cancelled") {
+    } else if matches!(
+        status.as_str(),
+        "Failed" | "Timeout" | "Stopped" | "Cancelled"
+    ) {
         Some(format!(
             "# Execution Summary\n\n> [!CAUTION]\n> No summary was generated because execution did not complete successfully.\n>\n> **Job {job_id} ({job_type}):** {detail}\n>\n> `Reset to Draft` or `Request Changes` to retry the plan.\n"
         ))

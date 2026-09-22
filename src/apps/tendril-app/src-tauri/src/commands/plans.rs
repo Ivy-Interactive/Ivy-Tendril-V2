@@ -132,7 +132,9 @@ pub async fn cmd_get_plan_summary(id: String) -> Result<Option<String>, BridgeEr
     }
     let home = crate::daemon::resolve_tendril_home();
     let plans_dir = home.join("Plans");
-    Ok(tendril_core::plans::read_plan_summary(&home, &plans_dir, &id))
+    Ok(tendril_core::plans::read_plan_summary(
+        &home, &plans_dir, &id,
+    ))
 }
 
 /// The plan's artifacts (screenshots and files) in the Artifacts folder.

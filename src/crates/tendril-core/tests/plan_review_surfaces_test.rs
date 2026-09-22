@@ -63,8 +63,14 @@ fn test_read_plan_artifacts_lists_screenshots_and_other_files() {
 
     let artifacts = read_plan_artifacts(&plans_dir, "00008");
     assert_eq!(artifacts.screenshots.len(), 2);
-    assert!(artifacts.screenshots[0].ends_with("diagram.svg") || artifacts.screenshots[1].ends_with("diagram.svg"));
-    assert!(artifacts.screenshots[0].ends_with("shot1.png") || artifacts.screenshots[1].ends_with("shot1.png"));
+    assert!(
+        artifacts.screenshots[0].ends_with("diagram.svg")
+            || artifacts.screenshots[1].ends_with("diagram.svg")
+    );
+    assert!(
+        artifacts.screenshots[0].ends_with("shot1.png")
+            || artifacts.screenshots[1].ends_with("shot1.png")
+    );
 
     assert_eq!(artifacts.other.len(), 1);
     assert!(artifacts.other[0].ends_with("output.json"));

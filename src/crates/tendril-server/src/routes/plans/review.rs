@@ -54,11 +54,8 @@ pub async fn plan_summary_handler(
     State(state): State<Arc<AppState>>,
     Path(plan_id): Path<String>,
 ) -> impl IntoResponse {
-    let summary = tendril_core::plans::read_plan_summary(
-        &state.tendril_home,
-        &state.plans_dir,
-        &plan_id,
-    );
+    let summary =
+        tendril_core::plans::read_plan_summary(&state.tendril_home, &state.plans_dir, &plan_id);
     (StatusCode::OK, Json(json!({ "summary": summary }))).into_response()
 }
 
