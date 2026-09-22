@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vite-plus/test";
@@ -96,5 +97,14 @@ describe("Storybook dev server runner", () => {
   it("does not match component sources or test files", () => {
     expect(matchesStoryGlobs("../src/components/BadgeSelect/BadgeSelect.test.tsx")).toBe(false);
     expect(matchesStoryGlobs("../src/components/BadgeSelect/BadgeSelect.tsx")).toBe(false);
+  });
+
+  it("resolves the Storybook CLI entrypoint to an existing executable script", () => {
+    const pkgPath = createRequire(import.meta.url).resolve("storybook/package.json");
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { bin?: string | Record<string, string> };
+    const binRel = typeof pkg.bin === "string" ? pkg.bin : pkg.bin?.storybook;
+    expect(binRel).toBeDefined();
+    const cliPath = path.resolve(path.dirname(pkgPath), binRel!);
+    expect(existsSync(cliPath)).toBe(true);
   });
 });
