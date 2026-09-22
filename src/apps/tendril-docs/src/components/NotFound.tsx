@@ -22,9 +22,7 @@ export function NotFound({ route, homeRoute, locale }: NotFoundProps) {
         <code className="rounded bg-muted px-1 py-0.5 font-mono">{route}</code>.
       </p>
       <p className="text-base leading-relaxed">
-        {t.pageNotFoundUseSidebar}{" "}
-        <TuiKbd keys="⌘K" variant="outline" />{" "}
-        {t.pageNotFoundToSearch}{" "}
+        {t.pageNotFoundUseSidebar} <TuiKbd keys="⌘K" variant="outline" /> {t.pageNotFoundToSearch}{" "}
         <a
           href={homeRoute}
           onClick={(event) => {
