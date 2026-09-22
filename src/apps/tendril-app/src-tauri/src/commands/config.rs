@@ -2,7 +2,8 @@ use super::get_client_from_master;
 use crate::error::BridgeError;
 use crate::models::{
     CreateProjectDto, DoctorCheckDto, ModelCatalogStatusDto, OnboardingStatusDto,
-    ProjectSummaryDto, SubscribeOutcomeDto, TendrilConfigDto, VersionInfoDto,
+    ProjectSummaryDto, ReviewActionConditionDto, SubscribeOutcomeDto, TendrilConfigDto,
+    VersionInfoDto,
 };
 use crate::service::review_action_bridge::{self, StartedReviewAction};
 
@@ -194,6 +195,19 @@ pub async fn cmd_execute_review_action(
         .await?;
 
     review_action_bridge::start(app_handle, response).await
+}
+
+/// Whether each of the project's review actions has its condition met for `plan_id`, decided by the
+/// daemon against the plan folder. The Review page disables a button on `notMet` and says why on
+/// hover; the webview cannot decide it itself, having no filesystem to run a `Test-Path` against.
+#[tauri::command]
+pub async fn cmd_get_review_action_conditions(
+    project_name: String,
+    plan_id: String,
+) -> Result<Vec<ReviewActionConditionDto>, BridgeError> {
+    get_client_from_master()?
+        .review_action_conditions(&project_name, &plan_id)
+        .await
 }
 
 /// Forwards keystrokes to a running review action. `data` is base64 of the raw bytes.

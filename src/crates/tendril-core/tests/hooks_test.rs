@@ -9,9 +9,9 @@ use std::sync::{Arc, Mutex};
 use tendril_core::config::{expand_variables_with_env, load_config, save_config, TendrilSettings};
 use tendril_core::jobs::hook_condition::classify_hook_condition;
 use tendril_core::jobs::hooks::{
-    condition_holds, matching_hooks, run_hooks_with_env, shell_hook_executor, HookCommandResult,
-    HookCommandSpec, HookExecutor, HookPhase, HookRunContext, HOOK_ACTION_TIMEOUT,
-    HOOK_CONDITION_TIMEOUT,
+    condition_holds, evaluate_condition, matching_hooks, run_hooks_with_env, shell_hook_executor,
+    ConditionVerdict, HookCommandResult, HookCommandSpec, HookExecutor, HookPhase, HookRunContext,
+    HOOK_ACTION_TIMEOUT, HOOK_CONDITION_TIMEOUT,
 };
 use tendril_core::models::{JobStatus, ProjectConfig, PromptwareHookConfig};
 
@@ -965,4 +965,85 @@ async fn test_shell_executor_still_runs_posix_commands_unchanged() {
 
     assert_eq!(result.exit_code, Some(0));
     assert!(result.stdout.contains("hi"), "got: {:?}", result.stdout);
+}
+
+// ---------------------------------------------------------------------------
+// The shared verdict, as review-action buttons read it
+// ---------------------------------------------------------------------------
+
+fn condition_spec(command: &str, working_dir: &Path) -> HookCommandSpec {
+    HookCommandSpec {
+        hook_name: "Docs".to_string(),
+        command: command.to_string(),
+        working_dir: working_dir.to_path_buf(),
+        env: Vec::new(),
+        timeout: std::time::Duration::from_secs(5),
+    }
+}
+
+/// `evaluate_condition` is what `tendril-server`'s review-action conditions route reads, so its
+/// three outcomes are pinned here directly rather than only through the hook log wording.
+#[tokio::test]
+async fn test_evaluate_condition_distinguishes_holds_not_met_and_unevaluable() {
+    let plan = temp_dir("verdict");
+    std::fs::create_dir_all(plan.join("Worktrees").join("Repo")).unwrap();
+
+    // PowerShell-shaped: decided in-process against `working_dir`, never handed to the executor.
+    let recorder = Recorder::ok();
+    assert_eq!(
+        evaluate_condition(
+            condition_spec(r#"Test-Path "Worktrees/Repo""#, &plan),
+            &recorder.executor()
+        )
+        .await,
+        ConditionVerdict::Holds
+    );
+    assert_eq!(
+        evaluate_condition(
+            condition_spec(r#"Test-Path "Worktrees/Missing""#, &plan),
+            &recorder.executor()
+        )
+        .await,
+        ConditionVerdict::NotMet { result: None }
+    );
+    match evaluate_condition(
+        condition_spec(r#"$env:CI -eq "true""#, &plan),
+        &recorder.executor(),
+    )
+    .await
+    {
+        ConditionVerdict::Unevaluable { why, result: None } => {
+            assert!(why.contains("unsupported"), "got {why:?}")
+        }
+        other => panic!("expected Unevaluable, got {other:?}"),
+    }
+    assert!(recorder.specs().is_empty(), "nothing was spawned");
+
+    // Shell: a plain non-zero exit is an honest `NotMet`, a timeout is not.
+    let exited = HookCommandResult {
+        exit_code: Some(1),
+        ..Default::default()
+    };
+    let recorder = Recorder::new(vec![exited.clone()]);
+    assert_eq!(
+        evaluate_condition(condition_spec("test -d nope", &plan), &recorder.executor()).await,
+        ConditionVerdict::NotMet {
+            result: Some(exited)
+        }
+    );
+    assert_eq!(recorder.specs()[0].working_dir, plan);
+
+    let recorder = Recorder::new(vec![HookCommandResult {
+        timed_out: true,
+        ..Default::default()
+    }]);
+    match evaluate_condition(condition_spec("sleep 60", &plan), &recorder.executor()).await {
+        ConditionVerdict::Unevaluable { why, result } => {
+            assert!(why.contains("timed out after 5s"), "got {why:?}");
+            assert!(result.is_some(), "the shell run is kept for its streams");
+        }
+        other => panic!("expected Unevaluable, got {other:?}"),
+    }
+
+    let _ = std::fs::remove_dir_all(plan);
 }

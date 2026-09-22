@@ -256,9 +256,11 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/projects/:name/verifications/:verification",
             delete(projects::remove_project_verification),
         )
+        // `GET` answers whether each action's condition holds for `?planId=`, which is what the
+        // Review page disables its buttons on; see `projects::review_action_conditions`.
         .route(
             "/api/projects/:name/review-actions",
-            post(projects::add_project_review_action),
+            get(projects::review_action_conditions).post(projects::add_project_review_action),
         )
         .route(
             "/api/projects/:name/review-actions/:action",

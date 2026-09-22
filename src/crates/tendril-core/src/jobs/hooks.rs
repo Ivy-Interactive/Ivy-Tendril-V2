@@ -164,15 +164,81 @@ pub fn condition_holds(result: &HookCommandResult) -> bool {
     !result.stdout.trim().eq_ignore_ascii_case("False")
 }
 
-/// What a hook's condition decided, before the action ever runs.
-enum HookConditionVerdict {
-    /// The action should run.
+/// What a condition decided, before anything it gates runs.
+///
+/// Shared by hooks, which log it and skip, and by review actions, whose buttons are disabled on
+/// `NotMet` and explain `Unevaluable` (`tendril-server`'s `review_action_conditions`). One evaluator
+/// for both is deliberate: V1 ran both kinds of condition as PowerShell against the plan folder, so a
+/// condition that holds for a hook holds for a button, and a second evaluator could only drift.
+///
+/// Carries facts rather than prose, because the two readers word it differently: a hook writes a
+/// markdown job log with the condition's streams, a button has one line of tooltip.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ConditionVerdict {
+    /// The condition holds; what it gates may run.
     Holds,
-    /// The condition was evaluated and genuinely did not hold — a normal skip.
-    NotMet(String),
+    /// The condition was evaluated and genuinely did not hold — a normal skip. `result` is the shell
+    /// run that decided it, or `None` when the in-process PowerShell evaluator did.
+    NotMet { result: Option<HookCommandResult> },
     /// The condition could not be evaluated at all (unsupported syntax, timeout, spawn failure).
-    /// Distinguished from `NotMet` so a broken condition never reads like an honest `False`.
-    Unevaluable(String),
+    /// Distinguished from `NotMet` so a broken condition never reads like an honest `False`. `why`
+    /// is a lower-case clause ("the condition timed out after 10s and was terminated"), `result` the
+    /// shell run when there was one.
+    Unevaluable {
+        why: String,
+        result: Option<HookCommandResult>,
+    },
+}
+
+/// Decides an already variable-expanded, non-empty condition.
+///
+/// `spec.command` is the condition. A PowerShell-shaped one is evaluated in-process against
+/// `spec.working_dir` ([`crate::jobs::hook_condition`]); anything else is handed to `executor` with
+/// `spec`'s environment and timeout, and holds when [`condition_holds`] says so.
+pub async fn evaluate_condition(
+    spec: HookCommandSpec,
+    executor: &HookExecutor,
+) -> ConditionVerdict {
+    match classify_hook_condition(&spec.command) {
+        HookConditionLanguage::Shell => {
+            let timeout = spec.timeout;
+            let result = executor(spec).await;
+
+            if condition_holds(&result) {
+                ConditionVerdict::Holds
+            } else if result.timed_out || result.spawn_error.is_some() {
+                let why = if result.timed_out {
+                    format!(
+                        "the condition timed out after {}s and was terminated",
+                        timeout.as_secs()
+                    )
+                } else {
+                    format!(
+                        "could not spawn the condition ({})",
+                        result.spawn_error.as_deref().unwrap_or("unknown error")
+                    )
+                };
+                ConditionVerdict::Unevaluable {
+                    why,
+                    result: Some(result),
+                }
+            } else {
+                ConditionVerdict::NotMet {
+                    result: Some(result),
+                }
+            }
+        }
+        HookConditionLanguage::PowerShell => {
+            match evaluate_powershell_condition(&spec.command, &spec.working_dir) {
+                Ok(true) => ConditionVerdict::Holds,
+                Ok(false) => ConditionVerdict::NotMet { result: None },
+                Err(why) => ConditionVerdict::Unevaluable { why, result: None },
+            }
+        }
+        HookConditionLanguage::PowerShellUnsupported(why) => {
+            ConditionVerdict::Unevaluable { why, result: None }
+        }
+    }
 }
 
 /// Runs every hook of `ctx.project` that matches `ctx.job_type` and `phase`, in config order.
@@ -216,56 +282,46 @@ pub async fn run_hooks_with_env(
         // next job without a restart and the stored config keeps its `%TENDRIL_HOME%` form.
         let condition = expand_variables_with_env(&hook.condition, &tendril_home, env);
         if !condition.trim().is_empty() {
-            let verdict = match classify_hook_condition(&condition) {
-                HookConditionLanguage::Shell => {
-                    let result = executor(HookCommandSpec {
-                        hook_name: hook.name.clone(),
-                        command: condition.clone(),
-                        working_dir: working_dir.clone(),
-                        env: hook_env.clone(),
-                        timeout: HOOK_CONDITION_TIMEOUT,
-                    })
-                    .await;
-
-                    if condition_holds(&result) {
-                        HookConditionVerdict::Holds
-                    } else if result.timed_out || result.spawn_error.is_some() {
-                        HookConditionVerdict::Unevaluable(describe_shell_condition_unevaluable(
-                            &condition, &result,
-                        ))
-                    } else {
-                        HookConditionVerdict::NotMet(describe_condition_failure(
-                            &condition, &result,
-                        ))
-                    }
-                }
-                HookConditionLanguage::PowerShell => {
-                    match evaluate_powershell_condition(&condition, &working_dir) {
-                        Ok(true) => HookConditionVerdict::Holds,
-                        Ok(false) => HookConditionVerdict::NotMet(format!(
-                            "Condition not met (the PowerShell condition evaluated to false), \
-                             skipping.\n\n**Condition:** `{}`",
-                            condition
-                        )),
-                        Err(why) => HookConditionVerdict::Unevaluable(
-                            describe_unevaluable_condition(&condition, &why),
-                        ),
-                    }
-                }
-                HookConditionLanguage::PowerShellUnsupported(why) => {
-                    HookConditionVerdict::Unevaluable(describe_unevaluable_condition(
-                        &condition, &why,
-                    ))
-                }
-            };
+            let verdict = evaluate_condition(
+                HookCommandSpec {
+                    hook_name: hook.name.clone(),
+                    command: condition.clone(),
+                    working_dir: working_dir.clone(),
+                    env: hook_env.clone(),
+                    timeout: HOOK_CONDITION_TIMEOUT,
+                },
+                executor,
+            )
+            .await;
 
             match verdict {
-                HookConditionVerdict::Holds => {}
-                HookConditionVerdict::NotMet(summary) => {
+                ConditionVerdict::Holds => {}
+                ConditionVerdict::NotMet {
+                    result: Some(result),
+                } => {
+                    log_hook(
+                        ctx,
+                        hook,
+                        phase,
+                        describe_condition_failure(&condition, &result),
+                        false,
+                    );
+                    continue;
+                }
+                ConditionVerdict::NotMet { result: None } => {
+                    let summary = format!(
+                        "Condition not met (the PowerShell condition evaluated to false), \
+                         skipping.\n\n**Condition:** `{}`",
+                        condition
+                    );
                     log_hook(ctx, hook, phase, summary, false);
                     continue;
                 }
-                HookConditionVerdict::Unevaluable(summary) => {
+                ConditionVerdict::Unevaluable { why, result } => {
+                    let mut summary = describe_unevaluable_condition(&condition, &why);
+                    if let Some(result) = &result {
+                        append_streams(&mut summary, result);
+                    }
                     log_hook(ctx, hook, phase, summary, true);
                     continue;
                 }
@@ -289,8 +345,9 @@ pub async fn run_hooks_with_env(
 }
 
 /// Why the condition genuinely did not hold (a clean run that printed `False` or exited non-zero).
-/// Never called for a timeout or spawn error — see [`describe_shell_condition_unevaluable`] — so
-/// this text always says "not met", never "could not be evaluated".
+/// Never called for a timeout or spawn error — [`evaluate_condition`] makes those
+/// [`ConditionVerdict::Unevaluable`] — so this text always says "not met", never "could not be
+/// evaluated".
 fn describe_condition_failure(condition: &str, result: &HookCommandResult) -> String {
     let reason = match result.exit_code {
         Some(0) => "Condition not met (it printed `False`), skipping.".to_string(),
@@ -299,27 +356,6 @@ fn describe_condition_failure(condition: &str, result: &HookCommandResult) -> St
     };
 
     let mut summary = format!("{}\n\n**Condition:** `{}`", reason, condition);
-    append_streams(&mut summary, result);
-    summary
-}
-
-/// Why a shell-executed condition could not be evaluated at all (timed out or failed to spawn).
-/// Distinct wording from [`describe_condition_failure`] so it is never confused with an honest
-/// `False`, the same rule [`describe_unevaluable_condition`] applies to the PowerShell path.
-fn describe_shell_condition_unevaluable(condition: &str, result: &HookCommandResult) -> String {
-    let why = if result.timed_out {
-        format!(
-            "the condition timed out after {}s and was terminated",
-            HOOK_CONDITION_TIMEOUT.as_secs()
-        )
-    } else {
-        format!(
-            "could not spawn the condition ({})",
-            result.spawn_error.as_deref().unwrap_or("unknown error")
-        )
-    };
-
-    let mut summary = describe_unevaluable_condition(condition, &why);
     append_streams(&mut summary, result);
     summary
 }
