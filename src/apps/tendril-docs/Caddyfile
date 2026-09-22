@@ -1,0 +1,38 @@
+# Serves the built docs site. See Dockerfile.
+{
+	admin off
+	auto_https off
+}
+
+:8080 {
+	root * /srv
+	encode zstd gzip
+
+	handle /healthz {
+		respond "OK" 200
+	}
+
+	# Same entry point as the GitHub Pages deploy.
+	redir / /docs/gettingstarted/introduction 302
+	redir /docs /docs/ 301
+
+	header X-Content-Type-Options nosniff
+	header Referrer-Policy strict-origin-when-cross-origin
+
+	# Hashed bundles never change under the same name; everything else must revalidate.
+	@hashed path /docs/assets/*
+	header @hashed Cache-Control "public, max-age=31536000, immutable"
+	@unhashed not path /docs/assets/*
+	header @unhashed Cache-Control "no-cache"
+
+	# Every route has a pre-rendered shell at <route>/index.html. Anything else under /docs gets
+	# the app shell, which renders its own not-found page.
+	handle /docs/* {
+		try_files {path} {path}/index.html /docs/index.html
+		file_server
+	}
+
+	handle {
+		error 404
+	}
+}

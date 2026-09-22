@@ -1,0 +1,7 @@
+# Used by BuildKit for Dockerfile (the context is the repository root).
+**/node_modules
+**/dist
+**/target
+.git
+src/crates
+src/apps/tendril-app/src-tauri
