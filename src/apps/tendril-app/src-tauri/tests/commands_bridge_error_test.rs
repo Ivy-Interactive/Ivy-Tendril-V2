@@ -28,8 +28,9 @@ use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use tempfile::TempDir;
 use tendril_app_lib::commands::plans::{
-    cmd_get_plan, cmd_get_verification_report, cmd_list_recommendations,
-    cmd_list_verification_reports, cmd_set_recommendation_state, cmd_set_verification_status,
+    cmd_get_plan, cmd_get_plan_artifacts, cmd_get_plan_summary, cmd_get_verification_report,
+    cmd_list_recommendations, cmd_list_verification_reports, cmd_set_recommendation_state,
+    cmd_set_verification_status,
 };
 use tendril_app_lib::commands::{
     cmd_check_service_health, cmd_get_service_info, get_daemon_status,
@@ -419,6 +420,48 @@ async fn a_single_verification_report_can_be_fetched_by_name() {
         .await
         .expect_err("CheckResult has not run");
     assert_eq!(err.code, "NOT_FOUND");
+}
+
+#[tokio::test]
+async fn plan_summary_falls_back_to_disk_when_daemon_has_no_summary_route() {
+    let _guard = env_lock().await;
+    let (_temp, folder, _daemon) = isolated_env(true).await;
+
+    // Seed summary.md in Artifacts
+    let artifacts_dir = folder.join("Artifacts");
+    std::fs::create_dir_all(&artifacts_dir).expect("artifacts dir");
+    std::fs::write(
+        artifacts_dir.join("summary.md"),
+        "# Plan Summary\n\nImplemented desktop operator.",
+    )
+    .expect("write summary");
+
+    let summary = cmd_get_plan_summary("00021".to_string())
+        .await
+        .expect("summary command should succeed");
+    assert_eq!(
+        summary.as_deref(),
+        Some("# Plan Summary\n\nImplemented desktop operator.")
+    );
+}
+
+#[tokio::test]
+async fn plan_artifacts_fall_back_to_disk_when_daemon_has_no_artifacts_route() {
+    let _guard = env_lock().await;
+    let (_temp, folder, _daemon) = isolated_env(true).await;
+
+    let artifacts_dir = folder.join("Artifacts");
+    std::fs::create_dir_all(&artifacts_dir).expect("artifacts dir");
+    std::fs::write(artifacts_dir.join("screenshot.png"), "png").expect("write png");
+    std::fs::write(artifacts_dir.join("log.txt"), "log").expect("write txt");
+
+    let artifacts = cmd_get_plan_artifacts("00021".to_string())
+        .await
+        .expect("artifacts command should succeed");
+    assert_eq!(artifacts.screenshots.len(), 1);
+    assert!(artifacts.screenshots[0].ends_with("screenshot.png"));
+    assert_eq!(artifacts.other.len(), 1);
+    assert!(artifacts.other[0].ends_with("log.txt"));
 }
 
 #[tokio::test]
