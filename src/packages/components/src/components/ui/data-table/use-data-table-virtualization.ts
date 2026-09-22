@@ -33,19 +33,18 @@ export const DATA_TABLE_OVERSCAN = 8;
  * invisible.
  *
  * For reference, the framework's canvas grid draws to `DENSITY_CONFIG.rowHeight`
- * (`widgets/dataTables/dataTableEditor/constants.ts`) of **30 / 38 / 48** at the same
- * `cellVerticalPadding` of 4 / 8 / 12 — so V2's real rows are already the framework's height at Medium
- * and Large, and tighter at Small. The vertical space this table used to waste was chrome, not rows: a
- * second `<thead>` row of per-column filter controls (now one toolbar expression) and a header cell a
- * density step taller than its own rows (see `data-table.css`).
+ * (`widgets/dataTables/dataTableEditor/constants.ts`) of **30 / 38 / 48**, which these sit under at
+ * every density. The vertical space this table used to waste was chrome, not rows: a second `<thead>`
+ * row of per-column filter controls (now one toolbar expression) and a header cell a density step
+ * taller than its own rows (see `data-table.css`).
  *
  * `data-table.virtualization.test.tsx` ties these numbers to the padding they are derived from, because
  * an estimate that silently stops matching what renders is exactly the kind of thing that rots.
  */
 export const DATA_TABLE_ROW_HEIGHT_ESTIMATES: Record<Densities, number> = {
-  [Densities.Small]: 17,
-  [Densities.Medium]: 25,
-  [Densities.Large]: 33,
+  [Densities.Small]: 29,
+  [Densities.Medium]: 37,
+  [Densities.Large]: 41,
 };
 
 export interface UseDataTableVirtualizationOptions {

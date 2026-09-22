@@ -83,12 +83,13 @@ describe("data-table.css", () => {
 
   it("re-applies the row's hover and selected tints over the opaque sticky cell", () => {
     // `TableRow` paints them on the `<tr>`, behind every cell, so an opaque sticky cell would stay
-    // background-coloured while the rest of its row lit up — a hole in the row.
+    // background-coloured while the rest of its row lit up — a hole in the row. The token and the
+    // ratio are `hover:bg-secondary/60`'s, so the two move together.
     expect(css).toMatch(
-      /tr:hover > td\.ivy-data-table-fit-actions \{\s*background:\s*color-mix\([^)]*var\(--muted\) 50%/,
+      /tr:hover > td\.ivy-data-table-fit-actions \{\s*background:\s*color-mix\([^)]*var\(--secondary\) 60%/,
     );
     expect(css).toMatch(
-      /tr\[data-state="selected"\] > td\.ivy-data-table-fit-actions \{\s*background:\s*var\(--muted\)/,
+      /tr\[data-state="selected"\] > td\.ivy-data-table-fit-actions \{\s*background:\s*var\(--secondary\)/,
     );
   });
 

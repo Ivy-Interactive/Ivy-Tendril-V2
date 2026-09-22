@@ -24,24 +24,6 @@
     background: var(--background);
   }
 
-  /*
-   * The header is one row tall, like its rows.
-   *
-   * The shared `TableHead` takes its height from `densityHeight` (h-8 / h-10 / h-12 = 32 / 40 / 48px),
-   * a step above what a `TableCell` of the same density renders at (25 / 37 / 49). In a table whose
-   * whole point is rows, that difference is chrome — and the framework's grid draws its header at
-   * exactly `DENSITY_CONFIG.rowHeight`, the same height as a row
-   * (`widgets/dataTables/dataTableEditor/constants.ts`). `height: auto` hands the height back to the
-   * padding, and the padding is a body cell's.
-   *
-   * Scoped to `.ivy-data-table` so a plain `Table` elsewhere in the app is untouched.
-   */
-  .ivy-data-table thead th {
-    height: auto;
-    padding-top: 0.5rem;
-    padding-bottom: 0.5rem;
-  }
-
   /* wrapText: false (the default) — single line, ellipsis on overflow. */
   .ivy-data-table td.ivy-data-table-nowrap {
     overflow: hidden;
@@ -134,17 +116,18 @@
   /*
    * The row tints, re-applied over the opaque base above.
    *
-   * `hover:bg-muted/50` and `data-[state=selected]:bg-muted` are `TableRow`'s, painted on the `<tr>` and
-   * therefore behind every cell — including one that has had to become opaque to be sticky. Without
-   * these the actions cell stays background-coloured while the rest of its row lights up, which reads as
-   * a hole in the row. The 50% mix is `bg-muted/50` composited against what is actually behind it.
+   * `hover:bg-secondary/60` and `data-[state=selected]:bg-secondary` are `TableRow`'s, painted on the
+   * `<tr>` and therefore behind every cell — including one that has had to become opaque to be sticky.
+   * Without these the actions cell stays background-coloured while the rest of its row lights up, which
+   * reads as a hole in the row. The 60% mix is `bg-secondary/60` composited against what is actually
+   * behind it, so the two have to be changed together.
    */
   .ivy-data-table tbody tr:hover > td.ivy-data-table-fit-actions {
-    background: color-mix(in srgb, var(--muted) 50%, var(--background));
+    background: color-mix(in srgb, var(--secondary) 60%, var(--background));
   }
 
   .ivy-data-table tbody tr[data-state="selected"] > td.ivy-data-table-fit-actions {
-    background: var(--muted);
+    background: var(--secondary);
   }
 
   /*

@@ -15,9 +15,9 @@ import { useTableScale } from "@/components/ui/table/useTableSize";
 import { useDetailDensity } from "@/components/ui/detail/useDetailDensity";
 
 describe("Density cascade: Table and Details", () => {
-  /* Cell padding is `px-*` + `py-*` rather than one `p-*`: only the vertical half sets row height, and
-     it was halved relative to the horizontal to give shorter rows. The subject of these tests is the
-     density *cascade* — provider, default, prop override — so they assert the resolved pair. */
+  /* Cell padding is `px-*` + `py-*` rather than one `p-*`: only the vertical half sets row height. The
+     subject of these tests is the density *cascade* — provider, default, prop override — so they
+     assert the resolved pair, by exact class: `toContain("py-1")` also matches `py-1.5`. */
   describe("Table", () => {
     it("respects DensityProvider Small", () => {
       const { container } = render(
@@ -43,8 +43,8 @@ describe("Density cascade: Table and Details", () => {
 
       expect(table?.className).toContain("text-xs");
       expect(thead?.className).toContain("h-8");
-      expect(cell?.className).toContain("px-1");
-      expect(cell?.className).toContain("py-0");
+      expect(cell?.classList).toContain("px-2");
+      expect(cell?.classList).toContain("py-1.5");
     });
 
     it("respects DensityProvider Large", () => {
@@ -71,8 +71,8 @@ describe("Density cascade: Table and Details", () => {
 
       expect(table?.className).toContain("text-base");
       expect(thead?.className).toContain("h-12");
-      expect(cell?.className).toContain("px-3");
-      expect(cell?.className).toContain("py-1");
+      expect(cell?.classList).toContain("px-4");
+      expect(cell?.classList).toContain("py-2");
     });
 
     it("defaults to Medium without provider", () => {
@@ -97,8 +97,8 @@ describe("Density cascade: Table and Details", () => {
 
       expect(table?.className).toContain("text-sm");
       expect(thead?.className).toContain("h-10");
-      expect(cell?.className).toContain("px-2");
-      expect(cell?.className).toContain("py-0.5");
+      expect(cell?.classList).toContain("px-3");
+      expect(cell?.classList).toContain("py-2");
     });
 
     it("Table prop overrides DensityProvider", () => {
@@ -125,8 +125,8 @@ describe("Density cascade: Table and Details", () => {
 
       expect(table?.className).toContain("text-base");
       expect(thead?.className).toContain("h-12");
-      expect(cell?.className).toContain("px-3");
-      expect(cell?.className).toContain("py-1");
+      expect(cell?.classList).toContain("px-4");
+      expect(cell?.classList).toContain("py-2");
     });
 
     it("TableHead prop overrides all outer densities", () => {
