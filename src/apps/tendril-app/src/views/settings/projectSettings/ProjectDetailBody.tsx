@@ -81,6 +81,25 @@ const editDeleteActions = <TRow,>(): DataTableRowAction<TRow>[] => [
 ];
 
 /**
+ * The room {@link editDeleteActions} needs, set through `DataTable`'s own
+ * `--ivy-data-table-actions-width` override. Goes on every table that uses those actions.
+ *
+ * Under `table-fixed` the actions column is exactly that width, whatever it holds, and the 5rem
+ * default fits one button. `Edit` and `Delete` are two text buttons, 116px together plus the cell's
+ * 26px of padding, so they overflowed leftwards and `Edit` always sat over the last 49px of the
+ * column before it. That went unnoticed while the root blade was laid out as wide as its content,
+ * because the Condition column was wide and a short value ended well clear of the button. Once a
+ * flex blade stopped being sized by its content (`bladeWidthVariant`'s `flex`), opening an editor
+ * beside this blade at a 1280px window left the root about 350px wide, and a review action's
+ * "always" was printed over its `Edit`.
+ *
+ * The width is in `--spacing` units, like the calendar's `--cell-size`, because most of those 142px
+ * are the buttons' `px-3` and the cell's padding, which are counted in the same unit. 36 of them is
+ * 155px at the default 0.27rem, and that leaves margin for a wider fallback font.
+ */
+const EDIT_DELETE_ACTIONS_WIDTH = "[--ivy-data-table-actions-width:--spacing(36)]";
+
+/**
  * A cell whose value may be one long unbroken string — a review action's command, an env file path, a
  * skill path — capped so it cannot dictate how wide this screen is.
  *
@@ -615,7 +634,7 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
              view a horizontal scrollbar. `table-fixed` makes the columns divide the available width
              instead, which is also what lets the per-cell `truncate` bind. `JobsView` forces the
              same thing for the same reason. */
-          className="[&_table.ivy-data-table]:table-fixed"
+          className={`[&_table.ivy-data-table]:table-fixed ${EDIT_DELETE_ACTIONS_WIDTH}`}
           data-testid="project-review-actions-table"
           paginated={false}
           columns={reviewActionColumns}
@@ -773,7 +792,7 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
         }
       >
         <DataTable<ProjectEnvFileConfigEntry>
-          className="[&_table.ivy-data-table]:table-fixed"
+          className={`[&_table.ivy-data-table]:table-fixed ${EDIT_DELETE_ACTIONS_WIDTH}`}
           data-testid="project-env-files-table"
           paginated={false}
           columns={envFileColumns}
@@ -982,7 +1001,7 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
           }
         >
           <DataTable<ProjectMcpServerRefEntry>
-            className="[&_table.ivy-data-table]:table-fixed"
+            className={`[&_table.ivy-data-table]:table-fixed ${EDIT_DELETE_ACTIONS_WIDTH}`}
             data-testid="project-mcp-servers-table"
             paginated={false}
             columns={mcpColumns}
@@ -1048,7 +1067,7 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
           }
         >
           <DataTable<ProjectSkillRefEntry>
-            className="[&_table.ivy-data-table]:table-fixed"
+            className={`[&_table.ivy-data-table]:table-fixed ${EDIT_DELETE_ACTIONS_WIDTH}`}
             data-testid="project-skills-table"
             paginated={false}
             columns={skillColumns}

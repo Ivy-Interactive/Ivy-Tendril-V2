@@ -236,6 +236,11 @@ const mergedPrColumns: DataTableColumn<RecentMergedPr>[] = [
     name: "repo",
     header: "Repo",
     accessor: (r) => r.repo,
+    // Wrapped, like the title beside it. A repo is a local path with no spaces, and an unwrapped
+    // cell's minimum width is the whole of it: once the sheet stopped growing to fit its content,
+    // the table gave that path its full length and squeezed the title to a word per line. Letting
+    // both break shares the width between them and keeps the path readable in full.
+    wrapText: true,
     // A plan can have merged a PR without a Repos row, and an empty cell says so more honestly
     // than a guessed path would.
     cell: (value) => (typeof value === "string" && value !== "" ? value : NO_VALUE),
