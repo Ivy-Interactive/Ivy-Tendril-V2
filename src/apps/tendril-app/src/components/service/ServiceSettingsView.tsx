@@ -3,39 +3,64 @@ import { Badge, Button } from "@ivy-interactive/components/ui";
 import { bridge } from "../../api/bridge";
 import { SettingsSection } from "../../views/settings/fields";
 import type { ProvisionReport, ServiceInfo } from "../../types/api";
+import { useTranslation, type TFunction } from "../../i18n";
+import { ownershipLabel, serviceStateLabel } from "./ServiceStatusBanner";
+
+/** Paths and file names the copy names. Identifiers, so they travel as variables and are never translated. */
+const BIN_DIR = "TENDRIL_HOME/bin";
+const LOG_PATH = "TENDRIL_HOME/Logs/service.log";
+const LOG_FILE = "service.log";
+
+const errorText = (err: unknown) => (err instanceof Error ? err.message : String(err));
 
 /**
  * A one-line summary of what an install run did.
  *
  * Every part of a run is independently allowed to fail - one binary can land, the other can fail and
  * autostart can still register - so this reports all of it rather than a bare "done".
+ *
+ * Each part is a whole sentence of its own. The binaries are a `list(type: unit)`, which is a plain
+ * comma list in English (`tendril, opencode`), as the `join(", ")` it replaced was. `report.errors`
+ * and the autostart `detail` are the native side's own text and are shown as they are.
  */
-function describeProvision(report: ProvisionReport): string {
+function describeProvision(t: TFunction<"common">, report: ProvisionReport): string {
   const parts: string[] = [];
   if (report.installed.length > 0) {
-    parts.push(`Installed ${report.installed.join(", ")} into ${report.binDir}.`);
+    parts.push(
+      t("serviceSettings.provision.installed", {
+        binaries: report.installed,
+        dir: report.binDir,
+      }),
+    );
   } else if (report.upToDate.length > 0) {
-    parts.push(`${report.upToDate.join(", ")} already up to date in ${report.binDir}.`);
+    parts.push(
+      t("serviceSettings.provision.upToDate", {
+        binaries: report.upToDate,
+        dir: report.binDir,
+      }),
+    );
   }
   if (report.missing.length > 0) {
-    parts.push(`This build does not bundle ${report.missing.join(", ")}.`);
+    parts.push(t("serviceSettings.provision.missing", { binaries: report.missing }));
   }
   switch (report.autostart.kind) {
     case "registered":
-      parts.push(`Registered to start with your session (${report.autostart.detail}).`);
+      parts.push(t("serviceSettings.provision.registered", { detail: report.autostart.detail }));
       break;
     case "alreadyRegistered":
-      parts.push("Already registered to start with your session.");
+      parts.push(t("serviceSettings.provision.alreadyRegistered"));
       break;
     case "failed":
-      parts.push(`Could not register start at login: ${report.autostart.detail}`);
+      parts.push(
+        t("serviceSettings.provision.registerFailed", { detail: report.autostart.detail }),
+      );
       break;
     case "skipped":
-      parts.push(`Start at login skipped: ${report.autostart.detail}`);
+      parts.push(t("serviceSettings.provision.skipped", { detail: report.autostart.detail }));
       break;
   }
   parts.push(...report.errors);
-  return parts.join(" ") || "Nothing to install.";
+  return parts.join(" ") || t("serviceSettings.provision.nothing");
 }
 
 interface ServiceSettingsViewProps {
@@ -47,6 +72,7 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
   serviceInfo,
   onRefreshHealth,
 }) => {
+  const { t } = useTranslation("common");
   const [logs, setLogs] = useState<string[]>([]);
   const [isLoadingLogs, setIsLoadingLogs] = useState(false);
   const [actionMessage, setActionMessage] = useState<string | null>(null);
@@ -58,7 +84,7 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
       const data = await bridge.getServiceLogs(100);
       setLogs(data);
     } catch (err) {
-      setLogs([`Failed to load service logs: ${err instanceof Error ? err.message : String(err)}`]);
+      setLogs([t("serviceSettings.logs.loadFailed", { error: errorText(err) })]);
     } finally {
       setIsLoadingLogs(false);
     }
@@ -74,10 +100,10 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
     try {
       await bridge.restartService();
       await onRefreshHealth();
-      setActionMessage("Service restart initiated.");
+      setActionMessage(t("serviceSettings.messages.restartInitiated"));
       void fetchLogs();
     } catch (err) {
-      setActionMessage(`Restart failed: ${err instanceof Error ? err.message : String(err)}`);
+      setActionMessage(t("serviceSettings.messages.restartFailed", { error: errorText(err) }));
     } finally {
       setIsBusy(false);
     }
@@ -92,7 +118,7 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
       setActionMessage(res);
       void fetchLogs();
     } catch (err) {
-      setActionMessage(`Repair failed: ${err instanceof Error ? err.message : String(err)}`);
+      setActionMessage(t("serviceSettings.messages.repairFailed", { error: errorText(err) }));
     } finally {
       setIsBusy(false);
     }
@@ -110,11 +136,11 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
     setActionMessage(null);
     try {
       const report = await bridge.installService();
-      setActionMessage(describeProvision(report));
+      setActionMessage(describeProvision(t, report));
       await onRefreshHealth();
       void fetchLogs();
     } catch (err) {
-      setActionMessage(`Install failed: ${err instanceof Error ? err.message : String(err)}`);
+      setActionMessage(t("serviceSettings.messages.installFailed", { error: errorText(err) }));
     } finally {
       setIsBusy(false);
     }
@@ -127,7 +153,7 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
       setActionMessage(await bridge.uninstallServiceAutostart());
     } catch (err) {
       setActionMessage(
-        `Could not disable start at login: ${err instanceof Error ? err.message : String(err)}`,
+        t("serviceSettings.messages.disableAutostartFailed", { error: errorText(err) }),
       );
     } finally {
       setIsBusy(false);
@@ -140,22 +166,28 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
     try {
       await bridge.switchServiceMode(mode);
       await onRefreshHealth();
-      setActionMessage(`Switched service ownership mode to ${mode}.`);
+      setActionMessage(
+        mode === "managed"
+          ? t("serviceSettings.messages.switchedToManaged")
+          : t("serviceSettings.messages.switchedToExternal"),
+      );
       void fetchLogs();
     } catch (err) {
-      setActionMessage(`Mode switch failed: ${err instanceof Error ? err.message : String(err)}`);
+      setActionMessage(t("serviceSettings.messages.switchFailed", { error: errorText(err) }));
     } finally {
       setIsBusy(false);
     }
   };
 
-  const badge = serviceInfo?.statusBadge || serviceInfo?.state || "Disconnected";
+  // The daemon's own badge text as it is; otherwise the state, in words.
+  const badge =
+    serviceInfo?.statusBadge || serviceStateLabel(t, serviceInfo?.state || "Disconnected");
 
   return (
     <div className="space-y-10" data-testid="service-settings-view">
       <SettingsSection
-        title="Service Supervision & Controls"
-        hint="Manage local companion daemon lifecycle, ownership adoption, and crash recovery."
+        title={t("serviceSettings.controls.title")}
+        hint={t("serviceSettings.controls.hint")}
         action={<Badge variant="secondary">{badge}</Badge>}
       >
         {actionMessage && (
@@ -173,7 +205,7 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
             disabled={isBusy}
             onClick={handleRestart}
           >
-            Restart Service
+            {t("serviceSettings.actions.restart")}
           </Button>
 
           <Button
@@ -183,7 +215,7 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
             disabled={isBusy}
             onClick={handleRepair}
           >
-            Repair Service
+            {t("serviceSettings.actions.repair")}
           </Button>
 
           <Button
@@ -196,8 +228,8 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
             }
           >
             {serviceInfo?.ownership === "Managed"
-              ? "Switch to External Daemon"
-              : "Adopt Managed Companion"}
+              ? t("serviceSettings.actions.switchToExternal")
+              : t("serviceSettings.actions.adoptManaged")}
           </Button>
 
           <Button
@@ -206,9 +238,9 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
             variant="outline"
             disabled={isBusy}
             onClick={handleInstall}
-            title="Copy the bundled daemon into TENDRIL_HOME/bin and start it with your session"
+            title={t("serviceSettings.actions.installTooltip", { path: BIN_DIR })}
           >
-            Install Background Service
+            {t("serviceSettings.actions.install")}
           </Button>
 
           <Button
@@ -217,9 +249,9 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
             variant="outline"
             disabled={isBusy}
             onClick={handleDisableAutostart}
-            title="Stop the daemon starting at login. The installed binaries stay where they are."
+            title={t("serviceSettings.actions.disableAutostartTooltip")}
           >
-            Disable Start at Login
+            {t("serviceSettings.actions.disableAutostart")}
           </Button>
 
           <Button
@@ -229,45 +261,54 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
             disabled={isLoadingLogs}
             onClick={fetchLogs}
           >
-            {isLoadingLogs ? "Loading Logs..." : "Refresh Logs"}
+            {isLoadingLogs
+              ? t("serviceSettings.actions.loadingLogs")
+              : t("serviceSettings.actions.refreshLogs")}
           </Button>
         </div>
 
         {/* Service Details */}
         <dl className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 text-xs">
           <div className="rounded-box border border-border bg-background/60 p-3">
-            <dt className="text-foreground">Ownership</dt>
+            <dt className="text-foreground">{t("serviceSettings.details.ownership")}</dt>
             <dd className="mt-1 font-semibold text-foreground">
-              {serviceInfo?.ownership || "External / Standalone"}
+              {serviceInfo?.ownership
+                ? ownershipLabel(t, serviceInfo.ownership)
+                : t("serviceSettings.details.ownershipFallback")}
             </dd>
           </div>
           <div className="rounded-box border border-border bg-background/60 p-3">
-            <dt className="text-foreground">Endpoint</dt>
+            <dt className="text-foreground">{t("serviceSettings.details.endpoint")}</dt>
             <dd className="mt-1 font-mono text-muted-foreground">
-              {serviceInfo?.host || "127.0.0.1"}:{serviceInfo?.port || "N/A"}
+              {serviceInfo?.host || "127.0.0.1"}:
+              {serviceInfo?.port || t("serviceSettings.details.notAvailable")}
             </dd>
           </div>
           <div className="rounded-box border border-border bg-background/60 p-3">
-            <dt className="text-foreground">Process PID</dt>
-            <dd className="mt-1 font-mono text-muted-foreground">{serviceInfo?.pid || "N/A"}</dd>
+            <dt className="text-foreground">{t("serviceSettings.details.pid")}</dt>
+            <dd className="mt-1 font-mono text-muted-foreground">
+              {serviceInfo?.pid || t("serviceSettings.details.notAvailable")}
+            </dd>
           </div>
           <div className="rounded-box border border-border bg-background/60 p-3">
-            <dt className="text-foreground">Crash Count</dt>
+            <dt className="text-foreground">{t("serviceSettings.details.crashCount")}</dt>
             <dd className="mt-1 font-semibold text-foreground">{serviceInfo?.crashCount ?? 0}</dd>
           </div>
         </dl>
       </SettingsSection>
 
       <SettingsSection
-        title="Daemon Diagnostics & Service Logs"
-        hint="Sensitive tokens are redacted. Read from TENDRIL_HOME/Logs/service.log."
+        title={t("serviceSettings.logs.title")}
+        hint={t("serviceSettings.logs.hint", { path: LOG_PATH })}
       >
         <div
           data-testid="service-logs-container"
           className="mt-4 max-h-72 overflow-y-auto rounded-box border border-border bg-background p-3 font-mono text-xs text-muted-foreground space-y-1"
         >
           {logs.length === 0 ? (
-            <p className="text-muted-foreground/70 italic">No logs recorded yet in service.log.</p>
+            <p className="text-muted-foreground/70 italic">
+              {t("serviceSettings.logs.empty", { file: LOG_FILE })}
+            </p>
           ) : (
             logs.map((logLine, idx) => (
               <div key={idx} className="whitespace-pre-wrap break-all leading-relaxed">

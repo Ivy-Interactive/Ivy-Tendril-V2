@@ -1,6 +1,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { isTauri } from "../utils/tauri";
+import { i18n } from "../i18n";
 
 export type EventUnsubscribe = () => void;
 
@@ -224,7 +225,7 @@ export function subscribeSse(url: string, options: SseSubscriptionOptions): Even
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to subscribe to ${url}: HTTP ${response.status}`);
+        throw new Error(i18n.t("common:errors.subscribeFailed", { url, status: response.status }));
       }
 
       const body = response.body;

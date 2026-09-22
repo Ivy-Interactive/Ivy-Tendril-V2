@@ -33,6 +33,7 @@ import {
   type VersionInfo,
 } from "./types/api";
 import { getUpdateCommand } from "./utils/updateCommand";
+import { useTranslation } from "./i18n";
 
 import { Spinner } from "@ivy-interactive/components/ui";
 import { ShellLayout } from "./views/ShellLayout";
@@ -175,6 +176,7 @@ const selectArgField = (args: unknown, field: string): string | undefined => {
 };
 
 export const App: React.FC = () => {
+  const { t } = useTranslation("common");
   const [uiState, setUiState] = useState<UiState>(uiStore.getState());
   const [plansState, setPlansState] = useState(plansStore.getState());
   const [jobsState, setJobsState] = useState(jobsStore.getState());
@@ -437,11 +439,14 @@ export const App: React.FC = () => {
   // state - not uiStore's - that actually drives the rendered sidebar. A second "Ctrl+B" entry
   // here duplicated the binding under a different id, which both fired on every press (#245) and
   // showed up twice in KeyboardShortcutsHelp.
+  //
+  // The descriptions are translated here, where they are registered: `useShortcut` re-registers when a
+  // description changes, so the help panel follows a language change.
   useShortcut("app:goto-chat", "Ctrl+Shift+C", () => uiStore.setActiveNav("chat"), {
-    description: "Switch to Chat",
+    description: t("shortcuts.gotoChat"),
   });
   useShortcut("app:goto-inbox", "Ctrl+I", () => uiStore.setActiveNav("inbox"), {
-    description: "Open GitHub issue inbox",
+    description: t("shortcuts.gotoInbox"),
   });
   useShortcut(
     "app:new-plan",
@@ -450,7 +455,7 @@ export const App: React.FC = () => {
       setNewPlanPrefill({});
       setIsNewPlanOpen(true);
     },
-    { description: "Open new plan intake modal" },
+    { description: t("shortcuts.newPlan") },
   );
   /* V1 binds Cmd/Ctrl+K to the sidebar section's search, which is the plan search dialog
      (`ShellSidebarSection`'s own `SEARCH_SHORTCUT_KEY`, still live under this registration). It used
@@ -458,10 +463,10 @@ export const App: React.FC = () => {
      both move the page and open the dialog over it on one keypress. Registered rather than left to
      the widget alone so it keeps its row in the shortcuts help. */
   useShortcut("app:plan-search", "Ctrl+K", () => setIsPlanSearchOpen(true), {
-    description: "Search plans",
+    description: t("shortcuts.planSearch"),
   });
   useShortcut("app:show-shortcuts", "?", () => setIsShortcutsOpen(true), {
-    description: "Show keyboard shortcuts",
+    description: t("shortcuts.showShortcuts"),
   });
 
   // Escape stays on its own listener: it dismisses two overlays rather than invoking one action, it
@@ -726,19 +731,19 @@ export const App: React.FC = () => {
       const { toast } = await import("@ivy-interactive/components");
       if (info.hasUpdate) {
         toast({
-          title: "Update Available",
-          description: `Version ${info.latestVersion} is available.`,
+          title: t("updateCheck.available.title"),
+          description: t("updateCheck.available.description", { version: info.latestVersion }),
         });
       } else {
         toast({
-          title: "Up to date",
-          description: `You're on the latest version (v${info.currentVersion}).`,
+          title: t("updateCheck.upToDate.title"),
+          description: t("updateCheck.upToDate.description", { version: info.currentVersion }),
         });
       }
     } catch (err) {
       const { toast } = await import("@ivy-interactive/components");
       toast({
-        title: "Update check failed",
+        title: t("updateCheck.failed.title"),
         description: describeBridgeError(err),
         variant: "destructive",
       });
@@ -927,10 +932,10 @@ export const App: React.FC = () => {
           <div className="flex h-full min-h-0 items-center justify-center p-4 text-sm text-muted-foreground">
             {loadError ? (
               <ErrorBanner data-testid="plan-load-error">
-                Could not load plan {planId}: {loadError}
+                {t("planPage.loadError", { id: planId, error: loadError })}
               </ErrorBanner>
             ) : (
-              <>Loading plan {planId}...</>
+              t("planPage.loading", { id: planId })
             )}
           </div>
         );
@@ -999,10 +1004,12 @@ export const App: React.FC = () => {
       const detail = jobsState.jobDetails[jobId];
       // Detail wins where it exists: it is the only source of
       // reportedFailureReason, which the session view renders.
+      // The placeholder's type is display text, not a job type any logic compares, so it is
+      // translated; the project is the brand and the status is the daemon's enum value.
       const job = detail ??
         summary ?? {
           id: jobId,
-          type: "Agent Job",
+          type: t("jobPage.placeholderType"),
           project: "Tendril",
           status: "Running" as const,
         };
@@ -1269,14 +1276,18 @@ export const App: React.FC = () => {
           bridge
             .restartService()
             .then(() => serviceStore.checkHealth())
-            .catch((err) => setShellError(`Restart service failed: ${describeBridgeError(err)}`));
+            .catch((err) =>
+              setShellError(t("shellErrors.restartFailed", { error: describeBridgeError(err) })),
+            );
         }}
         onRepairService={() => {
           setShellError(null);
           bridge
             .repairService()
             .then(() => serviceStore.checkHealth())
-            .catch((err) => setShellError(`Repair service failed: ${describeBridgeError(err)}`));
+            .catch((err) =>
+              setShellError(t("shellErrors.repairFailed", { error: describeBridgeError(err) })),
+            );
         }}
         onViewDiagnostics={() => {
           uiStore.setActiveNav("settings");
@@ -1310,7 +1321,7 @@ export const App: React.FC = () => {
             data-testid="nav-error"
             className="mb-4"
             onDismiss={() => uiStore.clearNavError()}
-            dismissLabel="Dismiss navigation error"
+            dismissLabel={t("shellErrors.dismissNavError")}
           >
             {uiState.navError}
           </ErrorBanner>
@@ -1388,9 +1399,9 @@ export const App: React.FC = () => {
               setStopQueuedOpen(false);
               setStopError(null);
             }}
-            title="Stop Queued Jobs"
-            body={`Stop all ${jobsStore.queuedJobCount()} queued jobs? Running jobs are not affected.`}
-            confirmLabel="Stop All"
+            title={t("stopQueued.title")}
+            body={t("stopQueued.body", { count: jobsStore.queuedJobCount() })}
+            confirmLabel={t("stopQueued.confirm")}
             confirmVariant="destructive"
             isBusy={stopBusy}
             error={stopError}
@@ -1401,7 +1412,10 @@ export const App: React.FC = () => {
               try {
                 const stopped = await jobsStore.stopQueuedJobs();
                 const { toast } = await import("@ivy-interactive/components");
-                toast({ title: "Jobs", description: `Stopped ${stopped} queued job(s).` });
+                toast({
+                  title: t("stopQueued.toast.title"),
+                  description: t("stopQueued.toast.description", { count: stopped }),
+                });
                 setStopQueuedOpen(false);
               } catch (err) {
                 setStopError(describeBridgeError(err));
@@ -1421,9 +1435,9 @@ export const App: React.FC = () => {
               setStopAllOpen(false);
               setStopError(null);
             }}
-            title="Stop All Jobs"
-            body={`Stop all ${jobsStore.activeJobCount()} active job(s)? Running agents are killed and their plans revert to their previous state. This cannot be undone.`}
-            confirmLabel="Stop All"
+            title={t("stopAll.title")}
+            body={t("stopAll.body", { count: jobsStore.activeJobCount() })}
+            confirmLabel={t("stopAll.confirm")}
             confirmVariant="destructive"
             isBusy={stopBusy}
             error={stopError}
@@ -1435,8 +1449,8 @@ export const App: React.FC = () => {
                 const stopped = await jobsStore.stopAllJobs();
                 const { toast } = await import("@ivy-interactive/components");
                 toast({
-                  title: "Jobs Stopped",
-                  description: `Stopped ${stopped} job${stopped === 1 ? "" : "s"}`,
+                  title: t("stopAll.toast.title"),
+                  description: t("stopAll.toast.description", { count: stopped }),
                 });
                 setStopAllOpen(false);
               } catch (err) {

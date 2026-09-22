@@ -63,6 +63,7 @@ import type {
 } from "../types/api";
 import type { ChatAttachment } from "../types/chat";
 import { encodeBase64, isTauri } from "../utils/tauri";
+import { i18n } from "../i18n";
 
 export type { ReviewActionSession } from "./events";
 
@@ -232,7 +233,9 @@ async function startReviewActionViaHttp(
     });
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
-      throw new Error(`Review action ${endpoint} failed (${res.status}): ${detail}`);
+      throw new Error(
+        i18n.t("common:errors.reviewActionFailed", { endpoint, status: res.status, detail }),
+      );
     }
   };
 
@@ -284,7 +287,7 @@ async function invokeOrFetch<T>(
     if (body && typeof body === "object" && (body as { success?: unknown }).success === false) {
       return body as T;
     }
-    throw new Error(`Request to ${path} failed (${res.status})`);
+    throw new Error(i18n.t("common:errors.requestFailed", { path, status: res.status }));
   }
   return res.json() as Promise<T>;
 }
