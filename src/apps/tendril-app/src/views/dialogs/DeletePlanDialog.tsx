@@ -1,5 +1,5 @@
 import * as React from "react";
-import { DeletePlanDialog as DeletePlanDialogView } from "@ivy-interactive/components/tendril";
+import { DeletePlanDialog as DeletePlanDialogView } from "@ivy-interactive/components/dialogs";
 import { describeBridgeError, type PlanDetail, type PlanSummary } from "../../types/api";
 import { plansStore } from "../../state/plansStore";
 

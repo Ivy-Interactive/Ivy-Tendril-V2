@@ -19,7 +19,7 @@ import {
   CHAT_VIRTUALIZATION_MIN_MESSAGES,
   estimateChatMessageHeight,
 } from "../hooks/useChatMessageWindow";
-import { ConfirmDialog } from "@ivy-interactive/components/tendril";
+import { ConfirmDialog } from "@ivy-interactive/components/dialogs";
 import { ChatMessageRow } from "./ChatMessageRow";
 import { ChatHeader, JobsMenu } from "./ChatHeader";
 import { AgentPicker } from "../components/chat/AgentPicker";

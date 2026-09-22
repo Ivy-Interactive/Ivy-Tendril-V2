@@ -1,11 +1,6 @@
 import * as React from "react";
-import {
-  PlanSearchDialog as PlanSearchDialogView,
-  MAX_PLAN_SEARCH_RESULTS,
-  PLAN_SEARCH_DEBOUNCE_MS,
-  type ShellBadgeDto,
-  type ShellSectionItemDto,
-} from "@ivy-interactive/components/tendril";
+import { type ShellBadgeDto, type ShellSectionItemDto } from "@ivy-interactive/components/tendril";
+import { PlanSearchDialog as PlanSearchDialogView, MAX_PLAN_SEARCH_RESULTS, PLAN_SEARCH_DEBOUNCE_MS } from "@ivy-interactive/components/dialogs";
 import { bridge } from "../../api/bridge";
 import { describeBridgeError, type PlanSummary } from "../../types/api";
 import { formatPlanId, normalizePlanState, parseProjects, planRowBadges } from "../PlansView";

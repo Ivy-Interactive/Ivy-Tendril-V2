@@ -36,6 +36,10 @@
       "types": "./dist/tendril.d.mts",
       "import": "./dist/tendril.mjs"
     },
+    "./dialogs": {
+      "types": "./dist/dialogs.d.mts",
+      "import": "./dist/dialogs.mjs"
+    },
     "./diagrams": {
       "types": "./dist/diagrams.d.mts",
       "import": "./dist/diagrams.mjs"

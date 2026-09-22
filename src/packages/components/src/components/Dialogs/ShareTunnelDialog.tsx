@@ -6,6 +6,10 @@ import { Spinner } from "../ui/spinner";
 import { ClipboardCopy, ExternalLink, Share2 } from "lucide-react";
 import { DialogShell } from "./DialogShell";
 
+/** Fallback error text. Module scope for the same reason as in `PlanSearchDialog`. */
+const describeErrorFallback = (err: unknown): string =>
+  err instanceof Error ? err.message : String(err);
+
 /** `tendril_core::tunnel::TunnelStatus`, as the daemon serialises it. */
 export type ShareTunnelStatus = "disabled" | "connecting" | "connected";
 
@@ -139,7 +143,7 @@ export function ShareTunnelDialog({
   api,
   onNotify,
   onOpenUrl,
-  describeError = (err) => (err instanceof Error ? err.message : String(err)),
+  describeError = describeErrorFallback,
   errorCode = () => undefined,
 }: ShareTunnelDialogProps) {
   const [snapshot, setSnapshot] = React.useState<ShareTunnelSnapshot | null>(null);

@@ -74,7 +74,6 @@ export function CreateIssueDialog({
   isBusy = false,
   error,
 }: CreateIssueDialogProps) {
-
   const [repo, setRepo] = React.useState(repos[0] ?? "");
   const [assignee, setAssignee] = React.useState("");
   const [labels, setLabels] = React.useState("");
@@ -131,17 +130,17 @@ export function CreateIssueDialog({
       .filter((entry) => entry !== "");
 
     void onSubmit({
-        repo,
-        assignee: assignee.trim() || undefined,
-        labels: labelList,
-        comment: comment.trim() || undefined,
-        ...(subject
-          ? {
-              titleOverride: title.trim(),
-              bodyOverride: body.trim() || undefined,
-              issueSource: subject.source,
-            }
-          : {}),
+      repo,
+      assignee: assignee.trim() || undefined,
+      labels: labelList,
+      comment: comment.trim() || undefined,
+      ...(subject
+        ? {
+            titleOverride: title.trim(),
+            bodyOverride: body.trim() || undefined,
+            issueSource: subject.source,
+          }
+        : {}),
     });
   };
 

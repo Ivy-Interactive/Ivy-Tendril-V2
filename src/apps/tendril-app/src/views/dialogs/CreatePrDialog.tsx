@@ -1,5 +1,5 @@
 import * as React from "react";
-import { CreatePrDialog as CreatePrDialogView } from "@ivy-interactive/components/tendril";
+import { CreatePrDialog as CreatePrDialogView } from "@ivy-interactive/components/dialogs";
 import { PlanActionsController } from "../../controllers/planActions";
 import {
   describeBridgeError,

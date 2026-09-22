@@ -52,13 +52,13 @@ const KeyboardShortcutsHelp = React.lazy(() =>
 );
 
 const NoProjectsDialog = React.lazy(() =>
-  import("@ivy-interactive/components/tendril").then((m) => ({ default: m.NoProjectsDialog })),
+  import("@ivy-interactive/components/dialogs").then((m) => ({ default: m.NoProjectsDialog })),
 );
 
 // Same reasoning, by module rather than the barrel: the two job sweeps are the only confirms the
 // shell itself owns, and both are rare.
 const ConfirmDialog = React.lazy(() =>
-  import("@ivy-interactive/components/tendril").then((m) => ({ default: m.ConfirmDialog })),
+  import("@ivy-interactive/components/dialogs").then((m) => ({ default: m.ConfirmDialog })),
 );
 
 // V1's `showPlanSearchDialog` (`AppShell/Dialogs/PlanSearchDialog.cs`), the shell's own plan search.

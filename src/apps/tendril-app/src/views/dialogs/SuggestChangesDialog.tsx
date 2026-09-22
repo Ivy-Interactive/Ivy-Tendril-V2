@@ -1,8 +1,5 @@
 import * as React from "react";
-import {
-  SuggestChangesDialog as SuggestChangesDialogView,
-  type AppComment,
-} from "@ivy-interactive/components/tendril";
+import { SuggestChangesDialog as SuggestChangesDialogView, type AppComment } from "@ivy-interactive/components/dialogs";
 import { PlanActionsController } from "../../controllers/planActions";
 import { bridge } from "../../api/bridge";
 import {

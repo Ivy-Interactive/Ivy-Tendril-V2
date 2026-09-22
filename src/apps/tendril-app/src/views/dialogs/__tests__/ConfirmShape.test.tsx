@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import * as React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { ConfirmDialog } from "@ivy-interactive/components/tendril";
+import { ConfirmDialog } from "@ivy-interactive/components/dialogs";
 import { DeletePlanDialog } from "../DeletePlanDialog";
 import { planDetail } from "../../../../tests/fixtures/plan.fixture";
 

@@ -1,5 +1,5 @@
 import * as React from "react";
-import { RemoveProjectDialog as RemoveProjectDialogView } from "@ivy-interactive/components/tendril";
+import { RemoveProjectDialog as RemoveProjectDialogView } from "@ivy-interactive/components/dialogs";
 import { bridge } from "../../api/bridge";
 import { describeBridgeError } from "../../types/api";
 

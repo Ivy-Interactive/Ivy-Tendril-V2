@@ -46,21 +46,6 @@ export interface SuggestChangesDialogProps {
   appUrl?: string;
 }
 
-
-/**
- * Port of `AppPreview.JobsToWaitFor`: everything unfinished on this plan, not only the retries. Two
- * agents rewriting one worktree at the same time is how a branch ends up with half of each. Ids that
- * have finished by the time the job is built are harmless — the service counts only the ones it
- * still holds, so a stale id makes the new job start rather than wedge.
- */
-
-/**
- * Port of `AppPreview.CanRequestChanges`. Review is where a plan sits while it is being looked at,
- * and where a finished RetryPlan puts it back. The second case is allowed on purpose: the moment a
- * retry starts the plan moves to Executing, and a reviewer who keeps walking the app and finds three
- * more things should be able to queue them rather than be locked out until the agent finishes.
- */
-
 /**
  * Port of the private `groupByPage` in `utils/appComments`, which is not exported. Keeps both the
  * pages and the comments within them in the order they arrived, and groups on plain equality — the
@@ -122,10 +107,6 @@ export function SuggestChangesDialog({
   const inlineCount = inlineCommentCount ?? 0;
   const fromApp = appComments !== undefined && appComments.length > 0;
   const waitForCount = fromApp ? (inFlightCount ?? 0) : 0;
-  // V1 re-reads plan and jobs at the click as well as on render, because the dialog may have been
-  // open a while. Here both arrive as props from live state, so the value read at the click is
-  // already the current one and the guard needs no second read.
-
 
   React.useEffect(() => {
     if (isOpen) {
@@ -149,7 +130,7 @@ export function SuggestChangesDialog({
       ? typed || formatChangeRequest(appUrl ?? "", appComments ?? [])
       : typed || INLINE_ONLY_REQUEST;
     void onSubmit(request);
-    };
+  };
 
   // V1's whole alternate dialog for a plan that cannot take the request: one Close, and the comments
   // are explicitly kept rather than silently dropped.
@@ -170,8 +151,8 @@ export function SuggestChangesDialog({
         }
       >
         <p>
-          The plan is {planState}. A change request lands only while it is in Review, or while it
-          is already applying one.
+          The plan is {planState}. A change request lands only while it is in Review, or while it is
+          already applying one.
         </p>
         <p className="mt-2 text-muted-foreground">
           The {count} comment(s) are still here — send them once the plan is back in Review.
