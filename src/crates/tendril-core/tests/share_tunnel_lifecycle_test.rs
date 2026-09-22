@@ -95,12 +95,19 @@ impl Fixture {
     /// on parallel threads, so the fork and the write really are concurrent. The failure then
     /// surfaced as a `TunnelError::Spawn` instead of the message a test was asserting on, which is
     /// why it read as "the error text is wrong" rather than "exec lost a race". macOS does not
-    /// enforce this, so it only ever failed on CI's ubuntu runner, and only sometimes: measured at
-    /// about 18 spawns in 4200.
+    /// enforce this, so it only ever failed on CI's ubuntu runner, and only sometimes.
     ///
-    /// Staging under a temporary name and renaming into place does *not* fix it — measured at 350
-    /// in 4200, fifty times worse, because the rename widens the window instead of closing it.
+    /// That the *sibling* is what matters was measured rather than assumed: the same code writing
+    /// and exec'ing 4200 scripts fails 225 times across fourteen threads and not once on a single
+    /// thread. `std::fs::write` has already closed its own descriptor by then, so the one the
+    /// kernel objects to can only have come from a sibling's fork.
+    ///
+    /// Staging under a temporary name and renaming into place does *not* fix it — on the same
+    /// harness it is markedly worse, because the rename widens the window instead of closing it.
     /// Waiting for the descriptor to drain is what works, and costs nothing once it has.
+    ///
+    /// Reproducing needs the container's own filesystem: over a docker bind mount the race
+    /// vanishes entirely, which reads as "no bug here" rather than "wrong measurement".
     fn script(&self, name: &str, body: &str) -> PathBuf {
         use std::os::unix::fs::PermissionsExt;
         let path = self.home.join(name);
