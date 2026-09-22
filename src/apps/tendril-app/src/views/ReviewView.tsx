@@ -32,6 +32,7 @@ import { bridge } from "../api/bridge";
 import { useWireframeBaseUrl } from "../api/proxyOrigin";
 import { PlanActionsController } from "../controllers/planActions";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { VerificationReportSheet } from "../components/VerificationReportSheet";
 import { NoContentView } from "../components/NoContentView";
 import { VERIFICATION_BADGE_VARIANT } from "../utils/verificationStatus";
 import { PlanChatPanel } from "../components/chat/PlanChatPanel";
@@ -229,6 +230,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   const previousQueue = useRef<PlanSummary[]>(reviewPlans);
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [activeDialog, setActiveDialog] = useState<TriageDialog | null>(null);
+  const [openVerification, setOpenVerification] = useState<string | null>(null);
 
   /**
    * `PlanSelectionHelper.ResolveSelection`, re-resolved on every render as V1 re-resolves it on every
@@ -1159,8 +1161,8 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
             ].filter((node): node is React.ReactElement => node !== null),
             /* `ReviewVerificationsPanelView`, in the tab strip's corner where V1 puts it: the outcome
                badge in an auto-width column, the verification's name in the rest of the row, and "No
-               verifications" when the plan has none. V1 opens the report in a sheet; this page has
-               none, so the report stays on the plan page's Verifications tab. */
+               verifications" when the plan has none. Clicking an outcome badge or verification name
+               opens its detailed markdown report in a right-hand sheet (`VerificationReportSheet`). */
             Verifications: [
               verifications.length === 0 ? (
                 <p
@@ -1177,11 +1179,21 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                       <Badge
                         data-testid={`review-verification-${v.name}`}
                         variant={VERIFICATION_BADGE_VARIANT[v.status]}
-                        className="justify-self-start"
+                        className="cursor-pointer justify-self-start transition-opacity hover:opacity-80"
+                        onClick={() => setOpenVerification(v.name)}
+                        title={`View ${v.name} report`}
                       >
                         {v.status}
                       </Badge>
-                      <span className="truncate text-sm text-foreground">{v.name}</span>
+                      <button
+                        type="button"
+                        data-testid={`review-verification-button-${v.name}`}
+                        onClick={() => setOpenVerification(v.name)}
+                        className="truncate text-left text-sm font-medium text-foreground transition-colors hover:text-primary hover:underline focus:outline-none"
+                        title={`View ${v.name} report`}
+                      >
+                        {v.name}
+                      </button>
                     </React.Fragment>
                   ))}
                 </div>
@@ -1223,7 +1235,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                     ) : (
                       <PlanMarkdown
                         id="review-summary-markdown"
-                        content={summaryContent || FALLBACK_SUMMARY_MARKDOWN}
+                        content={typeof summaryContent === "string" && summaryContent ? summaryContent : FALLBACK_SUMMARY_MARKDOWN}
                         article
                         dangerouslyAllowLocalFiles
                       />
@@ -1354,6 +1366,39 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                       {planDetail?.prs && planDetail.prs.length > 0 && (
                         <PlanPullRequests planId={selectedPlan.id} prs={planDetail.prs} />
                       )}
+
+                      <div className="sm:col-span-2">
+                        <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          Verifications ({verifications.length})
+                        </h4>
+                        {verifications.length > 0 ? (
+                          <div className="mt-2 grid max-w-xl grid-cols-[auto_1fr] items-center gap-2">
+                            {verifications.map((v) => (
+                              <React.Fragment key={v.name}>
+                                <Badge
+                                  variant={VERIFICATION_BADGE_VARIANT[v.status]}
+                                  className="cursor-pointer justify-self-start transition-opacity hover:opacity-80"
+                                  onClick={() => setOpenVerification(v.name)}
+                                  title={`View ${v.name} report`}
+                                >
+                                  {v.status}
+                                </Badge>
+                                <button
+                                  type="button"
+                                  data-testid={`details-verification-button-${v.name}`}
+                                  onClick={() => setOpenVerification(v.name)}
+                                  className="truncate text-left text-sm font-medium text-foreground transition-colors hover:text-primary hover:underline focus:outline-none"
+                                  title={`View ${v.name} report`}
+                                >
+                                  {v.name}
+                                </button>
+                              </React.Fragment>
+                            ))}
+                          </div>
+                        ) : (
+                          <p className="mt-2 text-sm text-muted-foreground/70">No verifications</p>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -1686,6 +1731,13 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
             onClose={() => setActiveDialog(null)}
             plan={selectedPlan}
             onCompleted={handlePlanLeftReview}
+          />
+          <VerificationReportSheet
+            planId={selectedPlan.id}
+            verificationName={openVerification}
+            initialStatus={verifications.find((v) => v.name === openVerification)?.status}
+            onClose={() => setOpenVerification(null)}
+            wireframeBaseUrl={wireframeBaseUrl}
           />
         </>
       )}
