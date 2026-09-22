@@ -179,7 +179,7 @@ const fn model(
 }
 
 /// The row each catalogue flags `IsDefault`, which every picker over that catalogue pins first.
-const CLAUDE_DEFAULT: &str = "claude-opus-5";
+const CLAUDE_DEFAULT: &str = "claude-opus-5-5";
 const CODEX_DEFAULT: &str = "gpt-5.6-terra";
 const COPILOT_DEFAULT: &str = "gpt-5.4";
 /// V1 flags `gemini-3.7-flash`, which was the newest Flash when it was written. 3.8 is, and both
@@ -193,11 +193,11 @@ const OPENCODE_DEFAULT: &str = "moonshotai/Kimi-K3";
 /// reporting prices. Naming it anything else puts a second id in circulation and prices a free
 /// on-device run at the unknown-model fallback of $3.00/$15.00 per million.
 const APPLE_DEFAULT: &str = "apple/system";
-/// Cursor's default. Opus 5 rather than a Cursor-exclusive model for two reasons: it is the
+/// Cursor's default. Opus 5.5 rather than a Cursor-exclusive model for two reasons: it is the
 /// strongest general coding model Cursor serves, and `model_specs` carries a real rate card for it,
 /// so a job launched on the default reports a real cost rather than a dash. `composer-2.5` would be
 /// the house pick, but Tendril has no rates for it -- see `CURSOR_MODELS`.
-const CURSOR_DEFAULT: &str = "claude-opus-5";
+const CURSOR_DEFAULT: &str = "claude-opus-5-5";
 
 /// V1 `ClaudeModelCatalog`. Also the list the proxy serves when pointed at `api.anthropic.com`, and
 /// the first third of `IvyModelCatalog`.
@@ -1093,10 +1093,10 @@ mod tests {
     fn every_agents_default_is_one_of_its_own_models_and_comes_first() {
         let expected: &[(&str, &str)] = &[
             ("antigravity", "gemini-3.8-flash"),
-            ("claude", "claude-opus-5"),
+            ("claude", "claude-opus-5-5"),
             ("codex", "gpt-5.6-terra"),
             ("copilot", "gpt-5.4"),
-            ("cursor", "claude-opus-5"),
+            ("cursor", "claude-opus-5-5"),
             ("gemini", "gemini-3.8-flash"),
             ("opencode", "moonshotai/Kimi-K3"),
             ("openaiproxy", "gpt-5.6-terra"),
@@ -1394,8 +1394,8 @@ mod tests {
         let rest = &claude[1..];
         // Fable before Opus before Sonnet before Haiku, and the higher version first inside a tier.
         let position = |id: &str| rest.iter().position(|found| *found == id).unwrap();
-        assert!(position("claude-fable-5-1") < position("claude-opus-5-5"));
-        assert!(position("claude-opus-5-5") < position("claude-opus-4-8"));
+        assert!(position("claude-fable-5-1") < position("claude-opus-5"));
+        assert!(position("claude-opus-5") < position("claude-opus-4-8"));
         assert!(position("claude-opus-4-8") < position("claude-opus-4-7"));
         assert!(position("claude-opus-4-7") < position("claude-sonnet-5"));
         assert!(position("claude-sonnet-5") < position("claude-sonnet-4-6"));

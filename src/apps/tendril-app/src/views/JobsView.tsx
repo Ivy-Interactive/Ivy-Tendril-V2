@@ -515,17 +515,25 @@ export const JobsView: React.FC<JobsViewProps> = ({
    * state for that reason: there is nothing to wait for.
    */
   const costJob = costJobId
-    ? (jobDetails?.[costJobId] ?? jobs.find((job) => job.id === costJobId))
+    ? (jobDetails?.[costJobId] ??
+       windowJobs.find((job) => job.id === costJobId) ??
+       jobs.find((job) => job.id === costJobId))
     : undefined;
-  const promptJob = promptJobId
-    ? (jobDetails?.[promptJobId] ?? jobs.find((job) => job.id === promptJobId))
+  const rowJob = promptJobId
+    ? (windowJobs.find((job) => job.id === promptJobId) ??
+       jobs.find((job) => job.id === promptJobId))
     : undefined;
+  const detailJob = promptJobId ? jobDetails?.[promptJobId] : undefined;
+  const promptJob = detailJob ?? rowJob;
   /** V1 titles the prompt sheet "Full Prompt" and the cost sheet "Cost & Tokens". */
   const costJobTitle = costJob?.planId
     ? t("costSheet.titleWithPlan", { planId: costJob.planId })
     : t("costSheet.title");
   /** The untruncated text behind the Prompt cell - the same walk the cell does, without the cut. */
-  const promptText = promptJob ? promptSource(promptJob) : undefined;
+  const promptText =
+    (detailJob ? promptSource(detailJob) : undefined) ??
+    (rowJob ? promptSource(rowJob) : undefined) ??
+    promptJob?.prompt;
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3" data-testid="jobs-view">

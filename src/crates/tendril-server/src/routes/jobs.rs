@@ -351,13 +351,17 @@ pub async fn get_job(
     Path(job_id): Path<String>,
 ) -> impl IntoResponse {
     match state.job_manager.get_job(&job_id).await {
-        Ok(Some(job)) => Json(json!({
-            "id": job.id,
-            "status": job.status.to_string(),
-            "message": job.status_message,
-            "details": job
-        }))
-        .into_response(),
+        Ok(Some(job)) => {
+            let prompt = job.typed_args.as_ref().and_then(|args| args.prompt_text());
+            Json(json!({
+                "id": job.id,
+                "status": job.status.to_string(),
+                "message": job.status_message,
+                "prompt": prompt,
+                "details": job
+            }))
+            .into_response()
+        }
         Ok(None) => (
             StatusCode::NOT_FOUND,
             Json(json!({ "error": "Job not found" })),

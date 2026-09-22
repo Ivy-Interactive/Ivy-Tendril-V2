@@ -1714,12 +1714,8 @@ fn path_with_dir_first(dir: &Path, inherited: Option<&str>) -> String {
 
 fn normalize_claude_model(model: &str) -> String {
     let lower = model.to_ascii_lowercase();
-    if lower == "default" || lower.contains("opus") {
-        "opus".to_string()
-    } else if lower.contains("sonnet") {
-        "sonnet".to_string()
-    } else if lower.contains("haiku") {
-        "haiku".to_string()
+    if lower == "default" {
+        "claude-opus-5-5".to_string()
     } else {
         model.to_string()
     }
@@ -1730,7 +1726,7 @@ pub fn format_opencode_model(model: Option<&str>, base_url: Option<&str>) -> Str
     if m.is_empty() || m.eq_ignore_ascii_case("default") {
         if let Some(b) = base_url {
             if b.contains("llmproxy.ivy.app") {
-                return "anthropic/claude-opus-5".to_string();
+                return "anthropic/claude-opus-5-5".to_string();
             }
             if b.contains("api.anthropic.com") {
                 return "anthropic/claude-sonnet-5".to_string();

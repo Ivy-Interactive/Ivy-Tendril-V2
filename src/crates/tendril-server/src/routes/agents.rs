@@ -273,9 +273,9 @@ mod tests {
         assert_eq!(claude["supportsEffort"], true);
         // No synthetic `default` row: the first model is the real one V1 flags `IsDefault`, and
         // `defaultModel` names it so a client never has to invent a sentinel.
-        assert_eq!(claude["models"][0]["id"], "claude-opus-5");
-        assert_eq!(claude["models"][0]["displayName"], "Claude Opus 5");
-        assert_eq!(claude["defaultModel"], "claude-opus-5");
+        assert_eq!(claude["models"][0]["id"], "claude-opus-5-5");
+        assert_eq!(claude["models"][0]["displayName"], "Claude Opus 5.5");
+        assert_eq!(claude["defaultModel"], "claude-opus-5-5");
         assert!(!claude["models"]
             .as_array()
             .unwrap()
@@ -285,7 +285,7 @@ mod tests {
             .as_array()
             .unwrap()
             .iter()
-            .any(|model| model["id"] == "claude-opus-5-5"));
+            .any(|model| model["id"] == "claude-opus-5"));
         assert!(claude["efforts"]
             .as_array()
             .unwrap()

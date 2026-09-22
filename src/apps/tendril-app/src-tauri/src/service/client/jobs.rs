@@ -212,6 +212,22 @@ impl TendrilClient {
             .or_else(|| details.get("planTitle"))
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
+        let prompt = val
+            .get("prompt")
+            .or_else(|| details.get("prompt"))
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string())
+            .or_else(|| {
+                serde_json::from_value::<tendril_core::models::JobArgs>(
+                    details
+                        .get("typedArgs")
+                        .or_else(|| val.get("typedArgs"))
+                        .cloned()?,
+                )
+                .ok()?
+                .prompt_text()
+                .map(|s| s.to_string())
+            });
         let project = details
             .get("project")
             .and_then(|v| v.as_str())
@@ -269,6 +285,7 @@ impl TendrilClient {
             job_type,
             plan_id,
             plan_title,
+            prompt,
             project,
             status,
             status_message,

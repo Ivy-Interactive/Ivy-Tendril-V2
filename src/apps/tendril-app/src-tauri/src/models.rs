@@ -416,6 +416,8 @@ pub struct JobDetailDto {
     pub plan_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plan_title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
     pub project: String,
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
