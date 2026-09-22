@@ -18,7 +18,6 @@ export interface ParsedTurn {
   nodes: RenderNode[];
   hasToolUse: boolean;
   metrics: StreamMetrics;
-  hasResult: boolean;
 }
 
 export interface TurnActivityProps {
@@ -43,7 +42,6 @@ export function parseTurnStream(rawStream: string | undefined): ParsedTurn | nul
     nodes: groupToolUseEvents(parser.events),
     hasToolUse: parser.events.some((event) => event.kind === "tool-use"),
     metrics: parser.metrics,
-    hasResult: parser.resultIndex >= 0,
   };
 }
 
@@ -109,7 +107,18 @@ export function buildTurnSegments(parsed: ParsedTurn | null, content: string): T
   const tailIndex = segments.at(-1)?.kind === "text" ? segments.length - 1 : -1;
   const leading = tailIndex >= 0 ? spoken.slice(0, -1) : spoken;
   const consumed = consumePrefix(content, leading);
-  if (consumed === null) return [];
+  if (consumed === null) {
+    /* The stream's prose and `content` cannot be lined up, so there is no safe place to splice the
+       body into. Reachable in ordinary use: a `questions` fence in a *leading* utterance - the agent
+       asks, then keeps working - is rewritten in place by `patchQuestionsMarkdown` the moment the
+       reader picks an option, so that segment stops matching the stream verbatim.
+
+       Degrade losslessly rather than dropping anything: keep the tool and thinking cards, drop the
+       stream's text segments, and render `content` once as the single body. That is the
+       cards-above-prose layout this PR replaced, with the fence patch intact and no way to
+       duplicate a block. */
+    return segments.filter((segment) => segment.kind !== "text");
+  }
 
   const remainder = content.slice(consumed);
   if (remainder.trim().length === 0) {

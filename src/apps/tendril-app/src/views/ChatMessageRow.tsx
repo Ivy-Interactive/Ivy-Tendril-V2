@@ -379,7 +379,8 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
               <QuestionsDraftContext.Provider value={chatStore.questionDraftStore(message.id)}>
                 <QuestionsSubmitContext.Provider value={handleQuestionSubmit}>
                   <TurnActivity segments={turnSegments} renderText={renderMarkdown} />
-                  {turnSegments.length === 0 && renderMarkdown(content, "body")}
+                  {!turnSegments.some((segment) => segment.kind === "text") &&
+                    renderMarkdown(content, "body")}
                 </QuestionsSubmitContext.Provider>
               </QuestionsDraftContext.Provider>
               {isSubmitting && (

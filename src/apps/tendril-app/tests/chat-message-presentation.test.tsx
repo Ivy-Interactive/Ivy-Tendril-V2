@@ -234,11 +234,80 @@ describe("chat message presentation parity", () => {
     });
 
     /**
-     * Stream text that is not a prefix of `content` cannot be reconciled - a daemon that replaced
-     * rather than appended, or a re-read message whose body was rewritten. The body is then rendered
-     * once, on its own, rather than beside stream segments that would duplicate it.
+     * The degraded mode must not turn into a duplicate: a turn whose whole body the stream already
+     * spoke has nothing left for a tail, and the single-body fallback must not print it again.
      */
-    it("falls back to the single body when the stream is not a prefix of content", () => {
+    it("says the body once when the stream spoke all of it and nothing remains", () => {
+      const interleaved = [
+        text("First I look."),
+        toolCall("t1", "/src/app.ts"),
+        toolResult("t1"),
+        text("Then I answer."),
+      ].join("\n");
+
+      render(
+        <ChatMessageRow
+          message={message({
+            rawStream: interleaved,
+            content: body("First I look.", "Then I answer."),
+          })}
+        />,
+      );
+
+      expect(screen.getAllByText("First I look.")).toHaveLength(1);
+      expect(screen.getAllByText("Then I answer.")).toHaveLength(1);
+    });
+
+    /**
+     * A `questions` fence in a *leading* utterance is rewritten in place by the answer patch, so the
+     * stream stops matching `content` verbatim. The cards must survive that: before this, picking an
+     * option made every tool card vanish until the draft cleared.
+     */
+    it("keeps the tool cards when a leading questions fence is patched", () => {
+      const withLeadingFence = [
+        text("A question for you."),
+        toolCall("t1", "/src/app.ts"),
+        toolResult("t1"),
+        text("Still working."),
+      ].join("\n");
+      const content = body(
+        [
+          "A question for you.",
+          "",
+          "```questions",
+          "- id: q1",
+          "  title: Which one?",
+          "  options: [Alpha, Beta]",
+          "```",
+        ].join("\n"),
+        "Still working.",
+      );
+
+      render(
+        <ChatMessageRow
+          message={message({ rawStream: withLeadingFence, content })}
+          inProgressAnswers={{ q1: ["Alpha"] }}
+        />,
+      );
+
+      // The cards are still there, which is the regression this pins.
+      expect(screen.getByTestId("chat-turn-activity")).toBeInTheDocument();
+      expect(screen.getByText("Read")).toBeInTheDocument();
+      // The patched fence rendered once, as a live block rather than raw YAML.
+      expect(screen.getAllByText("Which one?")).toHaveLength(1);
+      expect(screen.queryByText(/```questions/)).not.toBeInTheDocument();
+      // And no block of prose is doubled.
+      expect(screen.getAllByText("A question for you.")).toHaveLength(1);
+      expect(screen.getAllByText("Still working.")).toHaveLength(1);
+    });
+
+    /**
+     * Stream text that is not a prefix of `content` cannot be spliced - a daemon that replaced
+     * rather than appended, or a body rewritten after the fact. It degrades to the pre-PR layout
+     * rather than losing anything: the cards stay, the stream's prose is dropped, and `content` is
+     * rendered once as the single body.
+     */
+    it("degrades to cards-above-prose when the stream is not a prefix of content", () => {
       const interleaved = [
         text("Something else entirely."),
         toolCall("t1", "/src/app.ts"),
@@ -250,7 +319,10 @@ describe("chat message presentation parity", () => {
         <ChatMessageRow message={message({ rawStream: interleaved, content: "Then I answer." })} />,
       );
 
-      expect(screen.queryByTestId("chat-turn-activity")).not.toBeInTheDocument();
+      // The cards survive; only the unmatchable stream prose is dropped.
+      expect(screen.getByTestId("chat-turn-activity")).toBeInTheDocument();
+      expect(screen.getByText("Read")).toBeInTheDocument();
+      expect(screen.queryAllByTestId("chat-turn-text")).toHaveLength(0);
       expect(screen.getAllByText("Then I answer.")).toHaveLength(1);
       expect(screen.queryByText("Something else entirely.")).not.toBeInTheDocument();
     });
