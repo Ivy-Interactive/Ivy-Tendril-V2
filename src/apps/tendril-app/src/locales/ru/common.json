@@ -1,1 +1,273 @@
-{}
+{
+  "actions": {
+    "cancel": "Отмена",
+    "close": "Закрыть",
+    "confirm": "Подтвердить",
+    "copy": "Копировать",
+    "delete": "Удалить",
+    "retry": "Повторить",
+    "save": "Сохранить"
+  },
+  "status": {
+    "copied": "Скопировано",
+    "error": "Ошибка",
+    "loading": "Загрузка…",
+    "none": "Нет",
+    "unknown": "Неизвестно"
+  },
+  "enums": {
+    "jobStatus": {
+      "pending": "Ожидает",
+      "queued": "В очереди",
+      "running": "Выполняется",
+      "completed": "Завершено",
+      "failed": "Сбой",
+      "timeout": "Таймаут",
+      "stopped": "Остановлено",
+      "blocked": "Заблокировано"
+    },
+    "jobType": {
+      "executePlan": "ExecutePlan",
+      "createPlan": "CreatePlan",
+      "retryPlan": "RetryPlan",
+      "updatePlan": "UpdatePlan",
+      "expandPlan": "ExpandPlan",
+      "splitPlan": "SplitPlan",
+      "createPr": "CreatePr",
+      "createIssue": "CreateIssue",
+      "setupProject": "SetupProject",
+      "addProject": "AddProject",
+      "syncRepo": "SyncRepo"
+    },
+    "planState": {
+      "draft": "Черновик",
+      "creating": "Создаётся",
+      "updating": "Обновляется",
+      "executing": "Выполняется",
+      "review": "На ревью",
+      "failed": "Сбой",
+      "completed": "Завершено",
+      "skipped": "Пропущено",
+      "blocked": "Заблокировано",
+      "icebox": "В холодильнике"
+    }
+  },
+  "appTitles": {
+    "dashboard": "Дашборд",
+    "plans": "Планы",
+    "review": "Ревью",
+    "recommendations": "Рекомендации",
+    "jobs": "Задания",
+    "chat": "Чат",
+    "inbox": "Входящие",
+    "settings": "Настройки",
+    "pullRequests": "Пулл-реквесты",
+    "icebox": "Холодильник",
+    "reviewAction": "Действие ревью",
+    "agent": "Агент",
+    "plan": "План {{id}}",
+    "job": "Задание {{id}}"
+  },
+  "navigation": {
+    "errors": {
+      "tabGone": "Вкладка больше не существует."
+    }
+  },
+  "sidebar": {
+    "version": "v {{version}}",
+    "nav": {
+      "dashboard": "Дашборд",
+      "plans": "Планы",
+      "review": "Ревью",
+      "recommendations": "Рекомендации",
+      "jobs": "Задания"
+    },
+    "chat": "Чат",
+    "inbox": "Входящие",
+    "settings": "Настройки",
+    "settingsMenu": {
+      "configuration": "Конфигурация",
+      "pullRequests": "Пулл-реквесты",
+      "icebox": "Холодильник",
+      "checkForUpdates": "Проверить обновления",
+      "help": "Справка",
+      "documentation": "Документация",
+      "reportIssue": "Сообщить о проблеме"
+    }
+  },
+  "shortcuts": {
+    "gotoChat": "Перейти в чат",
+    "gotoInbox": "Открыть входящие задачи GitHub",
+    "newPlan": "Открыть окно создания плана",
+    "planSearch": "Поиск планов",
+    "showShortcuts": "Показать горячие клавиши"
+  },
+  "shortcutsHelp": {
+    "title": "Горячие клавиши",
+    "empty": "Нет активных горячих клавиш."
+  },
+  "updateCheck": {
+    "available": {
+      "title": "Доступно обновление",
+      "description": "Доступна версия {{version}}."
+    },
+    "upToDate": {
+      "title": "Обновлений нет",
+      "description": "У вас последняя версия (v{{version}})."
+    },
+    "failed": {
+      "title": "Не удалось проверить обновления"
+    }
+  },
+  "updateNotice": {
+    "available": "Доступна версия v{{latest}} (у вас v{{current}})",
+    "copyCommand": "Копировать команду",
+    "dismiss": "Скрыть"
+  },
+  "offlineBanner": {
+    "reconnecting": "Tendril-Service отключён. Автоматическое переподключение через {{seconds}} с…",
+    "unreachable": "Демон Tendril-Service недоступен.",
+    "cachedState": "(Используется кэшированное состояние)",
+    "reconnect": "Переподключиться"
+  },
+  "planPage": {
+    "loading": "Загрузка плана {{id}}…",
+    "loadError": "Не удалось загрузить план {{id}}: {{error}}"
+  },
+  "jobPage": {
+    "placeholderType": "Задание агента"
+  },
+  "shellErrors": {
+    "restartFailed": "Не удалось перезапустить службу: {{error}}",
+    "repairFailed": "Не удалось восстановить службу: {{error}}",
+    "dismissNavError": "Скрыть ошибку навигации"
+  },
+  "stopQueued": {
+    "title": "Остановить задания в очереди",
+    "body_one": "Остановить {{count}} задание в очереди? Выполняемые задания не затрагиваются.",
+    "body_few": "Остановить все {{count}} задания в очереди? Выполняемые задания не затрагиваются.",
+    "body_many": "Остановить все {{count}} заданий в очереди? Выполняемые задания не затрагиваются.",
+    "body_other": "Остановить все {{count}} задания в очереди? Выполняемые задания не затрагиваются.",
+    "confirm": "Остановить все",
+    "toast": {
+      "title": "Задания",
+      "description_one": "Остановлено {{count}} задание в очереди.",
+      "description_few": "Остановлено {{count}} задания в очереди.",
+      "description_many": "Остановлено {{count}} заданий в очереди.",
+      "description_other": "Остановлено {{count}} задания в очереди."
+    }
+  },
+  "stopAll": {
+    "title": "Остановить все задания",
+    "body_one": "Остановить {{count}} активное задание? Запущенные агенты будут принудительно завершены, а их планы вернутся в предыдущее состояние. Это действие нельзя отменить.",
+    "body_few": "Остановить все {{count}} активных задания? Запущенные агенты будут принудительно завершены, а их планы вернутся в предыдущее состояние. Это действие нельзя отменить.",
+    "body_many": "Остановить все {{count}} активных заданий? Запущенные агенты будут принудительно завершены, а их планы вернутся в предыдущее состояние. Это действие нельзя отменить.",
+    "body_other": "Остановить все {{count}} активного задания? Запущенные агенты будут принудительно завершены, а их планы вернутся в предыдущее состояние. Это действие нельзя отменить.",
+    "confirm": "Остановить все",
+    "toast": {
+      "title": "Задания остановлены",
+      "description_one": "Остановлено {{count}} задание",
+      "description_few": "Остановлено {{count}} задания",
+      "description_many": "Остановлено {{count}} заданий",
+      "description_other": "Остановлено {{count}} задания"
+    }
+  },
+  "errorBanner": {
+    "dismiss": "Скрыть ошибку"
+  },
+  "recommendationCard": {
+    "state": {
+      "pending": "Ожидает",
+      "accepted": "Принята",
+      "acceptedWithNotes": "Принята с заметками",
+      "declined": "Отклонена"
+    },
+    "impact": {
+      "small": "Низкое",
+      "medium": "Среднее",
+      "high": "Высокое"
+    },
+    "declineReason": "Причина отклонения: {{reason}}",
+    "notes": "Заметки: {{notes}}",
+    "accept": "Принять",
+    "decline": "Отклонить"
+  },
+  "service": {
+    "state": {
+      "connected": "Подключено",
+      "disconnected": "Отключено",
+      "unauthenticated": "Не аутентифицировано",
+      "notRunning": "Не запущено",
+      "foreignMaster": "Чужой ведущий демон"
+    },
+    "ownership": {
+      "adoptedExternal": "Внешний (принятый)",
+      "managed": "Управляемый"
+    }
+  },
+  "serviceStatus": {
+    "connectedExternal": "Подключено (внешний)",
+    "portUnavailable": "Н/Д",
+    "restart": "Перезапустить службу",
+    "repair": "Восстановить службу",
+    "diagnostics": "Диагностика"
+  },
+  "serviceSettings": {
+    "controls": {
+      "title": "Контроль и управление службой",
+      "hint": "Управление жизненным циклом локального демона-компаньона, передачей владения и восстановлением после сбоев."
+    },
+    "actions": {
+      "restart": "Перезапустить службу",
+      "repair": "Восстановить службу",
+      "switchToExternal": "Перейти на внешний демон",
+      "adoptManaged": "Перейти на управляемый демон",
+      "install": "Установить фоновую службу",
+      "installTooltip": "Скопировать встроенный демон в {{path}} и запускать его при входе в систему",
+      "disableAutostart": "Отключить автозапуск",
+      "disableAutostartTooltip": "Демон больше не будет запускаться при входе в систему. Установленные исполняемые файлы останутся на месте.",
+      "refreshLogs": "Обновить логи",
+      "loadingLogs": "Загрузка логов…"
+    },
+    "messages": {
+      "restartInitiated": "Перезапуск службы начат.",
+      "restartFailed": "Не удалось перезапустить: {{error}}",
+      "repairFailed": "Не удалось восстановить: {{error}}",
+      "installFailed": "Не удалось установить: {{error}}",
+      "disableAutostartFailed": "Не удалось отключить запуск при входе в систему: {{error}}",
+      "switchedToManaged": "Режим владения службой переключён на управляемый.",
+      "switchedToExternal": "Режим владения службой переключён на внешний.",
+      "switchFailed": "Не удалось переключить режим: {{error}}"
+    },
+    "provision": {
+      "installed": "Установлено в {{dir}}: {{binaries, list(type: unit)}}.",
+      "upToDate": "В {{dir}} уже установлены актуальные версии: {{binaries, list(type: unit)}}.",
+      "missing": "В эту сборку не входят: {{binaries, list(type: unit)}}.",
+      "registered": "Запуск при входе в систему зарегистрирован ({{detail}}).",
+      "alreadyRegistered": "Запуск при входе в систему уже зарегистрирован.",
+      "registerFailed": "Не удалось зарегистрировать запуск при входе в систему: {{detail}}",
+      "skipped": "Запуск при входе в систему пропущен: {{detail}}",
+      "nothing": "Нечего устанавливать."
+    },
+    "details": {
+      "ownership": "Владение",
+      "ownershipFallback": "Внешний / автономный",
+      "endpoint": "Адрес",
+      "pid": "PID процесса",
+      "crashCount": "Число сбоев",
+      "notAvailable": "Н/Д"
+    },
+    "logs": {
+      "title": "Диагностика демона и логи службы",
+      "hint": "Конфиденциальные токены скрыты. Источник: {{path}}.",
+      "empty": "В {{file}} пока нет записей.",
+      "loadFailed": "Не удалось загрузить логи службы: {{error}}"
+    }
+  },
+  "errors": {
+    "requestFailed": "Запрос к {{path}} завершился ошибкой ({{status}})",
+    "reviewActionFailed": "Сбой действия ревью {{endpoint}} ({{status}}): {{detail}}",
+    "subscribeFailed": "Не удалось подписаться на {{url}}: HTTP {{status}}",
+    "agentTerminalFailed": "Сбой терминала агента {{endpoint}}: HTTP {{status}}"
+  }
+}

@@ -1,1 +1,288 @@
-{}
+{
+  "plansView": {
+    "newPlanShortcut": "Novo Plano",
+    "empty": {
+      "title": "Nenhum plano",
+      "description": "Os planos que você criar aparecerão aqui"
+    },
+    "noSelection": "Selecione um plano na barra lateral"
+  },
+  "sidebar": {
+    "title": "Planos"
+  },
+  "searchBadges": {
+    "verified": "Verificado",
+    "unverified": "Não Verificado"
+  },
+  "detail": {
+    "tabs": {
+      "plan": "Plano",
+      "details": "Detalhes",
+      "diff": "Visualização de Diff",
+      "recommendations": "Recomendações ({{n}})",
+      "git": "Git",
+      "gitCount": "Git ({{n}})",
+      "gitAtRisk_one": "Git ({{n}}) · {{count}} em risco",
+      "gitAtRisk_many": "Git ({{n}}) · {{count}} em risco",
+      "gitAtRisk_other": "Git ({{n}}) · {{count}} em risco",
+      "gitAtRiskUncounted_one": "Git · {{count}} em risco",
+      "gitAtRiskUncounted_many": "Git · {{count}} em risco",
+      "gitAtRiskUncounted_other": "Git · {{count}} em risco"
+    },
+    "questions": {
+      "label": "Perguntas",
+      "labelUnanswered_one": "Perguntas ({{count}} sem resposta)",
+      "labelUnanswered_many": "Perguntas ({{count}} sem resposta)",
+      "labelUnanswered_other": "Perguntas ({{count}} sem resposta)"
+    },
+    "sourceLabel": {
+      "pr": "PR",
+      "issue": "Issue"
+    },
+    "meta": {
+      "position_one": "{{position}}/{{count}} plano",
+      "position_many": "{{position}}/{{count}} planos",
+      "position_other": "{{position}}/{{count}} planos",
+      "dependsOn": "Depende de {{plans}}"
+    },
+    "errors": {
+      "saveAnswer": "Falha ao salvar a resposta: {{error}}",
+      "saveAnnotation": "Falha ao salvar a anotação: {{error}}",
+      "updateRecommendation": "Falha ao atualizar a recomendação \"{{title}}\": {{error}}",
+      "completePlan": "Não foi possível concluir o plano {{id}}: {{error}}"
+    },
+    "runActionFailed": {
+      "executePlan": "Falha ao executar o plano: {{error}}",
+      "updatePlan": "Falha ao atualizar o plano: {{error}}",
+      "expandPlan": "Falha ao expandir o plano: {{error}}",
+      "splitPlan": "Falha ao dividir o plano: {{error}}",
+      "copyPlanId": "Falha ao copiar o ID do plano: {{error}}",
+      "copyFolderPath": "Falha ao copiar o caminho da pasta: {{error}}",
+      "openFolder": "Falha ao abrir a pasta: {{error}}"
+    },
+    "discussDraft": {
+      "outcome": "Quero discutir o resultado deste plano antes de concluí-lo. Resuma o que foi feito e aponte tudo o que merece uma análise mais atenta.",
+      "plan": "Quero discutir este plano antes de executá-lo. Resuma-o e aponte tudo o que você mudaria."
+    }
+  },
+  "actions": {
+    "discussWithAgent": "Discutir com o Agente",
+    "updatePlan": "Atualizar Plano",
+    "checking": "Verificando...",
+    "starting": "Iniciando...",
+    "createPr": "Criar PR",
+    "completePlan": "Concluir Plano",
+    "retryPlan": "Tentar Plano Novamente",
+    "acceptPartialDelivery": "Aceitar Entrega Parcial",
+    "resetToDraft": "Redefinir para Rascunho…"
+  },
+  "draftActions": {
+    "execute": "Executar Plano",
+    "update": "Atualizar Plano…",
+    "expand": "Expandir Plano",
+    "split": "Dividir Plano",
+    "createIssue": "Criar Issue…",
+    "copyId": "Copiar ID do Plano",
+    "copyPath": "Copiar Caminho da Pasta",
+    "openFolder": "Abrir Pasta",
+    "delete": "Excluir Plano…"
+  },
+  "failureCallout": {
+    "title": "Falha na Execução",
+    "verification": "<bold>{{name}}</bold>: {{status}}; veja o relatório de verificação para mais detalhes",
+    "noDetails": "Nenhum detalhe disponível. Verifique os logs da tarefa."
+  },
+  "questionsPanel": {
+    "answered_one": "{{answered}} de {{count}} respondida",
+    "answered_many": "{{answered}} de {{count}} respondidas",
+    "answered_other": "{{answered}} de {{count}} respondidas",
+    "optional": "{{label}} (Opcional)",
+    "saving": "salvando…"
+  },
+  "planPane": {
+    "writing": "O agente ainda está elaborando este plano. O conteúdo aparecerá aqui quando a tarefa gravar a primeira revisão.",
+    "neverWritten": "Este plano não tem revisões. A pasta dele foi criada, mas a tarefa que o elaborava nunca gravou nenhuma, então não há conteúdo do plano para mostrar.",
+    "neverWrittenUpdate": "Atualizar Plano",
+    "unreadable_one": "Este plano registra {{count}} revisão em disco, mas a revisão mais recente veio vazia. O arquivo pode estar ilegível.",
+    "unreadable_many": "Este plano registra {{count}} revisões em disco, mas a revisão mais recente veio vazia. O arquivo pode estar ilegível.",
+    "unreadable_other": "Este plano registra {{count}} revisões em disco, mas a revisão mais recente veio vazia. O arquivo pode estar ilegível."
+  },
+  "recommendationsTab": {
+    "title": "Recomendações do Plano",
+    "description": "Acompanhamentos e melhorias fora do escopo descobertos durante a execução.",
+    "empty": "O {{jobType}} não registrou nenhuma recomendação para este plano."
+  },
+  "gitTab": {
+    "loading": "Carregando o estado do git…"
+  },
+  "details": {
+    "planId": "ID do Plano",
+    "folder": "Pasta",
+    "initialPrompt": "Prompt Inicial",
+    "revision": "Revisão",
+    "profile": "Perfil",
+    "relatedPlans": "Planos Relacionados",
+    "dependsOn": "Depende de",
+    "issue": "Issue",
+    "created": "Criado em",
+    "level": "Nível",
+    "project": "Projeto",
+    "state": "Estado",
+    "copyPlanIdTooltip": "Copiar para a área de transferência",
+    "copyFolderTooltip": "Copiar para a área de transferência",
+    "repositories": "Repositórios",
+    "noRepositories": "Nenhum repositório especificado",
+    "commits": "Commits",
+    "noCommits": "Nenhum commit ainda"
+  },
+  "verificationStatus": {
+    "pass": "Aprovado",
+    "fail": "Falha",
+    "pending": "Pendente",
+    "skipped": "Ignorado"
+  },
+  "verifications": {
+    "empty": "Nenhuma verificação",
+    "updateFailed": "Falha ao atualizar a verificação {{name}}: {{error}}",
+    "viewReportTooltip": "Ver relatório de {{name}}",
+    "viewReport": "Ver relatório",
+    "hideReport": "Ocultar relatório",
+    "noReport": "Nenhum relatório ainda"
+  },
+  "reportSheet": {
+    "title": "Relatório de Verificação",
+    "description": "Detalhes do relatório de verificação de {{name}}",
+    "descriptionFallback": "Detalhes do relatório de verificação do plano",
+    "loading": "Carregando o relatório de verificação…",
+    "notFound": "Nenhum arquivo de relatório de verificação encontrado para \"{{name}}\".",
+    "empty": "Nenhum relatório disponível para {{name}}."
+  },
+  "artifactSheet": {
+    "thumbnail": {
+      "openLabel": "Abrir {{fileName}}",
+      "noPreview": "Sem pré-visualização",
+      "loadingLabel": "Carregando {{fileName}}"
+    },
+    "fallbackTitle": "Artefato",
+    "noPreviewTitle": "Sem pré-visualização",
+    "showInFolder": "Mostrar na pasta",
+    "loadingLabel": "Carregando {{fileName}}",
+    "imageFailed": "O Tendril não conseguiu carregar esta imagem.",
+    "imageFailedWithError": "O Tendril não conseguiu carregar esta imagem: {{error}}",
+    "binary": "{{fileName}} não é um arquivo de texto ({{size}}), então não há pré-visualização aqui.",
+    "tooLarge": "{{fileName}} tem {{size}}, grande demais para pré-visualizar aqui.",
+    "plainNotice": "Exibido como texto simples: com {{size}}, {{fileName}} é grande demais para o realce de sintaxe.",
+    "plainNotice_markdown": "Exibido como texto simples: com {{size}}, {{fileName}} é grande demais para ser renderizado como markdown.",
+    "copyPath": "Copiar caminho",
+    "revealLabel": "Mostrar na pasta"
+  },
+  "pullRequests": {
+    "title": "Pull Requests",
+    "refresh": "Atualizar",
+    "refreshing": "Atualizando...",
+    "unreachable": "Não foi possível acessar o GitHub para: {{repos}}",
+    "syncInProgress": "Uma sincronização já está em andamento; os status serão atualizados quando ela terminar.",
+    "checked": "verificado {{when}}",
+    "checkedJustNow": "verificado agora mesmo",
+    "empty": "Nenhum PR criado",
+    "state": {
+      "open": "Aberto",
+      "closed": "Fechado",
+      "merged": "Mesclado",
+      "unknown": "Desconhecido"
+    }
+  },
+  "revisionDiff": {
+    "singleRevision": "Este plano tem apenas uma revisão, então ainda não há nada para comparar. Um diff aparecerá quando o {{createPlan}} ou o {{retryPlan}} gravar uma nova revisão.",
+    "compare": "<oldLabel><text>Comparar revisão</text><oldSelect/></oldLabel><newLabel><text>com</text><newSelect/></newLabel>",
+    "oldRevisionLabel": "Revisão antiga",
+    "newRevisionLabel": "Revisão nova",
+    "onDisk_one": "{{count}} revisão em disco",
+    "onDisk_many": "{{count}} revisões em disco",
+    "onDisk_other": "{{count}} revisões em disco",
+    "loading": "Carregando as revisões {{from}} e {{to}}...",
+    "identical": "As revisões {{from}} e {{to}} são idênticas."
+  },
+  "icebox": {
+    "title": "Icebox",
+    "description": "Planos arquivados e adiados, colocados em espera.",
+    "searchPlaceholder": "Buscar planos do Icebox...",
+    "projectFilterLabel": "Projeto",
+    "allProjects": "Todos os Projetos",
+    "levelFilterLabel": "Nível",
+    "allLevels": "Todos os Níveis",
+    "empty": {
+      "title": "O Icebox está vazio",
+      "description": "Os planos que você congelar aparecerão aqui"
+    },
+    "noMatch": {
+      "title": "Nenhum plano corresponde",
+      "description": "Nenhum plano do Icebox corresponde aos filtros atuais."
+    },
+    "card": {
+      "priority": "P{{priority}}",
+      "verificationTooltip": "{{name}}: {{status}}",
+      "deleteLabel": "Excluir plano {{id}}",
+      "thawLabel": "Descongelar plano {{id}}",
+      "thaw": "Descongelar",
+      "thawing": "Descongelando..."
+    },
+    "thawFailed": "Não foi possível descongelar o plano {{id}}: {{error}}"
+  },
+  "newPlan": {
+    "title": "Criar Novo Plano",
+    "closeLabel": "Fechar janela",
+    "projectPickerLabel": "Projeto de Destino",
+    "autoProject": "Automático",
+    "addProject": "+ Adicionar Novo Projeto",
+    "submit": "Criar",
+    "placeholder": "Descreva o que deve ser feito...",
+    "emptyDescription": "Insira uma descrição para o novo plano."
+  },
+  "planActions": {
+    "canExecute": {
+      "alreadyCompleted": "O plano já está concluído.",
+      "executing": "O plano está sendo executado.",
+      "blockedByDependency": "Bloqueado pela dependência \"{{dependency}}\", que está no estado \"{{state}}\" (é necessário Concluído)."
+    },
+    "canCreatePr": {
+      "wrongState": "Só é possível criar um PR quando o plano está no estado Em revisão ou Com falha (atual: {{state}}).",
+      "verificationsFailed": "Não é possível criar o PR: verificações com falha ({{names}}).",
+      "verificationsPending": "Não é possível criar o PR: verificações ainda pendentes ({{names}})."
+    },
+    "canRetry": {
+      "wrongState": "Só é possível tentar novamente planos no estado Em revisão ou Com falha (atual: {{state}})."
+    },
+    "canRefine": {
+      "wrongState": "O refinamento do plano (Expandir/Atualizar/Dividir) só é permitido em planos no estado Rascunho (atual: {{state}})."
+    },
+    "canDelete": {
+      "inFlight": "Não é possível excluir um plano enquanto ele está no estado {{state}} — cancele a tarefa primeiro."
+    },
+    "canReset": {
+      "terminal": "O plano está no estado {{state}} e não pode ser redefinido para Rascunho.",
+      "inFlight": "Não é possível redefinir um plano enquanto ele está no estado {{state}} — cancele a tarefa primeiro.",
+      "wrongState": "Só é possível redefinir para Rascunho planos no estado Em revisão, Com falha ou Bloqueado (atual: {{state}})."
+    },
+    "canCompletePartial": {
+      "wrongState": "A entrega parcial só é permitida quando o plano está no estado Em revisão ou Com falha (atual: {{state}}).",
+      "noFailures": "Nenhuma verificação falhou — conclua o plano normalmente."
+    },
+    "canComplete": {
+      "alreadyCompleted": "O plano já está concluído.",
+      "inFlight": "Não é possível concluir um plano enquanto ele está no estado {{state}} — cancele a tarefa primeiro."
+    },
+    "errors": {
+      "completeBlocked": "Conclusão do plano bloqueada",
+      "executeBlocked": "Execução bloqueada",
+      "retryBlocked": "Nova tentativa bloqueada",
+      "createPrBlocked": "Criação de PR bloqueada",
+      "refineBlocked": "Refinamento bloqueado",
+      "repositoryRequired": "É necessário um repositório para criar uma issue."
+    }
+  },
+  "store": {
+    "rollbackField": "Reversão: falha ao atualizar {{field}}: {{error}}",
+    "rollbackVerification": "Reversão da atualização da verificação: {{error}}"
+  }
+}

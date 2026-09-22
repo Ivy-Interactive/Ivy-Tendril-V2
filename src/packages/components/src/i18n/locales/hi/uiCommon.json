@@ -1,1 +1,251 @@
-{}
+{
+  "blade": {
+    "back": "वापस",
+    "backTo": "{{title}} पर वापस जाएं",
+    "close": "{{title}} बंद करें",
+    "refresh": "{{title}} रीफ़्रेश करें"
+  },
+  "bladeContainer": {
+    "ariaLabel": "ब्लेड"
+  },
+  "calendar": {
+    "dayButton": {
+      "selected": "{{date}}, चयनित",
+      "today": "आज, {{date}}",
+      "todaySelected": "आज, {{date}}, चयनित"
+    },
+    "gridcell": {
+      "today": "आज, {{date}}"
+    },
+    "monthDropdown": "महीना चुनें",
+    "monthPlaceholder": "M",
+    "navLabel": "{{label}} नेविगेशन",
+    "nextMonth": "अगले महीने पर जाएं",
+    "previousMonth": "पिछले महीने पर जाएं",
+    "weekNumber": "सप्ताह {{week}}",
+    "weekNumberHeader": "सप्ताह संख्या",
+    "yearDropdown": "वर्ष चुनें",
+    "yearPlaceholder": "YYYY"
+  },
+  "callout": {
+    "dismiss": "खारिज करें"
+  },
+  "charts": {
+    "axis": {
+      "billions": "{{value}}B",
+      "millions": "{{value}}M",
+      "thousands": "{{value}}K"
+    },
+    "radarDefaultSeries": "डेटा",
+    "scatterLineSeries": "{{name}} रेखा"
+  },
+  "chatMessageList": {
+    "scrollToBottom": "नीचे तक स्क्रॉल करें"
+  },
+  "clipboard": {
+    "copyFailed": "क्लिपबोर्ड पर कॉपी नहीं किया जा सका।"
+  },
+  "copyToClipboard": {
+    "ariaLabel": "क्लिपबोर्ड पर कॉपी करें",
+    "copied": "कॉपी हो गया!"
+  },
+  "dataTable": {
+    "columnHeader": {
+      "clearSort": "{{column}} पर क्रम हटाएं",
+      "reorder": "कॉलम का क्रम बदलें",
+      "reorderAt": "कॉलम का क्रम बदलें, {{total}} में से स्थान {{position}}",
+      "resize": "कॉलम का आकार बदलें",
+      "sortAscending": "{{column}} के अनुसार आरोही क्रम में लगाएं",
+      "sortDescending": "{{column}} के अनुसार अवरोही क्रम में लगाएं"
+    },
+    "columnOptions": "कॉलम विकल्प",
+    "editCell": "{{column}} संपादित करें",
+    "empty": "कोई परिणाम नहीं।",
+    "filter": {
+      "clear": "साफ़ करें",
+      "clearAriaLabel": "फ़िल्टर साफ़ करें",
+      "errors": {
+        "afterIs": "\"{{keyword}}\" के बाद \"{{blank}}\", \"{{notBlank}}\", \"{{null}}\" या \"{{notNull}}\" अपेक्षित था।",
+        "afterNot": "\"{{keyword}}\" के बाद \"{{contains}}\", \"{{in}}\" या \"{{equals}}\" अपेक्षित था।",
+        "expectedColumn": "स्थान {{position}} पर कॉलम का नाम अपेक्षित था, \"{{text}}\" मिला।",
+        "expectedValue": "स्थान {{position}} पर उद्धरण चिह्नों में मान अपेक्षित था, उदा. {{example}}। \"{{text}}\" मिला।",
+        "expectedWord": "\"{{after}}\" के बाद \"{{word}}\" अपेक्षित था।",
+        "inNeedsList": "\"{{keyword}}\" एक सूची लेता है: {{example}}।",
+        "incomplete": "एक्सप्रेशन पूरा होने से पहले ही समाप्त हो जाता है।",
+        "needsComparison": "\"{{column}}\" के लिए तुलना आवश्यक है, उदा. {{equalsExample}} या {{containsExample}}।",
+        "noFilterableColumn": "इस तालिका में किसी भी कॉलम को फ़िल्टर नहीं किया जा सकता।",
+        "unclosedBracket": "स्थान {{position}} पर \"[\" बंद नहीं किया गया।",
+        "unclosedGroup": "\"(\" बंद नहीं किया गया — हर समूह के लिए एक मेल खाता \")\" आवश्यक है।",
+        "unclosedList": "\"{{keyword}}\" सूची में \"(\" बंद नहीं किया गया।",
+        "unclosedQuote": "स्थान {{position}} पर उद्धरण चिह्न बंद नहीं किया गया।",
+        "unexpectedCharacter": "स्थान {{position}} पर अनपेक्षित \"{{text}}\"।",
+        "unexpectedSymbol": "स्थान {{position}} पर अनपेक्षित \"{{text}}\"।",
+        "unexpectedToken": "स्थान {{position}} पर अनपेक्षित \"{{text}}\"। शर्तों को {{and}} या {{or}} से जोड़ें।",
+        "unknownColumn": "अज्ञात कॉलम \"{{text}}\"। फ़िल्टर योग्य: {{names}}।",
+        "unknownComparison": "स्थान {{position}} पर अज्ञात तुलना \"{{text}}\"। {{operators}} या {{last}} का उपयोग करें।"
+      },
+      "filterableColumns": "फ़िल्टर योग्य कॉलम",
+      "help": "एक एक्सप्रेशन, जिसे Enter से लागू किया जाता है। शर्तें <code>{{and}}</code> / <code>{{or}}</code> से जुड़ती हैं और कोष्ठकों से समूहित होती हैं।",
+      "input": "फ़िल्टर एक्सप्रेशन",
+      "noFilterableColumns": "कोई फ़िल्टर योग्य कॉलम नहीं",
+      "syntax": "फ़िल्टर सिंटैक्स",
+      "syntaxTitle": "क्या फ़िल्टर किया जा सकता है, और कैसे",
+      "toggle": "फ़िल्टर",
+      "toggleTitle": "तालिका का डेटा फ़िल्टर करें"
+    },
+    "loadingMore": "और लोड हो रहा है…",
+    "pagination": {
+      "ariaLabel": "तालिका पेजिनेशन",
+      "firstPage": "पहले पेज पर जाएं",
+      "lastPage": "अंतिम पेज पर जाएं",
+      "nextPage": "अगले पेज पर जाएं",
+      "noRows": "कोई पंक्ति नहीं",
+      "page": "पेज {{page}} / {{pageCount}}",
+      "previousPage": "पिछले पेज पर जाएं",
+      "rowsPerPage": "प्रति पेज पंक्तियां",
+      "showing": "{{total}} में से {{start}}–{{end}} दिखाए जा रहे हैं"
+    },
+    "rowActions": "पंक्ति क्रियाएं",
+    "selectAllRows": "सभी पंक्तियां चुनें",
+    "selectRow": "पंक्ति {{id}} चुनें"
+  },
+  "dialog": {
+    "close": "बंद करें"
+  },
+  "diagram": {
+    "invalidGraphviz": "अमान्य Graphviz DOT सिंटैक्स",
+    "invalidMermaid": "अमान्य Mermaid डायग्राम सिंटैक्स",
+    "loading": "डायग्राम लोड हो रहा है…",
+    "loadingGraphviz": "Graphviz लोड हो रहा है…",
+    "loadingMermaid": "Mermaid लोड हो रहा है…",
+    "renderFailed": "डायग्राम रेंडर करने में विफल"
+  },
+  "errorDisplay": {
+    "copyDetails": "विवरण कॉपी करें",
+    "message": "संदेश",
+    "stackTrace": "स्टैक ट्रेस",
+    "type": "प्रकार"
+  },
+  "errorSheet": {
+    "description": "एप्लिकेशन में एक त्रुटि हुई। विवरण नीचे दिखाए गए हैं।",
+    "title": "ओह! कुछ गलत हो गया"
+  },
+  "format": {
+    "bytes": {
+      "b": "{{value}} B",
+      "gb": "{{value}} GB",
+      "kb": "{{value}} KB",
+      "mb": "{{value}} MB",
+      "pb": "{{value}} PB",
+      "tb": "{{value}} TB"
+    },
+    "duration": {
+      "hoursMinutes": "{{hours}} घंटे {{minutes}} मिनट",
+      "minutesSeconds": "{{minutes}} मिनट {{seconds}} सेकंड",
+      "seconds": "{{seconds}} सेकंड"
+    },
+    "tokenCount": {
+      "millions": "{{value}}M",
+      "thousands": "{{value}}k"
+    },
+    "tokens": {
+      "millions": "{{value}}M",
+      "thousands": "{{value}}K"
+    }
+  },
+  "imageOverlay": {
+    "ariaLabel": "छवि ओवरले",
+    "close": "बंद करें",
+    "next": "अगली छवि",
+    "position": "{{current}} / {{total}}",
+    "previous": "पिछली छवि"
+  },
+  "invalidIcon": {
+    "ariaLabel": "वैधता त्रुटि"
+  },
+  "jsonRenderer": {
+    "invalid": "अमान्य JSON स्ट्रिंग"
+  },
+  "loading": {
+    "ariaLabel": "लोड हो रहा है",
+    "text": "लोड हो रहा है…"
+  },
+  "madeWithIvy": {
+    "label": "इससे निर्मित"
+  },
+  "markdown": {
+    "alerts": {
+      "caution": "सावधानी",
+      "important": "महत्वपूर्ण",
+      "note": "नोट",
+      "tip": "सुझाव",
+      "warning": "चेतावनी"
+    },
+    "footnotes": {
+      "backToReference": "संदर्भ {{ref}} पर वापस जाएं",
+      "backToReferenceRepeat": "संदर्भ {{ref}}-{{reref}} पर वापस जाएं",
+      "label": "फ़ुटनोट"
+    },
+    "taskCompleted": "पूर्ण कार्य",
+    "taskPending": "लंबित कार्य"
+  },
+  "multiselect": {
+    "bulkSelection": "सामूहिक चयन",
+    "clearAll": "सभी साफ़ करें",
+    "empty": "कोई विकल्प उपलब्ध नहीं",
+    "placeholder": "विकल्प चुनें…",
+    "remove": "निकालें",
+    "selectAll": "सभी चुनें",
+    "toggleDropdown": "ड्रॉपडाउन टॉगल करें"
+  },
+  "pagination": {
+    "ariaLabel": "पेजिनेशन",
+    "morePages": "और पेज",
+    "next": "अगला",
+    "nextAriaLabel": "अगले पेज पर जाएं",
+    "previous": "पिछला",
+    "previousAriaLabel": "पिछले पेज पर जाएं"
+  },
+  "progress": {
+    "ariaLabel": "प्रगति"
+  },
+  "sheet": {
+    "close": "बंद करें"
+  },
+  "sidebar": {
+    "toggle": "साइडबार टॉगल करें"
+  },
+  "slider": {
+    "ariaLabel": "स्लाइडर"
+  },
+  "stackedProgress": {
+    "indeterminate": "अनिश्चित",
+    "segmentFallback": "खंड {{number}}",
+    "select": "{{label}} चुनें",
+    "tooltip": "{{label}}: {{value}}",
+    "total": "कुल: {{total}}",
+    "valueText": "{{label}}: {{total}} में से {{value}}"
+  },
+  "starRating": {
+    "rate_one": "{{count}} स्टार रेटिंग दें",
+    "rate_other": "{{count}} स्टार रेटिंग दें"
+  },
+  "statusLine": {
+    "estimatedTooltip": "अब तक की स्ट्रीम से अनुमानित",
+    "tokensAbbreviated": "{{value}} टोकन",
+    "tokensAbbreviatedEstimated": "~{{value}} टोकन",
+    "tokensEstimated_one": "~{{value}} टोकन",
+    "tokensEstimated_other": "~{{value}} टोकन",
+    "tokens_one": "{{value}} टोकन",
+    "tokens_other": "{{value}} टोकन"
+  },
+  "toolbar": {
+    "moreActions": "अधिक क्रियाएं"
+  },
+  "tuiBadge": {
+    "remove": "निकालें"
+  },
+  "xmlRenderer": {
+    "invalid": "अमान्य XML स्ट्रिंग"
+  }
+}

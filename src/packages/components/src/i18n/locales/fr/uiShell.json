@@ -1,1 +1,280 @@
-{}
+{
+  "agentButton": {
+    "label": "Agent",
+    "newChatTooltip": "Nouveau chat",
+    "flyout": {
+      "empty": "Aucun chat pour l'instant",
+      "newChat": "Nouveau chat"
+    }
+  },
+  "newPlanButton": {
+    "label": "Nouveau plan"
+  },
+  "settingsButton": {
+    "label": "Paramètres"
+  },
+  "nav": {
+    "resizeAriaLabel": "Redimensionner la navigation"
+  },
+  "railFlyout": {
+    "previous": "Précédent",
+    "next": "Suivant"
+  },
+  "sectionItems": {
+    "state": {
+      "working": "En cours",
+      "completed": "Terminé"
+    },
+    "menu": {
+      "label": "Options pour {{title}}",
+      "tooltip": "Options",
+      "pin": "Épingler le chat",
+      "unpin": "Désépingler le chat",
+      "rename": "Modifier le nom",
+      "delete": "Supprimer"
+    },
+    "titleEditor": {
+      "ariaLabel": "Nom de l'élément"
+    }
+  },
+  "sidebarHeader": {
+    "openSidebar": "Ouvrir la barre latérale",
+    "closeSidebar": "Fermer la barre latérale"
+  },
+  "sidebarSection": {
+    "searchLabel": "Rechercher des plans",
+    "searchButton": "Rechercher"
+  },
+  "tabs": {
+    "closeAriaLabel": "Fermer {{title}}",
+    "newSession": "Nouvelle session d'agent"
+  },
+  "shell": {
+    "toggleSidebarShortcut": "Afficher ou masquer la barre latérale",
+    "resizer": {
+      "ariaLabel": "Redimensionner la barre latérale",
+      "title": "Faites glisser pour redimensionner la barre latérale, double-cliquez pour réinitialiser"
+    }
+  },
+  "agentStatus": {
+    "starting": "Démarrage…",
+    "completed": "Terminé",
+    "failed": "Échec",
+    "thinking": "Réflexion…",
+    "working": "Travail en cours…",
+    "runningCommand": "Exécution d'une commande",
+    "reading": "Lecture",
+    "readingFile": "Lecture : {{file}}",
+    "editing": "Modification",
+    "editingFile": "Modification : {{file}}",
+    "searching": "Recherche",
+    "runningTool": "Exécution : {{name}}"
+  },
+  "resultSummary": {
+    "errorTitle": "❌ Erreur",
+    "terminated": "Le processus de l'agent a été arrêté ou a dépassé le délai (code de sortie {{code}}).",
+    "terminatedUnknownCode": "Le processus de l'agent a été arrêté ou a dépassé le délai (code de sortie inconnu).",
+    "cost": {
+      "billed": "Coût : {{cost}}",
+      "estimated": "Coût : ~{{cost}}",
+      "billedTooltip": "Facturé par l'agent",
+      "estimatedTooltip": "Calculé à partir du nombre de tokens au tarif public de ce modèle, qui ne peut pas tenir compte de votre abonnement ni de votre niveau de tarification"
+    },
+    "duration": "Durée : {{seconds}} s",
+    "tokens": "Tokens : {{input}} en entrée / {{output}} en sortie",
+    "cache": "Cache : {{read}} en lecture / {{write}} en écriture",
+    "premium": "Premium : {{value}}",
+    "exitCode": "Code de sortie : {{code}}",
+    "denied": "Refusés : {{value}}"
+  },
+  "metrics": {
+    "elapsed": {
+      "label": "Temps de sortie",
+      "reportedTooltip": "Temps de sortie : durée déclarée par l'agent",
+      "measuredTooltip": "Temps de sortie : mesuré du premier au dernier événement",
+      "runningTooltip": "Temps de sortie : mesuré depuis le premier événement"
+    },
+    "tokens": {
+      "label": "Tokens",
+      "estimatedTooltip": "Tokens : estimation à partir du flux reçu jusqu'ici ; l'agent indique son propre total à la fin",
+      "reportedTooltip": "Tokens : déclarés par l'agent"
+    },
+    "cost": {
+      "label": "Coût",
+      "estimatedTooltip": "Coût : calculé à partir du nombre de tokens au tarif public de ce modèle, qui ne peut pas tenir compte de votre abonnement ni de votre niveau de tarification",
+      "billedTooltip": "Coût : facturé par l'agent"
+    }
+  },
+  "toolCard": {
+    "file": "Fichier : {{path}}",
+    "url": "URL : {{url}}",
+    "query": "Requête : {{query}}",
+    "queryInPath": "Requête : {{query}} dans {{path}}",
+    "input": "ENTRÉE",
+    "output": "SORTIE"
+  },
+  "toolGroup": {
+    "count_one": "{{count}} appel d'outil",
+    "count_many": "{{count}} appels d'outils",
+    "count_other": "{{count}} appels d'outils"
+  },
+  "agentNode": {
+    "session": "session : {{session}}",
+    "sessionWithModel": "session : {{session}} ({{model}})",
+    "errorTitle": "❌ Erreur"
+  },
+  "badgeSelect": {
+    "placeholder": "Sélectionner…",
+    "ariaLabel": "Sélectionner",
+    "remove": "Retirer {{label}}"
+  },
+  "contentInput": {
+    "placeholder": "Comment puis-je vous aider aujourd'hui ?",
+    "send": "Envoyer",
+    "moreOptions": "Plus d'options",
+    "attachFiles": "Joindre des fichiers",
+    "voiceInput": "Transcription de la saisie vocale",
+    "dismissError": "Fermer l'erreur",
+    "removeFile": "Retirer le fichier",
+    "attachment": {
+      "document": "Document",
+      "lineCount_one": "{{count}} ligne",
+      "lineCount_many": "{{count}} lignes",
+      "lineCount_other": "{{count}} lignes",
+      "sizeBytes": "{{size}} o",
+      "sizeKilobytes": "{{size}} Ko",
+      "sizeMegabytes": "{{size}} Mo"
+    },
+    "errors": {
+      "uploadStatus": "Échec du téléversement (statut {{status}})",
+      "uploadFailed": "Impossible de téléverser le fichier : {{error}}",
+      "readFailed": "Impossible de lire le fichier",
+      "emptyTranscription": "La transcription ne contenait pas assez d'informations pour générer un prompt. Veuillez réessayer en parlant distinctement."
+    }
+  },
+  "voice": {
+    "errors": {
+      "insecureContext": "La saisie vocale nécessite une connexion sécurisée. Ouvrez Tendril en HTTPS ou sur localhost, puis réessayez.",
+      "mediaDevicesUnavailable": "La saisie vocale n'est pas disponible dans cette fenêtre. Sur macOS, quittez puis rouvrez Ivy Tendril après la mise à jour, puis autorisez l'accès au micro lorsque vous y êtes invité. Vous pouvez aussi exécuter « {{command}} » et utiliser la saisie vocale dans votre navigateur.",
+      "audioCaptureUnsupported": "Ce navigateur ne peut pas capturer l'audio pour la saisie vocale.",
+      "captureInitFailed": "Échec de l'initialisation de la capture audio : {{error}}",
+      "websocket": "Une erreur WebSocket s'est produite lors de la connexion au service de transcription.",
+      "closedUnexpectedly": "La connexion WebSocket s'est fermée de manière inattendue (code {{code}} : {{reason}})",
+      "closedUnexpectedlyNoReason": "La connexion WebSocket s'est fermée de manière inattendue (code {{code}} : aucune raison indiquée)",
+      "connectionFailed": "Accès au micro refusé ou échec de la connexion : {{error}}",
+      "microphoneDenied": "L'accès au micro a été refusé. Autorisez l'accès au micro pour Ivy Tendril dans Réglages Système > Confidentialité et sécurité > Micro, puis réessayez.",
+      "microphoneNotFound": "Aucun micro détecté. Branchez un périphérique d'entrée et réessayez."
+    }
+  },
+  "dashboard": {
+    "status": {
+      "plans": "Plans",
+      "inProgress": "En cours",
+      "readyForReview": "Prêts pour la revue",
+      "completed": "Terminés",
+      "failed": "En échec"
+    },
+    "kpi": {
+      "breakdownAriaLabel": "Voir le détail du calcul pour {{label}}",
+      "loadingAriaLabel": "Chargement des métriques"
+    },
+    "trend": {
+      "loading": "Chargement de la tendance des coûts et des plans",
+      "costTab": "Coût total",
+      "plansTab": "Total des plans",
+      "currentName": "4 dernières semaines",
+      "rollingLegend": "Moyenne sur 7 jours",
+      "plansValue_one": "{{count}} plan",
+      "plansValue_many": "{{count}} plans",
+      "plansValue_other": "{{count}} plans"
+    },
+    "gitActivity": {
+      "title": "Activité Git",
+      "loading": "Chargement de l'activité Git"
+    },
+    "pullRequests": {
+      "title": "Pull requests",
+      "weekTab": "Semaine",
+      "monthTab": "Mois",
+      "loading": "Chargement des pull requests fusionnées"
+    },
+    "tunnel": {
+      "title": "Tunnel"
+    },
+    "factory": {
+      "title": "Usine logicielle"
+    },
+    "jobs": {
+      "title": "Jobs actifs",
+      "empty": "Aucun job en cours"
+    }
+  },
+  "trendChart": {
+    "axisDateWithYear": "{{date}} {{year}}",
+    "currentRow": "{{name}} : {{value}}",
+    "rollingRow": "Moyenne sur 7 jours : {{value}}"
+  },
+  "activityGrid": {
+    "empty": "Aucune pull request fusionnée pour l'instant",
+    "weekOf": "Semaine du {{date}}",
+    "merged_one": "{{count}} pull request fusionnée",
+    "merged_many": "{{count}} pull requests fusionnées",
+    "merged_other": "{{count}} pull requests fusionnées"
+  },
+  "pullRequestBars": {
+    "empty": "Aucune pull request fusionnée pour l'instant",
+    "weekOf": "Semaine du {{date}}",
+    "barLabel": "{{period}} : {{merged}}",
+    "merged_one": "{{count}} pull request fusionnée",
+    "merged_many": "{{count}} pull requests fusionnées",
+    "merged_other": "{{count}} pull requests fusionnées",
+    "tooltipMerged_one": "{{count}} PR fusionnée",
+    "tooltipMerged_many": "{{count}} PR fusionnées",
+    "tooltipMerged_other": "{{count}} PR fusionnées"
+  },
+  "processViewer": {
+    "newPlan": "Nouveau plan",
+    "plans": "Plans",
+    "review": "Revue",
+    "creatingPr": "PR {{value}}"
+  },
+  "terminal": {
+    "loading": "Chargement…"
+  },
+  "webViewer": {
+    "toolbar": {
+      "ariaLabel": "Commandes du navigateur",
+      "back": "Page précédente",
+      "forward": "Page suivante",
+      "reload": "Actualiser",
+      "startSelecting": "Sélectionner un élément à commenter",
+      "stopSelecting": "Arrêter la sélection",
+      "viewport": "Fenêtre d'affichage : {{device}}",
+      "address": "Adresse",
+      "addressPlaceholder": "Saisissez une URL"
+    },
+    "devices": {
+      "desktop": "Ordinateur",
+      "tablet": "Tablette",
+      "mobile": "Mobile"
+    },
+    "empty": "Saisissez une URL dans la barre d'adresse pour charger une page.",
+    "frameTitle": "Contenu web",
+    "comment": {
+      "title": "Commenter",
+      "title_tag": "Commenter<tag>{{tag}}</tag>",
+      "title_text": "Commenter<snippet>« {{text}} »</snippet>",
+      "title_tagText": "Commenter<tag>{{tag}}</tag><snippet>« {{text}} »</snippet>",
+      "sourceLabel": "source",
+      "resolvingSource": "résolution de la source map…",
+      "componentsLabel": "composants",
+      "xpathLabel": "xpath",
+      "selectorLabel": "sélecteur",
+      "placeholder": "Saisissez un commentaire… ({{shortcut}} pour envoyer)",
+      "delete": "Supprimer",
+      "cancel": "Annuler",
+      "save": "Enregistrer",
+      "add": "Ajouter"
+    }
+  }
+}

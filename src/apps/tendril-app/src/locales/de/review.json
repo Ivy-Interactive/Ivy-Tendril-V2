@@ -1,1 +1,209 @@
-{}
+{
+  "sidebar": {
+    "title": "Review",
+    "badges": {
+      "verified": "Verifiziert",
+      "unverified": "Nicht verifiziert"
+    }
+  },
+  "shortcuts": {
+    "previousPlan": "Vorheriger Plan",
+    "nextPlan": "Nächster Plan"
+  },
+  "empty": {
+    "title": "Keine Pläne zu prüfen",
+    "description": "Abgeschlossene Pläne erscheinen hier zum Review"
+  },
+  "workspace": {
+    "meta_one": "{{index}}/{{total}} Plan",
+    "meta_other": "{{index}}/{{total}} Pläne",
+    "sourceLabel": {
+      "pr": "PR",
+      "issue": "Issue"
+    }
+  },
+  "actions": {
+    "requestChanges": "Änderungen anfordern",
+    "resetToDraft": "Auf Entwurf zurücksetzen",
+    "deletePlan": "Plan löschen",
+    "openPlanPage": "Vollständige Spezifikation & Diff öffnen",
+    "partialDelivery": "Teilauslieferung annehmen"
+  },
+  "primary": {
+    "updatePr": "PR aktualisieren",
+    "createPr": "PR erstellen",
+    "deletePlan": "Plan löschen",
+    "completePlan": "Plan abschließen",
+    "completing": "Wird abgeschlossen…",
+    "pushing": "Wird gepusht…",
+    "unavailable": "{{action}} ist nicht verfügbar: {{reason}}"
+  },
+  "completionBlocked": {
+    "title": "Keine Änderungen erforderlich",
+    "body": "Die Validierung vor der Ausführung hat ergeben, dass keine Änderungen erforderlich sind, da das Issue oder die Aufgabe bereits erledigt ist. Sie können diesen Plan löschen, ihn auf „Übersprungen“ setzen oder in die Icebox verschieben."
+  },
+  "errors": {
+    "markRecommendation": "„{{title}}“ konnte nicht als „{{state}}“ markiert werden: {{error}}",
+    "nothingSelected": "Wählen Sie mindestens eine Empfehlung zum Umsetzen aus.",
+    "noLongerPending": "Die ausgewählten Empfehlungen sind nicht mehr ausstehend. Aktualisieren Sie die Ansicht und versuchen Sie es erneut.",
+    "implementFailed": "Die ausgewählten Empfehlungen konnten nicht umgesetzt werden: {{error}}",
+    "reviewActionFailed": "Review-Aktion „{{name}}“ fehlgeschlagen: {{error}}",
+    "completeFailed": "Plan {{planId}} konnte nicht abgeschlossen werden: {{error}}",
+    "updatePrFailed": "Der PR für Plan {{planId}} konnte nicht aktualisiert werden: {{error}}"
+  },
+  "recommendationState": {
+    "pending": "Ausstehend",
+    "accepted": "Angenommen",
+    "acceptedWithNotes": "Mit Notizen angenommen",
+    "declined": "Abgelehnt"
+  },
+  "tabs": {
+    "summary": "Zusammenfassung",
+    "plan": "Plan",
+    "details": "Details",
+    "git": "Git",
+    "changes": "Änderungen",
+    "artifacts": "Artefakte",
+    "recommendations": "Empfehlungen"
+  },
+  "verifications": {
+    "none": "Keine Verifikationen",
+    "viewReport": "Bericht zu {{name}} anzeigen"
+  },
+  "verificationStatus": {
+    "pending": "Ausstehend",
+    "pass": "Bestanden",
+    "fail": "Fehlgeschlagen",
+    "skipped": "Übersprungen"
+  },
+  "summary": {
+    "loading": "Zusammenfassung wird geladen…",
+    "fallback": {
+      "heading": "Zusammenfassung",
+      "body": "Für diesen Plan wurde keine Zusammenfassung gefunden. Weitere Informationen finden Sie in den Verifikationen.",
+      "retry": "Verwenden Sie `{{resetToDraft}}` oder `{{requestChanges}}`, um den Plan erneut zu versuchen."
+    }
+  },
+  "plan": {
+    "noSpecification": "Keine Planspezifikation verfügbar."
+  },
+  "details": {
+    "copyToClipboard": "In die Zwischenablage kopieren",
+    "fields": {
+      "planId": "Plan-ID",
+      "folder": "Ordner",
+      "initialPrompt": "Ursprünglicher Prompt",
+      "revision": "Revision",
+      "profile": "Profil",
+      "relatedPlans": "Verwandte Pläne",
+      "dependsOn": "Abhängig von",
+      "issue": "Issue",
+      "created": "Erstellt",
+      "level": "Stufe",
+      "project": "Projekt",
+      "state": "Status"
+    },
+    "repositories": {
+      "heading": "Repositories",
+      "empty": "Keine Repositories angegeben"
+    },
+    "commits": {
+      "heading": "Commits",
+      "empty": "Noch keine Commits"
+    },
+    "verifications": {
+      "heading": "Verifikationen ({{n}})",
+      "empty": "Keine Verifikationen"
+    }
+  },
+  "git": {
+    "loading": "Git-Status wird geladen…"
+  },
+  "changes": {
+    "loading": "Änderungen werden geladen…",
+    "empty": "Für diesen Plan wurden keine Dateiänderungen erfasst."
+  },
+  "artifacts": {
+    "heading": "Plan-Artefakte",
+    "description": "Ausgaben, Beispieldateien und Screenshots, die während der Ausführung erfasst wurden.",
+    "loading": "Artefakte werden geladen…",
+    "empty": "Für diesen Plan wurden keine Artefakte gefunden.",
+    "screenshots": "Screenshots ({{n}})",
+    "otherFiles": "Weitere Artefaktdateien ({{n}})",
+    "copyPath": "Pfad kopieren",
+    "open": "Öffnen",
+    "openTitle": "In einem Seitenbereich öffnen"
+  },
+  "recommendations": {
+    "empty": "Keine Empfehlungen.",
+    "implement": "Umsetzen",
+    "starting": "Wird gestartet…",
+    "implementHint": "Nimmt die ausgewählten Empfehlungen an und versucht den Plan mit ihnen als Änderungsanfrage erneut.",
+    "select": "{{title}} auswählen"
+  },
+  "noteDialog": {
+    "submit": "Absenden",
+    "accept": {
+      "title": "Empfehlung annehmen",
+      "ariaLabel": "Empfehlung annehmen",
+      "noteLabel": "Optionale Notiz:",
+      "noteAriaLabel": "Optionale Notiz",
+      "placeholder": "Optionale Notizen eingeben…"
+    },
+    "decline": {
+      "title": "Empfehlung ablehnen",
+      "ariaLabel": "Empfehlung ablehnen",
+      "noteLabel": "Grund für die Ablehnung:",
+      "noteAriaLabel": "Grund für die Ablehnung",
+      "placeholder": "Grund für die Ablehnung eingeben…"
+    }
+  },
+  "actionsBar": {
+    "tooltip": {
+      "barDisabled": "Deaktiviert: {{reason}}",
+      "barDisabledDefault": "Deaktiviert: Review-Aktionen sind derzeit nicht verfügbar",
+      "conditionNotMet": "Deaktiviert: Bedingung nicht erfüllt",
+      "conditionNotMetWithCondition": "Deaktiviert: Bedingung nicht erfüllt ({{condition}})",
+      "runCommand": "Ausführen: {{command}}",
+      "runCommandWithPorts": "Ausführen: {{command}} (Ports: {{ports}})",
+      "runAction": "{{name}} ausführen",
+      "runActionWithPorts": "{{name}} ausführen (Ports: {{ports}})",
+      "port": "{{name}}: {{port}}",
+      "conditionError": "{{run}}. Die Bedingung konnte nicht ausgewertet werden: {{reason}}",
+      "conditionNotEvaluated": "{{run}}. Die Bedingung wird hier nicht ausgewertet: {{condition}}",
+      "starting": "{{name}} wird gestartet…",
+      "checking": "Bedingung wird geprüft: {{condition}}"
+    }
+  },
+  "actionView": {
+    "sendComments_one": "{{count}} Kommentar als Änderungsanfrage an den Agenten senden",
+    "sendComments_other": "{{count}} Kommentare als Änderungsanfrage an den Agenten senden",
+    "starting": "{{name}} wird gestartet…"
+  },
+  "recommendationsPage": {
+    "sidebarTitle": "Empfehlungen",
+    "empty": {
+      "title": "Keine Empfehlungen",
+      "description": "Empfehlungen aus abgeschlossenen Plänen erscheinen hier"
+    },
+    "position_one": "<highlight>{{index}}/{{total}}</highlight> Empfehlung",
+    "position_other": "<highlight>{{index}}/{{total}}</highlight> Empfehlungen",
+    "decline": "Ablehnen",
+    "accept": "Annehmen",
+    "accepting": "Wird angenommen…",
+    "acceptWithNotes": "Mit Notizen annehmen",
+    "createIssue": "Issue erstellen",
+    "viewPlan": "Plan anzeigen",
+    "refresh": "Aktualisieren",
+    "errors": {
+      "load": "Empfehlungen konnten nicht geladen werden: {{error}}",
+      "update": "Empfehlung „{{title}}“ konnte nicht aktualisiert werden: {{error}}",
+      "jobNotStarted": "„{{title}}“ als angenommen markiert, aber der {{jobType}}-Job wurde nicht gestartet: {{error}}"
+    }
+  },
+  "impact": {
+    "small": "Gering",
+    "medium": "Mittel",
+    "high": "Hoch"
+  }
+}

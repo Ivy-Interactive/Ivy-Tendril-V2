@@ -1,1 +1,237 @@
-{}
+{
+  "workspace": {
+    "moreActions": {
+      "label": "Plus d'actions",
+      "tooltip": "Plus",
+      "menuAriaLabel": "Plus d'actions"
+    },
+    "source": "Source",
+    "verifications": "Vérifications",
+    "questions": "Questions",
+    "resizer": {
+      "tooltip": "Faites glisser pour redimensionner, double-cliquez pour réinitialiser",
+      "ariaLabel": "Redimensionner le chat"
+    },
+    "chatAriaLabel": "Chat de plan"
+  },
+  "diffView": {
+    "empty": "Aucun diff à afficher",
+    "fileCount_one": "{{count}} fichier",
+    "fileCount_many": "{{count}} fichiers",
+    "fileCount_other": "{{count}} fichiers",
+    "jumpToFile": {
+      "ariaLabel": "Aller au fichier",
+      "placeholder": "Aller au fichier…"
+    },
+    "untitledFile": "Diff {{index}}",
+    "untitledPath": "Diff",
+    "viewed": "Vu",
+    "commentToggle": {
+      "noneTooltip": "Aucun commentaire sur ce fichier",
+      "showTooltip_one": "Afficher {{count}} commentaire",
+      "showTooltip_many": "Afficher les {{count}} commentaires",
+      "showTooltip_other": "Afficher les {{count}} commentaires",
+      "hideTooltip_one": "Masquer {{count}} commentaire",
+      "hideTooltip_many": "Masquer les {{count}} commentaires",
+      "hideTooltip_other": "Masquer les {{count}} commentaires",
+      "showAriaLabel": "Afficher les commentaires",
+      "hideAriaLabel": "Masquer les commentaires"
+    },
+    "comment": {
+      "draftAuthor": "Instruction pour l'agent (brouillon)",
+      "resolvedBadge": "✓ Résolu",
+      "edit": "Modifier",
+      "reopenTooltip": "Rouvrir le commentaire",
+      "resolveTooltip": "Marquer le commentaire comme résolu",
+      "unresolve": "Annuler la résolution",
+      "resolve": "Résoudre",
+      "deleteTooltip": "Supprimer le commentaire",
+      "deleteAriaLabel": "Supprimer le commentaire",
+      "delete": "Supprimer"
+    },
+    "commentForm": {
+      "title": "Instruction pour l'agent",
+      "editTitle": "Modifier l'instruction pour l'agent",
+      "placeholder": "Saisissez une instruction pour l'agent à cette ligne…",
+      "cancel": "Annuler",
+      "add": "Ajouter un commentaire",
+      "update": "Mettre à jour le commentaire"
+    }
+  },
+  "changesView": {
+    "empty": "Aucune modification de fichier.",
+    "treeAriaLabel": "Fichiers modifiés",
+    "fileCount_one": "{{count}} fichier",
+    "fileCount_many": "{{count}} fichiers",
+    "fileCount_other": "{{count}} fichiers",
+    "jumpToFile": {
+      "ariaLabel": "Aller au fichier",
+      "placeholder": "Aller au fichier…"
+    }
+  },
+  "gitView": {
+    "atRisk": {
+      "title": "Commits menacés",
+      "unreachable_one": "{{count}} commit n'est accessible depuis aucune branche, aucun tag ni aucun dépôt distant : <hashes/>. Il n'existe que sous forme d'objet isolé : le prochain <code>{{gcCommand}}</code> dans le dépôt le détruira. Donnez-lui une référence pour le conserver : <code>{{recoverCommand}}</code>.",
+      "unreachable_many": "{{count}} commits ne sont accessibles depuis aucune branche, aucun tag ni aucun dépôt distant : <hashes/>. Ils n'existent que sous forme d'objets isolés : le prochain <code>{{gcCommand}}</code> dans le dépôt les détruira. Donnez une référence à l'un d'eux pour le conserver : <code>{{recoverCommand}}</code>.",
+      "unreachable_other": "{{count}} commits ne sont accessibles depuis aucune branche, aucun tag ni aucun dépôt distant : <hashes/>. Ils n'existent que sous forme d'objets isolés : le prochain <code>{{gcCommand}}</code> dans le dépôt les détruira. Donnez une référence à l'un d'eux pour le conserver : <code>{{recoverCommand}}</code>.",
+      "missing_one": "{{count}} commit est introuvable dans les dépôts du plan : <hashes/>. Soit l'objet a déjà été élagué, soit le dépôt dans lequel il a été créé ne fait pas partie des dépôts du plan.",
+      "missing_many": "{{count}} commits sont introuvables dans les dépôts du plan : <hashes/>. Soit l'objet a déjà été élagué, soit le dépôt dans lequel il a été créé ne fait pas partie des dépôts du plan.",
+      "missing_other": "{{count}} commits sont introuvables dans les dépôts du plan : <hashes/>. Soit l'objet a déjà été élagué, soit le dépôt dans lequel il a été créé ne fait pas partie des dépôts du plan.",
+      "hashSeparator": ", ",
+      "badge": {
+        "unreachable": "inaccessible",
+        "missing": "introuvable"
+      }
+    },
+    "commitTable": {
+      "commit": "Commit",
+      "message": "Message",
+      "files": "Fichiers",
+      "unresolved": "(commit non résolu)"
+    },
+    "worktrees": {
+      "heading": "Worktrees",
+      "emptyFinished": "Les worktrees ont été supprimés une fois que le plan a atteint son état final.",
+      "emptyNeverCreated": "Les worktrees n'ont jamais été créés, ou ont été récupérés par le nettoyage des worktrees inactifs, le plan étant resté inactif au-delà de son délai.",
+      "emptyUnknown": "Les worktrees ont été supprimés, ou n'ont jamais été créés.",
+      "copyPath": "Copier le chemin vers {{name}}",
+      "repository": "Dépôt",
+      "base": "Base",
+      "worktree": "Worktree",
+      "head": "HEAD",
+      "detachedHead": "HEAD détachée",
+      "uncommittedChanges": "Ce worktree contient des modifications non commitées. Elles n'appartiennent à aucun commit : rien ne les préserve.",
+      "noCommits": "(aucun commit)"
+    },
+    "commits": {
+      "heading": "Commits",
+      "description": "Enregistrés sur le plan mais accessibles depuis aucun des worktrees que le plan possède encore — généralement parce que le worktree a été supprimé une fois la PR fusionnée."
+    },
+    "pullRequests": {
+      "heading": "Pull requests",
+      "repository": "Dépôt",
+      "pr": "PR"
+    },
+    "empty": "Ce plan n'a encore aucun worktree, commit ni pull request."
+  },
+  "alert": {
+    "note": "Remarque",
+    "tip": "Astuce",
+    "important": "Important",
+    "warning": "Avertissement",
+    "caution": "Attention"
+  },
+  "diagram": {
+    "loading": "Chargement du diagramme…",
+    "invalidGraphviz": "Syntaxe Graphviz DOT non valide",
+    "invalidMermaid": "Syntaxe de diagramme Mermaid non valide"
+  },
+  "codeBlock": {
+    "copy": "Copier dans le presse-papiers"
+  },
+  "image": {
+    "loadFailed": "Échec du chargement de l'image",
+    "close": "Fermer"
+  },
+  "search": {
+    "placeholder": "Rechercher dans le document…",
+    "ariaLabel": "Rechercher dans le document",
+    "noMatches": "Aucun résultat",
+    "position": "{{current}} sur {{total}}",
+    "previous": "Résultat précédent",
+    "next": "Résultat suivant",
+    "close": "Fermer la recherche"
+  },
+  "annotation": {
+    "quote": "« {{text}} »",
+    "quoteTruncated": "« {{text}}… »",
+    "add": {
+      "placeholder": "Ajouter un commentaire…",
+      "cancel": "Annuler",
+      "submit": "Ajouter"
+    },
+    "edit": {
+      "resolvedBadge": "✓ Résolue",
+      "placeholder": "Modifier le commentaire…",
+      "reopenTooltip": "Rouvrir l'annotation",
+      "resolveTooltip": "Marquer l'annotation comme résolue",
+      "unresolve": "Annuler la résolution",
+      "resolve": "Résoudre",
+      "deleteTooltip": "Supprimer l'annotation",
+      "delete": "Supprimer",
+      "cancel": "Annuler",
+      "save": "Enregistrer"
+    },
+    "selectionToolbar": {
+      "addComment": "Ajouter un commentaire"
+    }
+  },
+  "wireframe": {
+    "invalid": "Ce bloc de maquette n'est pas valide.",
+    "placeholder": "Maquette : <strong>{{name}}</strong>. Ouvrez le plan pour l'afficher.",
+    "lastGoodBuild": "Affichage de la dernière version compilée",
+    "paused": "Mises à jour en direct suspendues",
+    "openFullSize": "Ouvrir en taille réelle",
+    "building": "Compilation de la maquette…",
+    "missing": "Ce plan n'a aucune maquette nommée <strong>{{name}}</strong>.",
+    "buildFailed": "Cette maquette ne compile pas.",
+    "unavailable": "L'aperçu de la maquette n'est pas disponible pour le moment.",
+    "retry": "Réessayer",
+    "close": "Fermer",
+    "errors": {
+      "empty": "Le bloc ne nomme aucune maquette. Ajoutez une ligne telle que `{{example}}`.",
+      "notYaml": "Le bloc n'est pas du YAML valide.",
+      "notMapping": "Écrivez le bloc sous la forme `{{example}}`, éventuellement avec {{height}} et {{viewport}}.",
+      "unknownKey": "Clé inconnue « {{key}} ». Utilisez {{name}}, {{height}} ou {{viewport}}.",
+      "badName": "{{name}} doit être un slug en minuscules, par ex. {{example}}.",
+      "badHeight": "{{height}} doit être un nombre entier de pixels compris entre 1 et {{max}}.",
+      "badViewport": "{{viewport}} doit valoir {{desktop}}, {{tablet}} ou {{mobile}}."
+    }
+  },
+  "questions": {
+    "recommended": "Recommandé",
+    "optional": "Facultatif",
+    "selectAll": "Sélectionnez toutes les réponses applicables",
+    "other": "Autre",
+    "otherPlaceholder": "Saisissez votre réponse",
+    "otherAriaLabel": "Autre réponse pour {{question}}",
+    "notAnswered": {
+      "skipped": "Sans réponse (facultatif)",
+      "agentDecided": "Sans réponse (décidé par l'agent)"
+    },
+    "clear": "Effacer",
+    "clearAllAriaLabel": "Effacer toutes les réponses de ce bloc",
+    "clearOneAriaLabel": "Effacer la réponse",
+    "submit": "Envoyer la réponse",
+    "submitNote": {
+      "noAnswers": "Répondez à une question pour pouvoir envoyer.",
+      "oneUnanswered": "Sans réponse : « {{title}} ». En envoyant, vous me laissez décider.",
+      "manyUnanswered_one": "{{count}} question sans réponse. En envoyant, vous me laissez décider.",
+      "manyUnanswered_many": "{{count}} questions sans réponse. En envoyant, vous me laissez décider.",
+      "manyUnanswered_other": "{{count}} questions sans réponse. En envoyant, vous me laissez décider."
+    }
+  },
+  "answersCard": {
+    "ariaLabel": "Réponses envoyées",
+    "title": "Réponses",
+    "notAnswered": {
+      "skipped": "Sans réponse (facultatif)",
+      "agentDecided": "Sans réponse (décidé par l'agent)"
+    }
+  },
+  "verificationList": {
+    "dragHandle": "Poignée de déplacement",
+    "required": "Obligatoire",
+    "a11y": {
+      "roleDescription": "triable",
+      "instructions": "Pour saisir un élément déplaçable, appuyez sur la barre d'espace. Pendant le déplacement, utilisez les touches fléchées pour déplacer l'élément. Appuyez de nouveau sur Espace pour déposer l'élément à sa nouvelle position, ou appuyez sur Échap pour annuler.",
+      "pickedUp": "Élément déplaçable {{active}} saisi.",
+      "movedOver": "L'élément déplaçable {{active}} a été déplacé au-dessus de la zone de dépôt {{over}}.",
+      "movedAway": "L'élément déplaçable {{active}} n'est plus au-dessus d'une zone de dépôt.",
+      "droppedOver": "L'élément déplaçable {{active}} a été déposé sur la zone de dépôt {{over}}",
+      "dropped": "L'élément déplaçable {{active}} a été déposé.",
+      "cancelled": "Le déplacement a été annulé. L'élément déplaçable {{active}} a été déposé."
+    }
+  }
+}

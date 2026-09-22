@@ -1,1 +1,269 @@
-{}
+{
+  "actions": {
+    "cancel": "Cancelar",
+    "close": "Fechar",
+    "confirm": "Confirmar",
+    "copy": "Copiar",
+    "delete": "Excluir",
+    "retry": "Tentar Novamente",
+    "save": "Salvar"
+  },
+  "status": {
+    "copied": "Copiado",
+    "error": "Erro",
+    "loading": "Carregando...",
+    "none": "Nenhum",
+    "unknown": "Desconhecido"
+  },
+  "enums": {
+    "jobStatus": {
+      "pending": "Pendente",
+      "queued": "Na fila",
+      "running": "Em execução",
+      "completed": "Concluído",
+      "failed": "Com falha",
+      "timeout": "Tempo esgotado",
+      "stopped": "Interrompido",
+      "blocked": "Bloqueado"
+    },
+    "jobType": {
+      "executePlan": "ExecutePlan",
+      "createPlan": "CreatePlan",
+      "retryPlan": "RetryPlan",
+      "updatePlan": "UpdatePlan",
+      "expandPlan": "ExpandPlan",
+      "splitPlan": "SplitPlan",
+      "createPr": "CreatePr",
+      "createIssue": "CreateIssue",
+      "setupProject": "SetupProject",
+      "addProject": "AddProject",
+      "syncRepo": "SyncRepo"
+    },
+    "planState": {
+      "draft": "Rascunho",
+      "creating": "Criando",
+      "updating": "Atualizando",
+      "executing": "Executando",
+      "review": "Em revisão",
+      "failed": "Com falha",
+      "completed": "Concluído",
+      "skipped": "Ignorado",
+      "blocked": "Bloqueado",
+      "icebox": "Icebox"
+    }
+  },
+  "appTitles": {
+    "dashboard": "Painel de Controle",
+    "plans": "Planos",
+    "review": "Revisão",
+    "recommendations": "Recomendações",
+    "jobs": "Tarefas",
+    "chat": "Chat",
+    "inbox": "Caixa de Entrada",
+    "settings": "Configurações",
+    "pullRequests": "Pull Requests",
+    "icebox": "Icebox",
+    "reviewAction": "Ação de Revisão",
+    "agent": "Agente",
+    "plan": "Plano {{id}}",
+    "job": "Tarefa {{id}}"
+  },
+  "navigation": {
+    "errors": {
+      "tabGone": "A aba não existe mais."
+    }
+  },
+  "sidebar": {
+    "version": "v {{version}}",
+    "nav": {
+      "dashboard": "Painel de Controle",
+      "plans": "Planos",
+      "review": "Revisão",
+      "recommendations": "Recomendações",
+      "jobs": "Tarefas"
+    },
+    "chat": "Chat",
+    "inbox": "Caixa de Entrada",
+    "settings": "Configurações",
+    "settingsMenu": {
+      "configuration": "Configuração",
+      "pullRequests": "Pull Requests",
+      "icebox": "Icebox",
+      "checkForUpdates": "Verificar Atualizações",
+      "help": "Ajuda",
+      "documentation": "Documentação",
+      "reportIssue": "Relatar Problema"
+    }
+  },
+  "shortcuts": {
+    "gotoChat": "Ir para o Chat",
+    "gotoInbox": "Abrir a caixa de entrada de issues do GitHub",
+    "newPlan": "Abrir a janela de criação de novo plano",
+    "planSearch": "Buscar planos",
+    "showShortcuts": "Mostrar atalhos de teclado"
+  },
+  "shortcutsHelp": {
+    "title": "Atalhos de Teclado",
+    "empty": "Nenhum atalho de teclado está ativo."
+  },
+  "updateCheck": {
+    "available": {
+      "title": "Atualização Disponível",
+      "description": "A versão {{version}} está disponível."
+    },
+    "upToDate": {
+      "title": "Tudo atualizado",
+      "description": "Você está na versão mais recente (v{{version}})."
+    },
+    "failed": {
+      "title": "Falha ao verificar atualizações"
+    }
+  },
+  "updateNotice": {
+    "available": "A v{{latest}} está disponível (você tem a v{{current}})",
+    "copyCommand": "Copiar Comando",
+    "dismiss": "Descartar"
+  },
+  "offlineBanner": {
+    "reconnecting": "Tendril-Service desconectado. Reconectando automaticamente em {{seconds}}s...",
+    "unreachable": "O daemon Tendril-Service está inacessível.",
+    "cachedState": "(Usando o estado em cache)",
+    "reconnect": "Reconectar Agora"
+  },
+  "planPage": {
+    "loading": "Carregando plano {{id}}...",
+    "loadError": "Não foi possível carregar o plano {{id}}: {{error}}"
+  },
+  "jobPage": {
+    "placeholderType": "Tarefa de Agente"
+  },
+  "shellErrors": {
+    "restartFailed": "Falha ao reiniciar o serviço: {{error}}",
+    "repairFailed": "Falha ao reparar o serviço: {{error}}",
+    "dismissNavError": "Descartar erro de navegação"
+  },
+  "stopQueued": {
+    "title": "Parar Tarefas na Fila",
+    "body_one": "Parar {{count}} tarefa na fila? As tarefas em execução não são afetadas.",
+    "body_many": "Parar todas as {{count}} tarefas na fila? As tarefas em execução não são afetadas.",
+    "body_other": "Parar todas as {{count}} tarefas na fila? As tarefas em execução não são afetadas.",
+    "confirm": "Parar Todas",
+    "toast": {
+      "title": "Tarefas",
+      "description_one": "{{count}} tarefa na fila foi interrompida.",
+      "description_many": "{{count}} tarefas na fila foram interrompidas.",
+      "description_other": "{{count}} tarefas na fila foram interrompidas."
+    }
+  },
+  "stopAll": {
+    "title": "Parar Todas as Tarefas",
+    "body_one": "Parar {{count}} tarefa ativa? Os agentes em execução são encerrados e os planos deles voltam ao estado anterior. Esta ação não pode ser desfeita.",
+    "body_many": "Parar todas as {{count}} tarefas ativas? Os agentes em execução são encerrados e os planos deles voltam ao estado anterior. Esta ação não pode ser desfeita.",
+    "body_other": "Parar todas as {{count}} tarefas ativas? Os agentes em execução são encerrados e os planos deles voltam ao estado anterior. Esta ação não pode ser desfeita.",
+    "confirm": "Parar Todas",
+    "toast": {
+      "title": "Tarefas Interrompidas",
+      "description_one": "{{count}} tarefa interrompida",
+      "description_many": "{{count}} tarefas interrompidas",
+      "description_other": "{{count}} tarefas interrompidas"
+    }
+  },
+  "errorBanner": {
+    "dismiss": "Descartar erro"
+  },
+  "recommendationCard": {
+    "state": {
+      "pending": "Pendente",
+      "accepted": "Aceita",
+      "acceptedWithNotes": "Aceita com Notas",
+      "declined": "Recusada"
+    },
+    "impact": {
+      "small": "Baixo",
+      "medium": "Médio",
+      "high": "Alto"
+    },
+    "declineReason": "Motivo da recusa: {{reason}}",
+    "notes": "Notas: {{notes}}",
+    "accept": "Aceitar",
+    "decline": "Recusar"
+  },
+  "service": {
+    "state": {
+      "connected": "Conectado",
+      "disconnected": "Desconectado",
+      "unauthenticated": "Não Autenticado",
+      "notRunning": "Parado",
+      "foreignMaster": "Mestre Externo"
+    },
+    "ownership": {
+      "adoptedExternal": "Externo Adotado",
+      "managed": "Gerenciado"
+    }
+  },
+  "serviceStatus": {
+    "connectedExternal": "Conectado (Externo)",
+    "portUnavailable": "N/D",
+    "restart": "Reiniciar Serviço",
+    "repair": "Reparar Serviço",
+    "diagnostics": "Diagnóstico"
+  },
+  "serviceSettings": {
+    "controls": {
+      "title": "Supervisão e Controles do Serviço",
+      "hint": "Gerencie o ciclo de vida do daemon local associado, a adoção de propriedade e a recuperação de falhas."
+    },
+    "actions": {
+      "restart": "Reiniciar Serviço",
+      "repair": "Reparar Serviço",
+      "switchToExternal": "Mudar para Daemon Externo",
+      "adoptManaged": "Adotar Daemon Associado Gerenciado",
+      "install": "Instalar Serviço em Segundo Plano",
+      "installTooltip": "Copiar o daemon incluído para {{path}} e iniciá-lo com a sua sessão",
+      "disableAutostart": "Desativar Início ao Entrar",
+      "disableAutostartTooltip": "Impede que o daemon seja iniciado ao entrar. Os binários instalados permanecem onde estão.",
+      "refreshLogs": "Atualizar Logs",
+      "loadingLogs": "Carregando Logs..."
+    },
+    "messages": {
+      "restartInitiated": "Reinicialização do serviço iniciada.",
+      "restartFailed": "Falha ao reiniciar: {{error}}",
+      "repairFailed": "Falha ao reparar: {{error}}",
+      "installFailed": "Falha na instalação: {{error}}",
+      "disableAutostartFailed": "Não foi possível desativar o início ao entrar: {{error}}",
+      "switchedToManaged": "O modo de propriedade do serviço foi alterado para gerenciado.",
+      "switchedToExternal": "O modo de propriedade do serviço foi alterado para externo.",
+      "switchFailed": "Falha ao alternar o modo: {{error}}"
+    },
+    "provision": {
+      "installed": "Instalado em {{dir}}: {{binaries, list(type: unit)}}.",
+      "upToDate": "A versão mais recente já está em {{dir}}: {{binaries, list(type: unit)}}.",
+      "missing": "Esta versão não inclui {{binaries, list(type: unit)}}.",
+      "registered": "Registrado para iniciar com a sua sessão ({{detail}}).",
+      "alreadyRegistered": "Já registrado para iniciar com a sua sessão.",
+      "registerFailed": "Não foi possível registrar o início ao entrar: {{detail}}",
+      "skipped": "Início ao entrar ignorado: {{detail}}",
+      "nothing": "Nada para instalar."
+    },
+    "details": {
+      "ownership": "Propriedade",
+      "ownershipFallback": "Externo / Independente",
+      "endpoint": "Endpoint",
+      "pid": "PID do Processo",
+      "crashCount": "Número de Falhas",
+      "notAvailable": "N/D"
+    },
+    "logs": {
+      "title": "Diagnóstico do Daemon e Logs do Serviço",
+      "hint": "Tokens sensíveis são ocultados. Lido de {{path}}.",
+      "empty": "Nenhum log registrado ainda em {{file}}.",
+      "loadFailed": "Falha ao carregar os logs do serviço: {{error}}"
+    }
+  },
+  "errors": {
+    "requestFailed": "A requisição para {{path}} falhou ({{status}})",
+    "reviewActionFailed": "A ação de revisão {{endpoint}} falhou ({{status}}): {{detail}}",
+    "subscribeFailed": "Falha ao assinar {{url}}: HTTP {{status}}",
+    "agentTerminalFailed": "Falha no terminal do agente {{endpoint}}: HTTP {{status}}"
+  }
+}

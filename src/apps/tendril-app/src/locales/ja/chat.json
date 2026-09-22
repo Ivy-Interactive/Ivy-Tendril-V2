@@ -1,1 +1,247 @@
-{}
+{
+  "agentPicker": {
+    "tooltip": "エージェント、モデル、エフォート",
+    "triggerLabel": "エージェント：{{agent}}",
+    "menuLabel": "エージェント",
+    "optionsTooltip": "モデルとエフォート",
+    "optionsLabel": "{{agent}} のオプション",
+    "settingsLabel": "{{agent}} の設定",
+    "model": "モデル",
+    "effort": "エフォートレベル",
+    "unlistedValue": "デフォルト",
+    "effortLevels": {
+      "default": "デフォルト",
+      "none": "なし",
+      "low": "低",
+      "medium": "中",
+      "high": "高",
+      "xhigh": "超高",
+      "max": "最大"
+    }
+  },
+  "composerAttachment": {
+    "remove": "{{name}} を削除"
+  },
+  "lightbox": {
+    "fallbackTitle": "画像のプレビュー",
+    "fallbackAlt": "添付ファイルのプレビュー",
+    "closeLabel": "プレビューを閉じる"
+  },
+  "newChatButtons": {
+    "label": "新しいチャット",
+    "tooltip": "新しいチャット",
+    "tooltip_terminal": "新しいチャット（ターミナル）",
+    "override_chat": "新しいチャット UI セッション",
+    "override_terminal": "新しいターミナルチャット"
+  },
+  "planChat": {
+    "headline": "Tendril に何でも変更を依頼できます"
+  },
+  "systemEvent": {
+    "linked": {
+      "completed": "{{type}} <plan>{{plan}}</plan> が完了しました。",
+      "completed_plan": "計画 <plan>{{plan}}</plan> が完了しました。",
+      "completed_pullRequest": "プルリクエスト <plan>{{plan}}</plan> が完了しました。",
+      "failed": "{{type}} <plan>{{plan}}</plan> が失敗しました。",
+      "failed_plan": "計画 <plan>{{plan}}</plan> が失敗しました。",
+      "failed_pullRequest": "プルリクエスト <plan>{{plan}}</plan> が失敗しました。",
+      "timeout": "{{type}} <plan>{{plan}}</plan> がタイムアウトしました。",
+      "timeout_plan": "計画 <plan>{{plan}}</plan> がタイムアウトしました。",
+      "timeout_pullRequest": "プルリクエスト <plan>{{plan}}</plan> がタイムアウトしました。",
+      "cancelled": "{{type}} <plan>{{plan}}</plan> がキャンセルされました。",
+      "cancelled_plan": "計画 <plan>{{plan}}</plan> がキャンセルされました。",
+      "cancelled_pullRequest": "プルリクエスト <plan>{{plan}}</plan> がキャンセルされました。",
+      "unknown": "{{type}} <plan>{{plan}}</plan>：{{status}}。",
+      "unknown_plan": "計画 <plan>{{plan}}</plan>：{{status}}。",
+      "unknown_pullRequest": "プルリクエスト <plan>{{plan}}</plan>：{{status}}。"
+    },
+    "quoted": {
+      "completed": "{{type}}「{{subject}}」が完了しました",
+      "completed_plan": "計画「{{subject}}」が完了しました",
+      "completed_pullRequest": "プルリクエスト「{{subject}}」が完了しました",
+      "failed": "{{type}}「{{subject}}」が失敗しました",
+      "failed_plan": "計画「{{subject}}」が失敗しました",
+      "failed_pullRequest": "プルリクエスト「{{subject}}」が失敗しました",
+      "timeout": "{{type}}「{{subject}}」がタイムアウトしました",
+      "timeout_plan": "計画「{{subject}}」がタイムアウトしました",
+      "timeout_pullRequest": "プルリクエスト「{{subject}}」がタイムアウトしました",
+      "cancelled": "{{type}}「{{subject}}」がキャンセルされました",
+      "cancelled_plan": "計画「{{subject}}」がキャンセルされました",
+      "cancelled_pullRequest": "プルリクエスト「{{subject}}」がキャンセルされました",
+      "unknown": "{{type}}「{{subject}}」：{{status}}",
+      "unknown_plan": "計画「{{subject}}」：{{status}}",
+      "unknown_pullRequest": "プルリクエスト「{{subject}}」：{{status}}"
+    },
+    "started": "計画「{{plan}}」を開始しました",
+    "fullStop": "{{sentence}}。",
+    "openPlan": "計画を開く"
+  },
+  "terminal": {
+    "untitled": "エージェント",
+    "newChat": "新しいチャット",
+    "starting": "{{agent}} を起動中…",
+    "startingUnknown": "エージェントを起動中…"
+  },
+  "jobsMenu": {
+    "triggerLabel": "実行中のジョブを表示",
+    "triggerTitle": "ジョブを表示",
+    "triggerTitleRunning_other": "{{count}} 件のジョブが実行中",
+    "pillRunning_other": "{{count}} 件実行中",
+    "pillJobs_other": "{{count}} 件のジョブ",
+    "pillWithFailures_other": "{{jobs}}（{{count}} 件失敗）",
+    "listLabel": "ジョブ",
+    "title": "実行中のジョブ ({{count}})",
+    "title_spawned": "起動したジョブ ({{count}})",
+    "summaryRunning_other": "{{count}} 件実行中",
+    "summaryCompleted_other": "{{count}} 件完了",
+    "summaryFailed_other": "{{count}} 件失敗",
+    "genericJobType": "ジョブ",
+    "openPlan": "計画を開く",
+    "review": "結果のレビューをエージェントに依頼"
+  },
+  "chatHeader": {
+    "titleInputLabel": "チャット名",
+    "optionsLabel": "チャットのオプション",
+    "optionsMenuLabel": "チャットのオプション",
+    "editName": "名前を編集",
+    "deleteChat": "チャットを削除"
+  },
+  "messageRow": {
+    "openAttachment": "{{name}} を開く",
+    "submittingAnswer": "回答を送信中…"
+  },
+  "view": {
+    "dropOverlay": "ここにファイルをドロップしてメッセージに添付",
+    "noActiveChat": "アクティブなチャットはありません",
+    "working": "作業中…",
+    "jumpToQuestion_down": "未回答の質問へ移動 ↓",
+    "jumpToQuestion_up": "未回答の質問へ移動 ↑",
+    "scrollToStreamingTail": "ストリーミングの末尾へスクロール",
+    "scrollToBottom": "一番下へスクロール"
+  },
+  "composer": {
+    "attach": "ファイルを添付",
+    "promptLabel": "チャットのプロンプト",
+    "placeholder": "Tendril に何でも質問…",
+    "voice": "音声入力",
+    "voiceErrorDismiss": "音声入力のエラーを閉じる",
+    "nothingTranscribed": "文字起こしされた内容がありません。もう一度お試しください。",
+    "clearAttachments": "すべて消去",
+    "queue": "メッセージをキューに追加",
+    "stop": "エージェントを停止",
+    "stopping": "エージェントを停止中",
+    "stopTooltip": "エージェントを停止",
+    "stoppingTooltip": "エージェントを停止中…",
+    "send": "メッセージを送信"
+  },
+  "emptyState": {
+    "headline": "今日は何を作りますか？"
+  },
+  "greeting": {
+    "morning": "おはようございます",
+    "afternoon": "こんにちは",
+    "evening": "こんばんは"
+  },
+  "deleteSession": {
+    "title": "セッションを削除",
+    "body": "「{{title}}」を削除しますか？この操作は元に戻せません。",
+    "bodyUntitled": "このチャットセッションを削除しますか？この操作は元に戻せません。"
+  },
+  "jobsReview": {
+    "prompt": "この会話で開始したジョブの結果をレビューし、何が変わったかを教えてください：\n{{jobs}}"
+  },
+  "search": {
+    "title": "チャットを検索",
+    "inputLabel": "チャットを検索",
+    "placeholder": "チャットを検索",
+    "empty": "チャットが見つかりません。"
+  },
+  "queue": {
+    "title": "送信待ちのメッセージ",
+    "hint": "エージェントの作業完了後に送信されます",
+    "collapse": "送信待ちのメッセージを折りたたむ",
+    "expand": "送信待ちのメッセージを展開",
+    "editInputLabel": "送信待ちのプロンプトを編集",
+    "save": "送信待ちのプロンプトを保存",
+    "cancelEdit": "編集をキャンセル",
+    "attachments_other": "{{count}} 個の添付ファイル",
+    "sendNow": "今すぐ送信",
+    "edit": "送信待ちのプロンプトを編集",
+    "remove": "キューから削除"
+  },
+  "samplePrompts": {
+    "chat": {
+      "review": {
+        "label_other": "レビュー待ちの {{count}} 件の計画をレビュー",
+        "prompt_other": "{{count}} 件の計画がレビュー待ちです：{{plans}}。それぞれの成果を要約し、最初にマージすべきものを教えてください。"
+      },
+      "failed": {
+        "label": "#{{id}} が失敗した理由は？",
+        "prompt": "計画 #{{id}} {{title}} が失敗しました。ログと検証レポートを読んで、何が問題だったのかを説明してください。"
+      },
+      "blocked": {
+        "label": "#{{id}} をブロックしているものは？",
+        "prompt": "計画 #{{id}} {{title}} はブロックされています。依存している計画と、それぞれに残っている作業を一覧にしてください。"
+      },
+      "jobs": {
+        "label": "ジョブは何をしていますか？",
+        "prompt_other": "{{count}} 件のジョブが実行中です。それぞれが何に取り組んでいるかを要約してください。"
+      },
+      "addProject": {
+        "label": "新しいプロジェクトを追加",
+        "prompt": "Tendril に新しいプロジェクトを追加してください"
+      },
+      "editVerifications": {
+        "label": "検証を編集",
+        "prompt": "プロジェクトの検証を編集してください"
+      },
+      "teamVault": {
+        "label": "チーム Vault を作成",
+        "prompt": "共有のチーム Vault を作成してください"
+      },
+      "nextWork": {
+        "label": "次は何に取り組むべきですか？",
+        "prompt": "すべてのプロジェクトの下書きの計画を確認し、次に実行すべき 2 件を理由とともに提案してください。"
+      },
+      "shipped": {
+        "label": "今週出荷されたものは？",
+        "prompt": "過去 7 日間に {{state}} 状態に達した計画を、プロジェクトごとにまとめて要約してください。"
+      }
+    },
+    "plan": {
+      "failedVerification": {
+        "label": "{{name}} が失敗した理由は？",
+        "prompt": "この計画の {{name}} 検証が失敗しました。{{report}} にあるレポートを読んで、失敗の内容と修正方法を説明してください。"
+      },
+      "prFeedback": {
+        "label": "PR のフィードバックを要約",
+        "prompt": "{{pr}} のレビューコメントを読んで、求められている変更を一覧にしてください。"
+      },
+      "blocked": {
+        "label": "ブロックの原因は？",
+        "prompt": "この計画は {{dependencies}} によってブロックされています。各依存関係に残っている作業を教えてください。"
+      },
+      "tightenScope": {
+        "label": "スコープを絞り込む",
+        "prompt": "この計画の最新リビジョンを読んで、スコープ外の内容や仕様が不十分な箇所を指摘してください。"
+      },
+      "explainSolution": {
+        "label": "解決策を説明",
+        "prompt": "この計画の {{section}} セクションをわかりやすく説明し、変更されるすべてのファイルを一覧にしてください。"
+      },
+      "risks": {
+        "label": "想定されるリスクは？",
+        "prompt": "この計画で最もリスクの高い部分はどこですか？また、レビューでは何を確認すべきですか？"
+      }
+    }
+  },
+  "sidebar": {
+    "title": "チャット",
+    "searchLabel": "チャットを検索",
+    "newLabel": "新しいチャット",
+    "untitled": "新しいチャット"
+  },
+  "attachments": {
+    "pickerTitle": "添付するファイルを選択"
+  }
+}

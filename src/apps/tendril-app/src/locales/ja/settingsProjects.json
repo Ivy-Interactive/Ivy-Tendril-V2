@@ -1,1 +1,359 @@
-{}
+{
+  "view": {
+    "ariaLabel": "プロジェクトの構成",
+    "subtitle": "プロジェクトの構成",
+    "rename": "プロジェクト名を変更"
+  },
+  "notifications": {
+    "saved": "保存しました",
+    "cloned": "クローンしました",
+    "renamed": "名前を変更しました"
+  },
+  "saveError": "プロジェクトを保存できませんでした：{{error}}",
+  "rowActions": {
+    "edit": "編集"
+  },
+  "bladeFooter": {
+    "add": "追加"
+  },
+  "basic": {
+    "title": "基本",
+    "hint": "プロジェクトの色と、このプロジェクトで作業するすべてのエージェントに渡される AI コンテキストです。",
+    "color": {
+      "label": "色",
+      "hint": "config.yaml に保存される形式の Ivy カラー名です。"
+    },
+    "context": {
+      "label": "コンテキスト",
+      "placeholder": "このプロジェクトについてエージェントが知っておくべきこと…"
+    },
+    "saved": "プロジェクトを保存しました"
+  },
+  "repositories": {
+    "title": "リポジトリ",
+    "hint": "ソースリポジトリと、各計画の分岐元となるベースブランチ。",
+    "empty": "リポジトリはまだありません。",
+    "baseBranch": {
+      "ariaLabel": "{{path}} のベースブランチ",
+      "placeholder": "ベースブランチ",
+      "saved": "{{path}} のベースブランチを保存しました"
+    },
+    "remove": {
+      "ariaLabel": "{{path}} を削除",
+      "consequence": "ディスク上のチェックアウトはそのまま残ります。このプロジェクトの新しい計画が、このリポジトリをベースにしなくなるだけです。",
+      "removed": "{{path}} を削除しました"
+    },
+    "add": {
+      "ariaLabel": "リポジトリの URL またはローカルパス",
+      "placeholder": "リポジトリの URL またはローカルパス",
+      "button": "リポジトリを追加",
+      "cloning": "クローン中…",
+      "invalidPath": "リポジトリのパスが無効です。",
+      "added": "{{path}} を追加しました",
+      "cloned": "リポジトリを {{path}} にクローンしました",
+      "failed": "リポジトリを追加できませんでした：{{error}}"
+    },
+    "note": "リモート URL は TENDRIL_HOME にクローンされ、行には URL ではなくクローン先が表示されます。ローカルパスは入力したとおりに保存されます。"
+  },
+  "reviewActions": {
+    "title": "レビューアクション",
+    "hint": "レビュー中にアプリをプレビューまたは実行するためのクイック起動ボタン。",
+    "addButton": "レビューアクションを追加",
+    "addTitle": "レビューアクションを追加",
+    "editTitle": "レビューアクションを編集",
+    "columns": {
+      "name": "アクション名",
+      "command": "コマンド",
+      "condition": "条件"
+    },
+    "empty": "このプロジェクトにはレビューアクションがありません。",
+    "removal": {
+      "consequence": "レビューでこのプロジェクトの計画に表示されなくなり、残りのアクションが実行順序の空いた位置を詰めます。"
+    },
+    "saved": "レビューアクション「{{name}}」を保存しました",
+    "deleted": "レビューアクション「{{name}}」を削除しました"
+  },
+  "verifications": {
+    "title": "検証",
+    "hint": "計画を完了とする前に必要な品質チェックです。ドラッグして実行順序を設定します。",
+    "addButton": "検証を追加",
+    "addTitle": "検証を追加",
+    "empty": "config.yaml に検証が定義されていないため、有効にできるものがありません。検証を追加すると作成され、ここで有効になります。",
+    "updated": "{{project}} の検証を更新しました",
+    "orderSaved": "検証の実行順序を保存しました",
+    "added": "検証を追加しました",
+    "addFailed": "検証を追加できませんでした：{{error}}"
+  },
+  "ports": {
+    "title": "ポート",
+    "hint": "名前付きサービスポート。デフォルトのポートが使用中の場合、計画は空いているポートを使用します。",
+    "addButton": "ポートを追加",
+    "addTitle": "ポートを追加",
+    "editTitle": "ポートを編集",
+    "columns": {
+      "name": "名前",
+      "defaultPort": "デフォルトポート",
+      "description": "説明"
+    },
+    "empty": "サービスポートが構成されていません。名前付きポートを定義すると、同時に行われる計画レビュー間でポートを動的に割り当てられます。",
+    "mergeLimitation": "ポートはマッピングであり、PUT /api/config はマッピングをディープマージするため、ここではポートの追加や変更はできますが、削除や名前の変更はできません。",
+    "saved": "ポート「{{name}}」を保存しました"
+  },
+  "envFiles": {
+    "title": "環境変数ファイル",
+    "hint": "すべての計画ワークツリー内に再作成されるファイルです。ワークツリーは、追跡対象外の .env ファイルがない状態で開始されます。",
+    "addButton": "環境変数ファイルを追加",
+    "addTitle": "環境変数ファイルを追加",
+    "editTitle": "環境変数ファイルを編集",
+    "columns": {
+      "path": "パス",
+      "template": "テンプレート",
+      "overrides": "上書き"
+    },
+    "empty": "環境変数ファイルが構成されていません。環境変数ファイルを定義すると、.env テンプレートからファイルを生成し、計画ワークツリーに変数を注入できます。",
+    "removal": {
+      "consequence": "その変数は新しい計画ワークツリーに注入されなくなります。既存のワークツリーに生成済みのファイルはそのまま残ります。"
+    },
+    "saved": "環境変数ファイル「{{path}}」を保存しました",
+    "deleted": "環境変数ファイル「{{path}}」を削除しました"
+  },
+  "agentBehavior": {
+    "title": "エージェントの動作",
+    "autoImplement": {
+      "label": "成果物のレビュー / 自動実装ポリシー",
+      "options": {
+        "autoImplementPlans": "計画を自動実装",
+        "alwaysAskReview": "常にレビューを求める"
+      }
+    },
+    "saved": "エージェントの動作を保存しました"
+  },
+  "security": {
+    "title": "セキュリティ",
+    "hint": "このプロジェクトのサンドボックス、ファイルとネットワークのルール、ターミナルの確認。",
+    "preset": {
+      "label": "セキュリティプリセット",
+      "hint": "カスタム以外を選択すると、以下のサンドボックスおよびファイル/ネットワークの設定が上書きされます。",
+      "options": {
+        "custom": "カスタム",
+        "permissive": "寛容",
+        "restricted": "制限付き",
+        "strict": "厳格"
+      }
+    },
+    "sandboxMode": {
+      "label": "サンドボックスモード",
+      "hint": "「全般設定を継承」はサンドボックスなしを意味します。実効値：{{effective}}。",
+      "options": {
+        "inheritGeneral": "全般設定を継承",
+        "enabled": "有効",
+        "disabled": "無効"
+      }
+    },
+    "outsideFileAccess": {
+      "label": "外部ファイルアクセス",
+      "hint": "「拒否」にすると、以下のファイルルールはすべて無視されます。実効値：{{effective}}。",
+      "options": {
+        "allow": "許可",
+        "ask": "確認",
+        "deny": "拒否"
+      }
+    },
+    "terminalAutoExecution": {
+      "label": "ターミナル自動実行",
+      "hint": "プリセットの影響を受けません。実効値：{{effective}}。",
+      "options": {
+        "inheritGeneral": "全般設定を継承",
+        "alwaysProceed": "常に実行",
+        "alwaysAsk": "常に確認"
+      }
+    },
+    "filePermissions": {
+      "label": "ファイル権限",
+      "hint": "1 行に 1 つ `{{syntax}}` を記述します。{{allow}} は書き込み可能なディレクトリを追加し、{{deny}} はそのパスへの {{write}} と {{edit}} を拒否します。"
+    },
+    "networkRules": {
+      "label": "ネットワークアクセスルール",
+      "hintAllowed": "1 行に 1 つ `{{syntax}}` を記述します。{{deny}} を 1 つでも指定すると、ネットワークアクセスは完全にオフになります。実効値：許可。",
+      "hintDenied": "1 行に 1 つ `{{syntax}}` を記述します。{{deny}} を 1 つでも指定すると、ネットワークアクセスは完全にオフになります。実効値：拒否。"
+    },
+    "allowedCommands": {
+      "label": "許可するターミナルコマンド",
+      "hint": "1 行に 1 つのコマンドを記述します。各コマンドは `{{syntax}}` として許可されます。"
+    },
+    "enforcement": {
+      "enforces": "{{agent}} が適用する制御：{{controls, list(style: narrow)}}。",
+      "enforcesNone": "{{agent}} はこれらの制御をいずれも適用しません。",
+      "ignored": "{{agent}} で無視される制御：{{controls, list(style: narrow)}}。これらのキーは引き続き書き込まれ、対応するエージェントでは適用されます。",
+      "controls": {
+        "sandbox": "サンドボックスモード",
+        "network": "ネットワークアクセス",
+        "terminalPrompt": "ターミナルの確認",
+        "fileRules": "ファイルとコマンドのルール"
+      }
+    },
+    "saved": "{{project}} のセキュリティ設定を保存しました"
+  },
+  "mcpServers": {
+    "title": "ローカル権限",
+    "hint": "このプロジェクト用のカスタム Model Context Protocol サーバー。",
+    "addButton": "MCP サーバーを追加",
+    "addTitle": "MCP サーバーを追加",
+    "editTitle": "MCP サーバーを編集",
+    "columns": {
+      "name": "名前",
+      "command": "コマンド",
+      "disabled": "無効"
+    },
+    "disabledValue": {
+      "yes": "はい",
+      "no": "いいえ"
+    },
+    "empty": "このプロジェクトには MCP サーバーが構成されていません。",
+    "removal": {
+      "consequence": "このプロジェクトで作業するエージェントに、そのツールが提供されなくなります。削除されるのはプロジェクトからの参照のみで、サーバー定義自体は削除されません。"
+    },
+    "saved": "MCP サーバー「{{name}}」を保存しました",
+    "deleted": "MCP サーバー「{{name}}」を削除しました"
+  },
+  "skills": {
+    "title": "カスタマイズ",
+    "hint": "このプロジェクトで作業するエージェント向けのカスタムスキルとプロンプト指示。",
+    "addButton": "カスタムスキルを追加",
+    "addTitle": "カスタムスキルを追加",
+    "editTitle": "カスタムスキルを編集",
+    "columns": {
+      "name": "名前",
+      "description": "説明",
+      "path": "パス"
+    },
+    "empty": "このプロジェクトにはカスタムスキルが構成されていません。",
+    "removal": {
+      "consequence": "このプロジェクトで作業するエージェントに、このスキルが提供されなくなります。削除されるのはプロジェクトからの参照のみで、スキル自体のファイルは削除されません。"
+    },
+    "saved": "スキル「{{name}}」を保存しました",
+    "deleted": "スキル「{{name}}」を削除しました",
+    "memoryNote": "プロジェクトメモリは Markdown ファイルとして {{path}} に保存されます。デーモンにはこれらを扱うルートがないため、まだここでは編集できません。"
+  },
+  "dangerZone": {
+    "title": "Danger Zone",
+    "remove": {
+      "button": "プロジェクトを登録解除",
+      "description": "config.yaml からプロジェクトを登録解除します。クローンしたリポジトリ、計画フォルダー、履歴はディスク上に残るため、同じ名前でプロジェクトを再度追加すると元に戻ります。"
+    },
+    "delete": {
+      "button": "プロジェクトを完全に削除",
+      "description": "プロジェクトの計画、{{path}} 以下のクローンしたリポジトリ、データベースの行、構成エントリを完全に削除します。この操作は元に戻せません。実行前にプロジェクト名の入力が求められます。"
+    }
+  },
+  "reviewActionBlade": {
+    "name": {
+      "label": "名前",
+      "placeholder": "アクション名…"
+    },
+    "command": {
+      "label": "コマンド",
+      "placeholder": "例：dotnet test"
+    },
+    "condition": {
+      "label": "条件",
+      "placeholder": "例：{{example}}"
+    }
+  },
+  "verificationBlade": {
+    "name": {
+      "label": "名前",
+      "placeholder": "検証名…",
+      "duplicate": "「{{name}}」という名前の検証はすでに存在します。"
+    },
+    "prompt": {
+      "label": "プロンプト",
+      "placeholder": "検証プロンプト…"
+    }
+  },
+  "mcpServerBlade": {
+    "name": {
+      "label": "名前",
+      "placeholder": "サーバー名（例：sqlite）…"
+    },
+    "command": {
+      "label": "コマンド",
+      "placeholder": "実行可能なコマンド（例：npx）…"
+    },
+    "arguments": {
+      "label": "引数",
+      "placeholder": "引数（例：-y @modelcontextprotocol/server-sqlite）…",
+      "hint": "EditMcpServerBladeView と同じく、空白で分割されます。"
+    },
+    "environment": {
+      "label": "環境変数",
+      "hint": "1 行に 1 つ KEY=VALUE を記述します。"
+    },
+    "disabled": "無効"
+  },
+  "skillBlade": {
+    "name": {
+      "label": "名前",
+      "placeholder": "スキル名（例：code-review）…"
+    },
+    "description": {
+      "label": "説明",
+      "placeholder": "簡単な説明…"
+    },
+    "instructions": {
+      "label": "指示",
+      "placeholder": "エージェント向けの Markdown 形式の指示…"
+    },
+    "path": {
+      "label": "ファイル/フォルダーのパス",
+      "placeholder": "スキルのフォルダー/ファイルへのパス（例：%TENDRIL_HOME%/Skills/my-skill）…"
+    },
+    "disabled": "無効"
+  },
+  "portBlade": {
+    "name": {
+      "label": "名前",
+      "placeholder": "例：backend",
+      "hint": "環境変数の上書きで {{placeholder}} プレースホルダーから参照されるポート識別子。"
+    },
+    "defaultPort": {
+      "label": "デフォルトポート",
+      "invalid": "デフォルトポートは 1〜65535 の範囲で指定してください。",
+      "hint": "優先するポート。すでに使用中の場合、Tendril は代わりに空いているポートを割り当てます。"
+    },
+    "description": {
+      "label": "説明",
+      "placeholder": "ここで待ち受けるもの…"
+    }
+  },
+  "envFileBlade": {
+    "path": {
+      "label": "パス",
+      "placeholder": "例：apps/web/.env",
+      "hint": "計画ワークツリー内に再作成される環境変数ファイルの相対パス。"
+    },
+    "template": {
+      "label": "テンプレート",
+      "placeholder": "例：.env.example",
+      "hint": "上書きの適用前にワークツリーにコピーされる、任意のベーステンプレート。"
+    },
+    "overrides": {
+      "label": "上書き",
+      "hint": "{{ports}}、{{env}}、{{variable}} プレースホルダーを使用できる KEY=VALUE 形式の行。"
+    }
+  },
+  "nameEditor": {
+    "ariaLabel": "プロジェクト名",
+    "confirm": "名前の変更を確定",
+    "cancel": "名前の変更をキャンセル",
+    "duplicate": "「{{name}}」という名前のプロジェクトはすでに存在します。",
+    "renamed": "プロジェクト名を「{{name}}」に変更しました"
+  },
+  "removalKinds": {
+    "repository": "リポジトリ",
+    "reviewAction": "レビューアクション",
+    "environmentFile": "環境変数ファイル",
+    "mcpServer": "MCP サーバー",
+    "customSkill": "カスタムスキル"
+  }
+}

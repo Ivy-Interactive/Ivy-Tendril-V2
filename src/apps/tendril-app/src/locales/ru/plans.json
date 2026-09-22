@@ -1,1 +1,295 @@
-{}
+{
+  "plansView": {
+    "newPlanShortcut": "Новый план",
+    "empty": {
+      "title": "Нет планов",
+      "description": "Здесь появятся созданные вами планы"
+    },
+    "noSelection": "Выберите план на боковой панели"
+  },
+  "sidebar": {
+    "title": "Планы"
+  },
+  "searchBadges": {
+    "verified": "Верифицирован",
+    "unverified": "Не верифицирован"
+  },
+  "detail": {
+    "tabs": {
+      "plan": "План",
+      "details": "Сведения",
+      "diff": "Просмотр различий",
+      "recommendations": "Рекомендации ({{n}})",
+      "git": "Git",
+      "gitCount": "Git ({{n}})",
+      "gitAtRisk_one": "Git ({{n}}) · {{count}} под угрозой",
+      "gitAtRisk_few": "Git ({{n}}) · {{count}} под угрозой",
+      "gitAtRisk_many": "Git ({{n}}) · {{count}} под угрозой",
+      "gitAtRisk_other": "Git ({{n}}) · {{count}} под угрозой",
+      "gitAtRiskUncounted_one": "Git · {{count}} под угрозой",
+      "gitAtRiskUncounted_few": "Git · {{count}} под угрозой",
+      "gitAtRiskUncounted_many": "Git · {{count}} под угрозой",
+      "gitAtRiskUncounted_other": "Git · {{count}} под угрозой"
+    },
+    "questions": {
+      "label": "Вопросы",
+      "labelUnanswered_one": "Вопросы (без ответа: {{count}})",
+      "labelUnanswered_few": "Вопросы (без ответа: {{count}})",
+      "labelUnanswered_many": "Вопросы (без ответа: {{count}})",
+      "labelUnanswered_other": "Вопросы (без ответа: {{count}})"
+    },
+    "sourceLabel": {
+      "pr": "PR",
+      "issue": "Задача"
+    },
+    "meta": {
+      "position_one": "Планы: {{position}}/{{count}}",
+      "position_few": "Планы: {{position}}/{{count}}",
+      "position_many": "Планы: {{position}}/{{count}}",
+      "position_other": "Планы: {{position}}/{{count}}",
+      "dependsOn": "Зависит от {{plans}}"
+    },
+    "errors": {
+      "saveAnswer": "Не удалось сохранить ответ: {{error}}",
+      "saveAnnotation": "Не удалось сохранить аннотацию: {{error}}",
+      "updateRecommendation": "Не удалось обновить рекомендацию «{{title}}»: {{error}}",
+      "completePlan": "Не удалось завершить план {{id}}: {{error}}"
+    },
+    "runActionFailed": {
+      "executePlan": "Не удалось выполнить план: {{error}}",
+      "updatePlan": "Не удалось обновить план: {{error}}",
+      "expandPlan": "Не удалось детализировать план: {{error}}",
+      "splitPlan": "Не удалось разделить план: {{error}}",
+      "copyPlanId": "Не удалось скопировать ID плана: {{error}}",
+      "copyFolderPath": "Не удалось скопировать путь к папке: {{error}}",
+      "openFolder": "Не удалось открыть папку: {{error}}"
+    },
+    "discussDraft": {
+      "outcome": "Я хочу обсудить результат этого плана, прежде чем завершать его. Кратко изложите, что было сделано, и укажите всё, что стоит рассмотреть внимательнее.",
+      "plan": "Я хочу обсудить этот план, прежде чем выполнять его. Кратко изложите его и укажите, что бы вы изменили."
+    }
+  },
+  "actions": {
+    "discussWithAgent": "Обсудить с агентом",
+    "updatePlan": "Обновить план",
+    "checking": "Проверка…",
+    "starting": "Запуск…",
+    "createPr": "Создать PR",
+    "completePlan": "Завершить план",
+    "retryPlan": "Повторить план",
+    "acceptPartialDelivery": "Принять частичную доставку",
+    "resetToDraft": "Вернуть в черновик…"
+  },
+  "draftActions": {
+    "execute": "Выполнить план",
+    "update": "Обновить план…",
+    "expand": "Детализировать план",
+    "split": "Разделить план",
+    "createIssue": "Создать задачу…",
+    "copyId": "Копировать ID плана",
+    "copyPath": "Копировать путь к папке",
+    "openFolder": "Открыть папку",
+    "delete": "Удалить план…"
+  },
+  "failureCallout": {
+    "title": "Сбой выполнения",
+    "verification": "<bold>{{name}}</bold>: {{status}}. Подробности — в отчёте верификации",
+    "noDetails": "Подробности недоступны. Проверьте логи задания."
+  },
+  "questionsPanel": {
+    "answered_one": "Отвечено: {{answered}} из {{count}}",
+    "answered_few": "Отвечено: {{answered}} из {{count}}",
+    "answered_many": "Отвечено: {{answered}} из {{count}}",
+    "answered_other": "Отвечено: {{answered}} из {{count}}",
+    "optional": "{{label}} (необязательно)",
+    "saving": "сохранение…"
+  },
+  "planPane": {
+    "writing": "Агент ещё составляет этот план. Его текст появится здесь, когда задание запишет первую ревизию.",
+    "neverWritten": "У этого плана нет ревизий. Его папка создана, но задание, которое составляло план, так и не записало ревизию, поэтому показать нечего.",
+    "neverWrittenUpdate": "Обновить план",
+    "unreadable_one": "Для этого плана на диске записана {{count}} ревизия, но последняя ревизия оказалась пустой. Возможно, файл не удаётся прочитать.",
+    "unreadable_few": "Для этого плана на диске записаны {{count}} ревизии, но последняя ревизия оказалась пустой. Возможно, файл не удаётся прочитать.",
+    "unreadable_many": "Для этого плана на диске записано {{count}} ревизий, но последняя ревизия оказалась пустой. Возможно, файл не удаётся прочитать.",
+    "unreadable_other": "Для этого плана на диске записано {{count}} ревизии, но последняя ревизия оказалась пустой. Возможно, файл не удаётся прочитать."
+  },
+  "recommendationsTab": {
+    "title": "Рекомендации по плану",
+    "description": "Доработки и улучшения вне рамок плана, обнаруженные при выполнении.",
+    "empty": "Задание {{jobType}} не оставило рекомендаций для этого плана."
+  },
+  "gitTab": {
+    "loading": "Загрузка состояния Git…"
+  },
+  "details": {
+    "planId": "ID плана",
+    "folder": "Папка",
+    "initialPrompt": "Начальный промпт",
+    "revision": "Ревизия",
+    "profile": "Профиль",
+    "relatedPlans": "Связанные планы",
+    "dependsOn": "Зависит от",
+    "issue": "Задача",
+    "created": "Создан",
+    "level": "Уровень",
+    "project": "Проект",
+    "state": "Состояние",
+    "copyPlanIdTooltip": "Копировать в буфер обмена",
+    "copyFolderTooltip": "Копировать в буфер обмена",
+    "repositories": "Репозитории",
+    "noRepositories": "Репозитории не указаны",
+    "commits": "Коммиты",
+    "noCommits": "Коммитов пока нет"
+  },
+  "verificationStatus": {
+    "pass": "Пройдена",
+    "fail": "Не пройдена",
+    "pending": "Ожидает",
+    "skipped": "Пропущена"
+  },
+  "verifications": {
+    "empty": "Нет верификаций",
+    "updateFailed": "Не удалось обновить верификацию {{name}}: {{error}}",
+    "viewReportTooltip": "Показать отчёт {{name}}",
+    "viewReport": "Показать отчёт",
+    "hideReport": "Скрыть отчёт",
+    "noReport": "Отчёта пока нет"
+  },
+  "reportSheet": {
+    "title": "Отчёт верификации",
+    "description": "Подробности отчёта верификации {{name}}",
+    "descriptionFallback": "Подробности отчёта верификации плана",
+    "loading": "Загрузка отчёта верификации…",
+    "notFound": "Файл отчёта верификации для «{{name}}» не найден.",
+    "empty": "Для {{name}} нет отчёта."
+  },
+  "artifactSheet": {
+    "thumbnail": {
+      "openLabel": "Открыть {{fileName}}",
+      "noPreview": "Нет предпросмотра",
+      "loadingLabel": "Загрузка {{fileName}}"
+    },
+    "fallbackTitle": "Артефакт",
+    "noPreviewTitle": "Нет предпросмотра",
+    "showInFolder": "Показать в папке",
+    "loadingLabel": "Загрузка {{fileName}}",
+    "imageFailed": "Tendril не удалось загрузить это изображение.",
+    "imageFailedWithError": "Tendril не удалось загрузить это изображение: {{error}}",
+    "binary": "{{fileName}} — не текстовый файл ({{size}}), поэтому предпросмотр здесь недоступен.",
+    "tooLarge": "Файл {{fileName}} ({{size}}) слишком большой для предпросмотра.",
+    "plainNotice": "Показано как обычный текст: файл {{fileName}} ({{size}}) слишком большой для подсветки синтаксиса.",
+    "plainNotice_markdown": "Показано как обычный текст: файл {{fileName}} ({{size}}) слишком большой для отображения Markdown.",
+    "copyPath": "Копировать путь",
+    "revealLabel": "Показать в папке"
+  },
+  "pullRequests": {
+    "title": "Пулл-реквесты",
+    "refresh": "Обновить",
+    "refreshing": "Обновление…",
+    "unreachable": "Не удалось связаться с GitHub для репозиториев: {{repos}}",
+    "syncInProgress": "Синхронизация уже идёт; статусы обновятся, когда она завершится.",
+    "checked": "проверено {{when}}",
+    "checkedJustNow": "проверено только что",
+    "empty": "PR не созданы",
+    "state": {
+      "open": "Открыт",
+      "closed": "Закрыт",
+      "merged": "Объединён",
+      "unknown": "Неизвестно"
+    }
+  },
+  "revisionDiff": {
+    "singleRevision": "У этого плана только одна ревизия, поэтому сравнивать пока нечего. Дифф появится, когда {{createPlan}} или {{retryPlan}} запишет новую ревизию.",
+    "compare": "<oldLabel><text>Сравнить ревизию</text><oldSelect/></oldLabel><newLabel><text>с</text><newSelect/></newLabel>",
+    "oldRevisionLabel": "Старая ревизия",
+    "newRevisionLabel": "Новая ревизия",
+    "onDisk_one": "{{count}} ревизия на диске",
+    "onDisk_few": "{{count}} ревизии на диске",
+    "onDisk_many": "{{count}} ревизий на диске",
+    "onDisk_other": "{{count}} ревизии на диске",
+    "loading": "Загрузка ревизий {{from}} и {{to}}…",
+    "identical": "Ревизии {{from}} и {{to}} идентичны."
+  },
+  "icebox": {
+    "title": "Холодильник",
+    "description": "Архивные и отложенные планы, поставленные на паузу.",
+    "searchPlaceholder": "Поиск планов в холодильнике…",
+    "projectFilterLabel": "Проект",
+    "allProjects": "Все проекты",
+    "levelFilterLabel": "Уровень",
+    "allLevels": "Все уровни",
+    "empty": {
+      "title": "Холодильник пуст",
+      "description": "Здесь появятся планы, которые вы убрали в холодильник"
+    },
+    "noMatch": {
+      "title": "Нет подходящих планов",
+      "description": "Ни один план в холодильнике не соответствует текущим фильтрам."
+    },
+    "card": {
+      "priority": "P{{priority}}",
+      "verificationTooltip": "{{name}}: {{status}}",
+      "deleteLabel": "Удалить план {{id}}",
+      "thawLabel": "Разморозить план {{id}}",
+      "thaw": "Разморозить",
+      "thawing": "Размораживание…"
+    },
+    "thawFailed": "Не удалось разморозить план {{id}}: {{error}}"
+  },
+  "newPlan": {
+    "title": "Создать план",
+    "closeLabel": "Закрыть окно",
+    "projectPickerLabel": "Целевой проект",
+    "autoProject": "Авто",
+    "addProject": "+ Добавить проект",
+    "submit": "Создать",
+    "placeholder": "Введите описание задачи…",
+    "emptyDescription": "Введите описание нового плана."
+  },
+  "planActions": {
+    "canExecute": {
+      "alreadyCompleted": "План уже завершён.",
+      "executing": "План сейчас выполняется.",
+      "blockedByDependency": "Заблокирован зависимостью «{{dependency}}» в состоянии «{{state}}» (требуется «Завершено»)."
+    },
+    "canCreatePr": {
+      "wrongState": "Создать PR можно только для плана в состоянии «На ревью» или «Сбой» (текущее: {{state}}).",
+      "verificationsFailed": "Нельзя создать PR: верификации не пройдены ({{names}}).",
+      "verificationsPending": "Нельзя создать PR: верификации ещё ожидают ({{names}})."
+    },
+    "canRetry": {
+      "wrongState": "Повтор возможен только для планов в состоянии «На ревью» или «Сбой» (текущее: {{state}})."
+    },
+    "canRefine": {
+      "wrongState": "Доработка плана (детализация, обновление, разделение) возможна только для планов в состоянии «Черновик» (текущее: {{state}})."
+    },
+    "canDelete": {
+      "inFlight": "Нельзя удалить план в состоянии «{{state}}» — сначала остановите задание."
+    },
+    "canReset": {
+      "terminal": "План в состоянии «{{state}}» нельзя вернуть в черновик.",
+      "inFlight": "Нельзя вернуть план в черновик в состоянии «{{state}}» — сначала остановите задание.",
+      "wrongState": "Вернуть в черновик можно только планы в состоянии «На ревью», «Сбой» или «Заблокировано» (текущее: {{state}})."
+    },
+    "canCompletePartial": {
+      "wrongState": "Частичная доставка возможна только для плана в состоянии «На ревью» или «Сбой» (текущее: {{state}}).",
+      "noFailures": "Непройденных верификаций нет — завершите план обычным способом."
+    },
+    "canComplete": {
+      "alreadyCompleted": "План уже завершён.",
+      "inFlight": "Нельзя завершить план в состоянии «{{state}}» — сначала остановите задание."
+    },
+    "errors": {
+      "completeBlocked": "Завершение плана заблокировано",
+      "executeBlocked": "Выполнение заблокировано",
+      "retryBlocked": "Повтор заблокирован",
+      "createPrBlocked": "Создание PR заблокировано",
+      "refineBlocked": "Доработка заблокирована",
+      "repositoryRequired": "Для создания задачи нужен репозиторий."
+    }
+  },
+  "store": {
+    "rollbackField": "Откат: не удалось обновить поле {{field}}: {{error}}",
+    "rollbackVerification": "Откат обновления верификации: {{error}}"
+  }
+}

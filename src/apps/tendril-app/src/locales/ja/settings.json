@@ -1,1 +1,378 @@
-{}
+{
+  "shared": {
+    "toastSaved": "保存しました",
+    "saving": "保存中…",
+    "saveFailed": "保存に失敗しました：{{error}}",
+    "outOfRange": "{{key}} は {{min}} から {{max}} の範囲で指定してください（指定値：{{value}}）。",
+    "notInteger": "{{key}} は整数で指定してください（指定値：「{{value}}」）。"
+  },
+  "sections": {
+    "codingAgent": "コーディングエージェント",
+    "plans": "計画",
+    "appearance": "外観",
+    "projects": "プロジェクト",
+    "vault": "チーム Vault",
+    "promptwares": "ワークフローエージェント",
+    "levels": "レベル",
+    "notifications": "通知",
+    "security": "セキュリティとトンネル",
+    "advanced": "詳細設定",
+    "newsletter": "ニュースレター",
+    "fallback": "構成"
+  },
+  "nav": {
+    "ariaLabel": "構成のセクション",
+    "mobilePickerLabel": "構成のセクション",
+    "addProject": "プロジェクトを追加",
+    "openConfig": "config.yaml を開く"
+  },
+  "projectToasts": {
+    "jobStartedTitle": "ジョブを開始しました",
+    "backgroundJob": "プロジェクト「{{name}}」のバックグラウンドジョブを作成しました",
+    "addedTitle": "成功",
+    "added": "プロジェクト「{{name}}」を追加しました",
+    "removedTitle": "登録解除しました",
+    "removed": "プロジェクト「{{name}}」を登録解除しました。ファイルはディスクに残っています。",
+    "deletedTitle": "削除しました",
+    "deleted": "プロジェクト「{{name}}」とそのデータを完全に削除しました"
+  },
+  "plans": {
+    "title": "計画",
+    "hint": "新しい計画の作成時に使用するデフォルトの計画テンプレートを設定します。",
+    "templateLabel": "計画テンプレート",
+    "templatePlaceholder": "計画テンプレート…",
+    "saved": "計画テンプレートを保存しました"
+  },
+  "vaultSection": {
+    "title": "チーム Vault",
+    "hint": "バージョン管理された Git リポジトリを通じて、Tendril のプロジェクト、カスタムスキル、MCP サーバー、セキュリティルールをチーム全体で共有・同期します。"
+  },
+  "notifications": {
+    "title": "通知",
+    "hint": "ジョブの完了や失敗などのイベントを Tendril が通知する方法を設定します。",
+    "desktopLabel": "デスクトップ通知を有効にする",
+    "saved": "通知設定を保存しました"
+  },
+  "advanced": {
+    "title": "詳細設定",
+    "hint": "タイムアウトと同時実行数の上限を構成します。",
+    "timeoutsHeading": "タイムアウト",
+    "jobTimeout": "ジョブタイムアウト",
+    "staleOutputTimeout": "出力停滞タイムアウト",
+    "maxConcurrentJobs": "最大同時実行ジョブ数",
+    "minutesSuffix": "分",
+    "betaHeading": "ベータ機能",
+    "betaLabel": "ベータ機能を有効にする",
+    "restartNote": "変更を反映するには Tendril の再起動が必要です。",
+    "saved": "設定を保存して適用しました"
+  },
+  "diagnostics": {
+    "title": "デーモン診断",
+    "ping": "レイテンシをテスト (Ping)",
+    "pinging": "Ping 送信中…",
+    "pong": "Pong：{{elapsed}} ms で応答しました",
+    "pingFailed": "Ping に失敗しました：{{error}}",
+    "connectionState": "接続状態：",
+    "hostPort": "デーモンのホストとポート：",
+    "pid": "プロセス PID：",
+    "tendrilHome": "{{name}}：",
+    "secret": "セキュリティ / シークレット：",
+    "secretValue": "ネイティブで管理（Web ビューのストレージには保存されません）",
+    "capabilities": "機能：",
+    "noCapabilities": "報告なし",
+    "notAvailable": "N/A",
+    "states": {
+      "connected": "接続済み",
+      "disconnected": "未接続",
+      "unauthenticated": "未認証",
+      "notRunning": "未起動",
+      "foreignMaster": "他のマスター"
+    }
+  },
+  "newsletterSection": {
+    "title": "ニュースレター",
+    "hint": "Ivy & Tendril のニュースレターを購読して、アップデート、注目機能、リリースノートを受け取りましょう。"
+  },
+  "promptwares": {
+    "title": "ワークフローエージェント",
+    "hint": "各エージェントのプロンプトを確認し、実行時に使用するコーディングエージェントのプロファイルとツール権限を構成します。",
+    "agentLabel": "エージェント",
+    "defaultOption": "{{key}}（すべてのエージェント）",
+    "notConfigured": "まだ構成されていません。保存するとエントリが作成されます。",
+    "profileLabel": "プロファイル",
+    "profileDefault": "デフォルト（未設定）",
+    "profileTiers": {
+      "deep": "deep",
+      "balanced": "balanced",
+      "quick": "quick"
+    },
+    "profileHint": "後から適用された設定が優先されます：{{key}}、次にこのエージェント、最後に計画ごとまたは CLI での上書き。",
+    "allowedLabel": "許可するツール",
+    "allowedHint": "基本ツールセットに追加されます（1 行に 1 ルール）。基本ツールセットが置き換えられることはありません。",
+    "deniedLabel": "拒否するツール",
+    "deniedHint": "マージ後の許可リストから除外されます。{{key}} の設定を狭めるのではなく、それと合算されます。",
+    "reset": "リセット",
+    "addLabel": "エージェントを追加",
+    "addPlaceholder": "エージェント名（例：{{example}}）…",
+    "add": "追加",
+    "saved": "エージェントを保存しました",
+    "saveFailed": "エージェントの保存に失敗しました：{{error}}",
+    "program": {
+      "title": "プロンプト",
+      "hintOverlay": "オーバーレイディレクトリのプロンプトです。同梱のプロンプトの代わりに使用されます。",
+      "hintDeployed": "このエージェントが実行するデプロイ済みのプロンプトです。読み取り専用：オーバーレイディレクトリから変更してください。",
+      "defaultKey": "{{key}} は独立したエージェントではなく、すべてのエージェントに適用されるフォールバックのため、プロンプトはありません。プロンプトを確認するにはエージェントを選択してください。",
+      "loading": "プロンプトを読み込み中…"
+    }
+  },
+  "appearance": {
+    "language": {
+      "title": "言語",
+      "hint": "Tendril で使用する言語を選択します。「システムのデフォルト」はオペレーティングシステムの設定に従います。",
+      "label": "言語",
+      "system": "システムのデフォルト",
+      "saved": "言語を {{language}} に設定しました",
+      "loadFailed": "{{language}} を読み込めませんでした。Tendril は現在の言語のままです。"
+    },
+    "title": "外観",
+    "hint": "Tendril の外観を選択します。「システム」を選ぶと OS の設定に従います。",
+    "themeMode": {
+      "light": "ライト",
+      "dark": "ダーク",
+      "system": "システム",
+      "saved_light": "外観をライトに設定しました",
+      "saved_dark": "外観をダークに設定しました",
+      "saved_system": "外観をシステムに設定しました"
+    },
+    "theme": {
+      "title": "テーマ",
+      "hint": "Tendril の配色プリセットを選択します。",
+      "label": "テーマ",
+      "vaultOption": "{{name}}（Vault：{{vault}}）",
+      "vaultFallback": "チーム",
+      "vaultBadge": "チーム Vault",
+      "saved": "テーマを {{name}} に設定しました"
+    },
+    "sidebar": {
+      "title": "メインサイドバー",
+      "hint": "新しいクライアントセッションでのメインサイドバーのデフォルト状態を選択します。",
+      "expanded": "展開",
+      "collapsed": "折りたたみ",
+      "saved_expanded": "サイドバーをデフォルトで展開するよう設定しました",
+      "saved_collapsed": "サイドバーをデフォルトで折りたたむよう設定しました"
+    },
+    "chatMode": {
+      "title": "チャット",
+      "hint": "チャットボタンでコーディングエージェントと対話する方法を選択します：チャットビュー、またはエージェント自身のターミナル。",
+      "chat": "チャット",
+      "terminal": "ターミナル",
+      "saved_chat": "チャットをチャットビューで開くよう設定しました",
+      "saved_terminal": "チャットをターミナルで開くよう設定しました"
+    },
+    "vaultThemesNote": "チーム Vault で公開されたテーマは一覧に表示されません。Vault のテーマ機能はこのビルドに含まれていないため、同梱のプリセットのみを表示しています。"
+  },
+  "levels": {
+    "title": "優先度レベル",
+    "hint": "計画の分類に使用する優先度レベルを定義します。",
+    "addButton": "レベルを追加",
+    "columns": {
+      "name": "名前",
+      "color": "色"
+    },
+    "unsetColor": "未設定",
+    "editAction": "編集",
+    "empty": "レベルが定義されていません。",
+    "editor": {
+      "addTitle": "レベルを追加",
+      "editTitle": "レベルを編集",
+      "nameLabel": "名前",
+      "namePlaceholder": "レベル名…",
+      "colorLabel": "色",
+      "colorPlaceholder": "例：{{example}}",
+      "colorHint": "config.yaml に保存される形式の Ivy カラー名です（{{examples}}…）。",
+      "add": "追加"
+    },
+    "saved": "レベルを保存しました",
+    "deleted": "レベル「{{name}}」を削除しました",
+    "saveFailed": "レベルの保存に失敗しました：{{error}}",
+    "removeConsequence": "このレベルに分類済みの計画は、plan.yaml にその名前を保持します。選択肢のレベルとして表示されなくなるだけです。",
+    "noEffect": "レベルは config.yaml に保存され、MCP を通じて公開されますが、このアプリではまだどこからも読み取られていません。そのため、ここで編集しても目に見える動作は変わりません。"
+  },
+  "removal": {
+    "title": "{{kind}} を削除",
+    "title_level": "レベルを削除",
+    "title_repository": "リポジトリを削除",
+    "title_reviewAction": "レビューアクションを削除",
+    "title_environmentFile": "環境変数ファイルを削除",
+    "title_mcpServer": "MCP サーバーを削除",
+    "title_customSkill": "カスタムスキルを削除",
+    "body": "{{kind}} <name>{{name}}</name> をこの構成から削除しますか？",
+    "body_level": "レベル <name>{{name}}</name> をこの構成から削除しますか？",
+    "body_repository": "リポジトリ <name>{{name}}</name> をこの構成から削除しますか？",
+    "body_reviewAction": "レビューアクション <name>{{name}}</name> をこの構成から削除しますか？",
+    "body_environmentFile": "環境変数ファイル <name>{{name}}</name> をこの構成から削除しますか？",
+    "body_mcpServer": "MCP サーバー <name>{{name}}</name> をこの構成から削除しますか？",
+    "body_customSkill": "カスタムスキル <name>{{name}}</name> をこの構成から削除しますか？",
+    "confirm": "削除"
+  },
+  "fields": {
+    "colorsLabel": "色",
+    "chooseColor": "色を選択",
+    "defaultOption": "デフォルト"
+  },
+  "configEditor": {
+    "samplePrompts": {
+      "explain": {
+        "label": "設定を説明",
+        "prompt": "config.yaml の各トップレベルキーが何を制御しているか説明してください。"
+      },
+      "addProject": {
+        "label": "プロジェクトを追加",
+        "prompt": "config.yaml に新しいプロジェクトを追加し、まだ入力が必要なフィールドを教えてください。"
+      },
+      "check": {
+        "label": "構成をチェック",
+        "prompt": "config.yaml を確認し、誤っていそうな設定や、妥当なデフォルト値が欠けている設定を指摘してください。"
+      }
+    },
+    "saved": "config.yaml を保存して再読み込みしました",
+    "maskedNote_other": "{{count}} 件のシークレット値が {{mask}} と表示されています。保存済みの値を維持するにはプレースホルダーをそのままにし、新しい値を設定するには上書き入力してください。",
+    "conflictReload": "ディスクから再読み込み",
+    "reload": "ディスクから再読み込み",
+    "discard": {
+      "title": "未保存の変更を破棄",
+      "confirm": "破棄して再読み込み",
+      "body": "再読み込みすると、エディタの内容がディスク上のファイルに置き換わります。保存していない編集内容は失われます。"
+    }
+  },
+  "security": {
+    "title": "セキュリティとトンネル",
+    "hint": "Tendril へのアクセスにパスワードを必須にし、このインスタンスをパブリックトンネル経由で公開します。",
+    "cloudflared": {
+      "intro": "以下の 2 つのトンネルはどちらも Cloudflare の <code>cloudflared</code> を使用します。Tendril を実行しているマシンには、まだインストールされていません。",
+      "configuredPathTitle": "構成済みのパス",
+      "installingTitle": "インストール中",
+      "downloadingPercent": "{{asset}} をダウンロード中 — {{percent, percent}}",
+      "downloadingSize": "{{asset}} をダウンロード中 — {{size}}",
+      "verifying": "Cloudflare が公開している SHA-256 とダウンロードを照合中",
+      "installing": "インストール中",
+      "resolving": "最新リリースを確認中",
+      "cancelledTitle": "キャンセルしました",
+      "cancelledBody": "ダウンロードはキャンセルされ、何もインストールされていません。もう一度開始するか、cloudflared を手動でインストールしてください。",
+      "failedTitle": "インストールに失敗しました",
+      "retry": "再試行",
+      "install": "cloudflared をインストール",
+      "manualSummary": "代わりに手動でインストール",
+      "manualPackages": "macOS：<code>{{brew}}</code>。Linux：<code>{{url}}</code> を参照してください。",
+      "manualDownload": "または、<code>{{url}}</code> から <code>{{asset}}</code> をダウンロードし、<code>{{path}}</code> として保存してください。"
+    },
+    "session": {
+      "heading": "セッション保護",
+      "blurb": "Tendril のインターフェースへのアクセスにパスワードを要求します。",
+      "enableLabel": "パスワード保護を有効にする",
+      "currentLabel": "現在のパスワード",
+      "currentPlaceholder": "現在のパスワード…",
+      "newLabel": "新しいパスワード",
+      "newPlaceholder": "新しいパスワード…",
+      "confirmLabel": "パスワードの確認",
+      "confirmPlaceholder": "パスワードを再入力…",
+      "mismatch": "パスワードが一致しません",
+      "disabledToast": "パスワード保護を無効にしました",
+      "enabledToast": "パスワード保護を有効にしました"
+    },
+    "tunnel": {
+      "full": {
+        "heading": "トンネル",
+        "blurb": "Cloudflare トンネル経由で Tendril インスタンスをインターネットに公開します。モバイルデバイスから Tendril にアクセスしたり、他のユーザーと共有したりするのに便利です。",
+        "startingTitle": "トンネルを起動中",
+        "activeTitle": "トンネル稼働中",
+        "activeBody": "トンネルは稼働中で、以下の URL からアクセスできます。",
+        "startingBody": "トンネルを起動し、ルーティング可能になるのを待っています。通常 15〜30 秒かかります。",
+        "stoppedToast": "トンネルを停止しました",
+        "copiedToast": "トンネルの URL をクリップボードにコピーしました",
+        "startFailed": "トンネルの起動に失敗しました：{{error}}",
+        "stopFailed": "トンネルの停止に失敗しました：{{error}}"
+      },
+      "share": {
+        "heading": "共有トンネル",
+        "blurb": "チームメンバーが計画や下書きをレビューできるよう、閲覧とコメントのみ可能なバージョンの Tendril を公開します。",
+        "startingTitle": "共有トンネルを起動中",
+        "activeTitle": "共有トンネル稼働中",
+        "activeBody": "共有トンネルは稼働中で、以下の URL からアクセスできます。",
+        "startingBody": "共有トンネルを起動し、ルーティング可能になるのを待っています。通常 15〜30 秒かかります。",
+        "stoppedToast": "共有トンネルを停止しました",
+        "copiedToast": "共有トンネルの URL をクリップボードにコピーしました",
+        "startFailed": "共有トンネルの起動に失敗しました：{{error}}",
+        "stopFailed": "共有トンネルの停止に失敗しました：{{error}}"
+      },
+      "warningTitle": "すべてが公開されます",
+      "warningBody": "フルアクセスのトンネルは、この Tendril インスタンス全体をパブリック URL で公開します。アドレスとセッションパスワードを知っている人は誰でも、このマシンの前に座っているのと同じように操作できます。そのため、トンネルを起動するにはパスワードの設定が必要です。読み取り専用で公開するには、下の共有トンネルを使用してください。",
+      "deactivatedTitle": "無効化しました",
+      "copiedTitle": "URL をコピーしました",
+      "copyFailed": "URL をコピーできませんでした：{{error}}",
+      "deactivate": "無効化",
+      "copyUrl": "URL をコピー",
+      "openInBrowser": "ブラウザーで開く",
+      "activate": "有効化"
+    }
+  },
+  "vault": {
+    "errors": {
+      "listVaults": "Vault の一覧を取得できませんでした：{{error}}",
+      "status": "Vault のステータスを読み取れませんでした：{{error}}",
+      "catalog": "Vault のカタログを読み取れませんでした：{{error}}",
+      "failure": "Vault サービスがエラーを報告しました。"
+    },
+    "createdPr": "PR を作成しました：{{url}}",
+    "createdBranch": "ブランチ {{branch}} を作成しました",
+    "createdDeletionBranch": "削除用ブランチ {{branch}} を作成しました",
+    "done": "完了しました。",
+    "activeVault": "アクティブな Vault",
+    "selectVault": "Vault を選択",
+    "refresh": "更新",
+    "sync": "同期",
+    "openPr": "PR を作成",
+    "connect": "Vault を接続",
+    "create": "Vault を作成",
+    "sharedProjects": "共有プロジェクト",
+    "displayNameFallback": "チーム Vault"
+  },
+  "modelCatalog": {
+    "title": "モデルカタログ",
+    "hint": "Tendril は、キュレーション済みのモデル表と、ディスクにキャッシュされた models.dev のスナップショットを統合します。",
+    "refresh": "今すぐ更新",
+    "refreshing": "更新中…",
+    "refreshed_other": "更新しました：models.dev から {{count}} 個のモデル",
+    "show": "カタログのステータスと設定を表示",
+    "hide": "カタログのステータスと設定を非表示",
+    "sourceLabel": "ソース：",
+    "liveTitle": "カタログは models.dev の情報で補完されています",
+    "live": "ライブ（models.dev）",
+    "staticTitle": "カタログは静的なフォールバック表を使用しています",
+    "static": "静的フォールバック",
+    "modelsLabel": "モデル：",
+    "modelSplit": "補完 {{dynamic}} 個 / キュレーション済み {{static}} 個",
+    "cacheUpdatedLabel": "キャッシュの更新：",
+    "cacheFileLabel": "キャッシュファイル：",
+    "age": {
+      "never": "なし（キャッシュファイルなし）",
+      "justNow": "たった今",
+      "marked_stale": "{{age}}（古い）",
+      "marked_expired": "{{age}}（期限切れ、キュレーション済みの表を使用）",
+      "marked_staleExpired": "{{age}}（古い）（期限切れ、キュレーション済みの表を使用）"
+    },
+    "enrichLabel": "models.dev の情報でカタログを補完",
+    "intervalLabel": "更新間隔",
+    "intervalHint": "バックグラウンドで更新する間隔（時間）です。0 にすると起動時に 1 回だけ更新し、以降は更新しません。",
+    "warnAgeLabel": "キャッシュ警告期間",
+    "warnAgeHint": "この日数を過ぎると、キャッシュは引き続き使用されますが、古いものとして報告されます。0 にすると警告しません。",
+    "maxAgeLabel": "キャッシュ最大保持期間",
+    "maxAgeHint": "この日数を過ぎると、キャッシュは無視され、代わりにキュレーション済みの表が使用されます。0 にすると期限切れになりません。"
+  },
+  "newsletter": {
+    "subscribed": "購読しました",
+    "emailLabel": "メールアドレス",
+    "subscribing": "購読中…",
+    "subscribe": "購読"
+  }
+}

@@ -1,1 +1,239 @@
-{}
+{
+  "rail": {
+    "ariaLabel": "Catégories de la boîte de réception",
+    "myIssues": "Mes issues",
+    "reviews": "Demandes de revue",
+    "projects": "Projets",
+    "noProjects": "Aucun projet dans les paramètres"
+  },
+  "header": {
+    "title": {
+      "myIssues": "Mes issues",
+      "reviews": "Demandes de revue",
+      "projectIssues": "Issues du projet {{project}}",
+      "projectIssues_noProject": "Issues du projet"
+    },
+    "refresh": "Actualiser",
+    "autoAccept": {
+      "on": "Acceptation automatique : activée",
+      "off": "Acceptation automatique : désactivée",
+      "onTooltip": "Les issues nouvellement assignées démarrent un plan dès qu'elles sont détectées",
+      "offTooltip": "Les issues nouvellement assignées sont marquées « En attente de décision » ci-dessous pour que vous les acceptiez ou les ignoriez",
+      "settings": "Paramètres d'acceptation automatique"
+    },
+    "checkNow": {
+      "label": "Vérifier maintenant",
+      "checking": "Vérification…",
+      "tooltip": "Importer maintenant les issues GitHub qui vous sont assignées, sans attendre la prochaine vérification planifiée"
+    }
+  },
+  "bulk": {
+    "selectAll": "Tout sélectionner",
+    "deselectAll": "Tout désélectionner",
+    "summary": "Sélection : {{selected}} sur {{total}}",
+    "openChat": {
+      "label": "Ouvrir le chat",
+      "labelWithCount": "Ouvrir le chat ({{selected}})",
+      "tooltip": "Discuter des issues sélectionnées avec l'agent de codage"
+    },
+    "fireOff": {
+      "label": "Lancer dans Tendril",
+      "labelWithCount": "Lancer dans Tendril ({{selected}})"
+    }
+  },
+  "freshness": {
+    "repo": {
+      "label": "Dépôt :",
+      "ariaLabel": "Filtrer par dépôt"
+    },
+    "updated": "Mis à jour {{when}}",
+    "updated_justNow": "Mis à jour à l'instant",
+    "notYetUpdated": "Pas encore mis à jour",
+    "autoRefresh": {
+      "label": "Actualisation auto :",
+      "ariaLabel": "Intervalle d'actualisation automatique",
+      "off": "Désactivée"
+    }
+  },
+  "fireNotice": {
+    "success_one": "{{count}} issue lancée dans Tendril",
+    "success_many": "{{count}} issues lancées dans Tendril",
+    "success_other": "{{count}} issues lancées dans Tendril",
+    "partial": "Lancées : {{fired}} sur {{total}}. Échec pour l'issue #{{number}} : {{error}}",
+    "partial_unknownIssue": "Lancées : {{fired}} sur {{total}}. Échec pour une issue : {{error}}"
+  },
+  "sweep": {
+    "alreadyRunning": "Une vérification est déjà en cours.",
+    "notMaster": "Ce démon n'est pas le maître, il n'a donc pas effectué la vérification.",
+    "imported": "Importées : {{imported}}, écartées : {{skipped}}.",
+    "accepted_one": "{{count}} issue a immédiatement démarré un plan.",
+    "accepted_many": "{{count}} issues ont immédiatement démarré un plan.",
+    "accepted_other": "{{count}} issues ont immédiatement démarré un plan.",
+    "accepted_partial_one": "{{count}} issue a immédiatement démarré un plan (les autres attendent votre décision).",
+    "accepted_partial_many": "{{count}} issues ont immédiatement démarré un plan (les autres attendent votre décision).",
+    "accepted_partial_other": "{{count}} issues ont immédiatement démarré un plan (les autres attendent votre décision).",
+    "errors_one": "{{count}} erreur : {{error}}",
+    "errors_many": "{{count}} erreurs : {{error}}",
+    "errors_other": "{{count}} erreurs : {{error}}",
+    "join": "{{previous}} {{next}}"
+  },
+  "chatTitle_one": "{{count}} issue",
+  "chatTitle_many": "{{count}} issues",
+  "chatTitle_other": "{{count}} issues",
+  "errors": {
+    "noRemotes": "Aucun dépôt distant Git résolu pour le projet {{project}}.",
+    "noRemotes_noProject": "Aucun dépôt distant Git résolu pour le projet (aucun projet sélectionné).",
+    "loadFailed": "Impossible de charger les issues GitHub"
+  },
+  "loading": "Chargement des issues depuis GitHub…",
+  "empty": {
+    "reviews": {
+      "title": "Vous êtes à jour",
+      "description": "Aucune pull request ne requiert actuellement votre revue."
+    },
+    "issues": {
+      "title": "Aucune issue trouvée",
+      "description": "Aucune issue ne correspond à la vue sélectionnée."
+    },
+    "filtered": "Aucune issue ne correspond à vos critères de recherche et de filtre actuels."
+  },
+  "filters": {
+    "search": {
+      "ariaLabel": "Rechercher des issues",
+      "placeholder": "Rechercher par titre, #numéro, auteur ou description…"
+    },
+    "awaiting": {
+      "label": "En attente",
+      "tooltip": "Afficher uniquement les issues assignées en attente de votre décision"
+    },
+    "labelPlaceholder": "Filtrer par étiquette…",
+    "assigneePlaceholder": "Filtrer par personne assignée…"
+  },
+  "issueTable": {
+    "columns": {
+      "issue": "Issue",
+      "repository": "Dépôt",
+      "labels": "Étiquettes",
+      "assignees": "Assignés"
+    },
+    "awaitingMark": {
+      "ariaLabel": "En attente de décision",
+      "tooltip": "En attente de votre décision. Détectée par la vérification des issues assignées {{when}} ; Accepter démarre un plan dans le projet {{project}}.",
+      "tooltip_justNow": "En attente de votre décision. Détectée à l'instant par la vérification des issues assignées ; Accepter démarre un plan dans le projet {{project}}."
+    },
+    "actions": {
+      "fireOff": {
+        "label": "Lancer dans Tendril",
+        "tooltip": "Lancer cette issue dans Tendril"
+      },
+      "viewDetails": {
+        "label": "Voir les détails",
+        "tooltip": "Voir les détails de l'issue"
+      },
+      "openGitHub": {
+        "label": "Ouvrir dans GitHub",
+        "tooltip": "Ouvrir l'issue sur GitHub"
+      },
+      "accept": {
+        "label": "Accepter",
+        "tooltip": "Accepter : démarrer un plan pour cette issue dans le projet {{project}}"
+      },
+      "more": {
+        "label": "Plus d'actions",
+        "tooltip": "Ouvrir dans GitHub ou ignorer"
+      },
+      "dismiss": {
+        "label": "Ignorer"
+      }
+    }
+  },
+  "reviewTable": {
+    "columns": {
+      "pullRequest": "Pull request",
+      "repository": "Dépôt",
+      "updated": "Mise à jour"
+    },
+    "actions": {
+      "openGitHub": {
+        "label": "Faire la revue sur GitHub",
+        "tooltip": "Ouvrir la pull request sur GitHub"
+      },
+      "viewDetails": {
+        "label": "Voir les détails",
+        "tooltip": "Voir les détails de la revue"
+      }
+    }
+  },
+  "sheet": {
+    "titleFallback": "Issue",
+    "assigned": "Assignés : {{assignees}}",
+    "openOnGitHub": "Ouvrir sur GitHub",
+    "dismiss": {
+      "label": "Ignorer",
+      "tooltip": "Ignorer définitivement : la vérification des issues assignées ne proposera plus cette issue"
+    },
+    "accept": {
+      "label": "Accepter",
+      "tooltip": "Démarrer un plan pour cette issue dans le projet {{project}}"
+    },
+    "fireOff": "Lancer dans Tendril",
+    "noDescription": "Aucune description fournie."
+  },
+  "pullRequests": {
+    "title": "Pull requests",
+    "status": {
+      "open": "Ouverte",
+      "merged": "Fusionnée",
+      "closed": "Fermée",
+      "unknown": "Inconnu"
+    },
+    "statusTooltip": {
+      "unknown": "Inconnu : le démon n'a pas pu résoudre cette pull request (dernière vérification : {{lastChecked}}). Resynchronisez pour réessayer.",
+      "unknown_neverChecked": "Inconnu : le démon n'a pas pu résoudre cette pull request (jamais vérifiée). Resynchronisez pour réessayer.",
+      "merged": "Fusionnée (dernière vérification : {{lastChecked}}). Les pull requests fusionnées ne sont jamais revérifiées.",
+      "merged_neverChecked": "Fusionnée (jamais vérifiée). Les pull requests fusionnées ne sont jamais revérifiées.",
+      "other": "{{status}} lors de la dernière vérification ({{lastChecked}}).",
+      "other_neverChecked": "{{status}} (jamais vérifiée)."
+    },
+    "syncNotice": {
+      "unreachableAll": "Aucun statut n'a pu être actualisé : GitHub est injoignable pour {{repos}}. Vérifiez que la CLI `{{cli}}` est installée et authentifiée (`{{command}}`).",
+      "unreachableSome": "Certains statuts sont inchangés : GitHub est injoignable pour {{repos}}. Vérifiez que la CLI `{{cli}}` est installée et authentifiée (`{{command}}`).",
+      "nothingToRefresh": "Rien à actualiser. Vérifiées récemment : {{fresh}} ; déjà fusionnées : {{merged}}.",
+      "alreadyRunning": "Une synchronisation est déjà en cours."
+    },
+    "columns": {
+      "plan": "Plan",
+      "project": "Projet",
+      "status": "Statut",
+      "pr": "PR",
+      "tokens": "Tokens",
+      "cost": "Coût",
+      "repository": "Dépôt",
+      "branch": "Branche"
+    },
+    "actions": {
+      "viewPlan": "Voir le plan",
+      "followUp": "Donner suite",
+      "openPr": "Ouvrir la PR",
+      "resync": "Resynchroniser"
+    },
+    "empty": {
+      "title": "Aucune pull request",
+      "description": "Aucun plan n'a encore de pull request enregistrée. Créez-en une depuis l'onglet Revue et elle apparaîtra ici.",
+      "loadFailed": "La liste des pull requests n'a pas pu être chargée ; rien ne peut donc être affiché.",
+      "filtered": "Aucune pull request ne correspond à votre recherche ou à vos critères de filtre actuels."
+    },
+    "search": {
+      "ariaLabel": "Rechercher des pull requests",
+      "placeholder": "Rechercher par plan, projet, dépôt ou branche…"
+    },
+    "statusFilterPlaceholder": "Filtrer par statut…",
+    "resyncAll": "Tout resynchroniser",
+    "resyncing": "Resynchronisation…",
+    "sheet": {
+      "titleFallback": "Plan",
+      "loadingRevision": "Chargement de la révision…",
+      "notFound": "Plan introuvable ou vide."
+    }
+  }
+}

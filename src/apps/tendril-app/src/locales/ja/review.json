@@ -1,1 +1,206 @@
-{}
+{
+  "sidebar": {
+    "title": "レビュー",
+    "badges": {
+      "verified": "検証済み",
+      "unverified": "未検証"
+    }
+  },
+  "shortcuts": {
+    "previousPlan": "前の計画",
+    "nextPlan": "次の計画"
+  },
+  "empty": {
+    "title": "レビュー対象の計画はありません",
+    "description": "完了した計画がレビュー待ちとしてここに表示されます"
+  },
+  "workspace": {
+    "meta_other": "計画 {{index}}/{{total}}",
+    "sourceLabel": {
+      "pr": "PR",
+      "issue": "Issue"
+    }
+  },
+  "actions": {
+    "requestChanges": "変更をリクエスト",
+    "resetToDraft": "下書きに戻す",
+    "deletePlan": "計画を削除",
+    "openPlanPage": "完全な仕様と差分を開く",
+    "partialDelivery": "部分的納品として承認"
+  },
+  "primary": {
+    "updatePr": "PR を更新",
+    "createPr": "PR を作成",
+    "deletePlan": "計画を削除",
+    "completePlan": "計画を完了",
+    "completing": "完了処理中…",
+    "pushing": "プッシュ中…",
+    "unavailable": "{{action}} は使用できません：{{reason}}"
+  },
+  "completionBlocked": {
+    "title": "変更不要",
+    "body": "実行前の検証で、Issue またはタスクがすでに解決済みのため変更不要と判断されました。この計画を削除するか、スキップまたはアイスボックスに移動できます。"
+  },
+  "errors": {
+    "markRecommendation": "「{{title}}」の状態を {{state}} に変更できませんでした：{{error}}",
+    "nothingSelected": "実装するレコメンデーションを 1 つ以上選択してください。",
+    "noLongerPending": "選択したレコメンデーションはすでに保留中ではありません。更新してもう一度お試しください。",
+    "implementFailed": "選択したレコメンデーションを実装できませんでした：{{error}}",
+    "reviewActionFailed": "レビューアクション「{{name}}」に失敗しました：{{error}}",
+    "completeFailed": "計画 {{planId}} を完了できませんでした：{{error}}",
+    "updatePrFailed": "計画 {{planId}} の PR を更新できませんでした：{{error}}"
+  },
+  "recommendationState": {
+    "pending": "保留中",
+    "accepted": "承認済み",
+    "acceptedWithNotes": "メモ付きで承認済み",
+    "declined": "却下済み"
+  },
+  "tabs": {
+    "summary": "概要",
+    "plan": "計画",
+    "details": "詳細",
+    "git": "Git",
+    "changes": "変更",
+    "artifacts": "成果物",
+    "recommendations": "レコメンデーション"
+  },
+  "verifications": {
+    "none": "検証なし",
+    "viewReport": "{{name}} のレポートを表示"
+  },
+  "verificationStatus": {
+    "pending": "保留中",
+    "pass": "合格",
+    "fail": "不合格",
+    "skipped": "スキップ"
+  },
+  "summary": {
+    "loading": "概要を読み込み中…",
+    "fallback": {
+      "heading": "概要",
+      "body": "この計画の概要が見つかりません。詳しくは検証を確認してください。",
+      "retry": "`{{resetToDraft}}` または `{{requestChanges}}` で計画を再試行できます。"
+    }
+  },
+  "plan": {
+    "noSpecification": "計画の仕様がありません。"
+  },
+  "details": {
+    "copyToClipboard": "クリップボードにコピー",
+    "fields": {
+      "planId": "計画 ID",
+      "folder": "フォルダー",
+      "initialPrompt": "初期プロンプト",
+      "revision": "リビジョン",
+      "profile": "プロファイル",
+      "relatedPlans": "関連計画",
+      "dependsOn": "依存関係",
+      "issue": "Issue",
+      "created": "作成日",
+      "level": "レベル",
+      "project": "プロジェクト",
+      "state": "状態"
+    },
+    "repositories": {
+      "heading": "リポジトリ",
+      "empty": "リポジトリが指定されていません"
+    },
+    "commits": {
+      "heading": "コミット",
+      "empty": "コミットはまだありません"
+    },
+    "verifications": {
+      "heading": "検証 ({{n}})",
+      "empty": "検証なし"
+    }
+  },
+  "git": {
+    "loading": "Git の状態を読み込み中…"
+  },
+  "changes": {
+    "loading": "変更を読み込み中…",
+    "empty": "この計画にはファイルの変更が記録されていません。"
+  },
+  "artifacts": {
+    "heading": "計画の成果物",
+    "description": "実行中に取得された出力、サンプルファイル、スクリーンショット。",
+    "loading": "成果物を読み込み中…",
+    "empty": "この計画の成果物が見つかりません。",
+    "screenshots": "スクリーンショット ({{n}})",
+    "otherFiles": "その他の成果物ファイル ({{n}})",
+    "copyPath": "パスをコピー",
+    "open": "開く",
+    "openTitle": "サイドパネルで開く"
+  },
+  "recommendations": {
+    "empty": "レコメンデーションはありません。",
+    "implement": "実装",
+    "starting": "開始中…",
+    "implementHint": "チェックしたレコメンデーションを承認し、それらを変更リクエストとして計画を再試行します。",
+    "select": "{{title}} を選択"
+  },
+  "noteDialog": {
+    "submit": "送信",
+    "accept": {
+      "title": "レコメンデーションを承認",
+      "ariaLabel": "レコメンデーションを承認",
+      "noteLabel": "操作者メモ（任意）",
+      "noteAriaLabel": "メモ（任意）",
+      "placeholder": "メモを入力（任意）…"
+    },
+    "decline": {
+      "title": "レコメンデーションを却下",
+      "ariaLabel": "レコメンデーションを却下",
+      "noteLabel": "却下の理由",
+      "noteAriaLabel": "却下の理由",
+      "placeholder": "却下の理由を入力…"
+    }
+  },
+  "actionsBar": {
+    "tooltip": {
+      "barDisabled": "無効：{{reason}}",
+      "barDisabledDefault": "無効：現在レビューアクションは使用できません",
+      "conditionNotMet": "無効：条件を満たしていません",
+      "conditionNotMetWithCondition": "無効：条件を満たしていません ({{condition}})",
+      "runCommand": "実行：{{command}}",
+      "runCommandWithPorts": "実行：{{command}}（ポート：{{ports}}）",
+      "runAction": "{{name}} を実行",
+      "runActionWithPorts": "{{name}} を実行（ポート：{{ports}}）",
+      "port": "{{name}}: {{port}}",
+      "conditionError": "{{run}}。条件を評価できませんでした：{{reason}}",
+      "conditionNotEvaluated": "{{run}}。ここでは条件は評価されていません：{{condition}}",
+      "starting": "{{name}} を開始中…",
+      "checking": "条件を確認中：{{condition}}"
+    }
+  },
+  "actionView": {
+    "sendComments_other": "{{count}} 件のコメントを変更リクエストとしてエージェントに送信",
+    "starting": "{{name}} を開始中…"
+  },
+  "recommendationsPage": {
+    "sidebarTitle": "レコメンデーション",
+    "empty": {
+      "title": "レコメンデーションはありません",
+      "description": "完了した計画のレコメンデーションがここに表示されます"
+    },
+    "position_other": "レコメンデーション <highlight>{{index}}/{{total}}</highlight>",
+    "decline": "却下",
+    "accept": "承認",
+    "accepting": "承認中…",
+    "acceptWithNotes": "メモ付きで承認",
+    "createIssue": "Issue を作成",
+    "viewPlan": "計画を表示",
+    "refresh": "更新",
+    "errors": {
+      "load": "レコメンデーションを読み込めませんでした：{{error}}",
+      "update": "レコメンデーション「{{title}}」を更新できませんでした：{{error}}",
+      "jobNotStarted": "「{{title}}」を承認済みにしましたが、{{jobType}} ジョブを開始できませんでした：{{error}}"
+    }
+  },
+  "impact": {
+    "small": "小",
+    "medium": "中",
+    "high": "高"
+  }
+}

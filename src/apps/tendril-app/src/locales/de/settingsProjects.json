@@ -1,1 +1,359 @@
-{}
+{
+  "view": {
+    "ariaLabel": "Projektkonfiguration",
+    "subtitle": "Projektkonfiguration",
+    "rename": "Projekt umbenennen"
+  },
+  "notifications": {
+    "saved": "Gespeichert",
+    "cloned": "Geklont",
+    "renamed": "Umbenannt"
+  },
+  "saveError": "Projekt konnte nicht gespeichert werden: {{error}}",
+  "rowActions": {
+    "edit": "Bearbeiten"
+  },
+  "bladeFooter": {
+    "add": "Hinzufügen"
+  },
+  "basic": {
+    "title": "Allgemein",
+    "hint": "Die Farbe des Projekts und der KI-Kontext, der jedem Agenten übergeben wird, der daran arbeitet.",
+    "color": {
+      "label": "Farbe",
+      "hint": "Ein Ivy-Farbname, so wie config.yaml ihn speichert."
+    },
+    "context": {
+      "label": "Kontext",
+      "placeholder": "Was ein Agent über dieses Projekt wissen sollte…"
+    },
+    "saved": "Projekt gespeichert"
+  },
+  "repositories": {
+    "title": "Repositories",
+    "hint": "Quell-Repositories und der Basis-Branch, von dem jeder Plan abzweigt.",
+    "empty": "Noch keine Repositories.",
+    "baseBranch": {
+      "ariaLabel": "Basis-Branch für {{path}}",
+      "placeholder": "Basis-Branch",
+      "saved": "Basis-Branch für {{path}} gespeichert"
+    },
+    "remove": {
+      "ariaLabel": "{{path}} entfernen",
+      "consequence": "Der Checkout auf der Festplatte bleibt unangetastet – es werden lediglich keine neuen Pläne für dieses Projekt mehr darauf aufgebaut.",
+      "removed": "{{path}} entfernt"
+    },
+    "add": {
+      "ariaLabel": "Repository-URL oder lokaler Pfad",
+      "placeholder": "Repository-URL oder lokaler Pfad",
+      "button": "Repository hinzufügen",
+      "cloning": "Wird geklont…",
+      "invalidPath": "Ungültiger Repository-Pfad.",
+      "added": "{{path}} hinzugefügt",
+      "cloned": "Repository nach {{path}} geklont",
+      "failed": "Repository konnte nicht hinzugefügt werden: {{error}}"
+    },
+    "note": "Eine Remote-URL wird nach TENDRIL_HOME geklont, und die Zeile zeigt statt der URL an, wohin geklont wurde; ein lokaler Pfad wird so gespeichert, wie er eingegeben wurde."
+  },
+  "reviewActions": {
+    "title": "Review-Aktionen",
+    "hint": "Schnellstart-Schaltflächen, die im Review angezeigt werden, um die App in der Vorschau zu öffnen oder auszuführen.",
+    "addButton": "Review-Aktion hinzufügen",
+    "addTitle": "Review-Aktion hinzufügen",
+    "editTitle": "Review-Aktion bearbeiten",
+    "columns": {
+      "name": "Aktionsname",
+      "command": "Befehl",
+      "condition": "Bedingung"
+    },
+    "empty": "Keine Review-Aktionen für dieses Projekt.",
+    "removal": {
+      "consequence": "Sie wird für die Pläne dieses Projekts im Review nicht mehr angeboten, und die übrigen Aktionen rücken in der Ausführungsreihenfolge an ihrer Stelle zusammen."
+    },
+    "saved": "Review-Aktion „{{name}}“ gespeichert",
+    "deleted": "Review-Aktion „{{name}}“ gelöscht"
+  },
+  "verifications": {
+    "title": "Verifikationen",
+    "hint": "Qualitätsprüfungen, die bestanden sein müssen, bevor Pläne als abgeschlossen gelten. Ziehen Sie sie in die gewünschte Reihenfolge.",
+    "addButton": "Verifikation hinzufügen",
+    "addTitle": "Verifikation hinzufügen",
+    "empty": "In config.yaml sind keine Verifikationen definiert, daher gibt es nichts zu aktivieren. Fügen Sie eine hinzu, um sie zu erstellen und hier zu aktivieren.",
+    "updated": "Verifikationen für {{project}} aktualisiert",
+    "orderSaved": "Ausführungsreihenfolge der Verifikationen gespeichert",
+    "added": "Verifikation hinzugefügt",
+    "addFailed": "Verifikation konnte nicht hinzugefügt werden: {{error}}"
+  },
+  "ports": {
+    "title": "Ports",
+    "hint": "Benannte Dienst-Ports. Ist der Standardport belegt, weicht ein Plan auf einen freien Port aus.",
+    "addButton": "Port hinzufügen",
+    "addTitle": "Port hinzufügen",
+    "editTitle": "Port bearbeiten",
+    "columns": {
+      "name": "Name",
+      "defaultPort": "Standardport",
+      "description": "Beschreibung"
+    },
+    "empty": "Keine Dienst-Ports konfiguriert. Definieren Sie benannte Ports für die dynamische Port-Zuweisung bei parallelen Plan-Reviews.",
+    "mergeLimitation": "Ports sind ein Mapping, und PUT /api/config führt Mappings per Deep Merge zusammen. Daher kann ein Port hier hinzugefügt oder geändert, aber nicht entfernt oder umbenannt werden.",
+    "saved": "Port „{{name}}“ gespeichert"
+  },
+  "envFiles": {
+    "title": "Umgebungsdateien",
+    "hint": "Dateien, die in jedem Plan-Worktree neu erstellt werden, da dieser ohne nicht versionierte .env-Dateien startet.",
+    "addButton": "Umgebungsdatei hinzufügen",
+    "addTitle": "Umgebungsdatei hinzufügen",
+    "editTitle": "Umgebungsdatei bearbeiten",
+    "columns": {
+      "path": "Pfad",
+      "template": "Vorlage",
+      "overrides": "Überschreibungen"
+    },
+    "empty": "Keine Umgebungsdateien konfiguriert. Definieren Sie Umgebungsdateien, um .env-Vorlagen zu erzeugen und Variablen in Plan-Worktrees einzufügen.",
+    "removal": {
+      "consequence": "Ihre Variablen werden nicht mehr in neue Plan-Worktrees eingefügt. Bereits in bestehenden Worktrees erzeugte Dateien bleiben unverändert."
+    },
+    "saved": "Umgebungsdatei „{{path}}“ gespeichert",
+    "deleted": "Umgebungsdatei „{{path}}“ gelöscht"
+  },
+  "agentBehavior": {
+    "title": "Agentenverhalten",
+    "autoImplement": {
+      "label": "Artefakt-Review / Richtlinie für automatische Umsetzung",
+      "options": {
+        "autoImplementPlans": "Pläne automatisch umsetzen",
+        "alwaysAskReview": "Immer Review anfordern"
+      }
+    },
+    "saved": "Agentenverhalten gespeichert"
+  },
+  "security": {
+    "title": "Sicherheit",
+    "hint": "Sandboxing, Datei- und Netzwerkregeln sowie Terminal-Bestätigung für dieses Projekt.",
+    "preset": {
+      "label": "Sicherheitsvorgabe",
+      "hint": "Jede Vorgabe außer „Benutzerdefiniert“ überschreibt die Sandbox- sowie Datei-/Netzwerkfelder unten.",
+      "options": {
+        "custom": "Benutzerdefiniert",
+        "permissive": "Freizügig",
+        "restricted": "Eingeschränkt",
+        "strict": "Streng"
+      }
+    },
+    "sandboxMode": {
+      "label": "Sandbox-Modus",
+      "hint": "„Allgemeine Einstellung übernehmen“ bedeutet keine Sandbox. Wirksam: {{effective}}.",
+      "options": {
+        "inheritGeneral": "Allgemeine Einstellung übernehmen",
+        "enabled": "Aktiviert",
+        "disabled": "Deaktiviert"
+      }
+    },
+    "outsideFileAccess": {
+      "label": "Dateizugriff außerhalb des Repos",
+      "hint": "„Verweigern“ verwirft alle Dateiregeln unten. Wirksam: {{effective}}.",
+      "options": {
+        "allow": "Erlauben",
+        "ask": "Nachfragen",
+        "deny": "Verweigern"
+      }
+    },
+    "terminalAutoExecution": {
+      "label": "Automatische Terminal-Ausführung",
+      "hint": "Nicht von der Vorgabe betroffen. Wirksam: {{effective}}.",
+      "options": {
+        "inheritGeneral": "Allgemeine Einstellung übernehmen",
+        "alwaysProceed": "Immer fortfahren",
+        "alwaysAsk": "Immer nachfragen"
+      }
+    },
+    "filePermissions": {
+      "label": "Dateiberechtigungen",
+      "hint": "Eine Regel `{{syntax}}` pro Zeile. {{allow}} fügt ein beschreibbares Verzeichnis hinzu; {{deny}} verweigert {{write}} und {{edit}} für den Pfad."
+    },
+    "networkRules": {
+      "label": "Netzwerkzugriffsregeln",
+      "hintAllowed": "Eine Regel `{{syntax}}` pro Zeile. Ein einzelnes {{deny}} schaltet den Netzwerkzugriff vollständig ab. Wirksam: erlaubt.",
+      "hintDenied": "Eine Regel `{{syntax}}` pro Zeile. Ein einzelnes {{deny}} schaltet den Netzwerkzugriff vollständig ab. Wirksam: verweigert."
+    },
+    "allowedCommands": {
+      "label": "Erlaubte Terminal-Befehle",
+      "hint": "Ein Befehl pro Zeile, jeweils erlaubt als `{{syntax}}`."
+    },
+    "enforcement": {
+      "enforces": "{{agent}} setzt durch: {{controls, list(style: narrow)}}.",
+      "enforcesNone": "{{agent}} setzt durch: keine dieser Einstellungen.",
+      "ignored": "Von {{agent}} ignoriert: {{controls, list(style: narrow)}}. Diese Schlüssel werden trotzdem geschrieben und von Agenten berücksichtigt, die sie unterstützen.",
+      "controls": {
+        "sandbox": "Sandbox-Modus",
+        "network": "Netzwerkzugriff",
+        "terminalPrompt": "Terminal-Bestätigung",
+        "fileRules": "Datei- und Befehlsregeln"
+      }
+    },
+    "saved": "Sicherheitseinstellungen für {{project}} gespeichert"
+  },
+  "mcpServers": {
+    "title": "Lokale Berechtigungen",
+    "hint": "Benutzerdefinierte Model-Context-Protocol-Server für dieses Projekt.",
+    "addButton": "MCP-Server hinzufügen",
+    "addTitle": "MCP-Server hinzufügen",
+    "editTitle": "MCP-Server bearbeiten",
+    "columns": {
+      "name": "Name",
+      "command": "Befehl",
+      "disabled": "Deaktiviert"
+    },
+    "disabledValue": {
+      "yes": "Ja",
+      "no": "Nein"
+    },
+    "empty": "Für dieses Projekt sind keine MCP-Server konfiguriert.",
+    "removal": {
+      "consequence": "Agenten, die an diesem Projekt arbeiten, erhalten seine Tools nicht mehr. Dadurch wird nur der Verweis des Projekts darauf entfernt, nicht die Serverdefinition selbst."
+    },
+    "saved": "MCP-Server „{{name}}“ gespeichert",
+    "deleted": "MCP-Server „{{name}}“ gelöscht"
+  },
+  "skills": {
+    "title": "Anpassungen",
+    "hint": "Benutzerdefinierte Skills und Prompt-Anweisungen für Agenten, die an diesem Projekt arbeiten.",
+    "addButton": "Benutzerdefinierten Skill hinzufügen",
+    "addTitle": "Benutzerdefinierten Skill hinzufügen",
+    "editTitle": "Benutzerdefinierten Skill bearbeiten",
+    "columns": {
+      "name": "Name",
+      "description": "Beschreibung",
+      "path": "Pfad"
+    },
+    "empty": "Für dieses Projekt sind keine benutzerdefinierten Skills konfiguriert.",
+    "removal": {
+      "consequence": "Agenten, die an diesem Projekt arbeiten, erhalten ihn nicht mehr. Dadurch wird nur der Verweis des Projekts darauf entfernt, nicht die Dateien des Skills selbst."
+    },
+    "saved": "Skill „{{name}}“ gespeichert",
+    "deleted": "Skill „{{name}}“ gelöscht",
+    "memoryNote": "Projekt-Erinnerungen liegen als Markdown-Dateien unter {{path}}. Der Daemon stellt dafür keine Route bereit, daher können sie hier noch nicht bearbeitet werden."
+  },
+  "dangerZone": {
+    "title": "Gefahrenzone",
+    "remove": {
+      "button": "Projekt entfernen",
+      "description": "Entfernt das Projekt aus config.yaml. Geklonte Repositories, Planordner und Verlauf bleiben auf der Festplatte erhalten, sodass das Projekt wiederhergestellt wird, wenn Sie es unter demselben Namen erneut hinzufügen."
+    },
+    "delete": {
+      "button": "Projekt löschen",
+      "description": "Löscht dauerhaft die Pläne des Projekts, seine geklonten Repositories unter {{path}}, seine Datenbankzeilen und seinen Konfigurationseintrag. Dies kann nicht rückgängig gemacht werden; zuvor werden Sie aufgefordert, den Projektnamen einzugeben."
+    }
+  },
+  "reviewActionBlade": {
+    "name": {
+      "label": "Name",
+      "placeholder": "Aktionsname…"
+    },
+    "command": {
+      "label": "Befehl",
+      "placeholder": "z. B. dotnet test"
+    },
+    "condition": {
+      "label": "Bedingung",
+      "placeholder": "z. B. {{example}}"
+    }
+  },
+  "verificationBlade": {
+    "name": {
+      "label": "Name",
+      "placeholder": "Name der Verifikation…",
+      "duplicate": "Eine Verifikation namens „{{name}}“ ist bereits vorhanden."
+    },
+    "prompt": {
+      "label": "Prompt",
+      "placeholder": "Verifikations-Prompt…"
+    }
+  },
+  "mcpServerBlade": {
+    "name": {
+      "label": "Name",
+      "placeholder": "Servername (z. B. sqlite)…"
+    },
+    "command": {
+      "label": "Befehl",
+      "placeholder": "Ausführbarer Befehl (z. B. npx)…"
+    },
+    "arguments": {
+      "label": "Argumente",
+      "placeholder": "Argumente (z. B. -y @modelcontextprotocol/server-sqlite)…",
+      "hint": "Wird an Leerzeichen getrennt, so wie EditMcpServerBladeView sie trennt."
+    },
+    "environment": {
+      "label": "Umgebungsvariablen",
+      "hint": "Ein Eintrag KEY=VALUE pro Zeile."
+    },
+    "disabled": "Deaktiviert"
+  },
+  "skillBlade": {
+    "name": {
+      "label": "Name",
+      "placeholder": "Skill-Name (z. B. code-review)…"
+    },
+    "description": {
+      "label": "Beschreibung",
+      "placeholder": "Kurze Beschreibung…"
+    },
+    "instructions": {
+      "label": "Anweisungen",
+      "placeholder": "Markdown-Anweisungen für den Agenten…"
+    },
+    "path": {
+      "label": "Datei-/Ordnerpfad",
+      "placeholder": "Pfad zum Skill-Ordner bzw. zur Skill-Datei (z. B. %TENDRIL_HOME%/Skills/my-skill)…"
+    },
+    "disabled": "Deaktiviert"
+  },
+  "portBlade": {
+    "name": {
+      "label": "Name",
+      "placeholder": "z. B. backend",
+      "hint": "Port-Kennung, auf die in Umgebungsüberschreibungen über {{placeholder}}-Platzhalter verwiesen wird."
+    },
+    "defaultPort": {
+      "label": "Standardport",
+      "invalid": "Der Standardport muss zwischen 1 und 65535 liegen.",
+      "hint": "Bevorzugter Port. Ist er bereits belegt, weist Tendril stattdessen einen freien zu."
+    },
+    "description": {
+      "label": "Beschreibung",
+      "placeholder": "Was hier lauscht…"
+    }
+  },
+  "envFileBlade": {
+    "path": {
+      "label": "Pfad",
+      "placeholder": "z. B. apps/web/.env",
+      "hint": "Relativer Pfad zur Umgebungsdatei, die im Plan-Worktree neu erstellt wird."
+    },
+    "template": {
+      "label": "Vorlage",
+      "placeholder": "z. B. .env.example",
+      "hint": "Optionale Basisvorlage, die in den Worktree kopiert wird, bevor die Überschreibungen angewendet werden."
+    },
+    "overrides": {
+      "label": "Überschreibungen",
+      "hint": "KEY=VALUE-Zeilen, die die Platzhalter {{ports}}, {{env}} und {{variable}} unterstützen."
+    }
+  },
+  "nameEditor": {
+    "ariaLabel": "Projektname",
+    "confirm": "Umbenennen bestätigen",
+    "cancel": "Umbenennen abbrechen",
+    "duplicate": "Ein Projekt namens „{{name}}“ ist bereits vorhanden.",
+    "renamed": "Projekt in „{{name}}“ umbenannt"
+  },
+  "removalKinds": {
+    "repository": "Repository",
+    "reviewAction": "Review-Aktion",
+    "environmentFile": "Umgebungsdatei",
+    "mcpServer": "MCP-Server",
+    "customSkill": "Benutzerdefinierten Skill"
+  }
+}

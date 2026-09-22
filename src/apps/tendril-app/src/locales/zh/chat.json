@@ -1,1 +1,247 @@
-{}
+{
+  "agentPicker": {
+    "tooltip": "智能体、模型和推理强度",
+    "triggerLabel": "智能体：{{agent}}",
+    "menuLabel": "智能体",
+    "optionsTooltip": "模型和推理强度",
+    "optionsLabel": "{{agent}} 选项",
+    "settingsLabel": "{{agent}} 设置",
+    "model": "模型",
+    "effort": "推理强度",
+    "unlistedValue": "默认",
+    "effortLevels": {
+      "default": "默认",
+      "none": "无",
+      "low": "低",
+      "medium": "中",
+      "high": "高",
+      "xhigh": "超高",
+      "max": "最高"
+    }
+  },
+  "composerAttachment": {
+    "remove": "移除 {{name}}"
+  },
+  "lightbox": {
+    "fallbackTitle": "图像预览",
+    "fallbackAlt": "附件预览",
+    "closeLabel": "关闭预览"
+  },
+  "newChatButtons": {
+    "label": "新建聊天",
+    "tooltip": "新建聊天",
+    "tooltip_terminal": "新建聊天（终端）",
+    "override_chat": "新建聊天界面会话",
+    "override_terminal": "新建终端聊天"
+  },
+  "planChat": {
+    "headline": "让 Tendril 修改任何内容"
+  },
+  "systemEvent": {
+    "linked": {
+      "completed": "{{type}} <plan>{{plan}}</plan> 已完成。",
+      "completed_plan": "计划 <plan>{{plan}}</plan> 已完成。",
+      "completed_pullRequest": "Pull Request <plan>{{plan}}</plan> 已完成。",
+      "failed": "{{type}} <plan>{{plan}}</plan> 失败。",
+      "failed_plan": "计划 <plan>{{plan}}</plan> 失败。",
+      "failed_pullRequest": "Pull Request <plan>{{plan}}</plan> 失败。",
+      "timeout": "{{type}} <plan>{{plan}}</plan> 超时。",
+      "timeout_plan": "计划 <plan>{{plan}}</plan> 超时。",
+      "timeout_pullRequest": "Pull Request <plan>{{plan}}</plan> 超时。",
+      "cancelled": "{{type}} <plan>{{plan}}</plan> 已取消。",
+      "cancelled_plan": "计划 <plan>{{plan}}</plan> 已取消。",
+      "cancelled_pullRequest": "Pull Request <plan>{{plan}}</plan> 已取消。",
+      "unknown": "{{type}} <plan>{{plan}}</plan>：{{status}}。",
+      "unknown_plan": "计划 <plan>{{plan}}</plan>：{{status}}。",
+      "unknown_pullRequest": "Pull Request <plan>{{plan}}</plan>：{{status}}。"
+    },
+    "quoted": {
+      "completed": "{{type}}“{{subject}}”已完成",
+      "completed_plan": "计划“{{subject}}”已完成",
+      "completed_pullRequest": "Pull Request“{{subject}}”已完成",
+      "failed": "{{type}}“{{subject}}”失败",
+      "failed_plan": "计划“{{subject}}”失败",
+      "failed_pullRequest": "Pull Request“{{subject}}”失败",
+      "timeout": "{{type}}“{{subject}}”超时",
+      "timeout_plan": "计划“{{subject}}”超时",
+      "timeout_pullRequest": "Pull Request“{{subject}}”超时",
+      "cancelled": "{{type}}“{{subject}}”已取消",
+      "cancelled_plan": "计划“{{subject}}”已取消",
+      "cancelled_pullRequest": "Pull Request“{{subject}}”已取消",
+      "unknown": "{{type}}“{{subject}}”：{{status}}",
+      "unknown_plan": "计划“{{subject}}”：{{status}}",
+      "unknown_pullRequest": "Pull Request“{{subject}}”：{{status}}"
+    },
+    "started": "已启动计划“{{plan}}”",
+    "fullStop": "{{sentence}}。",
+    "openPlan": "打开计划"
+  },
+  "terminal": {
+    "untitled": "智能体",
+    "newChat": "新聊天",
+    "starting": "正在启动 {{agent}}…",
+    "startingUnknown": "正在启动智能体…"
+  },
+  "jobsMenu": {
+    "triggerLabel": "查看运行中的任务",
+    "triggerTitle": "查看任务",
+    "triggerTitleRunning_other": "{{count}} 个任务正在运行",
+    "pillRunning_other": "{{count}} 个运行中",
+    "pillJobs_other": "{{count}} 个任务",
+    "pillWithFailures_other": "{{jobs}}（{{count}} 个失败）",
+    "listLabel": "任务",
+    "title": "运行中的任务（{{count}}）",
+    "title_spawned": "派生任务（{{count}}）",
+    "summaryRunning_other": "{{count}} 个运行中",
+    "summaryCompleted_other": "{{count}} 个已完成",
+    "summaryFailed_other": "{{count}} 个失败",
+    "genericJobType": "任务",
+    "openPlan": "打开计划",
+    "review": "让智能体审查结果"
+  },
+  "chatHeader": {
+    "titleInputLabel": "聊天名称",
+    "optionsLabel": "聊天选项",
+    "optionsMenuLabel": "聊天选项",
+    "editName": "编辑名称",
+    "deleteChat": "删除聊天"
+  },
+  "messageRow": {
+    "openAttachment": "打开 {{name}}",
+    "submittingAnswer": "正在提交回答…"
+  },
+  "view": {
+    "dropOverlay": "将文件拖放到此处以附加到消息",
+    "noActiveChat": "没有活动的聊天",
+    "working": "正在处理…",
+    "jumpToQuestion_down": "跳转到待回答的问题 ↓",
+    "jumpToQuestion_up": "跳转到待回答的问题 ↑",
+    "scrollToStreamingTail": "滚动到实时输出末尾",
+    "scrollToBottom": "滚动到底部"
+  },
+  "composer": {
+    "attach": "附加文件",
+    "promptLabel": "聊天提示词",
+    "placeholder": "向 Tendril 提出任何问题…",
+    "voice": "语音输入",
+    "voiceErrorDismiss": "关闭语音输入错误提示",
+    "nothingTranscribed": "未转写出任何内容，请重试。",
+    "clearAttachments": "全部清除",
+    "queue": "将消息加入队列",
+    "stop": "停止智能体",
+    "stopping": "正在停止智能体",
+    "stopTooltip": "停止智能体",
+    "stoppingTooltip": "正在停止智能体…",
+    "send": "发送消息"
+  },
+  "emptyState": {
+    "headline": "今天我们要产出什么？"
+  },
+  "greeting": {
+    "morning": "早上好！",
+    "afternoon": "下午好！",
+    "evening": "晚上好！"
+  },
+  "deleteSession": {
+    "title": "删除会话",
+    "body": "确定要删除“{{title}}”吗？此操作无法撤销。",
+    "bodyUntitled": "确定要删除此聊天会话吗？此操作无法撤销。"
+  },
+  "jobsReview": {
+    "prompt": "请审查此对话启动的任务的结果，并告诉我有哪些变化：\n{{jobs}}"
+  },
+  "search": {
+    "title": "搜索聊天",
+    "inputLabel": "搜索聊天",
+    "placeholder": "搜索聊天",
+    "empty": "未找到聊天。"
+  },
+  "queue": {
+    "title": "排队消息",
+    "hint": "智能体完成当前工作后发送",
+    "collapse": "折叠排队消息",
+    "expand": "展开排队消息",
+    "editInputLabel": "编辑排队的提示词",
+    "save": "保存排队的提示词",
+    "cancelEdit": "取消编辑",
+    "attachments_other": "{{count}} 个附件",
+    "sendNow": "立即发送",
+    "edit": "编辑排队的提示词",
+    "remove": "从队列中移除"
+  },
+  "samplePrompts": {
+    "chat": {
+      "review": {
+        "label_other": "审查等待中的 {{count}} 个计划",
+        "prompt_other": "有 {{count}} 个计划正在等待审查：{{plans}}。请总结每个计划交付的内容，并告诉我应先合并哪一个。"
+      },
+      "failed": {
+        "label": "#{{id}} 为什么失败？",
+        "prompt": "计划 #{{id}} {{title}} 失败了。请阅读它的日志和验证报告，并解释出了什么问题。"
+      },
+      "blocked": {
+        "label": "是什么阻塞了 #{{id}}？",
+        "prompt": "计划 #{{id}} {{title}} 已阻塞。请列出它所依赖的计划，以及每个计划还需要完成什么。"
+      },
+      "jobs": {
+        "label": "我的任务在做什么？",
+        "prompt_other": "有 {{count}} 个任务正在运行。请总结每个任务正在处理的内容。"
+      },
+      "addProject": {
+        "label": "添加新项目",
+        "prompt": "向我的 Tendril 添加一个新项目"
+      },
+      "editVerifications": {
+        "label": "编辑验证",
+        "prompt": "编辑我的项目的验证"
+      },
+      "teamVault": {
+        "label": "创建团队保管库",
+        "prompt": "创建一个共享的团队保管库"
+      },
+      "nextWork": {
+        "label": "接下来我该做什么？",
+        "prompt": "查看我所有项目中的草稿计划，推荐接下来应执行的两个，并说明理由。"
+      },
+      "shipped": {
+        "label": "本周交付了什么？",
+        "prompt": "按项目分组，总结最近七天内达到 {{state}} 状态的计划。"
+      }
+    },
+    "plan": {
+      "failedVerification": {
+        "label": "{{name}} 为什么失败？",
+        "prompt": "此计划的 {{name}} 验证失败了。请阅读 {{report}} 中的报告，解释失败原因以及如何修复。"
+      },
+      "prFeedback": {
+        "label": "总结 PR 反馈",
+        "prompt": "阅读 {{pr}} 上的审查评论，并列出其中要求的修改。"
+      },
+      "blocked": {
+        "label": "是什么阻塞了它？",
+        "prompt": "此计划被 {{dependencies}} 阻塞。请告诉我每个依赖项还需要完成什么。"
+      },
+      "tightenScope": {
+        "label": "收紧范围",
+        "prompt": "阅读此计划的最新修订版本，指出任何超出范围或描述不够明确的内容。"
+      },
+      "explainSolution": {
+        "label": "解释解决方案",
+        "prompt": "用通俗的语言解释此计划的 {{section}} 部分，并列出它将涉及的每个文件。"
+      },
+      "risks": {
+        "label": "可能会出什么问题？",
+        "prompt": "此计划中风险最高的部分是什么？审查时我应该检查哪些内容？"
+      }
+    }
+  },
+  "sidebar": {
+    "title": "聊天",
+    "searchLabel": "搜索聊天",
+    "newLabel": "新建聊天",
+    "untitled": "新聊天"
+  },
+  "attachments": {
+    "pickerTitle": "选择要附加的文件"
+  }
+}

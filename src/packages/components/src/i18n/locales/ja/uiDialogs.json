@@ -1,1 +1,294 @@
-{}
+{
+  "actions": {
+    "cancel": "キャンセル",
+    "close": "閉じる"
+  },
+  "status": {
+    "starting": "開始中…"
+  },
+  "planStates": {
+    "draft": "下書き",
+    "creating": "作成中",
+    "updating": "更新中",
+    "executing": "実行中",
+    "review": "レビュー待ち",
+    "failed": "失敗",
+    "completed": "完了",
+    "skipped": "スキップ",
+    "blocked": "ブロック中",
+    "icebox": "アイスボックス"
+  },
+  "confirm": {
+    "working": "処理中…"
+  },
+  "autoAcceptSettings": {
+    "title": "自動承認の設定",
+    "save": "保存",
+    "saving": "保存中…",
+    "intro": "新しく割り当てられた GitHub Issue を、一定の間隔で自動的に Tendril の計画としてインポートします。",
+    "autoAcceptLabel": "割り当てられた Issue を自動承認",
+    "intervalLabel": "確認間隔",
+    "intervalOption_other": "{{count}} 分",
+    "checkNow": "今すぐ確認",
+    "checking": "確認中…",
+    "checkAlreadyRunning": "確認はすでに実行中です。",
+    "checkSummary": "{{imported}} 件をインポートし、{{skipped}} 件をスキップしました。"
+  },
+  "createIssue": {
+    "title": "#{{planId}} の GitHub Issue を作成",
+    "titleForSubject": "{{kind}} から GitHub Issue を作成",
+    "titleForSubject_recommendation": "レコメンデーションから GitHub Issue を作成",
+    "description": "CreateIssue は計画から Issue 本文を作成し、選択したリポジトリで `gh` を使って Issue を作成します。",
+    "descriptionForSubject": "CreateIssue は、選択したリポジトリで `gh` を使ってこの Issue を作成します。Issue は計画 #{{planId}} に紐づけて登録されますが、計画自体の作業ではなく {{kind}} の内容を記述します。",
+    "descriptionForSubject_recommendation": "CreateIssue は、選択したリポジトリで `gh` を使ってこの Issue を作成します。Issue は計画 #{{planId}} に紐づけて登録されますが、計画自体の作業ではなくレコメンデーションの内容を記述します。",
+    "submit": "Issue を作成",
+    "issueTitle": {
+      "label": "タイトル",
+      "placeholder": "Issue の概要",
+      "required": "タイトルは必須です。計画自体のタイトルはここでは使用されません。"
+    },
+    "body": {
+      "label": "本文",
+      "placeholder": "何を、なぜ行うべきか…",
+      "hint": "文言が簡潔すぎる場合は、登録前に編集してください。エージェントは本文を Markdown に整形しますが、書き直さずに元の文言を残します。"
+    },
+    "repository": {
+      "label": "リポジトリ",
+      "none": "計画にもそのプロジェクトにもリポジトリが記録されていないため、<code>{{command}}</code> を実行する場所がありません。先に計画にリポジトリを追加してください。",
+      "hint": "Issue の作成先となるローカルリポジトリのパスです。owner/name 形式のスラッグではありません。"
+    },
+    "assignee": {
+      "label": "担当者"
+    },
+    "labels": {
+      "label": "ラベル",
+      "hint": "カンマ区切りで入力します。担当者とラベルは自由入力です。サービスが公開しているのは Issue のメタデータであり、組織内で割り当て可能なユーザーではないため、選択肢の一覧はありません。"
+    },
+    "comment": {
+      "label": "コメント",
+      "placeholder": "Issue 本文に追記する補足情報…"
+    }
+  },
+  "createPr": {
+    "title": "#{{planId}} の PR を作成",
+    "description": "CreatePr は計画のブランチをプッシュして PR を作成し、指定がない限りマージしてブランチを削除します。",
+    "submit": "PR を作成",
+    "toggles": {
+      "solveMergeConflicts": {
+        "label": "マージコンフリクトを解決"
+      },
+      "merge": {
+        "label": "マージ",
+        "hint": "オフにすると、マージせずに PR を作成します。"
+      },
+      "deleteBranch": {
+        "label": "ブランチを削除",
+        "label_multiple": "ブランチを削除",
+        "hint": "マージが成功した後、origin にプッシュしたブランチを削除します。",
+        "hint_multiple": "マージが成功した後、origin にプッシュした各ブランチを削除します。"
+      },
+      "includeArtifacts": {
+        "label": "成果物を含める"
+      },
+      "draft": {
+        "label": "ドラフトとして作成",
+        "hint": "ドラフト PR はマージできません。"
+      }
+    },
+    "reviewers": {
+      "label": "レビュアー",
+      "hint": "GitHub のログイン名をカンマ区切りで入力します。V2 には担当者フィールドがありません。CLI が担当者をレビュアー一覧にまとめるため、両者は同じ経路になります。"
+    },
+    "comment": {
+      "label": "コメント",
+      "placeholder": "差分を読む前にレビュアーが知っておくべきこと…"
+    }
+  },
+  "deleteProject": {
+    "title": "プロジェクトを完全に削除",
+    "confirm": "プロジェクトを完全に削除",
+    "intro": "プロジェクト <name>{{name}}</name> と、ディスク上でそのプロジェクトが所有するすべてのものを完全に削除します。この操作は元に戻せません。",
+    "plans": "このプロジェクトのすべての計画（リビジョンと検証レポートを含む）。",
+    "folder": "<code>{{root}}</code><code>{{name}}</code> — クローンしたリポジトリ、スキル、MCP 定義、メモリ（一度もプッシュされていないコミットを含む）。",
+    "database": "Tendril のデータベース内にある、このプロジェクトの計画、ジョブ、レコメンデーション。",
+    "config": "config.yaml 内のこのプロジェクトのエントリ。",
+    "logsKept": "ジョブログは保持されます。ログはプロジェクトではなくジョブ ID ごとに保存されているためです。",
+    "removeInstead": "ディスク上のファイルに触れずにプロジェクトを Tendril から外すには、キャンセルして代わりに「プロジェクトを登録解除」を使用してください。",
+    "typeToConfirm": "確認のため <name>{{name}}</name> と入力してください",
+    "typeToConfirmAriaLabel": "確認のため {{name}} と入力してください"
+  },
+  "dirtyRepo": {
+    "title": "ローカルの変更を検出",
+    "description_other": "⚠ {{count}} 個のリポジトリに未コミットの変更があります。これらの変更は、エージェントが作業するワークツリーには含まれません。",
+    "proceed": "このまま実行",
+    "changeCount_other": "{{count}} 件の未コミットの変更",
+    "moreChanges_other": "他 {{count}} 件"
+  },
+  "jobDebug": {
+    "title": "ジョブのデバッグ",
+    "loading": "ジョブの詳細を読み込み中…",
+    "copy": "詳細をコピー",
+    "copied": "コピーしました",
+    "copyFailed": "クリップボードにコピーできませんでした。",
+    "values": {
+      "duration": "{{seconds}} 秒",
+      "cost": "{{cost, currency(minimumFractionDigits: 4; maximumFractionDigits: 4; useGrouping: false)}}",
+      "tokens": "{{tokens, number}}"
+    },
+    "fields": {
+      "jobId": "ジョブ ID",
+      "planId": "計画 ID",
+      "planTitle": "プロンプト/タイトル",
+      "status": "ステータス",
+      "type": "タイプ",
+      "project": "プロジェクト",
+      "provider": "プロバイダー",
+      "model": "モデル",
+      "started": "開始",
+      "completed": "完了",
+      "lastOutput": "最終出力",
+      "duration": "所要時間",
+      "cost": "コスト",
+      "tokens": "トークン",
+      "processId": "プロセス ID",
+      "detached": "デタッチ済み",
+      "workingDirectory": "作業ディレクトリ",
+      "arguments": "引数",
+      "args": "引数",
+      "failureReason": "失敗の理由",
+      "permissionDenials": "権限の拒否",
+      "planFolder": "計画フォルダー",
+      "jobLog": "ジョブログ",
+      "jobPrompt": "ジョブプロンプト",
+      "jobRawLog": "ジョブ生ログ",
+      "jobEventwireLog": "ジョブ Eventwire ログ"
+    }
+  },
+  "noProjects": {
+    "title": "プロジェクトがありません",
+    "description": "すべての計画はいずれかのプロジェクトに属しますが、この Tendril ホームにはまだプロジェクトがありません。",
+    "openSettings": "プロジェクトへ移動",
+    "body": "<location>設定 → プロジェクト</location>でプロジェクト（名前、リポジトリ、計画で実行する検証）を追加してから、もう一度計画を作成してください。"
+  },
+  "pendingAnnotations": {
+    "title": {
+      "changes": "未反映の変更",
+      "answers": "未反映の回答",
+      "annotations": "未反映の注釈"
+    },
+    "description": {
+      "items_other": "⚠ この計画には、どの UpdatePlan 実行にもまだ反映されていない項目が {{count}} 件あります。",
+      "annotations_other": "⚠ この計画には、まだ反映されていない注釈が {{count}} 件あります。今すぐ実行すると、これらの注釈は無視されます。",
+      "answers_other": "⚠ この計画には、まだ反映されていない回答済みの質問が {{count}} 件あります。今すぐ実行すると、エージェントはこれらの回答を計画の一部としてではなく、そのままの形で読み取ります。",
+      "both": "⚠ この計画には、まだ反映されていない {{annotations}} と {{answers}} があります。今すぐ実行すると注釈は無視され、エージェントは回答を計画の一部としてではなく、そのままの形で読み取ります。",
+      "annotationCount_other": "{{count}} 件の注釈",
+      "answerCount_other": "{{count}} 件の回答済みの質問"
+    },
+    "updatePlan": "計画を更新",
+    "decline": {
+      "discardAnnotations": "注釈を破棄して実行",
+      "withoutUpdating": "更新せずに実行",
+      "anyway": "このまま実行"
+    },
+    "updateAndExecute": "計画を更新して実行",
+    "body": "今すぐ実行すると計画は記述どおりに実行されるため、これらのメモはエージェントの動作に反映されません。先に UpdatePlan を実行すると、メモが計画本文に取り込まれます。"
+  },
+  "resetToDraft": {
+    "title": "計画 #{{planId}} を下書きに戻す",
+    "confirm": "下書きに戻す",
+    "body": "計画は<state>下書き</state>に戻り、ワークツリーは削除されます。ワークツリー内の未コミットの作業はすべて破棄されます。すでにプッシュされたコミットには影響しません。"
+  },
+  "partialDelivery": {
+    "title": "検証失敗",
+    "confirm": "部分的納品として完了",
+    "body": "計画 #{{planId}} は、以下の検証が失敗しているにもかかわらず、<state>完了</state>として記録され、部分的納品としてマークされます："
+  },
+  "deletePlan": {
+    "title": "計画を削除",
+    "confirm": "削除",
+    "body": "計画 #{{planId}} を完全に削除しますか？計画フォルダー、すべてのリビジョン、すべての検証レポートが削除され、元に戻すことはできません。フォルダーを残す場合は、代わりに計画をスキップまたはアイスボックスに移動してください。",
+    "skip": "スキップに移動",
+    "archive": "アイスボックスに移動"
+  },
+  "planSearch": {
+    "title": "計画を検索",
+    "inputLabel": "計画を検索",
+    "placeholder": "計画を検索",
+    "searching": "検索中…",
+    "empty": "計画が見つかりません。"
+  },
+  "removeProject": {
+    "title": "プロジェクトを登録解除",
+    "confirm": "プロジェクトを登録解除",
+    "question": "プロジェクト <name>{{name}}</name> を登録解除しますか？",
+    "consequence": "config.yaml からプロジェクトを登録解除します。クローンしたリポジトリ、計画フォルダー、履歴はディスク上に残るため、マシンから何も削除されることはありません。ただし、Tendril にはこのプロジェクトが表示されなくなり、既存の計画とジョブは Tendril が認識しなくなったプロジェクトを参照することになります。"
+  },
+  "shareTunnel": {
+    "title": "作業を共有",
+    "intro": "安全な読み取り専用の Cloudflare トンネルを介して、チームメイトと作業を共有します。レビュアーはターミナルや設定にアクセスすることなく、計画や差分を確認し、コメントを残すことができます。",
+    "errorTitle": "エラー",
+    "connecting": {
+      "title": "トンネルを起動中",
+      "body": "共有トンネルを起動中… 通常は 15〜30 秒かかります。"
+    },
+    "active": {
+      "title": "共有中",
+      "body": "共有トンネルは読み取り専用・コメントのみの権限で有効になっています。"
+    },
+    "copyLink": "リンクをコピー",
+    "openInBrowser": "ブラウザーで開く",
+    "stop": "共有を停止",
+    "start": "共有トンネルを起動",
+    "errors": {
+      "start": "共有トンネルを起動できませんでした：{{error}}",
+      "stop": "共有トンネルを停止できませんでした：{{error}}",
+      "copy": "リンクをコピーできませんでした：{{error}}"
+    },
+    "notifications": {
+      "stoppedTitle": "無効化しました",
+      "stoppedMessage": "共有トンネルを停止しました",
+      "copiedTitle": "リンクをコピーしました",
+      "copiedMessage": "共有 URL をクリップボードにコピーしました"
+    }
+  },
+  "suggestChanges": {
+    "notAllowed": {
+      "title": "計画 #{{planId}} は変更を受け付けていません",
+      "state": "計画の状態は {{state}} です。変更リクエストを受け付けるのは、計画がレビュー待ちの間、またはすでに変更リクエストを適用中の間だけです。",
+      "commentsKept_other": "{{count}} 件のコメントは残っています。計画がレビュー待ちに戻ったら送信してください。"
+    },
+    "fromApp": {
+      "title": "計画 #{{planId}} を更新",
+      "submit": "更新",
+      "queue": "更新をキューに追加",
+      "summary_other": "実行中のアプリからの {{count}} 件のコメントが、変更リクエストとしてエージェントに送信されます。",
+      "queueNote_other": "計画 #{{planId}} にはすでに進行中のジョブが {{count}} 件あるため、このジョブはそれらの後ろでキューに入り、完了後に開始されます。",
+      "untaggedElement": "要素"
+    },
+    "diff": {
+      "title": "計画 #{{planId}} の変更をリクエスト",
+      "description": "実装の変更に関する提案や指示を入力してください。RetryPlan は既存のワークツリーで作業を再開し、コミット済みの作業に差分として適用します。",
+      "submit": "変更をリクエスト",
+      "submitWithInline_other": "変更をリクエスト（インライン {{count}} 件）",
+      "inlineNote_other": "ファイル差分への {{count}} 件のインラインコメントがフィードバックに含まれます。",
+      "requestLabel": "変更リクエスト",
+      "requestPlaceholder": "ワークツリー内で変更、修正、書き直しが必要な内容を記述してください…"
+    }
+  },
+  "unansweredQuestions": {
+    "title": "未回答の質問",
+    "description_other": "⚠ この計画には未回答の質問が {{count}} 件あります。今すぐ実行するとエージェントの判断に任され、推奨の選択肢があればそれが選ばれ、なければエージェント自身が判断します。",
+    "updatePlan": "計画を更新…",
+    "proceed": "このまま実行",
+    "updateAndExecute": "計画を更新して実行"
+  },
+  "updatePlan": {
+    "title": "計画 #{{planId}} を更新",
+    "description": "この計画を改訂するための指示を入力してください。UpdatePlan は計画を新しいリビジョンに書き直します。コードには一切触れません。",
+    "submit": "更新",
+    "alreadyRunning": "この計画では UpdatePlan がすでに実行中です。しばらくお待ちください…",
+    "instructionsLabel": "指示",
+    "instructionsAriaLabel": "更新の指示",
+    "instructionsPlaceholder": "回答済みの質問を取り込み、そのうえでスコープをガードチェーンのみに絞り込む…"
+  }
+}

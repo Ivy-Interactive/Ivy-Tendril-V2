@@ -1,1 +1,229 @@
-{}
+{
+  "header": {
+    "greeting": {
+      "morning": "おはようございます",
+      "afternoon": "こんにちは",
+      "evening": "こんばんは"
+    },
+    "headline": "今日は何を作りますか？"
+  },
+  "kpis": {
+    "featuresShipped": {
+      "label": "出荷済み機能",
+      "hint_other": "過去 {{count}} 日間"
+    },
+    "costPerFeature": {
+      "label": "機能あたりの平均コスト",
+      "noValue": "N/A",
+      "hint_other": "{{count}} 件の機能に対して {{spend}}",
+      "hintNoFeatures_other": "{{count}} 日間に出荷された機能なし",
+      "hintNoSpend_other": "{{count}} 日間に価格情報のある支出なし"
+    },
+    "forecastMonth": {
+      "label": "今月の予測",
+      "range": "{{lower}}〜{{upper}}",
+      "hint": "暦日 {{calendarDays}} 日〜稼働日 {{activityDays}} 日ベース",
+      "hintNoSpend": "予測の基になる支出の記録なし"
+    },
+    "avgCostPlan": {
+      "label": "計画あたりの平均コスト",
+      "hint": "前週は {{cost}}",
+      "hintNoPrior": "前週に価格情報のある計画なし"
+    },
+    "tokensConsumed": {
+      "label": "消費トークン",
+      "hint_other": "過去 {{count}} 日間",
+      "hintSubsidized": "{{percent}} がサブスクリプション適用"
+    }
+  },
+  "fallbackKpis": {
+    "featuresShipped": {
+      "label": "出荷済み機能",
+      "hint": "マージ済み PR と解決済み Issue（過去 30 日間）"
+    },
+    "costPerFeature": {
+      "label": "機能あたりの平均コスト",
+      "value": "N/A",
+      "hint": "コストデータがありません"
+    },
+    "forecastMonth": {
+      "label": "今月の予測",
+      "hint": "過去 30 日間のコストデータがありません"
+    },
+    "avgCostPlan": {
+      "label": "計画あたりの平均コスト",
+      "hint": "コストデータがありません"
+    }
+  },
+  "format": {
+    "currencyCompact": {
+      "thousand": "${{value}}k",
+      "million": "${{value}}M",
+      "billion": "${{value}}B",
+      "trillion": "${{value}}T"
+    },
+    "tokensCompact": {
+      "thousand": "{{value}}k",
+      "million": "{{value}}M"
+    }
+  },
+  "kpiSheet": {
+    "title": "KPI の内訳"
+  },
+  "breakdown": {
+    "titles": {
+      "featuresShipped": "出荷済み機能",
+      "costPerFeature": "機能あたりの平均コスト",
+      "forecastMonth": "今月の予測",
+      "avgCostPlan": "計画あたりの平均コスト"
+    },
+    "empty": {
+      "title": "データなし"
+    },
+    "details": {
+      "metric": "指標",
+      "formula": "計算式"
+    },
+    "delta": {
+      "notAvailable": "N/A"
+    },
+    "agents": {
+      "title": "コーディングエージェント別の支出",
+      "empty": "この期間にエージェントに帰属する支出はありません。",
+      "columns": {
+        "agent": "コーディングエージェント",
+        "cost": "支出",
+        "costShare": "支出の割合",
+        "tokens": "トークン",
+        "tokenShare": "トークンの割合",
+        "planCount": "計画"
+      },
+      "shareNotAvailable": "N/A",
+      "unknownAgent": "不明",
+      "partialAttribution": {
+        "title": "部分的な帰属",
+        "body": "エージェントの記録が始まる前の行は {{agent}} と表示され、特定のエージェントに帰属させることができません。",
+        "bodyWithShare": "エージェントの記録が始まる前の行は {{agent}} と表示され、特定のエージェントに帰属させることができません。これはこの期間の支出の {{share}} に相当します。",
+        "bodyUninformative": "エージェントの記録が始まる前の行は {{agent}} と表示され、特定のエージェントに帰属させることができません。これはこの期間の支出の {{share}} に相当するため、以下の内訳からは有用な情報が得られません。"
+      }
+    },
+    "featuresShipped": {
+      "subtitle": "件数の基になったマージ済み PR と解決済み Issue",
+      "note": {
+        "title": "アウトプット指標",
+        "body_other": "出荷済み機能は、過去 {{count}} 日間にマージされた PR と、PR なしで解決された Issue の数です。PR が 3 件ある計画は 3 件の機能、Issue のみの計画は 1 件の機能として数えます。"
+      },
+      "metric": "出荷済み機能",
+      "formula_other": "マージ済み PR + 解決済み Issue（過去 {{count}} 日間）",
+      "last_other": "過去 {{count}} 日間",
+      "prior_other": "その前の {{count}} 日間",
+      "periodDelta": "{{days}} 日間の増減",
+      "byDay": {
+        "title_other": "日別の機能（過去 {{count}} 日間）",
+        "empty": "{{days}} 日間に出荷された機能はありません。",
+        "columns": {
+          "date": "日付",
+          "count": "機能"
+        }
+      },
+      "mergedPrs": {
+        "title": "最近マージされたプルリクエスト",
+        "empty": "マージ済みのプルリクエストはまだ記録されていません。",
+        "columns": {
+          "plan": "計画",
+          "title": "タイトル",
+          "repo": "リポジトリ",
+          "merged": "マージ日",
+          "prUrl": "PR の URL"
+        },
+        "open": "開く"
+      }
+    },
+    "costPerFeature": {
+      "subtitle": "商の基になる 2 つの数値",
+      "note": {
+        "title": "単位コスト",
+        "body": "機能あたりの平均コストは、{{days}} 日間の支出を {{days}} 日間の出荷済み機能数で割った値です。そのため、このカードには隣の 2 つのカードの値の商がそのまま表示されます。"
+      },
+      "metric": "機能あたりの平均コスト",
+      "formula": "{{days}} 日間の支出 / {{days}} 日間の出荷済み機能数",
+      "lastSpend_other": "過去 {{count}} 日間（支出）",
+      "lastFeatures_other": "過去 {{count}} 日間（機能）",
+      "lastCostPerFeature_other": "過去 {{count}} 日間（機能あたりのコスト）",
+      "priorSpend_other": "その前の {{count}} 日間（支出）",
+      "priorFeatures_other": "その前の {{count}} 日間（機能）",
+      "priorCostPerFeature_other": "その前の {{count}} 日間（機能あたりのコスト）",
+      "noValue": "N/A",
+      "periodDelta": "{{days}} 日間の増減"
+    },
+    "forecastMonth": {
+      "subtitle": "両方の予測ベースと、その基になる日数",
+      "empty": "活動の記録がありません。",
+      "note": {
+        "title": "使用量とサブスクリプション適用の分析",
+        "bodySubsidized_other": "今月の予測は、過去 {{count}} 日間の 1 日あたりの活動から月末の支出を予測します。この期間のトークンの {{percent}} はサブスクリプションが適用され（{{subsidizedValue}} 相当）、直接 API 料金は {{apiCharges}} でした。",
+        "body_other": "今月の予測は、過去 {{count}} 日間の 1 日あたりの活動から月末の支出を予測します。直接 API の予測は実際に請求される自己負担の支出を見積もり、合計の予測はトークン全体の定価換算額を反映します。"
+      },
+      "metric": "今月の予測",
+      "apiCalendar": "直接 API の予測（暦日ベース）",
+      "apiActivity": "直接 API の予測（稼働日ベース）",
+      "totalCalendar": "合計予測（暦日ベース）",
+      "totalActivity": "合計予測（稼働日ベース）",
+      "subsidizedTokenShare": "サブスクリプション適用トークンの割合",
+      "subsidizedTokenShareValue": "トークンの {{percent}}",
+      "subsidizedValueShare": "サブスクリプション適用額の割合",
+      "subsidizedValueShareValue": "金額の {{percent}}",
+      "mtdApiSpend": "今月累計の直接 API 支出",
+      "mtdSubsidizedValue": "今月累計のサブスクリプション適用額",
+      "mtdUnattributedSpend": "今月累計の帰属不明の支出",
+      "mtdTotalMarketValue": "今月累計の定価換算総額",
+      "calendarDays": "期間内の暦日数",
+      "activeDays": "支出のあった稼働日数",
+      "daysRemaining": "残り日数",
+      "daysInMonth": "月の日数",
+      "dayCount_other": "{{count}} 日",
+      "daily": {
+        "title_other": "日別の支出（過去 {{count}} 日間）",
+        "empty": "{{days}} 日間の日別支出の記録が見つかりません。",
+        "columns": {
+          "date": "日付",
+          "cost": "総支出",
+          "apiCost": "API 支出",
+          "subsidizedCost": "サブスクリプション適用支出",
+          "tokens": "総トークン",
+          "subsidizedShare": "サブスクリプション適用 %"
+        },
+        "incompleteSplit": {
+          "title": "不完全な内訳",
+          "body": "この期間の支出のうち {{amount}} にはコストの出所がないため、総支出には含まれますが、API 列にもサブスクリプション適用列にも含まれません。そのため、この 2 つの列は実際より少なく表示されており、完全な内訳として読むことはできません。"
+        }
+      }
+    },
+    "avgCostPlan": {
+      "subtitle": "最近の計画（ダッシュは価格情報がない行を示します）",
+      "note": {
+        "title": "7 日間の移動平均",
+        "body_other": "計画あたりの平均コストは、過去 {{count}} 日間に作成され {{states}} 状態に達した計画について、実行とエージェントの支出の平均を算出します。価格情報のない計画（コストが null になるサブスクリプション実行など）は、平均が不当に低くならないよう除数から除外されます。"
+      },
+      "metric": "計画あたりの平均コスト",
+      "window": "期間",
+      "windowValue_other": "{{count}} 日（過去 {{count}} 日間に作成された計画）",
+      "statesIncluded": "対象の計画状態",
+      "currentAverage": "現在の {{days}} 日間平均",
+      "priorAverage": "前回の {{days}} 日間平均（8〜14 日前）",
+      "periodDelta": "{{days}} 日間の増減",
+      "plans": {
+        "title_other": "移動期間内の計画（過去 {{count}} 日間）",
+        "empty": "{{days}} 日間の移動期間内に作成された計画はありません。",
+        "columns": {
+          "plan": "計画",
+          "title": "タイトル",
+          "state": "状態",
+          "created": "作成日",
+          "tokens": "トークン",
+          "cost": "総コスト"
+        }
+      }
+    }
+  }
+}

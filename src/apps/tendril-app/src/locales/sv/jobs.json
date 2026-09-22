@@ -1,1 +1,235 @@
-{}
+{
+  "table": {
+    "columns": {
+      "id": {
+        "header": "ID"
+      },
+      "status": {
+        "header": "Status",
+        "filterPlaceholder": "Alla"
+      },
+      "planId": {
+        "header": "Plan-ID",
+        "filterPlaceholder": "ID…"
+      },
+      "prompt": {
+        "header": "Prompt"
+      },
+      "type": {
+        "header": "Typ",
+        "filterPlaceholder": "Alla"
+      },
+      "project": {
+        "header": "Projekt",
+        "filterPlaceholder": "Alla"
+      },
+      "timer": {
+        "header": "Tid",
+        "filterPlaceholder": "Sekunder…"
+      },
+      "agentOutput": {
+        "header": "Agentutdata",
+        "filterPlaceholder": "Datum…"
+      },
+      "cost": {
+        "header": "Kostnad",
+        "filterPlaceholder": "Belopp…"
+      },
+      "tokens": {
+        "header": "Tokens",
+        "filterPlaceholder": "Antal…"
+      },
+      "timestamp": {
+        "header": "Tidsstämpel",
+        "filterPlaceholder": "Datum…"
+      },
+      "statusMessage": {
+        "header": "Statusmeddelande"
+      }
+    },
+    "detached": {
+      "label": "Frikopplad",
+      "title": "Frikopplad (PID {{pid}}) — övervakar en aktiv process som startades före den senaste omstarten av daemonen",
+      "unknownPid": "okänd"
+    },
+    "empty": {
+      "filtered": "Inga jobb matchar de aktuella filtren.",
+      "none": "Inga jobb än. Ett jobb skapas när du startar en plan, ett nytt försök eller en PR."
+    },
+    "queryError": "Det gick inte att läsa jobbtabellen: {{error}}",
+    "statusProgress": {
+      "ariaLabel": "Jobb per status"
+    },
+    "headerMenu": {
+      "ariaLabel": "Åtgärder för jobblistan",
+      "stopAllQueued": "Stoppa alla köade ({{count}})",
+      "stopAll": "Stoppa alla ({{count}})"
+    }
+  },
+  "actions": {
+    "menu": "Jobbåtgärder",
+    "stop": {
+      "label": "Stoppa",
+      "tooltip": "Stoppa jobbet",
+      "busy": "Stoppar…"
+    },
+    "rerun": {
+      "label": "Kör igen",
+      "unavailable": "Det går inte att köra igen: de ursprungliga argumenten sparades inte."
+    },
+    "forceStart": {
+      "label": "Tvinga start",
+      "tooltip": "Tvinga start av det här blockerade jobbet",
+      "busy": "Startar…"
+    },
+    "debug": {
+      "label": "Felsök",
+      "tooltip": "Visa felsökningsinformation för jobbet"
+    },
+    "delete": {
+      "label": "Ta bort",
+      "tooltip": "Ta bort jobbet"
+    }
+  },
+  "errors": {
+    "stopFailed": "Det gick inte att stoppa: {{error}}",
+    "forceStartFailed": "Det gick inte att tvinga start: {{error}}",
+    "deleteFailed": "Det gick inte att ta bort: {{error}}"
+  },
+  "deleteDialog": {
+    "title": "Ta bort jobb",
+    "body": "Vill du ta bort det här jobbet? Det går inte att ångra."
+  },
+  "statusMessage": {
+    "blocked": "Väntar på att beroende planer ska slutföras.",
+    "failed": "Jobbet stötte på ett fel under exekveringen",
+    "timeout": "Jobbet överskred den konfigurerade tidsgränsen",
+    "queued": "Väntar på en ledig jobbplats",
+    "stopped": "Jobbet stoppades manuellt",
+    "pending": "Jobbet står i kö och väntar på att starta."
+  },
+  "agentOutput": {
+    "starting": "Startar…",
+    "done": "Klart"
+  },
+  "cost": {
+    "estimated": "~{{cost}}",
+    "notReported": "Ingen kostnad rapporterades för jobbet"
+  },
+  "tokens": {
+    "buckets": {
+      "input": "Indata",
+      "output": "Utdata",
+      "cacheRead": "Cacheläsning",
+      "cacheWrite": "Cacheskrivning",
+      "reasoning": "Resonemang"
+    },
+    "breakdownEntry": "{{label}} {{tokens, number}}"
+  },
+  "outputSheet": {
+    "title": "{{type}} {{planId}}",
+    "fallbackTitle": "Jobbutdata"
+  },
+  "session": {
+    "detachedBadge": "Frikopplad (PID {{pid}}) — övervakar en aktiv process",
+    "tokens": "Tokens {{tokens}}",
+    "cost": "Kostnad {{cost}}",
+    "closeTab": "Stäng sessionsfliken",
+    "noOutput": "Ingen utdata tillgänglig.",
+    "statusCallout": {
+      "title": "Jobb: {{status}}",
+      "title_pending": "Jobbet väntar",
+      "title_queued": "Jobbet är köat",
+      "title_blocked": "Jobbet är blockerat",
+      "title_failed": "Jobbet misslyckades",
+      "title_timeout": "Jobbet fick timeout",
+      "title_stopped": "Jobbet stoppades"
+    }
+  },
+  "costSheet": {
+    "title": "Kostnad & tokens",
+    "titleWithPlan": "Kostnad & tokens — {{planId}}",
+    "details": {
+      "model": "Modell",
+      "provider": "Leverantör",
+      "type": "Typ",
+      "profile": "Profil",
+      "agentCost": "Kostnad rapporterad av agenten"
+    },
+    "notProvided": "Ej angiven",
+    "noUsage": "Ingen uppdelning per token registrerades för jobbet.",
+    "noUsage_total": "Ingen uppdelning per token registrerades för jobbet, bara totalt {{total}} tokens.",
+    "breakdown": {
+      "title": "Uppdelning",
+      "tokenType": "Tokentyp",
+      "tokens": "Tokens",
+      "total": "Totalt"
+    },
+    "totalCost": "Total kostnad"
+  },
+  "promptSheet": {
+    "title": "Fullständig prompt",
+    "empty": "Jobbet sparade ingen prompttext."
+  },
+  "clear": {
+    "dialogTitle": "Rensa jobb",
+    "confirm": "Rensa",
+    "confirmCount": "Rensa {{count}}",
+    "countFailed": "Det gick inte att räkna jobben: {{error}}",
+    "failed": "Det gick inte att rensa: {{error}}",
+    "scopes": {
+      "completed": {
+        "label": "Rensa slutförda",
+        "counting": "Räknar slutförda jobb…",
+        "empty": "Det finns inga slutförda jobb att rensa.",
+        "confirm_one": "Vill du ta bort {{count}} slutfört jobb? Dess loggar och utdata tas bort samtidigt, och det går inte att ångra.",
+        "confirm_other": "Vill du ta bort {{count}} slutförda jobb? Deras loggar och utdata tas bort samtidigt, och det går inte att ångra."
+      },
+      "failed": {
+        "label": "Rensa misslyckade",
+        "counting": "Räknar misslyckade jobb…",
+        "empty": "Det finns inga misslyckade jobb att rensa.",
+        "confirm_one": "Vill du ta bort {{count}} misslyckat jobb? Dess loggar och utdata tas bort samtidigt, och det går inte att ångra.",
+        "confirm_other": "Vill du ta bort {{count}} misslyckade jobb? Deras loggar och utdata tas bort samtidigt, och det går inte att ångra."
+      },
+      "timeout": {
+        "label": "Rensa jobb med timeout",
+        "counting": "Räknar jobb som fått timeout…",
+        "empty": "Det finns inga jobb med timeout att rensa.",
+        "confirm_one": "Vill du ta bort {{count}} jobb som fått timeout? Dess loggar och utdata tas bort samtidigt, och det går inte att ångra.",
+        "confirm_other": "Vill du ta bort {{count}} jobb som fått timeout? Deras loggar och utdata tas bort samtidigt, och det går inte att ångra."
+      },
+      "stopped": {
+        "label": "Rensa stoppade",
+        "counting": "Räknar stoppade jobb…",
+        "empty": "Det finns inga stoppade jobb att rensa.",
+        "confirm_one": "Vill du ta bort {{count}} stoppat jobb? Dess loggar och utdata tas bort samtidigt, och det går inte att ångra.",
+        "confirm_other": "Vill du ta bort {{count}} stoppade jobb? Deras loggar och utdata tas bort samtidigt, och det går inte att ångra."
+      },
+      "all": {
+        "label": "Rensa alla avslutade",
+        "counting": "Räknar avslutade jobb…",
+        "empty": "Det finns inga avslutade jobb att rensa.",
+        "confirm_one": "Vill du ta bort {{count}} avslutat jobb? Dess loggar och utdata tas bort samtidigt, och det går inte att ångra.",
+        "confirm_other": "Vill du ta bort {{count}} avslutade jobb? Deras loggar och utdata tas bort samtidigt, och det går inte att ångra."
+      }
+    }
+  },
+  "notifications": {
+    "exit": {
+      "completed": "{{type}} slutfördes",
+      "failed": "{{type}} misslyckades",
+      "timedOut": "{{type}} fick timeout",
+      "withReason": "{{subject}}: {{reason}}"
+    },
+    "summary": {
+      "title": "Jobben har avslutats",
+      "finished_one": "{{count}} jobb är klart",
+      "finished_other": "{{count}} jobb är klara",
+      "finishedWithFailures_one": "{{count}} jobb är klart, {{failures}}",
+      "finishedWithFailures_other": "{{count}} jobb är klara, {{failures}}",
+      "failedCount_one": "{{count}} misslyckat",
+      "failedCount_other": "{{count}} misslyckade"
+    }
+  }
+}

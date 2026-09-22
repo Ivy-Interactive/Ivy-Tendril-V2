@@ -1,1 +1,223 @@
-{}
+{
+  "workspace": {
+    "moreActions": {
+      "label": "その他の操作",
+      "tooltip": "その他",
+      "menuAriaLabel": "その他の操作"
+    },
+    "source": "ソース",
+    "verifications": "検証",
+    "questions": "質問",
+    "resizer": {
+      "tooltip": "ドラッグでサイズを変更、ダブルクリックでリセット",
+      "ariaLabel": "チャットのサイズを変更"
+    },
+    "chatAriaLabel": "計画チャット"
+  },
+  "diffView": {
+    "empty": "表示する差分はありません",
+    "fileCount_other": "{{count}} 個のファイル",
+    "jumpToFile": {
+      "ariaLabel": "ファイルへ移動",
+      "placeholder": "ファイルへ移動…"
+    },
+    "untitledFile": "差分 {{index}}",
+    "untitledPath": "差分",
+    "viewed": "確認済み",
+    "commentToggle": {
+      "noneTooltip": "このファイルにはコメントがありません",
+      "showTooltip_other": "{{count}} 件のコメントを表示",
+      "hideTooltip_other": "{{count}} 件のコメントを非表示",
+      "showAriaLabel": "コメントを表示",
+      "hideAriaLabel": "コメントを非表示"
+    },
+    "comment": {
+      "draftAuthor": "エージェントへの指示（下書き）",
+      "resolvedBadge": "✓ 解決済み",
+      "edit": "編集",
+      "reopenTooltip": "コメントを再度開く",
+      "resolveTooltip": "コメントを解決済みにする",
+      "unresolve": "未解決に戻す",
+      "resolve": "解決済みにする",
+      "deleteTooltip": "コメントを削除",
+      "deleteAriaLabel": "コメントを削除",
+      "delete": "削除"
+    },
+    "commentForm": {
+      "title": "エージェントへの指示",
+      "editTitle": "エージェントへの指示を編集",
+      "placeholder": "この行に対するエージェントへの指示を入力…",
+      "cancel": "キャンセル",
+      "add": "コメントを追加",
+      "update": "コメントを更新"
+    }
+  },
+  "changesView": {
+    "empty": "ファイルの変更はありません。",
+    "treeAriaLabel": "変更されたファイル",
+    "fileCount_other": "{{count}} 個のファイル",
+    "jumpToFile": {
+      "ariaLabel": "ファイルへ移動",
+      "placeholder": "ファイルへ移動…"
+    }
+  },
+  "gitView": {
+    "atRisk": {
+      "title": "失われるおそれのあるコミット",
+      "unreachable_other": "{{count}} 件のコミットは、どのブランチ、タグ、リモートからも到達できません：<hashes/>。これらはルーズオブジェクトとしてのみ存在するため、リポジトリで次に <code>{{gcCommand}}</code> が実行されると破棄されます。残すには参照を付けてください：<code>{{recoverCommand}}</code>。",
+      "missing_other": "{{count}} 件のコミットが、計画のリポジトリ内にまったく見つかりません：<hashes/>。オブジェクトがすでに削除（prune）されたか、コミットが作成されたリポジトリが計画のリポジトリに含まれていません。",
+      "hashSeparator": "、",
+      "badge": {
+        "unreachable": "到達不能",
+        "missing": "未検出"
+      }
+    },
+    "commitTable": {
+      "commit": "コミット",
+      "message": "メッセージ",
+      "files": "ファイル",
+      "unresolved": "（未解決のコミット）"
+    },
+    "worktrees": {
+      "heading": "ワークツリー",
+      "emptyFinished": "計画が最終状態に達した後、ワークツリーは削除されました。",
+      "emptyNeverCreated": "ワークツリーは作成されなかったか、計画が期限を超えてアイドル状態だったため、古いワークツリーの回収処理によって回収されました。",
+      "emptyUnknown": "ワークツリーは削除されたか、作成されませんでした。",
+      "copyPath": "{{name}} へのパスをコピー",
+      "repository": "リポジトリ",
+      "base": "ベース",
+      "worktree": "ワークツリー",
+      "head": "HEAD",
+      "detachedHead": "デタッチされた HEAD",
+      "uncommittedChanges": "このワークツリーには未コミットの変更があります。どのコミットにも属していないため、何も保護されていません。",
+      "noCommits": "（コミットなし）"
+    },
+    "commits": {
+      "heading": "コミット",
+      "description": "計画に記録されていますが、計画にまだ残っているどのワークツリーからも到達できません。通常は、PR のマージ後にワークツリーが削除されたためです。"
+    },
+    "pullRequests": {
+      "heading": "プルリクエスト",
+      "repository": "リポジトリ",
+      "pr": "PR"
+    },
+    "empty": "この計画にはまだワークツリー、コミット、プルリクエストがありません。"
+  },
+  "alert": {
+    "note": "メモ",
+    "tip": "ヒント",
+    "important": "重要",
+    "warning": "警告",
+    "caution": "注意"
+  },
+  "diagram": {
+    "loading": "図を読み込み中…",
+    "invalidGraphviz": "Graphviz DOT の構文が無効です",
+    "invalidMermaid": "Mermaid 図の構文が無効です"
+  },
+  "codeBlock": {
+    "copy": "クリップボードにコピー"
+  },
+  "image": {
+    "loadFailed": "画像を読み込めませんでした",
+    "close": "閉じる"
+  },
+  "search": {
+    "placeholder": "ドキュメント内を検索…",
+    "ariaLabel": "ドキュメント内を検索",
+    "noMatches": "一致なし",
+    "position": "{{current}} / {{total}}",
+    "previous": "前の一致",
+    "next": "次の一致",
+    "close": "検索を閉じる"
+  },
+  "annotation": {
+    "quote": "「{{text}}」",
+    "quoteTruncated": "「{{text}}…」",
+    "add": {
+      "placeholder": "コメントを追加…",
+      "cancel": "キャンセル",
+      "submit": "追加"
+    },
+    "edit": {
+      "resolvedBadge": "✓ 解決済み",
+      "placeholder": "コメントを編集…",
+      "reopenTooltip": "注釈を再度開く",
+      "resolveTooltip": "注釈を解決済みにする",
+      "unresolve": "未解決に戻す",
+      "resolve": "解決済みにする",
+      "deleteTooltip": "注釈を削除",
+      "delete": "削除",
+      "cancel": "キャンセル",
+      "save": "保存"
+    },
+    "selectionToolbar": {
+      "addComment": "コメントを追加"
+    }
+  },
+  "wireframe": {
+    "invalid": "このワイヤーフレームブロックは無効です。",
+    "placeholder": "ワイヤーフレーム：<strong>{{name}}</strong>。表示するには計画を開いてください。",
+    "lastGoodBuild": "最後にビルドできたバージョンを表示しています",
+    "paused": "ライブ更新を一時停止中",
+    "openFullSize": "フルサイズで開く",
+    "building": "ワイヤーフレームをビルド中…",
+    "missing": "この計画には <strong>{{name}}</strong> という名前のワイヤーフレームがありません。",
+    "buildFailed": "このワイヤーフレームはビルドできません。",
+    "unavailable": "ワイヤーフレームのプレビューは現在利用できません。",
+    "retry": "再試行",
+    "close": "閉じる",
+    "errors": {
+      "empty": "ブロックにワイヤーフレーム名がありません。`{{example}}` のような行を追加してください。",
+      "notYaml": "ブロックが有効な YAML ではありません。",
+      "notMapping": "ブロックは `{{example}}` の形式で記述してください。必要に応じて {{height}} と {{viewport}} も指定できます。",
+      "unknownKey": "不明なキー「{{key}}」です。{{name}}、{{height}}、{{viewport}} のいずれかを使用してください。",
+      "badName": "{{name}} は {{example}} のような小文字のスラッグにしてください。",
+      "badHeight": "{{height}} は 1〜{{max}} の整数（ピクセル）にしてください。",
+      "badViewport": "{{viewport}} は {{desktop}}、{{tablet}}、{{mobile}} のいずれかにしてください。"
+    }
+  },
+  "questions": {
+    "recommended": "推奨",
+    "optional": "任意",
+    "selectAll": "該当するものをすべて選択",
+    "other": "その他",
+    "otherPlaceholder": "回答を入力",
+    "otherAriaLabel": "{{question}} へのその他の回答",
+    "notAnswered": {
+      "skipped": "未回答（必須ではありません）",
+      "agentDecided": "未回答（エージェントが判断）"
+    },
+    "clear": "クリア",
+    "clearAllAriaLabel": "このブロックの回答をすべてクリア",
+    "clearOneAriaLabel": "回答をクリア",
+    "submit": "回答を送信",
+    "submitNote": {
+      "noAnswers": "送信するには質問に回答してください。",
+      "oneUnanswered": "未回答：「{{title}}」。このまま送信すると、エージェントの判断に任されます。",
+      "manyUnanswered_other": "{{count}} 件の質問が未回答です。このまま送信すると、エージェントの判断に任されます。"
+    }
+  },
+  "answersCard": {
+    "ariaLabel": "送信済みの回答",
+    "title": "回答",
+    "notAnswered": {
+      "skipped": "未回答（必須ではありません）",
+      "agentDecided": "未回答（エージェントが判断）"
+    }
+  },
+  "verificationList": {
+    "dragHandle": "ドラッグハンドル",
+    "required": "必須",
+    "a11y": {
+      "roleDescription": "並べ替え可能",
+      "instructions": "ドラッグ可能な項目を持ち上げるには、スペースキーを押します。ドラッグ中は矢印キーで項目を移動します。もう一度スペースキーを押すと新しい位置に項目をドロップし、Esc キーを押すとキャンセルします。",
+      "pickedUp": "ドラッグ可能な項目 {{active}} を持ち上げました。",
+      "movedOver": "ドラッグ可能な項目 {{active}} をドロップ可能な領域 {{over}} の上に移動しました。",
+      "movedAway": "ドラッグ可能な項目 {{active}} はドロップ可能な領域の上にありません。",
+      "droppedOver": "ドラッグ可能な項目 {{active}} をドロップ可能な領域 {{over}} にドロップしました",
+      "dropped": "ドラッグ可能な項目 {{active}} をドロップしました。",
+      "cancelled": "ドラッグをキャンセルしました。ドラッグ可能な項目 {{active}} をドロップしました。"
+    }
+  }
+}

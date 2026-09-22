@@ -1,1 +1,274 @@
-{}
+{
+  "agentButton": {
+    "label": "Agent",
+    "newChatTooltip": "Neuer Chat",
+    "flyout": {
+      "empty": "Noch keine Chats",
+      "newChat": "Neuer Chat"
+    }
+  },
+  "newPlanButton": {
+    "label": "Neuer Plan"
+  },
+  "settingsButton": {
+    "label": "Einstellungen"
+  },
+  "nav": {
+    "resizeAriaLabel": "Navigationsgröße ändern"
+  },
+  "railFlyout": {
+    "previous": "Zurück",
+    "next": "Weiter"
+  },
+  "sectionItems": {
+    "state": {
+      "working": "Arbeitet",
+      "completed": "Abgeschlossen"
+    },
+    "menu": {
+      "label": "Optionen für {{title}}",
+      "tooltip": "Optionen",
+      "pin": "Chat anheften",
+      "unpin": "Chat nicht mehr anheften",
+      "rename": "Namen bearbeiten",
+      "delete": "Löschen"
+    },
+    "titleEditor": {
+      "ariaLabel": "Elementname"
+    }
+  },
+  "sidebarHeader": {
+    "openSidebar": "Seitenleiste öffnen",
+    "closeSidebar": "Seitenleiste schließen"
+  },
+  "sidebarSection": {
+    "searchLabel": "Pläne durchsuchen",
+    "searchButton": "Suchen"
+  },
+  "tabs": {
+    "closeAriaLabel": "{{title}} schließen",
+    "newSession": "Neue Agenten-Sitzung"
+  },
+  "shell": {
+    "toggleSidebarShortcut": "Seitenleiste ein-/ausblenden",
+    "resizer": {
+      "ariaLabel": "Seitenleistengröße ändern",
+      "title": "Ziehen, um die Größe der Seitenleiste zu ändern, Doppelklick zum Zurücksetzen"
+    }
+  },
+  "agentStatus": {
+    "starting": "Wird gestartet…",
+    "completed": "Abgeschlossen",
+    "failed": "Fehlgeschlagen",
+    "thinking": "Denkt nach…",
+    "working": "Arbeitet…",
+    "runningCommand": "Führt Befehl aus",
+    "reading": "Liest",
+    "readingFile": "Liest {{file}}",
+    "editing": "Bearbeitet",
+    "editingFile": "Bearbeitet {{file}}",
+    "searching": "Sucht",
+    "runningTool": "Führt {{name}} aus"
+  },
+  "resultSummary": {
+    "errorTitle": "❌ Fehler",
+    "terminated": "Der Agentenprozess wurde beendet oder hat das Zeitlimit überschritten (Exit-Code {{code}}).",
+    "terminatedUnknownCode": "Der Agentenprozess wurde beendet oder hat das Zeitlimit überschritten (Exit-Code unbekannt).",
+    "cost": {
+      "billed": "Kosten: {{cost}}",
+      "estimated": "Kosten: ~{{cost}}",
+      "billedTooltip": "Vom Agenten abgerechnet",
+      "estimatedTooltip": "Aus den Token-Zahlen zum Listenpreis dieses Modells berechnet; Ihr Abo oder Ihre Preisstufe kann dabei nicht berücksichtigt werden"
+    },
+    "duration": "Dauer: {{seconds}} s",
+    "tokens": "Tokens: {{input}} Eingabe / {{output}} Ausgabe",
+    "cache": "Cache: {{read}} gelesen / {{write}} geschrieben",
+    "premium": "Premium: {{value}}",
+    "exitCode": "Exit-Code: {{code}}",
+    "denied": "Verweigert: {{value}}"
+  },
+  "metrics": {
+    "elapsed": {
+      "label": "Ausgabezeit",
+      "reportedTooltip": "Ausgabezeit: die vom Agenten gemeldete Dauer",
+      "measuredTooltip": "Ausgabezeit: gemessen vom ersten bis zum letzten Ereignis",
+      "runningTooltip": "Ausgabezeit: gemessen ab dem ersten Ereignis"
+    },
+    "tokens": {
+      "label": "Tokens",
+      "estimatedTooltip": "Tokens: bisher aus dem Stream geschätzt; der Agent meldet seine eigene Anzahl, wenn er fertig ist",
+      "reportedTooltip": "Tokens: vom Agenten gemeldet"
+    },
+    "cost": {
+      "label": "Kosten",
+      "estimatedTooltip": "Kosten: aus den Token-Zahlen zum Listenpreis dieses Modells berechnet; Ihr Abo oder Ihre Preisstufe kann dabei nicht berücksichtigt werden",
+      "billedTooltip": "Kosten: vom Agenten abgerechnet"
+    }
+  },
+  "toolCard": {
+    "file": "Datei: {{path}}",
+    "url": "URL: {{url}}",
+    "query": "Abfrage: {{query}}",
+    "queryInPath": "Abfrage: {{query}} in {{path}}",
+    "input": "EINGABE",
+    "output": "AUSGABE"
+  },
+  "toolGroup": {
+    "count_one": "{{count}} Tool-Aufruf",
+    "count_other": "{{count}} Tool-Aufrufe"
+  },
+  "agentNode": {
+    "session": "Sitzung: {{session}}",
+    "sessionWithModel": "Sitzung: {{session}} ({{model}})",
+    "errorTitle": "❌ Fehler"
+  },
+  "badgeSelect": {
+    "placeholder": "Auswählen…",
+    "ariaLabel": "Auswählen",
+    "remove": "{{label}} entfernen"
+  },
+  "contentInput": {
+    "placeholder": "Wie kann ich Ihnen heute helfen?",
+    "send": "Senden",
+    "moreOptions": "Weitere Optionen",
+    "attachFiles": "Dateien anhängen",
+    "voiceInput": "Transkription der Spracheingabe",
+    "dismissError": "Fehlermeldung ausblenden",
+    "removeFile": "Datei entfernen",
+    "attachment": {
+      "document": "Dokument",
+      "lineCount_one": "{{count}} Zeile",
+      "lineCount_other": "{{count}} Zeilen",
+      "sizeBytes": "{{size}} B",
+      "sizeKilobytes": "{{size}} KB",
+      "sizeMegabytes": "{{size}} MB"
+    },
+    "errors": {
+      "uploadStatus": "Upload mit Status {{status}} fehlgeschlagen",
+      "uploadFailed": "Datei konnte nicht hochgeladen werden: {{error}}",
+      "readFailed": "Datei konnte nicht gelesen werden",
+      "emptyTranscription": "Die Transkription enthielt nicht genug Informationen, um einen Prompt zu erstellen. Bitte versuchen Sie es erneut und sprechen Sie deutlich."
+    }
+  },
+  "voice": {
+    "errors": {
+      "insecureContext": "Die Spracheingabe benötigt eine sichere Verbindung. Öffnen Sie Tendril über HTTPS oder auf localhost und versuchen Sie es dann erneut.",
+      "mediaDevicesUnavailable": "Die Spracheingabe ist in diesem Fenster nicht verfügbar. Beenden Sie unter macOS Ivy Tendril nach dem Update, öffnen Sie es erneut und erlauben Sie den Mikrofonzugriff, wenn Sie dazu aufgefordert werden. Sie können auch „{{command}}“ ausführen und die Spracheingabe in Ihrem Browser verwenden.",
+      "audioCaptureUnsupported": "Dieser Browser kann kein Audio für die Spracheingabe aufnehmen.",
+      "captureInitFailed": "Initialisierung der Audioaufnahme fehlgeschlagen: {{error}}",
+      "websocket": "Beim Verbinden mit dem Transkriptionsdienst ist ein WebSocket-Fehler aufgetreten.",
+      "closedUnexpectedly": "WebSocket-Verbindung unerwartet geschlossen (Code {{code}}: {{reason}})",
+      "closedUnexpectedlyNoReason": "WebSocket-Verbindung unerwartet geschlossen (Code {{code}}: kein Grund angegeben)",
+      "connectionFailed": "Mikrofonzugriff verweigert oder Verbindung fehlgeschlagen: {{error}}",
+      "microphoneDenied": "Der Mikrofonzugriff wurde verweigert. Erlauben Sie Ivy Tendril den Mikrofonzugriff unter Systemeinstellungen > Datenschutz & Sicherheit > Mikrofon und versuchen Sie es dann erneut.",
+      "microphoneNotFound": "Es wurde kein Mikrofon gefunden. Schließen Sie ein Eingabegerät an und versuchen Sie es erneut."
+    }
+  },
+  "dashboard": {
+    "status": {
+      "plans": "Pläne",
+      "inProgress": "In Arbeit",
+      "readyForReview": "Bereit für Review",
+      "completed": "Abgeschlossen",
+      "failed": "Fehlgeschlagen"
+    },
+    "kpi": {
+      "breakdownAriaLabel": "Berechnungsaufschlüsselung für {{label}} anzeigen",
+      "loadingAriaLabel": "Metriken werden geladen"
+    },
+    "trend": {
+      "loading": "Kosten- und Plantrend wird geladen",
+      "costTab": "Gesamtkosten",
+      "plansTab": "Pläne gesamt",
+      "currentName": "Letzte 4 Wochen",
+      "rollingLegend": "7-Tage-Durchschnitt",
+      "plansValue_one": "{{count}} Plan",
+      "plansValue_other": "{{count}} Pläne"
+    },
+    "gitActivity": {
+      "title": "Git-Aktivität",
+      "loading": "Git-Aktivität wird geladen"
+    },
+    "pullRequests": {
+      "title": "Pull Requests",
+      "weekTab": "Woche",
+      "monthTab": "Monat",
+      "loading": "Gemergte Pull Requests werden geladen"
+    },
+    "tunnel": {
+      "title": "Tunnel"
+    },
+    "factory": {
+      "title": "Softwarefabrik"
+    },
+    "jobs": {
+      "title": "Aktive Jobs",
+      "empty": "Keine laufenden Jobs"
+    }
+  },
+  "trendChart": {
+    "axisDateWithYear": "{{date}} ’{{year}}",
+    "currentRow": "{{name}}: {{value}}",
+    "rollingRow": "7-Tage-Durchschnitt: {{value}}"
+  },
+  "activityGrid": {
+    "empty": "Noch keine gemergten Pull Requests",
+    "weekOf": "Woche vom {{date}}",
+    "merged_one": "{{count}} Pull Request gemergt",
+    "merged_other": "{{count}} Pull Requests gemergt"
+  },
+  "pullRequestBars": {
+    "empty": "Noch keine gemergten Pull Requests",
+    "weekOf": "Woche vom {{date}}",
+    "barLabel": "{{period}}: {{merged}}",
+    "merged_one": "{{count}} Pull Request gemergt",
+    "merged_other": "{{count}} Pull Requests gemergt",
+    "tooltipMerged_one": "{{count}} PR gemergt",
+    "tooltipMerged_other": "{{count}} PRs gemergt"
+  },
+  "processViewer": {
+    "newPlan": "Neuer Plan",
+    "plans": "Pläne",
+    "review": "Review",
+    "creatingPr": "PR {{value}}"
+  },
+  "terminal": {
+    "loading": "Wird geladen…"
+  },
+  "webViewer": {
+    "toolbar": {
+      "ariaLabel": "Browsersteuerung",
+      "back": "Zurück",
+      "forward": "Vorwärts",
+      "reload": "Neu laden",
+      "startSelecting": "Element zum Kommentieren auswählen",
+      "stopSelecting": "Auswahl beenden",
+      "viewport": "Viewport: {{device}}",
+      "address": "Adresse",
+      "addressPlaceholder": "URL eingeben"
+    },
+    "devices": {
+      "desktop": "Desktop",
+      "tablet": "Tablet",
+      "mobile": "Mobil"
+    },
+    "empty": "Geben Sie eine URL in die Adressleiste ein, um eine Seite zu laden.",
+    "frameTitle": "Webinhalt",
+    "comment": {
+      "title": "Kommentar zu",
+      "title_tag": "Kommentar zu<tag>{{tag}}</tag>",
+      "title_text": "Kommentar zu<snippet>„{{text}}“</snippet>",
+      "title_tagText": "Kommentar zu<tag>{{tag}}</tag><snippet>„{{text}}“</snippet>",
+      "sourceLabel": "Quelle",
+      "resolvingSource": "Source Map wird aufgelöst…",
+      "componentsLabel": "Komponenten",
+      "xpathLabel": "XPath",
+      "selectorLabel": "Selektor",
+      "placeholder": "Kommentar eingeben… ({{shortcut}} zum Senden)",
+      "delete": "Löschen",
+      "cancel": "Abbrechen",
+      "save": "Speichern",
+      "add": "Hinzufügen"
+    }
+  }
+}

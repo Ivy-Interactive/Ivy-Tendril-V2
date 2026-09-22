@@ -1,1 +1,141 @@
-{}
+{
+  "section": {
+    "title": "コーディングエージェント",
+    "hint": "Tendril は、構成済みの AI コーディングエージェント、または OpenCode などの同梱のオープンソースエンジンに接続します。",
+    "unknownAgent": "不明なコーディングエージェント「{{value}}」です。有効なエージェント：{{agents}}"
+  },
+  "byo": {
+    "title": "独自の LLM を使用",
+    "baseUrl": {
+      "label": "API ベース URL"
+    },
+    "apiKey": {
+      "label": "API キー",
+      "hint": "{{agent}} エージェントに ANTHROPIC_API_KEY と OPENAI_API_KEY として保存されます。これはすべての起動に渡される環境です。",
+      "hint_ivy": "{{agent}} エージェントに IVY_API_KEY、ANTHROPIC_API_KEY、OPENAI_API_KEY として保存されます。これはすべての起動に渡される環境です。"
+    },
+    "fetchModels": {
+      "label": "モデルを取得",
+      "busy": "取得中…"
+    },
+    "discovery": {
+      "found_other": "このエンドポイントで {{count}} 個のモデルが見つかりました。",
+      "customNames": "このエンドポイントはモデル一覧を提供していないため、モデル名を手動で入力する必要があります。",
+      "unreachable": "モデルを取得するためにデーモンに接続できませんでした：{{error}}"
+    }
+  },
+  "profiles": {
+    "title": "プロファイルのモデル",
+    "hint": {
+      "custom": "プロファイルごとに使用するカスタムモデル名とエフォートレベルを指定します。",
+      "discovered": "各プロファイルレベルで使用するモデルをエンドポイントから選択します。",
+      "default": "ワークフローエージェントは、タスクの複雑さに応じて異なるプロファイルを使用するよう構成されています。各プロファイルで使用するモデルとエフォートレベルを指定できます。"
+    },
+    "customNames": "カスタムモデル名",
+    "effortUnsupported": "このエージェントの CLI はエフォート引数を受け付けないため、エフォートは無視されます。",
+    "tiers": {
+      "deep": "Deep",
+      "balanced": "Balanced",
+      "quick": "Quick"
+    },
+    "effort": "エフォート",
+    "efforts": {
+      "default": "デフォルト",
+      "low": "低",
+      "medium": "中",
+      "high": "高",
+      "xhigh": "超高",
+      "max": "最大"
+    }
+  },
+  "environment": {
+    "title": "追加の引数と環境変数",
+    "arguments": {
+      "label": "追加の引数",
+      "placeholder": "例：--verbose",
+      "hint": "空白で分割され、このエージェントを起動するたびに末尾に追加されます。"
+    },
+    "variables": {
+      "label": "環境変数",
+      "hint": "1 行に 1 つの KEY=value を記述します。# で始まる行は無視されます。"
+    }
+  },
+  "help": {
+    "title": "ヘルプ",
+    "hint": "このマシンで {{agent}} を使えるようにする手順です。",
+    "install": "1. インストール",
+    "authenticate": "2. 認証",
+    "apiKey": "2. API キー",
+    "or": "または",
+    "then": "次に、プロンプトで <code>{{command}}</code> を実行します。",
+    "binary": "Tendril は PATH 上で <code>{{binary}}</code> を探します。"
+  },
+  "actions": {
+    "test": "エージェントのテスト",
+    "saving": "保存中…"
+  },
+  "save": {
+    "toastTitle": "保存しました",
+    "toastMessage": "コーディングエージェントの設定を保存しました",
+    "failed": "保存に失敗しました：{{error}}"
+  },
+  "test": {
+    "title": "コーディングエージェントのテスト",
+    "defaultModel": "デフォルト",
+    "columns": {
+      "test": "テスト",
+      "result": "結果"
+    },
+    "status": {
+      "passed": "合格",
+      "failed": "不合格",
+      "warning": "警告",
+      "running": "実行中",
+      "pending": "保留中"
+    },
+    "showRawOutput": "生の出力を表示",
+    "rawOutputTitle": "生の出力",
+    "rows": {
+      "install": "インストール",
+      "auth": "認証",
+      "model": "モデル：{{name}}",
+      "unexpectedError": "予期しないエラー"
+    },
+    "install": {
+      "version": "v{{version}}",
+      "installed": "インストール済み",
+      "notInstalled": "未インストール"
+    },
+    "auth": {
+      "authenticated": "認証済み",
+      "authenticatedWith": "認証済み（{{provider}}）",
+      "notAuthenticated": "未認証",
+      "notAuthenticatedRun": "未認証 - `{{command}}` を実行してください",
+      "notAuthenticatedRunThen": "未認証 - `{{command}}` を実行してから `{{prompt}}` を実行してください",
+      "notAuthenticatedCreateKey": "未認証 - {{url}} でキーを作成してください",
+      "inconclusive": "確認結果が不明"
+    },
+    "model": {
+      "notChecked": "未確認",
+      "ok": "OK",
+      "invalidModel": "無効なモデル",
+      "authError": "認証エラー",
+      "rateLimit": "クォータ超過またはレート制限"
+    },
+    "cancelled": "キャンセルしました",
+    "runFailed": "テストの実行に失敗しました"
+  },
+  "usage": {
+    "window": "{{window}} ウィンドウ",
+    "left": "残り {{percent}}",
+    "ariaLabel": "{{window}} ウィンドウ、残り {{percent}}",
+    "resetsIn": "{{countdown}} 後にリセット",
+    "resetsIn_now": "まもなくリセット",
+    "asOf": "{{relative}} 時点",
+    "countdown": {
+      "now": "まもなく",
+      "hoursMinutes": "{{hours}} {{minutes}}"
+    },
+    "justNow": "たった今"
+  }
+}

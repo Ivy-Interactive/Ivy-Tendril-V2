@@ -1,1 +1,243 @@
-{}
+{
+  "table": {
+    "columns": {
+      "id": {
+        "header": "ID"
+      },
+      "status": {
+        "header": "Status",
+        "filterPlaceholder": "Todos"
+      },
+      "planId": {
+        "header": "ID do Plano",
+        "filterPlaceholder": "ID…"
+      },
+      "prompt": {
+        "header": "Prompt"
+      },
+      "type": {
+        "header": "Tipo",
+        "filterPlaceholder": "Todos"
+      },
+      "project": {
+        "header": "Projeto",
+        "filterPlaceholder": "Todos"
+      },
+      "timer": {
+        "header": "Tempo",
+        "filterPlaceholder": "Segundos…"
+      },
+      "agentOutput": {
+        "header": "Saída do Agente",
+        "filterPlaceholder": "Data…"
+      },
+      "cost": {
+        "header": "Custo",
+        "filterPlaceholder": "Valor…"
+      },
+      "tokens": {
+        "header": "Tokens",
+        "filterPlaceholder": "Quantidade…"
+      },
+      "timestamp": {
+        "header": "Data e Hora",
+        "filterPlaceholder": "Data…"
+      },
+      "statusMessage": {
+        "header": "Mensagem de Status"
+      }
+    },
+    "detached": {
+      "label": "Desanexado",
+      "title": "Desanexado (PID {{pid}}) — monitorando um processo ativo iniciado antes da última reinicialização do daemon",
+      "unknownPid": "desconhecido"
+    },
+    "empty": {
+      "filtered": "Nenhuma tarefa corresponde aos filtros atuais.",
+      "none": "Nenhuma tarefa ainda. Iniciar um plano, uma nova tentativa ou um PR cria uma."
+    },
+    "queryError": "Não foi possível ler a tabela de tarefas: {{error}}",
+    "statusProgress": {
+      "ariaLabel": "Tarefas por status"
+    },
+    "headerMenu": {
+      "ariaLabel": "Ações da lista de tarefas",
+      "stopAllQueued": "Parar Todas as Enfileiradas ({{count}})",
+      "stopAll": "Parar Todas ({{count}})"
+    }
+  },
+  "actions": {
+    "menu": "Ações da tarefa",
+    "stop": {
+      "label": "Parar",
+      "tooltip": "Parar esta tarefa",
+      "busy": "Parando..."
+    },
+    "rerun": {
+      "label": "Reexecutar",
+      "unavailable": "Não é possível reexecutar: os argumentos originais não foram preservados."
+    },
+    "forceStart": {
+      "label": "Forçar Inicialização",
+      "tooltip": "Forçar a inicialização desta tarefa bloqueada",
+      "busy": "Iniciando..."
+    },
+    "debug": {
+      "label": "Depurar",
+      "tooltip": "Mostrar detalhes de depuração desta tarefa"
+    },
+    "delete": {
+      "label": "Excluir",
+      "tooltip": "Excluir esta tarefa"
+    }
+  },
+  "errors": {
+    "stopFailed": "Falha ao parar: {{error}}",
+    "forceStartFailed": "Falha ao forçar a inicialização: {{error}}",
+    "deleteFailed": "Falha ao excluir: {{error}}"
+  },
+  "deleteDialog": {
+    "title": "Excluir Tarefa",
+    "body": "Tem certeza de que deseja excluir esta tarefa? Esta ação não pode ser desfeita."
+  },
+  "statusMessage": {
+    "blocked": "Aguardando a conclusão dos planos dependentes.",
+    "failed": "A tarefa encontrou um erro durante a execução",
+    "timeout": "A tarefa excedeu o tempo limite configurado",
+    "queued": "Aguardando um slot de tarefa disponível",
+    "stopped": "A tarefa foi interrompida manualmente",
+    "pending": "A tarefa está na fila, aguardando para iniciar."
+  },
+  "agentOutput": {
+    "starting": "Iniciando...",
+    "done": "Concluído"
+  },
+  "cost": {
+    "estimated": "~{{cost}}",
+    "notReported": "Nenhum custo foi informado para esta tarefa"
+  },
+  "tokens": {
+    "buckets": {
+      "input": "Entrada",
+      "output": "Saída",
+      "cacheRead": "Leitura de cache",
+      "cacheWrite": "Gravação em cache",
+      "reasoning": "Raciocínio"
+    },
+    "breakdownEntry": "{{label}} {{tokens, number}}"
+  },
+  "outputSheet": {
+    "title": "{{type}} {{planId}}",
+    "fallbackTitle": "Saída da Tarefa"
+  },
+  "session": {
+    "detachedBadge": "Desanexado (PID {{pid}}) — Monitorando processo ativo",
+    "tokens": "Tokens {{tokens}}",
+    "cost": "Custo {{cost}}",
+    "closeTab": "Fechar aba da sessão",
+    "noOutput": "Nenhuma saída disponível.",
+    "statusCallout": {
+      "title": "Tarefa: {{status}}",
+      "title_pending": "Tarefa Pendente",
+      "title_queued": "Tarefa na Fila",
+      "title_blocked": "Tarefa Bloqueada",
+      "title_failed": "Falha na Tarefa",
+      "title_timeout": "Tempo Esgotado da Tarefa",
+      "title_stopped": "Tarefa Interrompida"
+    }
+  },
+  "costSheet": {
+    "title": "Custos e Tokens",
+    "titleWithPlan": "Custos e Tokens — {{planId}}",
+    "details": {
+      "model": "Modelo",
+      "provider": "Provedor",
+      "type": "Tipo",
+      "profile": "Perfil",
+      "agentCost": "Custo Informado pelo Agente"
+    },
+    "notProvided": "Não Informado",
+    "noUsage": "Nenhum detalhamento por token foi registrado para esta tarefa.",
+    "noUsage_total": "Nenhum detalhamento por token foi registrado para esta tarefa, apenas um total de {{total}} tokens.",
+    "breakdown": {
+      "title": "Detalhamento",
+      "tokenType": "Tipo de token",
+      "tokens": "Tokens",
+      "total": "Total"
+    },
+    "totalCost": "Custo total"
+  },
+  "promptSheet": {
+    "title": "Prompt Completo",
+    "empty": "Esta tarefa não registrou nenhum texto de prompt."
+  },
+  "clear": {
+    "dialogTitle": "Limpar Tarefas",
+    "confirm": "Limpar",
+    "confirmCount": "Limpar {{count}}",
+    "countFailed": "Não foi possível contar as tarefas: {{error}}",
+    "failed": "Falha ao limpar: {{error}}",
+    "scopes": {
+      "completed": {
+        "label": "Limpar Concluídas",
+        "counting": "Contando tarefas concluídas…",
+        "empty": "Não há tarefas concluídas para limpar.",
+        "confirm_one": "Excluir {{count}} tarefa concluída? Os logs e a saída dela serão removidos junto, e isso não pode ser desfeito.",
+        "confirm_many": "Excluir {{count}} tarefas concluídas? Os logs e a saída delas serão removidos junto, e isso não pode ser desfeito.",
+        "confirm_other": "Excluir {{count}} tarefas concluídas? Os logs e a saída delas serão removidos junto, e isso não pode ser desfeito."
+      },
+      "failed": {
+        "label": "Limpar com Falha",
+        "counting": "Contando tarefas com falha…",
+        "empty": "Não há tarefas com falha para limpar.",
+        "confirm_one": "Excluir {{count}} tarefa com falha? Os logs e a saída dela serão removidos junto, e isso não pode ser desfeito.",
+        "confirm_many": "Excluir {{count}} tarefas com falha? Os logs e a saída delas serão removidos junto, e isso não pode ser desfeito.",
+        "confirm_other": "Excluir {{count}} tarefas com falha? Os logs e a saída delas serão removidos junto, e isso não pode ser desfeito."
+      },
+      "timeout": {
+        "label": "Limpar Tempo Esgotado",
+        "counting": "Contando tarefas com tempo esgotado…",
+        "empty": "Não há tarefas com tempo esgotado para limpar.",
+        "confirm_one": "Excluir {{count}} tarefa com tempo esgotado? Os logs e a saída dela serão removidos junto, e isso não pode ser desfeito.",
+        "confirm_many": "Excluir {{count}} tarefas com tempo esgotado? Os logs e a saída delas serão removidos junto, e isso não pode ser desfeito.",
+        "confirm_other": "Excluir {{count}} tarefas com tempo esgotado? Os logs e a saída delas serão removidos junto, e isso não pode ser desfeito."
+      },
+      "stopped": {
+        "label": "Limpar Interrompidas",
+        "counting": "Contando tarefas interrompidas…",
+        "empty": "Não há tarefas interrompidas para limpar.",
+        "confirm_one": "Excluir {{count}} tarefa interrompida? Os logs e a saída dela serão removidos junto, e isso não pode ser desfeito.",
+        "confirm_many": "Excluir {{count}} tarefas interrompidas? Os logs e a saída delas serão removidos junto, e isso não pode ser desfeito.",
+        "confirm_other": "Excluir {{count}} tarefas interrompidas? Os logs e a saída delas serão removidos junto, e isso não pode ser desfeito."
+      },
+      "all": {
+        "label": "Limpar Todas as Finalizadas",
+        "counting": "Contando tarefas finalizadas…",
+        "empty": "Não há tarefas finalizadas para limpar.",
+        "confirm_one": "Excluir {{count}} tarefa finalizada? Os logs e a saída dela serão removidos junto, e isso não pode ser desfeito.",
+        "confirm_many": "Excluir {{count}} tarefas finalizadas? Os logs e a saída delas serão removidos junto, e isso não pode ser desfeito.",
+        "confirm_other": "Excluir {{count}} tarefas finalizadas? Os logs e a saída delas serão removidos junto, e isso não pode ser desfeito."
+      }
+    }
+  },
+  "notifications": {
+    "exit": {
+      "completed": "{{type}} Concluído",
+      "failed": "{{type}} com Falha",
+      "timedOut": "{{type}}: Tempo Esgotado",
+      "withReason": "{{subject}}: {{reason}}"
+    },
+    "summary": {
+      "title": "Tarefas Finalizadas",
+      "finished_one": "{{count}} tarefa finalizada",
+      "finished_many": "{{count}} tarefas finalizadas",
+      "finished_other": "{{count}} tarefas finalizadas",
+      "finishedWithFailures_one": "{{count}} tarefa finalizada, {{failures}}",
+      "finishedWithFailures_many": "{{count}} tarefas finalizadas, {{failures}}",
+      "finishedWithFailures_other": "{{count}} tarefas finalizadas, {{failures}}",
+      "failedCount_one": "{{count}} com falha",
+      "failedCount_many": "{{count}} com falha",
+      "failedCount_other": "{{count}} com falha"
+    }
+  }
+}

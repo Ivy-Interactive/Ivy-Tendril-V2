@@ -1,1 +1,275 @@
-{}
+{
+  "header": {
+    "greeting": {
+      "morning": "¡Buenos días!",
+      "afternoon": "¡Buenas tardes!",
+      "evening": "¡Buenas noches!"
+    },
+    "headline": "¿Qué producimos hoy?"
+  },
+  "kpis": {
+    "featuresShipped": {
+      "label": "Funcionalidades entregadas",
+      "hint_one": "último {{count}} día",
+      "hint_other": "últimos {{count}} días",
+      "hint_many": "últimos {{count}} días"
+    },
+    "costPerFeature": {
+      "label": "Coste medio por funcionalidad",
+      "noValue": "n/d",
+      "hint_one": "{{spend}} en {{count}} funcionalidad",
+      "hint_other": "{{spend}} en {{count}} funcionalidades",
+      "hint_many": "{{spend}} en {{count}} funcionalidades",
+      "hintNoFeatures_one": "ninguna funcionalidad entregada en {{count}} día",
+      "hintNoFeatures_other": "ninguna funcionalidad entregada en {{count}} días",
+      "hintNoFeatures_many": "ninguna funcionalidad entregada en {{count}} días",
+      "hintNoSpend_one": "ningún gasto con precio en {{count}} día",
+      "hintNoSpend_other": "ningún gasto con precio en {{count}} días",
+      "hintNoSpend_many": "ningún gasto con precio en {{count}} días"
+    },
+    "forecastMonth": {
+      "label": "Previsión de este mes",
+      "range": "{{lower}} – {{upper}}",
+      "hint": "de base de calendario ({{calendarDays}} d) a base de actividad ({{activityDays}} d)",
+      "hintNoSpend": "no hay gasto registrado a partir del cual proyectar"
+    },
+    "avgCostPlan": {
+      "label": "Coste medio por plan",
+      "hint": "frente a {{cost}} la semana anterior",
+      "hintNoPrior": "ningún plan con precio en la semana anterior"
+    },
+    "tokensConsumed": {
+      "label": "Tokens consumidos",
+      "hint_one": "último {{count}} día",
+      "hint_other": "últimos {{count}} días",
+      "hint_many": "últimos {{count}} días",
+      "hintSubsidized": "{{percent}} subvencionado"
+    }
+  },
+  "fallbackKpis": {
+    "featuresShipped": {
+      "label": "Funcionalidades entregadas",
+      "hint": "PRs fusionadas e issues resueltos, últimos 30 días"
+    },
+    "costPerFeature": {
+      "label": "Coste medio por funcionalidad",
+      "value": "n/d",
+      "hint": "No hay datos de costes disponibles"
+    },
+    "forecastMonth": {
+      "label": "Previsión de este mes",
+      "hint": "No hay datos de costes de los últimos 30 días"
+    },
+    "avgCostPlan": {
+      "label": "Coste medio por plan",
+      "hint": "No hay datos de costes disponibles"
+    }
+  },
+  "format": {
+    "currencyCompact": {
+      "thousand": "{{value}} k US$",
+      "million": "{{value}} M US$",
+      "billion": "{{value}} mil M US$",
+      "trillion": "{{value}} B US$"
+    },
+    "tokensCompact": {
+      "thousand": "{{value}} k",
+      "million": "{{value}} M"
+    }
+  },
+  "kpiSheet": {
+    "title": "Desglose de KPI"
+  },
+  "breakdown": {
+    "titles": {
+      "featuresShipped": "Funcionalidades entregadas",
+      "costPerFeature": "Coste medio por funcionalidad",
+      "forecastMonth": "Previsión de este mes",
+      "avgCostPlan": "Coste medio por plan"
+    },
+    "empty": {
+      "title": "Sin datos"
+    },
+    "details": {
+      "metric": "Métrica",
+      "formula": "Fórmula"
+    },
+    "delta": {
+      "notAvailable": "N/D"
+    },
+    "agents": {
+      "title": "Gasto por agente de código",
+      "empty": "No hay gasto atribuido a agentes en este periodo.",
+      "columns": {
+        "agent": "Agente de código",
+        "cost": "Gasto",
+        "costShare": "Proporción del gasto",
+        "tokens": "Tokens",
+        "tokenShare": "Proporción de tokens",
+        "planCount": "Planes"
+      },
+      "shareNotAvailable": "N/D",
+      "unknownAgent": "Desconocido",
+      "partialAttribution": {
+        "title": "Atribución parcial",
+        "body": "Las filas anteriores al registro del agente aparecen como {{agent}} y no se pueden atribuir a ningún agente concreto.",
+        "bodyWithShare": "Las filas anteriores al registro del agente aparecen como {{agent}} y no se pueden atribuir a ningún agente concreto. Suponen el {{share}} del gasto de este periodo.",
+        "bodyUninformative": "Las filas anteriores al registro del agente aparecen como {{agent}} y no se pueden atribuir a ningún agente concreto. Suponen el {{share}} del gasto de este periodo, así que el desglose que aparece debajo no aporta información."
+      }
+    },
+    "featuresShipped": {
+      "subtitle": "PRs fusionadas e issues resueltos que componen el recuento",
+      "note": {
+        "title": "Métrica de resultados",
+        "body_one": "Funcionalidades entregadas cuenta las PRs fusionadas y los issues resueltos sin PR del último {{count}} día. Un plan con tres PRs cuenta como tres funcionalidades; un plan que solo tiene un issue cuenta como una.",
+        "body_other": "Funcionalidades entregadas cuenta las PRs fusionadas y los issues resueltos sin PR de los últimos {{count}} días. Un plan con tres PRs cuenta como tres funcionalidades; un plan que solo tiene un issue cuenta como una.",
+        "body_many": "Funcionalidades entregadas cuenta las PRs fusionadas y los issues resueltos sin PR de los últimos {{count}} días. Un plan con tres PRs cuenta como tres funcionalidades; un plan que solo tiene un issue cuenta como una."
+      },
+      "metric": "Funcionalidades entregadas",
+      "formula_one": "PRs fusionadas + issues resueltos, último {{count}} día",
+      "formula_other": "PRs fusionadas + issues resueltos, últimos {{count}} días",
+      "formula_many": "PRs fusionadas + issues resueltos, últimos {{count}} días",
+      "last_one": "Último {{count}} día",
+      "last_other": "Últimos {{count}} días",
+      "last_many": "Últimos {{count}} días",
+      "prior_one": "{{count}} día anterior",
+      "prior_other": "{{count}} días anteriores",
+      "prior_many": "{{count}} días anteriores",
+      "periodDelta": "Variación del periodo de {{days}} días",
+      "byDay": {
+        "title_one": "Funcionalidades por día (último {{count}} día)",
+        "title_other": "Funcionalidades por día (últimos {{count}} días)",
+        "title_many": "Funcionalidades por día (últimos {{count}} días)",
+        "empty": "No se entregó ninguna funcionalidad en el periodo de {{days}} días.",
+        "columns": {
+          "date": "Fecha",
+          "count": "Funcionalidades"
+        }
+      },
+      "mergedPrs": {
+        "title": "Pull requests fusionadas recientes",
+        "empty": "Aún no hay pull requests fusionadas registradas.",
+        "columns": {
+          "plan": "Plan",
+          "title": "Título",
+          "repo": "Repositorio",
+          "merged": "Fecha de fusión",
+          "prUrl": "URL de la PR"
+        },
+        "open": "abrir"
+      }
+    },
+    "costPerFeature": {
+      "subtitle": "Las dos cifras de las que se obtiene el cociente",
+      "note": {
+        "title": "Coste unitario",
+        "body": "Coste medio por funcionalidad divide el gasto de {{days}} días entre las funcionalidades entregadas en {{days}} días, así que la tarjeta muestra el cociente exacto de las dos tarjetas que tiene al lado."
+      },
+      "metric": "Coste medio por funcionalidad",
+      "formula": "gasto de {{days}} días / funcionalidades entregadas en {{days}} días",
+      "lastSpend_one": "Último {{count}} día (gasto)",
+      "lastSpend_other": "Últimos {{count}} días (gasto)",
+      "lastSpend_many": "Últimos {{count}} días (gasto)",
+      "lastFeatures_one": "Último {{count}} día (funcionalidades)",
+      "lastFeatures_other": "Últimos {{count}} días (funcionalidades)",
+      "lastFeatures_many": "Últimos {{count}} días (funcionalidades)",
+      "lastCostPerFeature_one": "Último {{count}} día (coste/funcionalidad)",
+      "lastCostPerFeature_other": "Últimos {{count}} días (coste/funcionalidad)",
+      "lastCostPerFeature_many": "Últimos {{count}} días (coste/funcionalidad)",
+      "priorSpend_one": "{{count}} día anterior (gasto)",
+      "priorSpend_other": "{{count}} días anteriores (gasto)",
+      "priorSpend_many": "{{count}} días anteriores (gasto)",
+      "priorFeatures_one": "{{count}} día anterior (funcionalidades)",
+      "priorFeatures_other": "{{count}} días anteriores (funcionalidades)",
+      "priorFeatures_many": "{{count}} días anteriores (funcionalidades)",
+      "priorCostPerFeature_one": "{{count}} día anterior (coste/funcionalidad)",
+      "priorCostPerFeature_other": "{{count}} días anteriores (coste/funcionalidad)",
+      "priorCostPerFeature_many": "{{count}} días anteriores (coste/funcionalidad)",
+      "noValue": "n/d",
+      "periodDelta": "Variación del periodo de {{days}} días"
+    },
+    "forecastMonth": {
+      "subtitle": "Ambas bases de proyección y los días en los que se apoyan",
+      "empty": "No hay actividad registrada.",
+      "note": {
+        "title": "Análisis de uso y subvención",
+        "bodySubsidized_one": "Previsión de este mes proyecta el gasto a final de mes a partir de la actividad diaria del último {{count}} día. El {{percent}} de los tokens de este periodo estuvo subvencionado por suscripción (un valor equivalente de {{subsidizedValue}}), con {{apiCharges}} en cargos directos de API.",
+        "bodySubsidized_other": "Previsión de este mes proyecta el gasto a final de mes a partir de la actividad diaria de los últimos {{count}} días. El {{percent}} de los tokens de este periodo estuvo subvencionado por suscripción (un valor equivalente de {{subsidizedValue}}), con {{apiCharges}} en cargos directos de API.",
+        "bodySubsidized_many": "Previsión de este mes proyecta el gasto a final de mes a partir de la actividad diaria de los últimos {{count}} días. El {{percent}} de los tokens de este periodo estuvo subvencionado por suscripción (un valor equivalente de {{subsidizedValue}}), con {{apiCharges}} en cargos directos de API.",
+        "body_one": "Previsión de este mes proyecta el gasto a final de mes a partir de la actividad diaria del último {{count}} día. Las proyecciones de API directa estiman el gasto real facturado, mientras que las proyecciones totales reflejan el valor de mercado total de los tokens.",
+        "body_other": "Previsión de este mes proyecta el gasto a final de mes a partir de la actividad diaria de los últimos {{count}} días. Las proyecciones de API directa estiman el gasto real facturado, mientras que las proyecciones totales reflejan el valor de mercado total de los tokens.",
+        "body_many": "Previsión de este mes proyecta el gasto a final de mes a partir de la actividad diaria de los últimos {{count}} días. Las proyecciones de API directa estiman el gasto real facturado, mientras que las proyecciones totales reflejan el valor de mercado total de los tokens."
+      },
+      "metric": "Previsión de este mes",
+      "apiCalendar": "Previsión de API directa (base de calendario)",
+      "apiActivity": "Previsión de API directa (base de actividad)",
+      "totalCalendar": "Previsión total (base de calendario)",
+      "totalActivity": "Previsión total (base de actividad)",
+      "subsidizedTokenShare": "Proporción de tokens subvencionados",
+      "subsidizedTokenShareValue": "{{percent}} de los tokens",
+      "subsidizedValueShare": "Proporción de valor subvencionado",
+      "subsidizedValueShareValue": "{{percent}} del valor",
+      "mtdApiSpend": "Gasto directo en API en lo que va de mes",
+      "mtdSubsidizedValue": "Valor subvencionado en lo que va de mes",
+      "mtdUnattributedSpend": "Gasto no atribuido en lo que va de mes",
+      "mtdTotalMarketValue": "Valor de mercado total en lo que va de mes",
+      "calendarDays": "Días naturales del periodo",
+      "activeDays": "Días activos con gasto",
+      "daysRemaining": "Días restantes",
+      "daysInMonth": "Días del mes",
+      "dayCount_one": "{{count}} día",
+      "dayCount_other": "{{count}} días",
+      "dayCount_many": "{{count}} días",
+      "daily": {
+        "title_one": "Gasto diario (último {{count}} día)",
+        "title_other": "Gasto diario (últimos {{count}} días)",
+        "title_many": "Gasto diario (últimos {{count}} días)",
+        "empty": "No se encontraron registros de gasto diario en el periodo de {{days}} días.",
+        "columns": {
+          "date": "Fecha",
+          "cost": "Gasto total",
+          "apiCost": "Gasto en API",
+          "subsidizedCost": "Gasto subvencionado",
+          "tokens": "Tokens totales",
+          "subsidizedShare": "% subvencionado"
+        },
+        "incompleteSplit": {
+          "title": "Desglose incompleto",
+          "body": "{{amount}} del gasto de este periodo no tiene origen de coste, así que figura en Gasto total pero no en la columna de API ni en la de subvencionado. Por tanto, esas dos columnas se quedan cortas y no deben leerse como un desglose completo."
+        }
+      }
+    },
+    "avgCostPlan": {
+      "subtitle": "Planes recientes; un guion indica que las filas nunca tuvieron precio",
+      "note": {
+        "title": "Media móvil de 7 días",
+        "body_one": "Coste medio por plan calcula el gasto medio de ejecución y de agente de los planes creados en el último {{count}} día que alcanzaron el estado {{states}}. Los planes sin precio (p. ej., ejecuciones por suscripción cuyo coste es nulo) se excluyen del divisor para que no reduzcan artificialmente la media.",
+        "body_other": "Coste medio por plan calcula el gasto medio de ejecución y de agente de los planes creados en los últimos {{count}} días que alcanzaron el estado {{states}}. Los planes sin precio (p. ej., ejecuciones por suscripción cuyo coste es nulo) se excluyen del divisor para que no reduzcan artificialmente la media.",
+        "body_many": "Coste medio por plan calcula el gasto medio de ejecución y de agente de los planes creados en los últimos {{count}} días que alcanzaron el estado {{states}}. Los planes sin precio (p. ej., ejecuciones por suscripción cuyo coste es nulo) se excluyen del divisor para que no reduzcan artificialmente la media."
+      },
+      "metric": "Coste medio por plan",
+      "window": "Periodo",
+      "windowValue_one": "{{count}} día (planes creados en el último {{count}} día)",
+      "windowValue_other": "{{count}} días (planes creados en los últimos {{count}} días)",
+      "windowValue_many": "{{count}} días (planes creados en los últimos {{count}} días)",
+      "statesIncluded": "Estados de plan incluidos",
+      "currentAverage": "Media actual de {{days}} días",
+      "priorAverage": "Media anterior de {{days}} días (días 8-14)",
+      "periodDelta": "Variación del periodo de {{days}} días",
+      "plans": {
+        "title_one": "Planes del periodo móvil (último {{count}} día)",
+        "title_other": "Planes del periodo móvil (últimos {{count}} días)",
+        "title_many": "Planes del periodo móvil (últimos {{count}} días)",
+        "empty": "No se crearon planes en el periodo móvil de {{days}} días.",
+        "columns": {
+          "plan": "Plan",
+          "title": "Título",
+          "state": "Estado",
+          "created": "Creado",
+          "tokens": "Tokens",
+          "cost": "Coste total"
+        }
+      }
+    }
+  }
+}

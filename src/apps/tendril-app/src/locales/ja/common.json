@@ -1,1 +1,261 @@
-{}
+{
+  "actions": {
+    "cancel": "キャンセル",
+    "close": "閉じる",
+    "confirm": "確認",
+    "copy": "コピー",
+    "delete": "削除",
+    "retry": "再試行",
+    "save": "保存"
+  },
+  "status": {
+    "copied": "コピーしました",
+    "error": "エラー",
+    "loading": "読み込み中…",
+    "none": "なし",
+    "unknown": "不明"
+  },
+  "enums": {
+    "jobStatus": {
+      "pending": "保留中",
+      "queued": "キュー待機中",
+      "running": "実行中",
+      "completed": "完了",
+      "failed": "失敗",
+      "timeout": "タイムアウト",
+      "stopped": "停止済み",
+      "blocked": "ブロック中"
+    },
+    "jobType": {
+      "executePlan": "ExecutePlan",
+      "createPlan": "CreatePlan",
+      "retryPlan": "RetryPlan",
+      "updatePlan": "UpdatePlan",
+      "expandPlan": "ExpandPlan",
+      "splitPlan": "SplitPlan",
+      "createPr": "CreatePr",
+      "createIssue": "CreateIssue",
+      "setupProject": "SetupProject",
+      "addProject": "AddProject",
+      "syncRepo": "SyncRepo"
+    },
+    "planState": {
+      "draft": "下書き",
+      "creating": "作成中",
+      "updating": "更新中",
+      "executing": "実行中",
+      "review": "レビュー待ち",
+      "failed": "失敗",
+      "completed": "完了",
+      "skipped": "スキップ",
+      "blocked": "ブロック中",
+      "icebox": "アイスボックス"
+    }
+  },
+  "appTitles": {
+    "dashboard": "ダッシュボード",
+    "plans": "計画",
+    "review": "レビュー",
+    "recommendations": "レコメンデーション",
+    "jobs": "ジョブ",
+    "chat": "チャット",
+    "inbox": "受信トレイ",
+    "settings": "設定",
+    "pullRequests": "プルリクエスト",
+    "icebox": "アイスボックス",
+    "reviewAction": "レビューアクション",
+    "agent": "エージェント",
+    "plan": "計画 {{id}}",
+    "job": "ジョブ {{id}}"
+  },
+  "navigation": {
+    "errors": {
+      "tabGone": "このタブはもう存在しません。"
+    }
+  },
+  "sidebar": {
+    "version": "v {{version}}",
+    "nav": {
+      "dashboard": "ダッシュボード",
+      "plans": "計画",
+      "review": "レビュー",
+      "recommendations": "レコメンデーション",
+      "jobs": "ジョブ"
+    },
+    "chat": "チャット",
+    "inbox": "受信トレイ",
+    "settings": "設定",
+    "settingsMenu": {
+      "configuration": "構成",
+      "pullRequests": "プルリクエスト",
+      "icebox": "アイスボックス",
+      "checkForUpdates": "アップデートを確認",
+      "help": "ヘルプ",
+      "documentation": "ドキュメント",
+      "reportIssue": "問題を報告"
+    }
+  },
+  "shortcuts": {
+    "gotoChat": "チャットに切り替え",
+    "gotoInbox": "GitHub Issue の受信トレイを開く",
+    "newPlan": "新規計画の入力画面を開く",
+    "planSearch": "計画を検索",
+    "showShortcuts": "キーボードショートカットを表示"
+  },
+  "shortcutsHelp": {
+    "title": "キーボードショートカット",
+    "empty": "有効なキーボードショートカットはありません。"
+  },
+  "updateCheck": {
+    "available": {
+      "title": "アップデートあり",
+      "description": "バージョン {{version}} を利用できます。"
+    },
+    "upToDate": {
+      "title": "最新の状態",
+      "description": "最新バージョン (v{{version}}) を使用しています。"
+    },
+    "failed": {
+      "title": "アップデートの確認に失敗しました"
+    }
+  },
+  "updateNotice": {
+    "available": "v{{latest}} を利用できます（現在は v{{current}}）",
+    "copyCommand": "コマンドをコピー",
+    "dismiss": "閉じる"
+  },
+  "offlineBanner": {
+    "reconnecting": "Tendril-Service との接続が切断されました。{{seconds}} 秒後に自動で再接続します…",
+    "unreachable": "Tendril-Service デーモンに接続できません。",
+    "cachedState": "（キャッシュされた状態を表示しています）",
+    "reconnect": "今すぐ再接続"
+  },
+  "planPage": {
+    "loading": "計画 {{id}} を読み込み中…",
+    "loadError": "計画 {{id}} を読み込めませんでした：{{error}}"
+  },
+  "jobPage": {
+    "placeholderType": "エージェントジョブ"
+  },
+  "shellErrors": {
+    "restartFailed": "サービスの再起動に失敗しました：{{error}}",
+    "repairFailed": "サービスの修復に失敗しました：{{error}}",
+    "dismissNavError": "ナビゲーションエラーを閉じる"
+  },
+  "stopQueued": {
+    "title": "キュー待機中のジョブを停止",
+    "body_other": "キュー待機中のジョブ {{count}} 件をすべて停止しますか？実行中のジョブには影響しません。",
+    "confirm": "すべて停止",
+    "toast": {
+      "title": "ジョブ",
+      "description_other": "キュー待機中のジョブ {{count}} 件を停止しました。"
+    }
+  },
+  "stopAll": {
+    "title": "すべてのジョブを停止",
+    "body_other": "アクティブなジョブ {{count}} 件をすべて停止しますか？実行中のエージェントは強制終了され、その計画は以前の状態に戻ります。この操作は元に戻せません。",
+    "confirm": "すべて停止",
+    "toast": {
+      "title": "ジョブを停止しました",
+      "description_other": "{{count}} 件のジョブを停止しました"
+    }
+  },
+  "errorBanner": {
+    "dismiss": "エラーを閉じる"
+  },
+  "recommendationCard": {
+    "state": {
+      "pending": "保留中",
+      "accepted": "承認済み",
+      "acceptedWithNotes": "メモ付きで承認済み",
+      "declined": "却下済み"
+    },
+    "impact": {
+      "small": "小",
+      "medium": "中",
+      "high": "高"
+    },
+    "declineReason": "却下の理由：{{reason}}",
+    "notes": "メモ：{{notes}}",
+    "accept": "承認",
+    "decline": "却下"
+  },
+  "service": {
+    "state": {
+      "connected": "接続済み",
+      "disconnected": "未接続",
+      "unauthenticated": "未認証",
+      "notRunning": "未起動",
+      "foreignMaster": "他のマスター"
+    },
+    "ownership": {
+      "adoptedExternal": "外部（引き継ぎ済み）",
+      "managed": "管理対象"
+    }
+  },
+  "serviceStatus": {
+    "connectedExternal": "接続済み（外部）",
+    "portUnavailable": "N/A",
+    "restart": "サービスを再起動",
+    "repair": "サービスを修復",
+    "diagnostics": "診断"
+  },
+  "serviceSettings": {
+    "controls": {
+      "title": "サービスの監視と制御",
+      "hint": "ローカルのコンパニオンデーモンのライフサイクル、所有権の引き継ぎ、クラッシュからの復旧を管理します。"
+    },
+    "actions": {
+      "restart": "サービスを再起動",
+      "repair": "サービスを修復",
+      "switchToExternal": "外部デーモンに切り替え",
+      "adoptManaged": "管理対象のコンパニオンを引き継ぐ",
+      "install": "バックグラウンドサービスをインストール",
+      "installTooltip": "同梱のデーモンを {{path}} にコピーし、セッションの開始時に起動します",
+      "disableAutostart": "ログイン時の起動を無効化",
+      "disableAutostartTooltip": "ログイン時にデーモンを起動しないようにします。インストール済みのバイナリはそのまま残ります。",
+      "refreshLogs": "ログを更新",
+      "loadingLogs": "ログを読み込み中…"
+    },
+    "messages": {
+      "restartInitiated": "サービスの再起動を開始しました。",
+      "restartFailed": "再起動に失敗しました：{{error}}",
+      "repairFailed": "修復に失敗しました：{{error}}",
+      "installFailed": "インストールに失敗しました：{{error}}",
+      "disableAutostartFailed": "ログイン時の起動を無効化できませんでした：{{error}}",
+      "switchedToManaged": "サービスの所有権モードを管理対象に切り替えました。",
+      "switchedToExternal": "サービスの所有権モードを外部に切り替えました。",
+      "switchFailed": "モードの切り替えに失敗しました：{{error}}"
+    },
+    "provision": {
+      "installed": "{{binaries, list(type: unit)}} を {{dir}} にインストールしました。",
+      "upToDate": "{{dir}} の {{binaries, list(type: unit)}} はすでに最新です。",
+      "missing": "このビルドには {{binaries, list(type: unit)}} が同梱されていません。",
+      "registered": "セッションの開始時に起動するよう登録しました ({{detail}})。",
+      "alreadyRegistered": "セッションの開始時に起動するよう、すでに登録されています。",
+      "registerFailed": "ログイン時の起動を登録できませんでした：{{detail}}",
+      "skipped": "ログイン時の起動をスキップしました：{{detail}}",
+      "nothing": "インストールするものはありません。"
+    },
+    "details": {
+      "ownership": "所有権",
+      "ownershipFallback": "外部 / スタンドアロン",
+      "endpoint": "エンドポイント",
+      "pid": "プロセス PID",
+      "crashCount": "クラッシュ回数",
+      "notAvailable": "N/A"
+    },
+    "logs": {
+      "title": "デーモン診断とサービスログ",
+      "hint": "機密性の高いトークンは伏せ字にしています。{{path}} から読み込みます。",
+      "empty": "{{file}} にはまだログが記録されていません。",
+      "loadFailed": "サービスログを読み込めませんでした：{{error}}"
+    }
+  },
+  "errors": {
+    "requestFailed": "{{path}} へのリクエストに失敗しました ({{status}})",
+    "reviewActionFailed": "レビューアクション {{endpoint}} に失敗しました ({{status}})：{{detail}}",
+    "subscribeFailed": "{{url}} の購読に失敗しました：HTTP {{status}}",
+    "agentTerminalFailed": "エージェントターミナル {{endpoint}} に失敗しました：HTTP {{status}}"
+  }
+}

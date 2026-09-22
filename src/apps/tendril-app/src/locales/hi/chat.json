@@ -1,1 +1,258 @@
-{}
+{
+  "agentPicker": {
+    "tooltip": "एजेंट, मॉडल और प्रयास",
+    "triggerLabel": "एजेंट: {{agent}}",
+    "menuLabel": "एजेंट्स",
+    "optionsTooltip": "मॉडल और प्रयास",
+    "optionsLabel": "{{agent}} विकल्प",
+    "settingsLabel": "{{agent}} सेटिंग्स",
+    "model": "मॉडल",
+    "effort": "प्रयास स्तर",
+    "unlistedValue": "डिफ़ॉल्ट",
+    "effortLevels": {
+      "default": "डिफ़ॉल्ट",
+      "none": "कोई नहीं",
+      "low": "निम्न",
+      "medium": "मध्यम",
+      "high": "उच्च",
+      "xhigh": "अति उच्च",
+      "max": "अधिकतम"
+    }
+  },
+  "composerAttachment": {
+    "remove": "{{name}} निकालें"
+  },
+  "lightbox": {
+    "fallbackTitle": "छवि पूर्वावलोकन",
+    "fallbackAlt": "अटैचमेंट पूर्वावलोकन",
+    "closeLabel": "पूर्वावलोकन बंद करें"
+  },
+  "newChatButtons": {
+    "label": "नई चैट",
+    "tooltip": "नई चैट",
+    "tooltip_terminal": "नई चैट (टर्मिनल)",
+    "override_chat": "नया चैट UI सत्र",
+    "override_terminal": "नई टर्मिनल चैट"
+  },
+  "planChat": {
+    "headline": "Tendril से कुछ भी बदलने को कहें"
+  },
+  "systemEvent": {
+    "linked": {
+      "completed": "{{type}} <plan>{{plan}}</plan> का निष्पादन पूर्ण हुआ।",
+      "completed_plan": "योजना <plan>{{plan}}</plan> पूर्ण हुई।",
+      "completed_pullRequest": "पुल रिक्वेस्ट <plan>{{plan}}</plan> पूर्ण हुआ।",
+      "failed": "{{type}} <plan>{{plan}}</plan> का निष्पादन विफल हुआ।",
+      "failed_plan": "योजना <plan>{{plan}}</plan> विफल हुई।",
+      "failed_pullRequest": "पुल रिक्वेस्ट <plan>{{plan}}</plan> विफल हुआ।",
+      "timeout": "{{type}} <plan>{{plan}}</plan> का समय समाप्त हो गया।",
+      "timeout_plan": "योजना <plan>{{plan}}</plan> का समय समाप्त हो गया।",
+      "timeout_pullRequest": "पुल रिक्वेस्ट <plan>{{plan}}</plan> का समय समाप्त हो गया।",
+      "cancelled": "{{type}} <plan>{{plan}}</plan> का निष्पादन रद्द किया गया।",
+      "cancelled_plan": "योजना <plan>{{plan}}</plan> रद्द की गई।",
+      "cancelled_pullRequest": "पुल रिक्वेस्ट <plan>{{plan}}</plan> रद्द किया गया।",
+      "unknown": "{{type}} <plan>{{plan}}</plan>: {{status}}।",
+      "unknown_plan": "योजना <plan>{{plan}}</plan>: {{status}}।",
+      "unknown_pullRequest": "पुल रिक्वेस्ट <plan>{{plan}}</plan>: {{status}}।"
+    },
+    "quoted": {
+      "completed": "{{type}} \"{{subject}}\" का निष्पादन पूर्ण हुआ",
+      "completed_plan": "योजना \"{{subject}}\" पूर्ण हुई",
+      "completed_pullRequest": "पुल रिक्वेस्ट \"{{subject}}\" पूर्ण हुआ",
+      "failed": "{{type}} \"{{subject}}\" का निष्पादन विफल हुआ",
+      "failed_plan": "योजना \"{{subject}}\" विफल हुई",
+      "failed_pullRequest": "पुल रिक्वेस्ट \"{{subject}}\" विफल हुआ",
+      "timeout": "{{type}} \"{{subject}}\" का समय समाप्त हो गया",
+      "timeout_plan": "योजना \"{{subject}}\" का समय समाप्त हो गया",
+      "timeout_pullRequest": "पुल रिक्वेस्ट \"{{subject}}\" का समय समाप्त हो गया",
+      "cancelled": "{{type}} \"{{subject}}\" का निष्पादन रद्द किया गया",
+      "cancelled_plan": "योजना \"{{subject}}\" रद्द की गई",
+      "cancelled_pullRequest": "पुल रिक्वेस्ट \"{{subject}}\" रद्द किया गया",
+      "unknown": "{{type}} \"{{subject}}\": {{status}}",
+      "unknown_plan": "योजना \"{{subject}}\": {{status}}",
+      "unknown_pullRequest": "पुल रिक्वेस्ट \"{{subject}}\": {{status}}"
+    },
+    "started": "योजना \"{{plan}}\" शुरू हुई",
+    "fullStop": "{{sentence}}।",
+    "openPlan": "योजना खोलें"
+  },
+  "terminal": {
+    "untitled": "एजेंट",
+    "newChat": "नई चैट",
+    "starting": "{{agent}} शुरू हो रहा है…",
+    "startingUnknown": "एजेंट शुरू हो रहा है…"
+  },
+  "jobsMenu": {
+    "triggerLabel": "चल रही जॉब्स देखें",
+    "triggerTitle": "जॉब्स देखें",
+    "triggerTitleRunning_one": "{{count}} जॉब चल रही है",
+    "triggerTitleRunning_other": "{{count}} जॉब्स चल रही हैं",
+    "pillRunning_one": "{{count}} चल रही",
+    "pillRunning_other": "{{count}} चल रही",
+    "pillJobs_one": "{{count}} जॉब",
+    "pillJobs_other": "{{count}} जॉब्स",
+    "pillWithFailures_one": "{{jobs}} ({{count}} विफल)",
+    "pillWithFailures_other": "{{jobs}} ({{count}} विफल)",
+    "listLabel": "जॉब्स",
+    "title": "चल रही जॉब्स ({{count}})",
+    "title_spawned": "शुरू की गई जॉब्स ({{count}})",
+    "summaryRunning_one": "{{count}} चल रही",
+    "summaryRunning_other": "{{count}} चल रही",
+    "summaryCompleted_one": "{{count}} पूर्ण",
+    "summaryCompleted_other": "{{count}} पूर्ण",
+    "summaryFailed_one": "{{count}} विफल",
+    "summaryFailed_other": "{{count}} विफल",
+    "genericJobType": "जॉब",
+    "openPlan": "योजना खोलें",
+    "review": "एजेंट से परिणामों की समीक्षा करने को कहें"
+  },
+  "chatHeader": {
+    "titleInputLabel": "चैट का नाम",
+    "optionsLabel": "चैट विकल्प",
+    "optionsMenuLabel": "चैट विकल्प",
+    "editName": "नाम संपादित करें",
+    "deleteChat": "चैट हटाएं"
+  },
+  "messageRow": {
+    "openAttachment": "{{name}} खोलें",
+    "submittingAnswer": "उत्तर सबमिट किया जा रहा है…"
+  },
+  "view": {
+    "dropOverlay": "संदेश में अटैच करने के लिए फ़ाइलें यहाँ छोड़ें",
+    "noActiveChat": "कोई सक्रिय चैट नहीं",
+    "working": "काम चल रहा है…",
+    "jumpToQuestion_down": "लंबित प्रश्न पर जाएं ↓",
+    "jumpToQuestion_up": "लंबित प्रश्न पर जाएं ↑",
+    "scrollToStreamingTail": "स्ट्रीम हो रहे अंत तक स्क्रॉल करें",
+    "scrollToBottom": "नीचे तक स्क्रॉल करें"
+  },
+  "composer": {
+    "attach": "फ़ाइल अटैच करें",
+    "promptLabel": "चैट प्रॉम्प्ट",
+    "placeholder": "Tendril से कुछ भी पूछें…",
+    "voice": "वॉइस इनपुट",
+    "voiceErrorDismiss": "वॉइस इनपुट त्रुटि खारिज करें",
+    "nothingTranscribed": "कुछ भी ट्रांसक्राइब नहीं हुआ। कृपया फिर से प्रयास करें।",
+    "clearAttachments": "सभी साफ़ करें",
+    "queue": "संदेश कतार में जोड़ें",
+    "stop": "एजेंट रोकें",
+    "stopping": "एजेंट रोका जा रहा है",
+    "stopTooltip": "एजेंट रोकें",
+    "stoppingTooltip": "एजेंट रोका जा रहा है…",
+    "send": "संदेश भेजें"
+  },
+  "emptyState": {
+    "headline": "आज हम क्या बना रहे हैं?"
+  },
+  "greeting": {
+    "morning": "सुप्रभात!",
+    "afternoon": "शुभ दोपहर!",
+    "evening": "शुभ संध्या!"
+  },
+  "deleteSession": {
+    "title": "सत्र हटाएं",
+    "body": "क्या आप वाकई \"{{title}}\" को हटाना चाहते हैं? यह क्रिया पूर्ववत नहीं की जा सकती।",
+    "bodyUntitled": "क्या आप वाकई इस चैट सत्र को हटाना चाहते हैं? यह क्रिया पूर्ववत नहीं की जा सकती।"
+  },
+  "jobsReview": {
+    "prompt": "इस बातचीत द्वारा शुरू की गई जॉब्स के परिणामों की समीक्षा करें और मुझे बताएं कि क्या बदला:\n{{jobs}}"
+  },
+  "search": {
+    "title": "चैट खोजें",
+    "inputLabel": "चैट खोजें",
+    "placeholder": "चैट खोजें",
+    "empty": "कोई चैट नहीं मिली।"
+  },
+  "queue": {
+    "title": "कतारबद्ध संदेश",
+    "hint": "एजेंट का काम पूरा होने के बाद भेजा जाएगा",
+    "collapse": "कतारबद्ध संदेश संक्षिप्त करें",
+    "expand": "कतारबद्ध संदेश विस्तृत करें",
+    "editInputLabel": "कतारबद्ध प्रॉम्प्ट संपादित करें",
+    "save": "कतारबद्ध प्रॉम्प्ट सहेजें",
+    "cancelEdit": "संपादन रद्द करें",
+    "attachments_one": "{{count}} अटैचमेंट",
+    "attachments_other": "{{count}} अटैचमेंट्स",
+    "sendNow": "अभी भेजें",
+    "edit": "कतारबद्ध प्रॉम्प्ट संपादित करें",
+    "remove": "कतार से निकालें"
+  },
+  "samplePrompts": {
+    "chat": {
+      "review": {
+        "label_one": "प्रतीक्षारत {{count}} योजना की समीक्षा करें",
+        "label_other": "प्रतीक्षारत {{count}} योजनाओं की समीक्षा करें",
+        "prompt_one": "{{count}} योजना समीक्षा की प्रतीक्षा में है: {{plans}}। हर एक क्या देती है, इसका सारांश दें और बताएं कि पहले किसे मर्ज करना चाहिए।",
+        "prompt_other": "{{count}} योजनाएं समीक्षा की प्रतीक्षा में हैं: {{plans}}। हर एक क्या देती है, इसका सारांश दें और बताएं कि पहले किसे मर्ज करना चाहिए।"
+      },
+      "failed": {
+        "label": "#{{id}} विफल क्यों हुई?",
+        "prompt": "योजना #{{id}} {{title}} विफल हो गई। इसके लॉग और सत्यापन रिपोर्ट पढ़ें और बताएं कि क्या गलत हुआ।"
+      },
+      "blocked": {
+        "label": "#{{id}} को क्या रोक रहा है?",
+        "prompt": "योजना #{{id}} {{title}} अवरुद्ध है। उन योजनाओं की सूची बनाएं जिन पर यह निर्भर है, और बताएं कि हर एक को अभी क्या चाहिए।"
+      },
+      "jobs": {
+        "label": "मेरी जॉब्स क्या कर रही हैं?",
+        "prompt_one": "{{count}} जॉब चल रही है। हर एक किस पर काम कर रही है, इसका सारांश दें।",
+        "prompt_other": "{{count}} जॉब्स चल रही हैं। हर एक किस पर काम कर रही है, इसका सारांश दें।"
+      },
+      "addProject": {
+        "label": "नया प्रोजेक्ट जोड़ें",
+        "prompt": "मेरे Tendril में एक नया प्रोजेक्ट जोड़ें"
+      },
+      "editVerifications": {
+        "label": "सत्यापन संपादित करें",
+        "prompt": "मेरे प्रोजेक्ट्स के सत्यापन संपादित करें"
+      },
+      "teamVault": {
+        "label": "टीम वॉल्ट बनाएं",
+        "prompt": "एक साझा टीम वॉल्ट बनाएं"
+      },
+      "nextWork": {
+        "label": "मुझे आगे किस पर काम करना चाहिए?",
+        "prompt": "सभी प्रोजेक्ट्स में मेरी ड्राफ़्ट योजनाएं देखें और कारणों के साथ सुझाएं कि आगे किन दो को निष्पादित करना चाहिए।"
+      },
+      "shipped": {
+        "label": "इस सप्ताह क्या शिप हुआ?",
+        "prompt": "पिछले सात दिनों में {{state}} स्थिति तक पहुंचने वाली योजनाओं का सारांश प्रोजेक्ट के अनुसार समूहित करके दें।"
+      }
+    },
+    "plan": {
+      "failedVerification": {
+        "label": "{{name}} विफल क्यों हुआ?",
+        "prompt": "इस योजना के लिए {{name}} सत्यापन विफल हुआ। {{report}} में इसकी रिपोर्ट पढ़ें और विफलता का कारण तथा उसे ठीक करने का तरीका बताएं।"
+      },
+      "prFeedback": {
+        "label": "PR फ़ीडबैक का सारांश दें",
+        "prompt": "{{pr}} पर समीक्षा टिप्पणियां पढ़ें और उनमें मांगे गए परिवर्तनों की सूची बनाएं।"
+      },
+      "blocked": {
+        "label": "इसे क्या रोक रहा है?",
+        "prompt": "यह योजना {{dependencies}} के कारण अवरुद्ध है। मुझे बताएं कि हर निर्भरता को अभी क्या चाहिए।"
+      },
+      "tightenScope": {
+        "label": "दायरा सीमित करें",
+        "prompt": "इस योजना का नवीनतम संशोधन पढ़ें और बताएं कि इसमें क्या दायरे से बाहर है या पर्याप्त रूप से निर्दिष्ट नहीं है।"
+      },
+      "explainSolution": {
+        "label": "समाधान समझाएं",
+        "prompt": "इस योजना के {{section}} अनुभाग को सरल शब्दों में समझाएं, और हर उस फ़ाइल की सूची बनाएं जिसे यह बदलेगी।"
+      },
+      "risks": {
+        "label": "क्या गलत हो सकता है?",
+        "prompt": "इस योजना के सबसे जोखिम भरे हिस्से कौन-से हैं, और समीक्षा में मुझे क्या जांचना चाहिए?"
+      }
+    }
+  },
+  "sidebar": {
+    "title": "चैट",
+    "searchLabel": "चैट खोजें",
+    "newLabel": "नई चैट",
+    "untitled": "नई चैट"
+  },
+  "attachments": {
+    "pickerTitle": "अटैच करने के लिए फ़ाइलें चुनें"
+  }
+}

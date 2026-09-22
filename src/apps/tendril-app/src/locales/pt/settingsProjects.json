@@ -1,1 +1,359 @@
-{}
+{
+  "view": {
+    "ariaLabel": "Configuração do projeto",
+    "subtitle": "Configuração do projeto",
+    "rename": "Renomear Projeto"
+  },
+  "notifications": {
+    "saved": "Salvo",
+    "cloned": "Clonado",
+    "renamed": "Renomeado"
+  },
+  "saveError": "Falha ao salvar o projeto: {{error}}",
+  "rowActions": {
+    "edit": "Editar"
+  },
+  "bladeFooter": {
+    "add": "Adicionar"
+  },
+  "basic": {
+    "title": "Básico",
+    "hint": "A cor do projeto e o contexto de IA entregue a cada agente que trabalha nele.",
+    "color": {
+      "label": "Cor",
+      "hint": "Um nome de cor do Ivy, como o config.yaml o armazena."
+    },
+    "context": {
+      "label": "Contexto",
+      "placeholder": "O que um agente deve saber sobre este projeto..."
+    },
+    "saved": "Projeto salvo"
+  },
+  "repositories": {
+    "title": "Repositórios",
+    "hint": "Repositórios de origem e a branch base a partir da qual cada plano cria sua branch.",
+    "empty": "Nenhum repositório ainda.",
+    "baseBranch": {
+      "ariaLabel": "Branch base de {{path}}",
+      "placeholder": "Branch base",
+      "saved": "Branch base salva para {{path}}"
+    },
+    "remove": {
+      "ariaLabel": "Remover {{path}}",
+      "consequence": "O checkout no disco não é alterado — isso apenas impede que novos planos deste projeto se baseiem nele.",
+      "removed": "{{path}} removido"
+    },
+    "add": {
+      "ariaLabel": "URL do Repositório ou Caminho Local",
+      "placeholder": "URL do Repositório ou Caminho Local",
+      "button": "Adicionar Repositório",
+      "cloning": "Clonando...",
+      "invalidPath": "Caminho de repositório inválido.",
+      "added": "{{path}} adicionado",
+      "cloned": "Repositório clonado em {{path}}",
+      "failed": "Falha ao adicionar o repositório: {{error}}"
+    },
+    "note": "Uma URL remota é clonada no TENDRIL_HOME, e a linha mostra onde ela foi clonada em vez da URL; um caminho local é armazenado exatamente como digitado."
+  },
+  "reviewActions": {
+    "title": "Ações de Revisão",
+    "hint": "Botões de acesso rápido exibidos durante a revisão para visualizar ou executar o aplicativo.",
+    "addButton": "Adicionar Ação de Revisão",
+    "addTitle": "Adicionar Ação de Revisão",
+    "editTitle": "Editar Ação de Revisão",
+    "columns": {
+      "name": "Nome da Ação",
+      "command": "Comando",
+      "condition": "Condição"
+    },
+    "empty": "Nenhuma ação de revisão para este projeto.",
+    "removal": {
+      "consequence": "Ela deixa de ser oferecida nos planos deste projeto em revisão, e as ações restantes ocupam o lugar dela na ordem de execução."
+    },
+    "saved": "Ação de revisão \"{{name}}\" salva",
+    "deleted": "Ação de revisão \"{{name}}\" excluída"
+  },
+  "verifications": {
+    "title": "Verificações",
+    "hint": "Verificações de qualidade exigidas antes de os planos serem marcados como concluídos. Arraste para definir a ordem de execução.",
+    "addButton": "Adicionar Verificação",
+    "addTitle": "Adicionar Verificação",
+    "empty": "Nenhuma verificação está definida no config.yaml, então não há nada para ativar. Adicione uma para criá-la e ativá-la aqui.",
+    "updated": "Verificações atualizadas para {{project}}",
+    "orderSaved": "Ordem de execução das verificações salva",
+    "added": "Verificação adicionada",
+    "addFailed": "Falha ao adicionar a verificação: {{error}}"
+  },
+  "ports": {
+    "title": "Portas",
+    "hint": "Portas de serviço nomeadas. Um plano usa uma porta livre quando a padrão está ocupada.",
+    "addButton": "Adicionar Porta",
+    "addTitle": "Adicionar Porta",
+    "editTitle": "Editar Porta",
+    "columns": {
+      "name": "Nome",
+      "defaultPort": "Porta Padrão",
+      "description": "Descrição"
+    },
+    "empty": "Nenhuma porta de serviço configurada. Defina portas nomeadas para a alocação dinâmica de portas entre revisões de planos simultâneas.",
+    "mergeLimitation": "As portas são um mapeamento, e PUT /api/config mescla mapeamentos em profundidade, então uma porta pode ser adicionada ou alterada aqui, mas não removida nem renomeada.",
+    "saved": "Porta \"{{name}}\" salva"
+  },
+  "envFiles": {
+    "title": "Arquivos de Ambiente",
+    "hint": "Arquivos recriados em cada worktree de plano, que começa sem arquivos .env não rastreados.",
+    "addButton": "Adicionar Arquivo de Ambiente",
+    "addTitle": "Adicionar Arquivo de Ambiente",
+    "editTitle": "Editar Arquivo de Ambiente",
+    "columns": {
+      "path": "Caminho",
+      "template": "Modelo",
+      "overrides": "Substituições"
+    },
+    "empty": "Nenhum arquivo de ambiente configurado. Defina arquivos de ambiente para materializar modelos .env e injetar variáveis nas worktrees dos planos.",
+    "removal": {
+      "consequence": "As variáveis dele deixam de ser injetadas nas novas worktrees de plano. Os arquivos já materializados nas worktrees existentes permanecem como estão."
+    },
+    "saved": "Arquivo de ambiente \"{{path}}\" salvo",
+    "deleted": "Arquivo de ambiente \"{{path}}\" excluído"
+  },
+  "agentBehavior": {
+    "title": "Comportamento do Agente",
+    "autoImplement": {
+      "label": "Revisão de Artefatos / Política de Implementação Automática",
+      "options": {
+        "autoImplementPlans": "Implementar Planos Automaticamente",
+        "alwaysAskReview": "Sempre Pedir Revisão"
+      }
+    },
+    "saved": "Comportamento do agente salvo"
+  },
+  "security": {
+    "title": "Segurança",
+    "hint": "Sandbox, regras de arquivos e de rede e confirmação no terminal para este projeto.",
+    "preset": {
+      "label": "Predefinição de Segurança",
+      "hint": "Qualquer opção diferente de Personalizado substitui os campos de sandbox e de arquivos/rede abaixo.",
+      "options": {
+        "custom": "Personalizado",
+        "permissive": "Permissivo",
+        "restricted": "Restrito",
+        "strict": "Estrito"
+      }
+    },
+    "sandboxMode": {
+      "label": "Modo Sandbox",
+      "hint": "Herdar Geral significa sem sandbox. Efetivo: {{effective}}.",
+      "options": {
+        "inheritGeneral": "Herdar Geral",
+        "enabled": "Ativado",
+        "disabled": "Desativado"
+      }
+    },
+    "outsideFileAccess": {
+      "label": "Acesso a Arquivos Externos",
+      "hint": "Negar descarta todas as regras de arquivo abaixo. Efetivo: {{effective}}.",
+      "options": {
+        "allow": "Permitir",
+        "ask": "Perguntar",
+        "deny": "Negar"
+      }
+    },
+    "terminalAutoExecution": {
+      "label": "Autoexecução no Terminal",
+      "hint": "Não é afetado pela predefinição. Efetivo: {{effective}}.",
+      "options": {
+        "inheritGeneral": "Herdar Geral",
+        "alwaysProceed": "Sempre Prosseguir",
+        "alwaysAsk": "Sempre Perguntar"
+      }
+    },
+    "filePermissions": {
+      "label": "Permissões de Arquivo",
+      "hint": "Uma regra `{{syntax}}` por linha. {{allow}} adiciona um diretório gravável; {{deny}} nega {{write}} e {{edit}} no caminho."
+    },
+    "networkRules": {
+      "label": "Regras de Acesso à Rede",
+      "hintAllowed": "Uma regra `{{syntax}}` por linha. Um único {{deny}} desativa totalmente o acesso à rede. Efetivo: permitido.",
+      "hintDenied": "Uma regra `{{syntax}}` por linha. Um único {{deny}} desativa totalmente o acesso à rede. Efetivo: negado."
+    },
+    "allowedCommands": {
+      "label": "Comandos de Terminal Permitidos",
+      "hint": "Um comando por linha, cada um permitido como `{{syntax}}`."
+    },
+    "enforcement": {
+      "enforces": "O {{agent}} aplica: {{controls, list(style: narrow)}}.",
+      "enforcesNone": "O {{agent}} aplica: nenhum destes controles.",
+      "ignored": "Ignorados pelo {{agent}}: {{controls, list(style: narrow)}}. Essas chaves continuam sendo gravadas e são respeitadas pelos agentes que as suportam.",
+      "controls": {
+        "sandbox": "modo sandbox",
+        "network": "acesso à rede",
+        "terminalPrompt": "confirmação no terminal",
+        "fileRules": "regras de arquivos e comandos"
+      }
+    },
+    "saved": "Configurações de segurança salvas para {{project}}"
+  },
+  "mcpServers": {
+    "title": "Permissões Locais",
+    "hint": "Servidores Model Context Protocol personalizados para este projeto.",
+    "addButton": "Adicionar Servidor MCP",
+    "addTitle": "Adicionar Servidor MCP",
+    "editTitle": "Editar Servidor MCP",
+    "columns": {
+      "name": "Nome",
+      "command": "Comando",
+      "disabled": "Desativado"
+    },
+    "disabledValue": {
+      "yes": "Sim",
+      "no": "Não"
+    },
+    "empty": "Nenhum servidor MCP configurado para este projeto.",
+    "removal": {
+      "consequence": "Os agentes que trabalham neste projeto deixam de receber as ferramentas dele. Isso remove a referência do projeto ao servidor, não a definição do servidor em si."
+    },
+    "saved": "Servidor MCP \"{{name}}\" salvo",
+    "deleted": "Servidor MCP \"{{name}}\" excluído"
+  },
+  "skills": {
+    "title": "Personalizações",
+    "hint": "Habilidades personalizadas e instruções de prompt para os agentes que trabalham neste projeto.",
+    "addButton": "Adicionar Habilidade Personalizada",
+    "addTitle": "Adicionar Habilidade Personalizada",
+    "editTitle": "Editar Habilidade Personalizada",
+    "columns": {
+      "name": "Nome",
+      "description": "Descrição",
+      "path": "Caminho"
+    },
+    "empty": "Nenhuma habilidade personalizada configurada para este projeto.",
+    "removal": {
+      "consequence": "Os agentes que trabalham neste projeto deixam de recebê-la. Isso remove a referência do projeto à habilidade, não os arquivos da própria habilidade."
+    },
+    "saved": "Habilidade \"{{name}}\" salva",
+    "deleted": "Habilidade \"{{name}}\" excluída",
+    "memoryNote": "As memórias do projeto ficam em arquivos markdown em {{path}}. O daemon não expõe nenhuma rota para elas, então ainda não podem ser editadas aqui."
+  },
+  "dangerZone": {
+    "title": "Zona de Perigo",
+    "remove": {
+      "button": "Remover Projeto",
+      "description": "Remove o projeto do config.yaml. Os repositórios clonados, as pastas de planos e o histórico permanecem no disco, então adicionar o projeto de volta pelo nome o restaura."
+    },
+    "delete": {
+      "button": "Excluir Projeto",
+      "description": "Exclui permanentemente os planos do projeto, os repositórios clonados em {{path}}, as linhas do banco de dados e a entrada de configuração. Isso não pode ser desfeito, e é preciso digitar o nome do projeto antes."
+    }
+  },
+  "reviewActionBlade": {
+    "name": {
+      "label": "Nome",
+      "placeholder": "Nome da ação..."
+    },
+    "command": {
+      "label": "Comando",
+      "placeholder": "ex.: dotnet test"
+    },
+    "condition": {
+      "label": "Condição",
+      "placeholder": "ex.: {{example}}"
+    }
+  },
+  "verificationBlade": {
+    "name": {
+      "label": "Nome",
+      "placeholder": "Nome da verificação...",
+      "duplicate": "Já existe uma verificação chamada \"{{name}}\"."
+    },
+    "prompt": {
+      "label": "Prompt",
+      "placeholder": "Prompt da verificação..."
+    }
+  },
+  "mcpServerBlade": {
+    "name": {
+      "label": "Nome",
+      "placeholder": "Nome do servidor (ex.: sqlite)..."
+    },
+    "command": {
+      "label": "Comando",
+      "placeholder": "Executável do comando (ex.: npx)..."
+    },
+    "arguments": {
+      "label": "Argumentos",
+      "placeholder": "Argumentos (ex.: -y @modelcontextprotocol/server-sqlite)...",
+      "hint": "Separados por espaços em branco, da mesma forma que o EditMcpServerBladeView os separa."
+    },
+    "environment": {
+      "label": "Variáveis de Ambiente",
+      "hint": "Um KEY=VALUE por linha."
+    },
+    "disabled": "Desativado"
+  },
+  "skillBlade": {
+    "name": {
+      "label": "Nome",
+      "placeholder": "Nome da habilidade (ex.: code-review)..."
+    },
+    "description": {
+      "label": "Descrição",
+      "placeholder": "Descrição curta..."
+    },
+    "instructions": {
+      "label": "Instruções",
+      "placeholder": "Instruções em Markdown para o agente..."
+    },
+    "path": {
+      "label": "Caminho do Arquivo/Pasta",
+      "placeholder": "Caminho para a pasta/arquivo da habilidade (ex.: %TENDRIL_HOME%/Skills/my-skill)..."
+    },
+    "disabled": "Desativado"
+  },
+  "portBlade": {
+    "name": {
+      "label": "Nome",
+      "placeholder": "ex.: backend",
+      "hint": "Identificador da porta referenciado nas substituições de ambiente por meio de placeholders {{placeholder}}."
+    },
+    "defaultPort": {
+      "label": "Porta Padrão",
+      "invalid": "A Porta Padrão deve estar entre 1 e 65535.",
+      "hint": "Porta preferida. Se ela já estiver ocupada, o Tendril aloca uma porta livre no lugar."
+    },
+    "description": {
+      "label": "Descrição",
+      "placeholder": "O que escuta aqui..."
+    }
+  },
+  "envFileBlade": {
+    "path": {
+      "label": "Caminho",
+      "placeholder": "ex.: apps/web/.env",
+      "hint": "Caminho relativo para o arquivo de ambiente recriado na worktree do plano."
+    },
+    "template": {
+      "label": "Modelo",
+      "placeholder": "ex.: .env.example",
+      "hint": "Modelo base opcional copiado para a worktree antes de as substituições serem aplicadas."
+    },
+    "overrides": {
+      "label": "Substituições",
+      "hint": "Linhas KEY=VALUE com suporte aos placeholders {{ports}}, {{env}} e {{variable}}."
+    }
+  },
+  "nameEditor": {
+    "ariaLabel": "Nome do projeto",
+    "confirm": "Confirmar renomeação",
+    "cancel": "Cancelar renomeação",
+    "duplicate": "Já existe um projeto chamado \"{{name}}\".",
+    "renamed": "Projeto renomeado para \"{{name}}\""
+  },
+  "removalKinds": {
+    "repository": "repositório",
+    "reviewAction": "ação de revisão",
+    "environmentFile": "arquivo de ambiente",
+    "mcpServer": "servidor MCP",
+    "customSkill": "habilidade personalizada"
+  }
+}

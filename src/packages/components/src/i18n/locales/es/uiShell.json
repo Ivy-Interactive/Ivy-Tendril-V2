@@ -1,1 +1,280 @@
-{}
+{
+  "agentButton": {
+    "label": "Agente",
+    "newChatTooltip": "Nuevo chat",
+    "flyout": {
+      "empty": "Aún no hay chats",
+      "newChat": "Nuevo chat"
+    }
+  },
+  "newPlanButton": {
+    "label": "Nuevo plan"
+  },
+  "settingsButton": {
+    "label": "Ajustes"
+  },
+  "nav": {
+    "resizeAriaLabel": "Cambiar el tamaño de la navegación"
+  },
+  "railFlyout": {
+    "previous": "Anterior",
+    "next": "Siguiente"
+  },
+  "sectionItems": {
+    "state": {
+      "working": "En curso",
+      "completed": "Completado"
+    },
+    "menu": {
+      "label": "Opciones de {{title}}",
+      "tooltip": "Opciones",
+      "pin": "Fijar chat",
+      "unpin": "Dejar de fijar chat",
+      "rename": "Editar nombre",
+      "delete": "Eliminar"
+    },
+    "titleEditor": {
+      "ariaLabel": "Nombre del elemento"
+    }
+  },
+  "sidebarHeader": {
+    "openSidebar": "Abrir barra lateral",
+    "closeSidebar": "Cerrar barra lateral"
+  },
+  "sidebarSection": {
+    "searchLabel": "Buscar planes",
+    "searchButton": "Buscar"
+  },
+  "tabs": {
+    "closeAriaLabel": "Cerrar {{title}}",
+    "newSession": "Nueva sesión de agente"
+  },
+  "shell": {
+    "toggleSidebarShortcut": "Mostrar u ocultar la barra lateral",
+    "resizer": {
+      "ariaLabel": "Cambiar el tamaño de la barra lateral",
+      "title": "Arrastra para cambiar el tamaño de la barra lateral; haz doble clic para restablecerlo"
+    }
+  },
+  "agentStatus": {
+    "starting": "Iniciando…",
+    "completed": "Completado",
+    "failed": "Fallido",
+    "thinking": "Pensando…",
+    "working": "Procesando…",
+    "runningCommand": "Ejecutando comando",
+    "reading": "Leyendo",
+    "readingFile": "Leyendo {{file}}",
+    "editing": "Editando",
+    "editingFile": "Editando {{file}}",
+    "searching": "Buscando",
+    "runningTool": "Ejecutando {{name}}"
+  },
+  "resultSummary": {
+    "errorTitle": "❌ Error",
+    "terminated": "El proceso del agente se terminó o agotó el tiempo de espera (código de salida {{code}}).",
+    "terminatedUnknownCode": "El proceso del agente se terminó o agotó el tiempo de espera (código de salida desconocido).",
+    "cost": {
+      "billed": "Coste: {{cost}}",
+      "estimated": "Coste: ~{{cost}}",
+      "billedTooltip": "Facturado por el agente",
+      "estimatedTooltip": "Calculado a partir del número de tokens con el precio de lista de este modelo, que no puede conocer tu suscripción ni tu nivel"
+    },
+    "duration": "Duración: {{seconds}} s",
+    "tokens": "Tokens: {{input}} de entrada / {{output}} de salida",
+    "cache": "Caché: {{read}} de lectura / {{write}} de escritura",
+    "premium": "Premium: {{value}}",
+    "exitCode": "Código de salida: {{code}}",
+    "denied": "Denegaciones: {{value}}"
+  },
+  "metrics": {
+    "elapsed": {
+      "label": "Tiempo de salida",
+      "reportedTooltip": "Tiempo de salida: la duración que informó el agente",
+      "measuredTooltip": "Tiempo de salida: medido desde el primer evento hasta el último",
+      "runningTooltip": "Tiempo de salida: medido desde el primer evento"
+    },
+    "tokens": {
+      "label": "Tokens",
+      "estimatedTooltip": "Tokens: estimados a partir del flujo recibido hasta ahora; el agente informa de su propio recuento al terminar",
+      "reportedTooltip": "Tokens: informados por el agente"
+    },
+    "cost": {
+      "label": "Coste",
+      "estimatedTooltip": "Coste: calculado a partir del número de tokens con el precio de lista de este modelo, que no puede conocer tu suscripción ni tu nivel",
+      "billedTooltip": "Coste: facturado por el agente"
+    }
+  },
+  "toolCard": {
+    "file": "Archivo: {{path}}",
+    "url": "URL: {{url}}",
+    "query": "Consulta: {{query}}",
+    "queryInPath": "Consulta: {{query}} en {{path}}",
+    "input": "ENTRADA",
+    "output": "SALIDA"
+  },
+  "toolGroup": {
+    "count_one": "{{count}} llamada a herramienta",
+    "count_many": "{{count}} llamadas a herramientas",
+    "count_other": "{{count}} llamadas a herramientas"
+  },
+  "agentNode": {
+    "session": "sesión: {{session}}",
+    "sessionWithModel": "sesión: {{session}} ({{model}})",
+    "errorTitle": "❌ Error"
+  },
+  "badgeSelect": {
+    "placeholder": "Seleccionar...",
+    "ariaLabel": "Seleccionar",
+    "remove": "Quitar {{label}}"
+  },
+  "contentInput": {
+    "placeholder": "¿En qué puedo ayudarte hoy?",
+    "send": "Enviar",
+    "moreOptions": "Más opciones",
+    "attachFiles": "Adjuntar archivos",
+    "voiceInput": "Transcripción de entrada de voz",
+    "dismissError": "Descartar error",
+    "removeFile": "Quitar archivo",
+    "attachment": {
+      "document": "Documento",
+      "lineCount_one": "{{count}} línea",
+      "lineCount_many": "{{count}} líneas",
+      "lineCount_other": "{{count}} líneas",
+      "sizeBytes": "{{size}} B",
+      "sizeKilobytes": "{{size}} KB",
+      "sizeMegabytes": "{{size}} MB"
+    },
+    "errors": {
+      "uploadStatus": "La subida falló con el estado {{status}}",
+      "uploadFailed": "No se pudo subir el archivo: {{error}}",
+      "readFailed": "No se pudo leer el archivo",
+      "emptyTranscription": "La transcripción no contenía suficiente información para generar un prompt. Inténtalo de nuevo y habla con claridad."
+    }
+  },
+  "voice": {
+    "errors": {
+      "insecureContext": "La entrada de voz necesita una conexión segura. Abre Tendril por HTTPS o en localhost y vuelve a intentarlo.",
+      "mediaDevicesUnavailable": "La entrada de voz no está disponible en esta ventana. En macOS, cierra y vuelve a abrir Ivy Tendril después de actualizar y permite el acceso al micrófono cuando se te pida. También puedes ejecutar \"{{command}}\" y usar la entrada de voz en tu navegador.",
+      "audioCaptureUnsupported": "Este navegador no puede capturar audio para la entrada de voz.",
+      "captureInitFailed": "No se pudo inicializar la captura de audio: {{error}}",
+      "websocket": "Se produjo un error de WebSocket al conectar con el servicio de transcripción.",
+      "closedUnexpectedly": "La conexión WebSocket se cerró inesperadamente (código {{code}}: {{reason}})",
+      "closedUnexpectedlyNoReason": "La conexión WebSocket se cerró inesperadamente (código {{code}}: sin motivo indicado)",
+      "connectionFailed": "Se denegó el acceso al micrófono o falló la conexión: {{error}}",
+      "microphoneDenied": "Se denegó el acceso al micrófono. Permite el acceso al micrófono para Ivy Tendril en Ajustes del Sistema > Privacidad y seguridad > Micrófono y vuelve a intentarlo.",
+      "microphoneNotFound": "No se encontró ningún micrófono. Conecta un dispositivo de entrada y vuelve a intentarlo."
+    }
+  },
+  "dashboard": {
+    "status": {
+      "plans": "Planes",
+      "inProgress": "En curso",
+      "readyForReview": "Listos para revisión",
+      "completed": "Completados",
+      "failed": "Fallidos"
+    },
+    "kpi": {
+      "breakdownAriaLabel": "Ver el desglose del cálculo de {{label}}",
+      "loadingAriaLabel": "Cargando métricas"
+    },
+    "trend": {
+      "loading": "Cargando la tendencia de costes y planes",
+      "costTab": "Coste total",
+      "plansTab": "Total de planes",
+      "currentName": "Últimas 4 semanas",
+      "rollingLegend": "Media de 7 días",
+      "plansValue_one": "{{count}} plan",
+      "plansValue_many": "{{count}} planes",
+      "plansValue_other": "{{count}} planes"
+    },
+    "gitActivity": {
+      "title": "Actividad de Git",
+      "loading": "Cargando la actividad de Git"
+    },
+    "pullRequests": {
+      "title": "Pull requests",
+      "weekTab": "Semana",
+      "monthTab": "Mes",
+      "loading": "Cargando pull requests fusionadas"
+    },
+    "tunnel": {
+      "title": "Túnel"
+    },
+    "factory": {
+      "title": "Factoría de software"
+    },
+    "jobs": {
+      "title": "Trabajos activos",
+      "empty": "No hay trabajos en ejecución"
+    }
+  },
+  "trendChart": {
+    "axisDateWithYear": "{{date}} '{{year}}",
+    "currentRow": "{{name}}: {{value}}",
+    "rollingRow": "Media de 7 días: {{value}}"
+  },
+  "activityGrid": {
+    "empty": "Aún no hay pull requests fusionadas",
+    "weekOf": "Semana del {{date}}",
+    "merged_one": "{{count}} pull request fusionada",
+    "merged_many": "{{count}} pull requests fusionadas",
+    "merged_other": "{{count}} pull requests fusionadas"
+  },
+  "pullRequestBars": {
+    "empty": "Aún no hay pull requests fusionadas",
+    "weekOf": "Semana del {{date}}",
+    "barLabel": "{{period}}: {{merged}}",
+    "merged_one": "{{count}} pull request fusionada",
+    "merged_many": "{{count}} pull requests fusionadas",
+    "merged_other": "{{count}} pull requests fusionadas",
+    "tooltipMerged_one": "{{count}} PR fusionada",
+    "tooltipMerged_many": "{{count}} PRs fusionadas",
+    "tooltipMerged_other": "{{count}} PRs fusionadas"
+  },
+  "processViewer": {
+    "newPlan": "Nuevo plan",
+    "plans": "Planes",
+    "review": "Revisión",
+    "creatingPr": "PR {{value}}"
+  },
+  "terminal": {
+    "loading": "Cargando..."
+  },
+  "webViewer": {
+    "toolbar": {
+      "ariaLabel": "Controles del navegador",
+      "back": "Atrás",
+      "forward": "Adelante",
+      "reload": "Recargar",
+      "startSelecting": "Selecciona un elemento para comentarlo",
+      "stopSelecting": "Dejar de seleccionar",
+      "viewport": "Tamaño de pantalla: {{device}}",
+      "address": "Dirección",
+      "addressPlaceholder": "Introduce una URL"
+    },
+    "devices": {
+      "desktop": "Escritorio",
+      "tablet": "Tableta",
+      "mobile": "Móvil"
+    },
+    "empty": "Introduce una URL en la barra de direcciones para cargar una página.",
+    "frameTitle": "Contenido web",
+    "comment": {
+      "title": "Comentar",
+      "title_tag": "Comentar<tag>{{tag}}</tag>",
+      "title_text": "Comentar<snippet>\"{{text}}\"</snippet>",
+      "title_tagText": "Comentar<tag>{{tag}}</tag><snippet>\"{{text}}\"</snippet>",
+      "sourceLabel": "origen",
+      "resolvingSource": "resolviendo el mapa de código fuente…",
+      "componentsLabel": "componentes",
+      "xpathLabel": "xpath",
+      "selectorLabel": "selector",
+      "placeholder": "Escribe un comentario… ({{shortcut}} para enviar)",
+      "delete": "Eliminar",
+      "cancel": "Cancelar",
+      "save": "Guardar",
+      "add": "Añadir"
+    }
+  }
+}

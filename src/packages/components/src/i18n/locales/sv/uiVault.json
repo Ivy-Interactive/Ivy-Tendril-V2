@@ -1,1 +1,239 @@
-{}
+{
+  "gate": {
+    "github": "Logga in på GitHub för att skapa eller ansluta ett valv",
+    "vault": "Anslut ett valv först",
+    "busy": "En åtgärd pågår redan"
+  },
+  "dialogShell": {
+    "cancel": "Avbryt"
+  },
+  "assetCategories": {
+    "skills": {
+      "label": "Färdigheter",
+      "badge": "Färdighet"
+    },
+    "mcpServers": {
+      "label": "MCP-servrar",
+      "badge": "MCP"
+    },
+    "memories": {
+      "label": "Projektminnen",
+      "badge": "Minne"
+    },
+    "reviewActions": {
+      "label": "Granskningsåtgärder",
+      "badge": "Åtgärd"
+    },
+    "verifications": {
+      "label": "Verifieringar",
+      "badge": "Verifiering"
+    }
+  },
+  "assetChecklist": {
+    "selectAll": "Markera alla",
+    "selectAllAriaLabel": "Markera alla i {{label}}",
+    "selectAllAriaLabel_scoped": "Markera alla i {{label}} för {{scope}}",
+    "deselectAll": "Avmarkera alla",
+    "deselectAllAriaLabel": "Avmarkera alla i {{label}}",
+    "deselectAllAriaLabel_scoped": "Avmarkera alla i {{label}} för {{scope}}"
+  },
+  "githubAccountTypes": {
+    "user": "Användare",
+    "organization": "Organisation"
+  },
+  "emptyState": {
+    "title": "Teamets konfigurationsvalv",
+    "description": "Dela och synkronisera Tendril-projekt, anpassade färdigheter, MCP-servrar och säkerhetsregler i teamet via ett versionshanterat Git-arkiv.",
+    "create": "Skapa GitHub-valv",
+    "connect": "Anslut befintligt Git-valv"
+  },
+  "createDialog": {
+    "title": "Skapa Team Vault på GitHub",
+    "description": "Skapa ett privat GitHub-arkiv för att dela Tendril-projektkonfigurationer, anpassade färdigheter och MCP-servrar med ditt team.",
+    "submit": "Skapa valv",
+    "name": {
+      "label": "Arkivnamn"
+    },
+    "owner": {
+      "label": "Ägare/organisation",
+      "placeholder": "Välj ägare",
+      "inputPlaceholder": "t.ex. användarnamn eller organisation"
+    },
+    "accountOption": "{{login}} ({{type}})",
+    "private": "Privat arkiv"
+  },
+  "connectDialog": {
+    "title": "Anslut befintligt Team Vault",
+    "description": "Anslut ett befintligt Tendril Vault-arkiv för att synkronisera projekt, färdigheter och konfiguration med ditt team.",
+    "submit": "Anslut valv",
+    "discovering": "🔍 Söker efter befintliga valv i ditt GitHub-konto och dina organisationer…",
+    "detected": {
+      "label": "Hittade GitHub-valv",
+      "placeholder": "Välj arkiv"
+    },
+    "repoOption": "{{fullName}} ({{accountType}})",
+    "repoOption_private": "{{fullName}} ({{accountType}}, privat)",
+    "url": {
+      "label": "Git-arkivets URL"
+    },
+    "displayName": {
+      "label": "Visningsnamn (valfritt)",
+      "placeholder": "t.ex. Kärnteamets valv (valfritt)"
+    }
+  },
+  "importDialog": {
+    "title": "Importera ”{{name}}” från valvet",
+    "mergeTitle": "Slå samman ”{{name}}” med lokalt projekt",
+    "submit": "Importera projekt",
+    "mergeSubmit": "Länka och slå samman",
+    "collision": "Det finns redan ett lokalt projekt med namnet ”{{name}}”. Välj ett annat namn (t.ex. {{suggestion}}).",
+    "mergeCallout": "Sammanslagningen länkar det här valvprojektet till ditt befintliga lokala projekt ”{{name}}”. Lokala arkivsökvägar och inställningar utan konflikter behålls, medan de valda valvtillgångarna (verifieringar, åtgärder, färdigheter, MCP:er, minnen) integreras.",
+    "renameNotice": "Det finns redan ett lokalt projekt med namnet ”{{name}}”. Vi har föreslagit ”{{suggestion}}” för den här importen för att undvika konflikter.",
+    "name": {
+      "label": "Lokalt projektnamn"
+    },
+    "source": "Valvkälla: {{name}}",
+    "changelog": "Ändringslogg: {{changelog}}",
+    "repos": {
+      "heading": "Arkiv",
+      "description": "Länkar till befintliga lokala mappar på disken eller klonar saknade arkiv automatiskt från GitHub.",
+      "existing": "✓ Befintlig lokal mapp",
+      "willClone": "Klonas från GitHub",
+      "pathAriaLabel": "Lokal sökväg för {{repo}}"
+    },
+    "assets": {
+      "heading": "Tillgångar att importera",
+      "empty": {
+        "skills": "Inga anpassade färdigheter i det här valvprojektet.",
+        "mcpServers": "Inga MCP-servrar i det här valvprojektet.",
+        "memories": "Inga Markdown-filer med projektminnen i det här valvprojektet.",
+        "reviewActions": "Inga granskningsåtgärder i det här valvprojektet.",
+        "verifications": "Inga verifieringar i det här valvprojektet."
+      }
+    },
+    "permissions": "Importera säkerhets- och behörighetspolicyer"
+  },
+  "pushDialog": {
+    "title": "Lägg till projekt i {{vault}} (skapa PR)",
+    "submit": "Publicera och öppna PR",
+    "projects": {
+      "heading": "Projekt och tillgångar att publicera",
+      "none": "Alla lokala projekt spåras redan av ett valv. Skapa först ett nytt lokalt projekt för att lägga till det här.",
+      "assetsAriaLabel": "Tillgångar för {{project}}"
+    },
+    "empty": {
+      "skills": "Inga anpassade färdigheter har konfigurerats för det här projektet.",
+      "mcpServers": "Inga MCP-servrar har konfigurerats för det här projektet.",
+      "memories": "Inga Markdown-filer med minnen hittades för det här projektet.",
+      "reviewActions": "Inga granskningsåtgärder har konfigurerats för det här projektet.",
+      "verifications": "Inga verifieringar har konfigurerats för det här projektet."
+    },
+    "summary": {
+      "skills_one": "{{selected}}/{{count}} färdighet",
+      "skills_other": "{{selected}}/{{count}} färdigheter",
+      "mcpServers_one": "{{selected}}/{{count}} MCP",
+      "mcpServers_other": "{{selected}}/{{count}} MCP:er",
+      "memories_one": "{{selected}}/{{count}} minne",
+      "memories_other": "{{selected}}/{{count}} minnen",
+      "reviewActions_one": "{{selected}}/{{count}} åtgärd",
+      "reviewActions_other": "{{selected}}/{{count}} åtgärder",
+      "verifications_one": "{{selected}}/{{count}} verifiering",
+      "verifications_other": "{{selected}}/{{count}} verifieringar",
+      "none": "0 tillgångar"
+    },
+    "permissions": "Inkludera säkerhets- och behörighetspolicyer",
+    "release": {
+      "heading": "Versionsinformation",
+      "version": {
+        "label": "Versionstagg (UTC-tidsstämpel)"
+      },
+      "changelog": {
+        "label": "Ändringslogg/versionsanteckningar",
+        "placeholder": "Sammanfattning av uppdateringar, nya färdigheter, MCP-servrar eller ändringar i säkerhetspolicyer…"
+      },
+      "reviewers": {
+        "label": "Begär PR-granskare",
+        "placeholder": "t.ex. alice, bob (kommaseparerade GitHub-användarnamn)"
+      }
+    },
+    "prOpened": "Pull requesten har öppnats: {{url}}"
+  },
+  "confirmDelete": {
+    "title": "Ta bort ”{{projectName}}” från valvet?",
+    "submit": "Skapa PR för borttagning",
+    "warning": "Det här tar bort projektet ”{{projectName}}” och alla tillhörande manifest, färdigheter, MCP-konfigurationer och minnen från valvarkivet.",
+    "note": "En ny gren och en pull request öppnas mot valvarkivet för att genomföra borttagningen."
+  },
+  "projectsTable": {
+    "addTrackedProject": "Lägg till spårat projekt",
+    "loading": "Läser in delade projekt…",
+    "empty": {
+      "title": "Inga delade projekt",
+      "description": "Det här valvet innehåller inga delade projekt ännu. Lägg till ett lokalt projekt för att dela det med ditt team."
+    },
+    "columns": {
+      "project": "Projekt",
+      "version": "Version",
+      "actions": "Åtgärder",
+      "syncStatus": "Synkstatus",
+      "contents": "Innehåll",
+      "changelog": "Ändringslogg/kontext"
+    },
+    "actions": {
+      "import": "Importera",
+      "linkMerge": "Länka och slå samman",
+      "importAs": "Importera som…",
+      "update": "Uppdatera",
+      "publish": "Publicera",
+      "openPr": "Öppna PR",
+      "publishTooltip": "Öppna en PR för att uppdatera ”{{name}}” i valvet",
+      "delete": "Ta bort ”{{name}}” från valvet"
+    },
+    "syncStatus": {
+      "upToDate": "✓ I synk",
+      "modified": "Lokala ändringar",
+      "updateAvailable": "Uppdatering tillgänglig",
+      "localOnly": "Endast lokalt",
+      "notImported": "Ej importerat",
+      "conflict": "Namnkonflikt"
+    },
+    "contents": {
+      "repos_one": "{{count}} arkiv",
+      "repos_other": "{{count}} arkiv",
+      "skills_one": "{{count}} färdighet",
+      "skills_other": "{{count}} färdigheter",
+      "mcps_one": "{{count}} MCP",
+      "mcps_other": "{{count}} MCP:er",
+      "memories_one": "{{count}} minne",
+      "memories_other": "{{count}} minnen",
+      "reviewActions_one": "{{count}} åtgärd",
+      "reviewActions_other": "{{count}} åtgärder",
+      "verifications_one": "{{count}} verifiering",
+      "verifications_other": "{{count}} verifieringar"
+    }
+  },
+  "statusCard": {
+    "fallbackName": "Team Vault",
+    "sync": {
+      "behind_one": "{{count}} efter",
+      "behind_other": "{{count}} efter",
+      "ahead_one": "{{count}} före",
+      "ahead_other": "{{count}} före",
+      "inSync": "I synk"
+    },
+    "details": {
+      "vault": "Valv",
+      "branch": "Gren",
+      "status": "Status",
+      "lastSynced": "Senast synkad"
+    },
+    "openOnGitHub": "Öppna på GitHub",
+    "syncedStatus": "✓ {{status}}",
+    "lastSynced": {
+      "never": "Aldrig",
+      "value": "{{date}} {{time}} UTC"
+    },
+    "alwaysInSync": "Alltid i synk",
+    "disconnect": "Koppla från valvet"
+  }
+}

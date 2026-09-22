@@ -1,1 +1,223 @@
-{}
+{
+  "workspace": {
+    "moreActions": {
+      "label": "更多操作",
+      "tooltip": "更多",
+      "menuAriaLabel": "更多操作"
+    },
+    "source": "来源",
+    "verifications": "验证",
+    "questions": "问题",
+    "resizer": {
+      "tooltip": "拖动以调整大小，双击以重置",
+      "ariaLabel": "调整聊天区大小"
+    },
+    "chatAriaLabel": "计划聊天"
+  },
+  "diffView": {
+    "empty": "没有可显示的差异",
+    "fileCount_other": "{{count}} 个文件",
+    "jumpToFile": {
+      "ariaLabel": "跳转到文件",
+      "placeholder": "跳转到文件…"
+    },
+    "untitledFile": "差异 {{index}}",
+    "untitledPath": "差异",
+    "viewed": "已查看",
+    "commentToggle": {
+      "noneTooltip": "此文件没有评论",
+      "showTooltip_other": "显示 {{count}} 条评论",
+      "hideTooltip_other": "隐藏 {{count}} 条评论",
+      "showAriaLabel": "显示评论",
+      "hideAriaLabel": "隐藏评论"
+    },
+    "comment": {
+      "draftAuthor": "智能体指令（草稿）",
+      "resolvedBadge": "✓ 已解决",
+      "edit": "编辑",
+      "reopenTooltip": "重新打开评论",
+      "resolveTooltip": "将评论标记为已解决",
+      "unresolve": "取消解决",
+      "resolve": "解决",
+      "deleteTooltip": "删除评论",
+      "deleteAriaLabel": "删除评论",
+      "delete": "删除"
+    },
+    "commentForm": {
+      "title": "智能体指令",
+      "editTitle": "编辑智能体指令",
+      "placeholder": "输入针对此行给智能体的指令…",
+      "cancel": "取消",
+      "add": "添加评论",
+      "update": "更新评论"
+    }
+  },
+  "changesView": {
+    "empty": "没有文件更改。",
+    "treeAriaLabel": "已更改的文件",
+    "fileCount_other": "{{count}} 个文件",
+    "jumpToFile": {
+      "ariaLabel": "跳转到文件",
+      "placeholder": "跳转到文件…"
+    }
+  },
+  "gitView": {
+    "atRisk": {
+      "title": "有丢失风险的提交",
+      "unreachable_other": "{{count}} 个提交无法从任何分支、标签或远程仓库访问：<hashes/>。它们仅以松散对象的形式存在，因此仓库中下一次执行 <code>{{gcCommand}}</code> 时会将其销毁。为其中一个提交创建引用即可保留它：<code>{{recoverCommand}}</code>。",
+      "missing_other": "在计划的仓库中完全找不到 {{count}} 个提交：<hashes/>。可能是该对象已被清理，或者创建它的仓库不属于计划的仓库。",
+      "hashSeparator": "、",
+      "badge": {
+        "unreachable": "不可访问",
+        "missing": "未找到"
+      }
+    },
+    "commitTable": {
+      "commit": "提交",
+      "message": "消息",
+      "files": "文件",
+      "unresolved": "（未解析的提交）"
+    },
+    "worktrees": {
+      "heading": "工作区",
+      "emptyFinished": "计划进入最终状态后，工作区已被移除。",
+      "emptyNeverCreated": "工作区从未创建，或在计划闲置超过时限后被过期清理程序回收。",
+      "emptyUnknown": "工作区已被移除，或从未创建。",
+      "copyPath": "复制 {{name}} 的路径",
+      "repository": "仓库",
+      "base": "基准",
+      "worktree": "工作区",
+      "head": "HEAD",
+      "detachedHead": "分离的 HEAD",
+      "uncommittedChanges": "此工作区有未提交的更改。它们不属于任何提交，因此没有任何东西在保留它们。",
+      "noCommits": "（无提交）"
+    },
+    "commits": {
+      "heading": "提交",
+      "description": "已记录在计划中，但无法从计划现有的任何工作区访问，通常是因为 PR 合并后工作区已被移除。"
+    },
+    "pullRequests": {
+      "heading": "Pull Requests",
+      "repository": "仓库",
+      "pr": "PR"
+    },
+    "empty": "此计划尚无工作区、提交或 Pull Request。"
+  },
+  "alert": {
+    "note": "注意",
+    "tip": "提示",
+    "important": "重要",
+    "warning": "警告",
+    "caution": "小心"
+  },
+  "diagram": {
+    "loading": "正在加载图表…",
+    "invalidGraphviz": "Graphviz DOT 语法无效",
+    "invalidMermaid": "Mermaid 图表语法无效"
+  },
+  "codeBlock": {
+    "copy": "复制到剪贴板"
+  },
+  "image": {
+    "loadFailed": "图片加载失败",
+    "close": "关闭"
+  },
+  "search": {
+    "placeholder": "在文档中查找…",
+    "ariaLabel": "在文档中查找",
+    "noMatches": "无匹配项",
+    "position": "{{current}} / {{total}}",
+    "previous": "上一个匹配项",
+    "next": "下一个匹配项",
+    "close": "关闭搜索"
+  },
+  "annotation": {
+    "quote": "“{{text}}”",
+    "quoteTruncated": "“{{text}}…”",
+    "add": {
+      "placeholder": "添加评论…",
+      "cancel": "取消",
+      "submit": "添加"
+    },
+    "edit": {
+      "resolvedBadge": "✓ 已解决",
+      "placeholder": "编辑评论…",
+      "reopenTooltip": "重新打开批注",
+      "resolveTooltip": "将批注标记为已解决",
+      "unresolve": "取消解决",
+      "resolve": "解决",
+      "deleteTooltip": "删除批注",
+      "delete": "删除",
+      "cancel": "取消",
+      "save": "保存"
+    },
+    "selectionToolbar": {
+      "addComment": "添加评论"
+    }
+  },
+  "wireframe": {
+    "invalid": "此线框图块无效。",
+    "placeholder": "线框图：<strong>{{name}}</strong>。打开计划即可查看。",
+    "lastGoodBuild": "正在显示上次成功构建的版本",
+    "paused": "实时更新已暂停",
+    "openFullSize": "以完整尺寸打开",
+    "building": "正在构建线框图…",
+    "missing": "此计划中没有名为 <strong>{{name}}</strong> 的线框图。",
+    "buildFailed": "此线框图无法构建。",
+    "unavailable": "线框图预览当前不可用。",
+    "retry": "重试",
+    "close": "关闭",
+    "errors": {
+      "empty": "该块未指定任何线框图。请添加一行，例如 `{{example}}`。",
+      "notYaml": "该块不是有效的 YAML。",
+      "notMapping": "请将该块写为 `{{example}}`，可选附带 {{height}} 和 {{viewport}}。",
+      "unknownKey": "未知键“{{key}}”。请使用 {{name}}、{{height}} 或 {{viewport}}。",
+      "badName": "{{name}} 必须是小写 slug，例如 {{example}}。",
+      "badHeight": "{{height}} 必须是介于 1 到 {{max}} 之间的整数像素值。",
+      "badViewport": "{{viewport}} 必须是 {{desktop}}、{{tablet}} 或 {{mobile}}。"
+    }
+  },
+  "questions": {
+    "recommended": "推荐",
+    "optional": "可选",
+    "selectAll": "选择所有适用项",
+    "other": "其他",
+    "otherPlaceholder": "输入您的回答",
+    "otherAriaLabel": "“{{question}}”的其他回答",
+    "notAnswered": {
+      "skipped": "未回答（非必需）",
+      "agentDecided": "未回答（由智能体决定）"
+    },
+    "clear": "清除",
+    "clearAllAriaLabel": "清除此块中的所有回答",
+    "clearOneAriaLabel": "清除回答",
+    "submit": "提交回复",
+    "submitNote": {
+      "noAnswers": "回答一个问题后即可提交。",
+      "oneUnanswered": "未回答：“{{title}}”。提交后将由我来决定。",
+      "manyUnanswered_other": "{{count}} 个问题尚未回答。提交后将由我来决定。"
+    }
+  },
+  "answersCard": {
+    "ariaLabel": "已提交的回答",
+    "title": "回答",
+    "notAnswered": {
+      "skipped": "未回答（非必需）",
+      "agentDecided": "未回答（由智能体决定）"
+    }
+  },
+  "verificationList": {
+    "dragHandle": "拖动手柄",
+    "required": "必需",
+    "a11y": {
+      "roleDescription": "可排序",
+      "instructions": "要拾取可拖动项，请按空格键。拖动时，使用方向键移动该项。再次按空格键可将其放到新位置，按 Esc 键可取消。",
+      "pickedUp": "已拾取可拖动项 {{active}}。",
+      "movedOver": "可拖动项 {{active}} 已移到放置区域 {{over}} 上方。",
+      "movedAway": "可拖动项 {{active}} 已不在任何放置区域上方。",
+      "droppedOver": "可拖动项 {{active}} 已放到放置区域 {{over}} 上。",
+      "dropped": "可拖动项 {{active}} 已放下。",
+      "cancelled": "拖动已取消。可拖动项 {{active}} 已放下。"
+    }
+  }
+}

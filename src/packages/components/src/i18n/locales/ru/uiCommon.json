@@ -1,1 +1,257 @@
-{}
+{
+  "blade": {
+    "back": "Назад",
+    "backTo": "Назад: {{title}}",
+    "close": "Закрыть: {{title}}",
+    "refresh": "Обновить: {{title}}"
+  },
+  "bladeContainer": {
+    "ariaLabel": "Панели"
+  },
+  "calendar": {
+    "dayButton": {
+      "selected": "{{date}}, выбрано",
+      "today": "Сегодня, {{date}}",
+      "todaySelected": "Сегодня, {{date}}, выбрано"
+    },
+    "gridcell": {
+      "today": "Сегодня, {{date}}"
+    },
+    "monthDropdown": "Выбрать месяц",
+    "monthPlaceholder": "М",
+    "navLabel": "Навигация: {{label}}",
+    "nextMonth": "Перейти к следующему месяцу",
+    "previousMonth": "Перейти к предыдущему месяцу",
+    "weekNumber": "Неделя {{week}}",
+    "weekNumberHeader": "Номер недели",
+    "yearDropdown": "Выбрать год",
+    "yearPlaceholder": "ГГГГ"
+  },
+  "callout": {
+    "dismiss": "Скрыть"
+  },
+  "charts": {
+    "axis": {
+      "billions": "{{value}} млрд",
+      "millions": "{{value}} млн",
+      "thousands": "{{value}} тыс."
+    },
+    "radarDefaultSeries": "Данные",
+    "scatterLineSeries": "{{name}}: линия"
+  },
+  "chatMessageList": {
+    "scrollToBottom": "Прокрутить вниз"
+  },
+  "clipboard": {
+    "copyFailed": "Не удалось скопировать в буфер обмена."
+  },
+  "copyToClipboard": {
+    "ariaLabel": "Копировать в буфер обмена",
+    "copied": "Скопировано"
+  },
+  "dataTable": {
+    "columnHeader": {
+      "clearSort": "Сбросить сортировку по столбцу {{column}}",
+      "reorder": "Переместить столбец",
+      "reorderAt": "Переместить столбец, позиция {{position}} из {{total}}",
+      "resize": "Изменить ширину столбца",
+      "sortAscending": "Сортировать по столбцу {{column}} по возрастанию",
+      "sortDescending": "Сортировать по столбцу {{column}} по убыванию"
+    },
+    "columnOptions": "Параметры столбца",
+    "editCell": "Изменить: {{column}}",
+    "empty": "Нет результатов.",
+    "filter": {
+      "clear": "Очистить",
+      "clearAriaLabel": "Очистить фильтр",
+      "errors": {
+        "afterIs": "После «{{keyword}}» ожидается «{{blank}}», «{{notBlank}}», «{{null}}» или «{{notNull}}».",
+        "afterNot": "После «{{keyword}}» ожидается «{{contains}}», «{{in}}» или «{{equals}}».",
+        "expectedColumn": "В позиции {{position}} ожидается имя столбца, найдено «{{text}}».",
+        "expectedValue": "В позиции {{position}} ожидается значение в кавычках, например {{example}}. Найдено «{{text}}».",
+        "expectedWord": "После «{{after}}» ожидается «{{word}}».",
+        "inNeedsList": "«{{keyword}}» принимает список: {{example}}.",
+        "incomplete": "Выражение обрывается до завершения.",
+        "needsComparison": "Для «{{column}}» нужно сравнение, например {{equalsExample}} или {{containsExample}}.",
+        "noFilterableColumn": "В этой таблице нет столбцов, по которым можно фильтровать.",
+        "unclosedBracket": "Незакрытая «[» в позиции {{position}}.",
+        "unclosedGroup": "Незакрытая «(» — каждой группе нужна парная «)».",
+        "unclosedList": "Незакрытая «(» в списке «{{keyword}}».",
+        "unclosedQuote": "Незакрытая кавычка в позиции {{position}}.",
+        "unexpectedCharacter": "Неожиданный символ «{{text}}» в позиции {{position}}.",
+        "unexpectedSymbol": "Неожиданный элемент «{{text}}» в позиции {{position}}.",
+        "unexpectedToken": "Неожиданный токен «{{text}}» в позиции {{position}}. Объединяйте условия с помощью {{and}} или {{or}}.",
+        "unknownColumn": "Неизвестный столбец «{{text}}». Доступны для фильтрации: {{names}}.",
+        "unknownComparison": "Неизвестное сравнение «{{text}}» в позиции {{position}}. Используйте {{operators}} или {{last}}."
+      },
+      "filterableColumns": "Столбцы для фильтрации",
+      "help": "Одно выражение, применяется клавишей Enter. Условия объединяются с помощью <code>{{and}}</code> / <code>{{or}}</code> и группируются скобками.",
+      "input": "Выражение фильтра",
+      "noFilterableColumns": "Нет столбцов для фильтрации",
+      "syntax": "Синтаксис фильтра",
+      "syntaxTitle": "Что и как можно фильтровать",
+      "toggle": "Фильтр",
+      "toggleTitle": "Фильтровать данные таблицы"
+    },
+    "loadingMore": "Загрузка следующих строк…",
+    "pagination": {
+      "ariaLabel": "Навигация по страницам таблицы",
+      "firstPage": "Перейти на первую страницу",
+      "lastPage": "Перейти на последнюю страницу",
+      "nextPage": "Перейти на следующую страницу",
+      "noRows": "Нет строк",
+      "page": "Страница {{page}} из {{pageCount}}",
+      "previousPage": "Перейти на предыдущую страницу",
+      "rowsPerPage": "Строк на странице",
+      "showing": "Показаны {{start}}–{{end}} из {{total}}"
+    },
+    "rowActions": "Действия со строкой",
+    "selectAllRows": "Выбрать все строки",
+    "selectRow": "Выбрать строку {{id}}"
+  },
+  "dialog": {
+    "close": "Закрыть"
+  },
+  "diagram": {
+    "invalidGraphviz": "Недопустимый синтаксис Graphviz DOT",
+    "invalidMermaid": "Недопустимый синтаксис диаграммы Mermaid",
+    "loading": "Загрузка диаграммы…",
+    "loadingGraphviz": "Загрузка Graphviz…",
+    "loadingMermaid": "Загрузка Mermaid…",
+    "renderFailed": "Не удалось отобразить диаграмму"
+  },
+  "errorDisplay": {
+    "copyDetails": "Копировать сведения",
+    "message": "Сообщение",
+    "stackTrace": "Трассировка стека",
+    "type": "Тип"
+  },
+  "errorSheet": {
+    "description": "В приложении произошла ошибка. Подробности приведены ниже.",
+    "title": "Что-то пошло не так"
+  },
+  "format": {
+    "bytes": {
+      "b": "{{value}} Б",
+      "gb": "{{value}} ГБ",
+      "kb": "{{value}} КБ",
+      "mb": "{{value}} МБ",
+      "pb": "{{value}} ПБ",
+      "tb": "{{value}} ТБ"
+    },
+    "duration": {
+      "hoursMinutes": "{{hours}} ч {{minutes}} мин",
+      "minutesSeconds": "{{minutes}} мин {{seconds}} с",
+      "seconds": "{{seconds}} с"
+    },
+    "tokenCount": {
+      "millions": "{{value}} млн",
+      "thousands": "{{value}} тыс."
+    },
+    "tokens": {
+      "millions": "{{value}} млн",
+      "thousands": "{{value}} тыс."
+    }
+  },
+  "imageOverlay": {
+    "ariaLabel": "Просмотр изображения",
+    "close": "Закрыть",
+    "next": "Следующее изображение",
+    "position": "{{current}} / {{total}}",
+    "previous": "Предыдущее изображение"
+  },
+  "invalidIcon": {
+    "ariaLabel": "Ошибка проверки"
+  },
+  "jsonRenderer": {
+    "invalid": "Недопустимая строка JSON"
+  },
+  "loading": {
+    "ariaLabel": "Загрузка",
+    "text": "Загрузка…"
+  },
+  "madeWithIvy": {
+    "label": "СДЕЛАНО НА"
+  },
+  "markdown": {
+    "alerts": {
+      "caution": "Осторожно",
+      "important": "Важно",
+      "note": "Примечание",
+      "tip": "Совет",
+      "warning": "Предупреждение"
+    },
+    "footnotes": {
+      "backToReference": "Вернуться к ссылке {{ref}}",
+      "backToReferenceRepeat": "Вернуться к ссылке {{ref}}-{{reref}}",
+      "label": "Сноски"
+    },
+    "taskCompleted": "Выполненная задача",
+    "taskPending": "Невыполненная задача"
+  },
+  "multiselect": {
+    "bulkSelection": "Массовый выбор",
+    "clearAll": "Очистить все",
+    "empty": "Нет доступных вариантов",
+    "placeholder": "Выберите варианты…",
+    "remove": "Удалить",
+    "selectAll": "Выбрать все",
+    "toggleDropdown": "Показать или скрыть список"
+  },
+  "pagination": {
+    "ariaLabel": "Навигация по страницам",
+    "morePages": "Другие страницы",
+    "next": "Далее",
+    "nextAriaLabel": "Перейти на следующую страницу",
+    "previous": "Назад",
+    "previousAriaLabel": "Перейти на предыдущую страницу"
+  },
+  "progress": {
+    "ariaLabel": "Прогресс"
+  },
+  "sheet": {
+    "close": "Закрыть"
+  },
+  "sidebar": {
+    "toggle": "Показать или скрыть боковую панель"
+  },
+  "slider": {
+    "ariaLabel": "Ползунок"
+  },
+  "stackedProgress": {
+    "indeterminate": "Не определено",
+    "segmentFallback": "Сегмент {{number}}",
+    "select": "Выбрать: {{label}}",
+    "tooltip": "{{label}}: {{value}}",
+    "total": "Всего: {{total}}",
+    "valueText": "{{label}}: {{value}} из {{total}}"
+  },
+  "starRating": {
+    "rate_one": "Оценить на {{count}} звезду",
+    "rate_few": "Оценить на {{count}} звезды",
+    "rate_many": "Оценить на {{count}} звёзд",
+    "rate_other": "Оценить на {{count}} звезды"
+  },
+  "statusLine": {
+    "estimatedTooltip": "Оценка по уже полученной части потока",
+    "tokensAbbreviated": "{{value}} токенов",
+    "tokensAbbreviatedEstimated": "~{{value}} токенов",
+    "tokensEstimated_one": "~{{value}} токен",
+    "tokensEstimated_few": "~{{value}} токена",
+    "tokensEstimated_many": "~{{value}} токенов",
+    "tokensEstimated_other": "~{{value}} токена",
+    "tokens_one": "{{value}} токен",
+    "tokens_few": "{{value}} токена",
+    "tokens_many": "{{value}} токенов",
+    "tokens_other": "{{value}} токена"
+  },
+  "toolbar": {
+    "moreActions": "Другие действия"
+  },
+  "tuiBadge": {
+    "remove": "Удалить"
+  },
+  "xmlRenderer": {
+    "invalid": "Недопустимая строка XML"
+  }
+}

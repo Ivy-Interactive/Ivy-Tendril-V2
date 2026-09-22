@@ -1,1 +1,142 @@
-{}
+{
+  "section": {
+    "title": "Coding-Agent",
+    "hint": "Tendril verbindet sich mit Ihrem konfigurierten KI-Coding-Agenten oder mit mitgelieferten Open-Source-Engines wie OpenCode.",
+    "unknownAgent": "Unbekannter Coding-Agent „{{value}}“. Gültige Agenten: {{agents}}"
+  },
+  "byo": {
+    "title": "Eigenes LLM verwenden",
+    "baseUrl": {
+      "label": "API-Basis-URL"
+    },
+    "apiKey": {
+      "label": "API-Schlüssel",
+      "hint": "Wird als ANTHROPIC_API_KEY und OPENAI_API_KEY in der Umgebung des Agenten {{agent}} gespeichert, die jeder Start erhält.",
+      "hint_ivy": "Wird als IVY_API_KEY, ANTHROPIC_API_KEY und OPENAI_API_KEY in der Umgebung des Agenten {{agent}} gespeichert, die jeder Start erhält."
+    },
+    "fetchModels": {
+      "label": "Modelle abrufen",
+      "busy": "Wird abgerufen…"
+    },
+    "discovery": {
+      "found_one": "{{count}} Modell an diesem Endpunkt gefunden.",
+      "found_other": "{{count}} Modelle an diesem Endpunkt gefunden.",
+      "customNames": "Dieser Endpunkt stellt keine Modellliste bereit, daher müssen Modellnamen manuell eingegeben werden.",
+      "unreachable": "Der Daemon konnte zum Abrufen der Modelle nicht erreicht werden: {{error}}"
+    }
+  },
+  "profiles": {
+    "title": "Profilmodelle",
+    "hint": {
+      "custom": "Legen Sie für jedes Profil eigene Modellnamen und die Denkzeit-Stufe fest.",
+      "discovered": "Wählen Sie für jede Profilstufe Modelle Ihres Endpunkts aus.",
+      "default": "Workflow-Agenten verwenden je nach Komplexität der Aufgabe unterschiedliche Profile. Sie können für jedes Profil festlegen, welches Modell und welche Denkzeit-Stufe verwendet werden."
+    },
+    "customNames": "Eigene Modellnamen",
+    "effortUnsupported": "Die CLI dieses Agenten kennt kein Denkzeit-Argument, daher wird die Denkzeit ignoriert.",
+    "tiers": {
+      "deep": "Gründlich",
+      "balanced": "Ausgewogen",
+      "quick": "Schnell"
+    },
+    "effort": "Denkzeit",
+    "efforts": {
+      "default": "Standard",
+      "low": "Niedrig",
+      "medium": "Mittel",
+      "high": "Hoch",
+      "xhigh": "Sehr hoch",
+      "max": "Maximal"
+    }
+  },
+  "environment": {
+    "title": "Zusätzliche Argumente & Umgebung",
+    "arguments": {
+      "label": "Zusätzliche Argumente",
+      "placeholder": "z. B. --verbose",
+      "hint": "Wird an Leerzeichen aufgeteilt und an jeden Start dieses Agenten angehängt."
+    },
+    "variables": {
+      "label": "Umgebungsvariablen",
+      "hint": "Eine Zeile pro KEY=value. Zeilen, die mit # beginnen, werden ignoriert."
+    }
+  },
+  "help": {
+    "title": "Hilfe",
+    "hint": "So bringen Sie {{agent}} auf diesem Rechner zum Laufen.",
+    "install": "1. Installieren",
+    "authenticate": "2. Authentifizieren",
+    "apiKey": "2. API-Schlüssel",
+    "or": "oder",
+    "then": "Geben Sie anschließend in der Eingabeaufforderung ein: <code>{{command}}</code>",
+    "binary": "Tendril sucht <code>{{binary}}</code> in Ihrem PATH."
+  },
+  "actions": {
+    "test": "Agent testen",
+    "saving": "Wird gespeichert…"
+  },
+  "save": {
+    "toastTitle": "Gespeichert",
+    "toastMessage": "Einstellungen des Coding-Agenten gespeichert",
+    "failed": "Speichern fehlgeschlagen: {{error}}"
+  },
+  "test": {
+    "title": "Coding-Agent-Test",
+    "defaultModel": "Standard",
+    "columns": {
+      "test": "Test",
+      "result": "Ergebnis"
+    },
+    "status": {
+      "passed": "Bestanden",
+      "failed": "Fehlgeschlagen",
+      "warning": "Warnung",
+      "running": "Läuft",
+      "pending": "Ausstehend"
+    },
+    "showRawOutput": "Rohausgabe anzeigen",
+    "rawOutputTitle": "Rohausgabe",
+    "rows": {
+      "install": "Installation",
+      "auth": "Authentifizierung",
+      "model": "Modell: {{name}}",
+      "unexpectedError": "Unerwarteter Fehler"
+    },
+    "install": {
+      "version": "v{{version}}",
+      "installed": "Installiert",
+      "notInstalled": "Nicht installiert"
+    },
+    "auth": {
+      "authenticated": "Authentifiziert",
+      "authenticatedWith": "Authentifiziert ({{provider}})",
+      "notAuthenticated": "Nicht authentifiziert",
+      "notAuthenticatedRun": "Nicht authentifiziert – führen Sie `{{command}}` aus",
+      "notAuthenticatedRunThen": "Nicht authentifiziert – führen Sie `{{command}}` und dann `{{prompt}}` aus",
+      "notAuthenticatedCreateKey": "Nicht authentifiziert – erstellen Sie einen Schlüssel unter {{url}}",
+      "inconclusive": "Prüfung ohne eindeutiges Ergebnis"
+    },
+    "model": {
+      "notChecked": "Nicht geprüft",
+      "ok": "OK",
+      "invalidModel": "Ungültiges Modell",
+      "authError": "Authentifizierungsfehler",
+      "rateLimit": "Kontingent erschöpft oder Ratenlimit erreicht"
+    },
+    "cancelled": "Abgebrochen",
+    "runFailed": "Testlauf fehlgeschlagen"
+  },
+  "usage": {
+    "window": "Zeitfenster {{window}}",
+    "left": "{{percent}} übrig",
+    "ariaLabel": "Zeitfenster {{window}}, {{percent}} übrig",
+    "resetsIn": "wird in {{countdown}} zurückgesetzt",
+    "resetsIn_now": "wird jetzt zurückgesetzt",
+    "asOf": "Stand: {{relative}}",
+    "countdown": {
+      "now": "jetzt",
+      "hoursMinutes": "{{hours}} {{minutes}}"
+    },
+    "justNow": "gerade eben"
+  }
+}

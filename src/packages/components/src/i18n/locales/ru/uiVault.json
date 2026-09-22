@@ -1,1 +1,265 @@
-{}
+{
+  "gate": {
+    "github": "Войдите в GitHub, чтобы создать или подключить хранилище",
+    "vault": "Сначала подключите хранилище",
+    "busy": "Действие уже выполняется"
+  },
+  "dialogShell": {
+    "cancel": "Отмена"
+  },
+  "assetCategories": {
+    "skills": {
+      "label": "Навыки",
+      "badge": "Навык"
+    },
+    "mcpServers": {
+      "label": "MCP-серверы",
+      "badge": "MCP"
+    },
+    "memories": {
+      "label": "Память проекта",
+      "badge": "Память"
+    },
+    "reviewActions": {
+      "label": "Действия ревью",
+      "badge": "Действие"
+    },
+    "verifications": {
+      "label": "Верификации",
+      "badge": "Верификация"
+    }
+  },
+  "assetChecklist": {
+    "selectAll": "Выбрать все",
+    "selectAllAriaLabel": "Выбрать все: {{label}}",
+    "selectAllAriaLabel_scoped": "Выбрать все: {{label}} для {{scope}}",
+    "deselectAll": "Снять выбор",
+    "deselectAllAriaLabel": "Снять выбор: {{label}}",
+    "deselectAllAriaLabel_scoped": "Снять выбор: {{label}} для {{scope}}"
+  },
+  "githubAccountTypes": {
+    "user": "Пользователь",
+    "organization": "Организация"
+  },
+  "emptyState": {
+    "title": "Командное хранилище конфигурации",
+    "description": "Делитесь с командой проектами Tendril, пользовательскими навыками, MCP-серверами и правилами безопасности и синхронизируйте их через версионируемый Git-репозиторий.",
+    "create": "Создать хранилище на GitHub",
+    "connect": "Подключить существующее Git-хранилище"
+  },
+  "createDialog": {
+    "title": "Создать Team Vault на GitHub",
+    "description": "Создайте закрытый репозиторий GitHub, чтобы делиться с командой конфигурациями проектов Tendril, пользовательскими навыками и MCP-серверами.",
+    "submit": "Создать хранилище",
+    "name": {
+      "label": "Имя репозитория"
+    },
+    "owner": {
+      "label": "Владелец / организация",
+      "placeholder": "Выберите владельца",
+      "inputPlaceholder": "например, имя пользователя или организации"
+    },
+    "accountOption": "{{login}} ({{type}})",
+    "private": "Закрытый репозиторий"
+  },
+  "connectDialog": {
+    "title": "Подключить существующий Team Vault",
+    "description": "Подключите существующий репозиторий Tendril Vault, чтобы синхронизировать проекты, навыки и конфигурацию с командой.",
+    "submit": "Подключить хранилище",
+    "discovering": "🔍 Поиск существующих хранилищ в вашем аккаунте GitHub и организациях…",
+    "detected": {
+      "label": "Найденные хранилища на GitHub",
+      "placeholder": "Выберите репозиторий"
+    },
+    "repoOption": "{{fullName}} ({{accountType}})",
+    "repoOption_private": "{{fullName}} ({{accountType}}, закрытый)",
+    "url": {
+      "label": "URL Git-репозитория"
+    },
+    "displayName": {
+      "label": "Отображаемое имя (необязательно)",
+      "placeholder": "например, Хранилище основной команды (необязательно)"
+    }
+  },
+  "importDialog": {
+    "title": "Импорт «{{name}}» из хранилища",
+    "mergeTitle": "Объединение «{{name}}» с локальным проектом",
+    "submit": "Импортировать проект",
+    "mergeSubmit": "Связать и объединить",
+    "collision": "Локальный проект «{{name}}» уже существует. Выберите другое название (например, {{suggestion}}).",
+    "mergeCallout": "Этот проект из хранилища будет связан с вашим существующим локальным проектом «{{name}}». Локальные пути к репозиториям и неконфликтующие настройки сохранятся, а выбранные ресурсы хранилища (верификации, действия, навыки, MCP, заметки памяти) будут интегрированы.",
+    "renameNotice": "Локальный проект «{{name}}» уже существует. Чтобы избежать конфликтов, мы предложили для этого импорта название «{{suggestion}}».",
+    "name": {
+      "label": "Название локального проекта"
+    },
+    "source": "Источник в хранилище: {{name}}",
+    "changelog": "Список изменений: {{changelog}}",
+    "repos": {
+      "heading": "Репозитории",
+      "description": "Будут связаны с существующими локальными папками на диске, а отсутствующие репозитории будут автоматически клонированы с GitHub.",
+      "existing": "✓ Существующая локальная папка",
+      "willClone": "Будет клонирован с GitHub",
+      "pathAriaLabel": "Локальный путь для {{repo}}"
+    },
+    "assets": {
+      "heading": "Ресурсы для импорта",
+      "empty": {
+        "skills": "В этом проекте хранилища нет пользовательских навыков.",
+        "mcpServers": "В этом проекте хранилища нет MCP-серверов.",
+        "memories": "В этом проекте хранилища нет Markdown-файлов памяти проекта.",
+        "reviewActions": "В этом проекте хранилища нет действий ревью.",
+        "verifications": "В этом проекте хранилища нет верификаций."
+      }
+    },
+    "permissions": "Импортировать политики безопасности и разрешений"
+  },
+  "pushDialog": {
+    "title": "Добавить проект в {{vault}} (создать PR)",
+    "submit": "Опубликовать и открыть PR",
+    "projects": {
+      "heading": "Проекты и ресурсы для публикации",
+      "none": "Все локальные проекты уже отслеживаются хранилищем. Чтобы добавить проект сюда, сначала создайте новый локальный проект.",
+      "assetsAriaLabel": "Ресурсы для {{project}}"
+    },
+    "empty": {
+      "skills": "Для этого проекта не настроены пользовательские навыки.",
+      "mcpServers": "Для этого проекта не настроены MCP-серверы.",
+      "memories": "Для этого проекта не найдены Markdown-файлы памяти.",
+      "reviewActions": "Для этого проекта не настроены действия ревью.",
+      "verifications": "Для этого проекта не настроены верификации."
+    },
+    "summary": {
+      "skills_one": "Навыки: {{selected}}/{{count}}",
+      "skills_few": "Навыки: {{selected}}/{{count}}",
+      "skills_many": "Навыки: {{selected}}/{{count}}",
+      "skills_other": "Навыки: {{selected}}/{{count}}",
+      "mcpServers_one": "MCP: {{selected}}/{{count}}",
+      "mcpServers_few": "MCP: {{selected}}/{{count}}",
+      "mcpServers_many": "MCP: {{selected}}/{{count}}",
+      "mcpServers_other": "MCP: {{selected}}/{{count}}",
+      "memories_one": "Память: {{selected}}/{{count}}",
+      "memories_few": "Память: {{selected}}/{{count}}",
+      "memories_many": "Память: {{selected}}/{{count}}",
+      "memories_other": "Память: {{selected}}/{{count}}",
+      "reviewActions_one": "Действия: {{selected}}/{{count}}",
+      "reviewActions_few": "Действия: {{selected}}/{{count}}",
+      "reviewActions_many": "Действия: {{selected}}/{{count}}",
+      "reviewActions_other": "Действия: {{selected}}/{{count}}",
+      "verifications_one": "Верификации: {{selected}}/{{count}}",
+      "verifications_few": "Верификации: {{selected}}/{{count}}",
+      "verifications_many": "Верификации: {{selected}}/{{count}}",
+      "verifications_other": "Верификации: {{selected}}/{{count}}",
+      "none": "0 ресурсов"
+    },
+    "permissions": "Включить политики безопасности и разрешений",
+    "release": {
+      "heading": "Сведения о выпуске",
+      "version": {
+        "label": "Тег версии (метка времени UTC)"
+      },
+      "changelog": {
+        "label": "Список изменений / примечания к выпуску",
+        "placeholder": "Сводка обновлений, новых навыков, MCP-серверов или изменений политик безопасности…"
+      },
+      "reviewers": {
+        "label": "Запросить рецензентов PR",
+        "placeholder": "например, alice, bob (имена пользователей GitHub через запятую)"
+      }
+    },
+    "prOpened": "Пулл-реквест успешно открыт: {{url}}"
+  },
+  "confirmDelete": {
+    "title": "Удалить «{{projectName}}» из хранилища?",
+    "submit": "Создать PR на удаление",
+    "warning": "Проект «{{projectName}}» и все связанные с ним манифесты, навыки, конфигурации MCP и заметки памяти будут удалены из репозитория хранилища.",
+    "note": "Для этого удаления в репозитории хранилища будут созданы новая ветка и пулл-реквест."
+  },
+  "projectsTable": {
+    "addTrackedProject": "Добавить отслеживаемый проект",
+    "loading": "Загрузка общих проектов…",
+    "empty": {
+      "title": "Нет общих проектов",
+      "description": "В этом хранилище пока нет общих проектов. Добавьте локальный проект, чтобы поделиться им с командой."
+    },
+    "columns": {
+      "project": "Проект",
+      "version": "Версия",
+      "actions": "Действия",
+      "syncStatus": "Статус синхронизации",
+      "contents": "Содержимое",
+      "changelog": "Изменения / контекст"
+    },
+    "actions": {
+      "import": "Импортировать",
+      "linkMerge": "Связать и объединить",
+      "importAs": "Импортировать как…",
+      "update": "Обновить",
+      "publish": "Опубликовать",
+      "openPr": "Открыть PR",
+      "publishTooltip": "Открыть PR для обновления «{{name}}» в хранилище",
+      "delete": "Удалить «{{name}}» из хранилища"
+    },
+    "syncStatus": {
+      "upToDate": "✓ Синхронизировано",
+      "modified": "Локальные изменения",
+      "updateAvailable": "Доступно обновление",
+      "localOnly": "Только локально",
+      "notImported": "Не импортировано",
+      "conflict": "Конфликт имён"
+    },
+    "contents": {
+      "repos_one": "{{count}} репозиторий",
+      "repos_few": "{{count}} репозитория",
+      "repos_many": "{{count}} репозиториев",
+      "repos_other": "{{count}} репозитория",
+      "skills_one": "{{count}} навык",
+      "skills_few": "{{count}} навыка",
+      "skills_many": "{{count}} навыков",
+      "skills_other": "{{count}} навыка",
+      "mcps_one": "{{count}} MCP",
+      "mcps_few": "{{count}} MCP",
+      "mcps_many": "{{count}} MCP",
+      "mcps_other": "{{count}} MCP",
+      "memories_one": "{{count}} заметка памяти",
+      "memories_few": "{{count}} заметки памяти",
+      "memories_many": "{{count}} заметок памяти",
+      "memories_other": "{{count}} заметки памяти",
+      "reviewActions_one": "{{count}} действие",
+      "reviewActions_few": "{{count}} действия",
+      "reviewActions_many": "{{count}} действий",
+      "reviewActions_other": "{{count}} действия",
+      "verifications_one": "{{count}} верификация",
+      "verifications_few": "{{count}} верификации",
+      "verifications_many": "{{count}} верификаций",
+      "verifications_other": "{{count}} верификации"
+    }
+  },
+  "statusCard": {
+    "fallbackName": "Team Vault",
+    "sync": {
+      "behind_one": "Отстаёт на {{count}} коммит",
+      "behind_few": "Отстаёт на {{count}} коммита",
+      "behind_many": "Отстаёт на {{count}} коммитов",
+      "behind_other": "Отстаёт на {{count}} коммита",
+      "ahead_one": "Опережает на {{count}} коммит",
+      "ahead_few": "Опережает на {{count}} коммита",
+      "ahead_many": "Опережает на {{count}} коммитов",
+      "ahead_other": "Опережает на {{count}} коммита",
+      "inSync": "Синхронизировано"
+    },
+    "details": {
+      "vault": "Хранилище",
+      "branch": "Ветка",
+      "status": "Статус",
+      "lastSynced": "Последняя синхронизация"
+    },
+    "openOnGitHub": "Открыть на GitHub",
+    "syncedStatus": "✓ {{status}}",
+    "lastSynced": {
+      "never": "Никогда",
+      "value": "{{date}} {{time}} UTC"
+    },
+    "alwaysInSync": "Всегда синхронизировано",
+    "disconnect": "Отключить хранилище"
+  }
+}

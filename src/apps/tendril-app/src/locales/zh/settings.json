@@ -1,1 +1,378 @@
-{}
+{
+  "shared": {
+    "toastSaved": "已保存",
+    "saving": "正在保存…",
+    "saveFailed": "保存失败：{{error}}",
+    "outOfRange": "{{key}} 必须介于 {{min}} 和 {{max}} 之间，当前值为 {{value}}。",
+    "notInteger": "{{key}} 必须为整数，当前值为“{{value}}”。"
+  },
+  "sections": {
+    "codingAgent": "编程智能体",
+    "plans": "计划",
+    "appearance": "外观",
+    "projects": "项目",
+    "vault": "团队保管库",
+    "promptwares": "工作流智能体",
+    "levels": "级别",
+    "notifications": "通知",
+    "security": "安全与穿透",
+    "advanced": "高级",
+    "newsletter": "新闻通讯",
+    "fallback": "配置"
+  },
+  "nav": {
+    "ariaLabel": "配置分区",
+    "mobilePickerLabel": "配置分区",
+    "addProject": "添加项目",
+    "openConfig": "打开 config.yaml"
+  },
+  "projectToasts": {
+    "jobStartedTitle": "任务已启动",
+    "backgroundJob": "已为项目“{{name}}”创建后台任务",
+    "addedTitle": "成功",
+    "added": "已成功添加项目“{{name}}”",
+    "removedTitle": "已移除",
+    "removed": "已移除项目“{{name}}”。其文件仍保留在磁盘上。",
+    "deletedTitle": "已删除",
+    "deleted": "已删除项目“{{name}}”及其数据"
+  },
+  "plans": {
+    "title": "计划",
+    "hint": "配置新建计划时使用的默认计划模板。",
+    "templateLabel": "计划模板",
+    "templatePlaceholder": "计划模板…",
+    "saved": "计划模板已保存"
+  },
+  "vaultSection": {
+    "title": "团队保管库",
+    "hint": "通过带版本控制的 Git 仓库，在团队内共享和同步 Tendril 项目、自定义技能、MCP 服务器及安全规则。"
+  },
+  "notifications": {
+    "title": "通知",
+    "hint": "配置 Tendril 如何就任务完成、失败及其他事件向您发送通知。",
+    "desktopLabel": "启用桌面通知",
+    "saved": "通知设置已保存"
+  },
+  "advanced": {
+    "title": "高级",
+    "hint": "配置超时和并发限制。",
+    "timeoutsHeading": "超时",
+    "jobTimeout": "任务超时",
+    "staleOutputTimeout": "无输出超时",
+    "maxConcurrentJobs": "最大并发任务数",
+    "minutesSuffix": "分钟",
+    "betaHeading": "Beta 功能",
+    "betaLabel": "启用 Beta 功能",
+    "restartNote": "需要重启 Tendril 才能使更改生效。",
+    "saved": "设置已保存并应用"
+  },
+  "diagnostics": {
+    "title": "守护进程诊断",
+    "ping": "测试延迟（Ping）",
+    "pinging": "正在 Ping…",
+    "pong": "Pong！响应时间 {{elapsed}} 毫秒",
+    "pingFailed": "Ping 失败：{{error}}",
+    "connectionState": "连接状态：",
+    "hostPort": "守护进程主机和端口：",
+    "pid": "进程 PID：",
+    "tendrilHome": "{{name}}：",
+    "secret": "安全 / 密钥：",
+    "secretValue": "由原生层管理（不存储在 WebView 存储中）",
+    "capabilities": "功能：",
+    "noCapabilities": "未报告",
+    "notAvailable": "不可用",
+    "states": {
+      "connected": "已连接",
+      "disconnected": "已断开",
+      "unauthenticated": "未认证",
+      "notRunning": "未运行",
+      "foreignMaster": "外部主实例"
+    }
+  },
+  "newsletterSection": {
+    "title": "新闻通讯",
+    "hint": "订阅 Ivy & Tendril 新闻通讯，获取产品动态、功能亮点和发布说明。"
+  },
+  "promptwares": {
+    "title": "工作流智能体",
+    "hint": "查看每个智能体的提示词，并配置其运行时使用的编程智能体配置文件和工具权限。",
+    "agentLabel": "智能体",
+    "defaultOption": "{{key}}（所有智能体）",
+    "notConfigured": "尚未配置。保存后将创建该条目。",
+    "profileLabel": "配置文件",
+    "profileDefault": "默认（未设置）",
+    "profileTiers": {
+      "deep": "深度",
+      "balanced": "均衡",
+      "quick": "快速"
+    },
+    "profileHint": "以最后应用的设置为准：依次为 {{key}}、此智能体、按计划或 CLI 的覆盖设置。",
+    "allowedLabel": "允许的工具",
+    "allowedHint": "在基础工具集之上追加，每行一条规则，不会替换基础工具集。",
+    "deniedLabel": "拒绝的工具",
+    "deniedHint": "从合并后的允许列表中移除，并与 {{key}} 的拒绝列表合并，而不是缩小其范围。",
+    "reset": "重置",
+    "addLabel": "添加智能体",
+    "addPlaceholder": "智能体名称（例如 {{example}}）…",
+    "add": "添加",
+    "saved": "智能体已保存",
+    "saveFailed": "保存智能体失败：{{error}}",
+    "program": {
+      "title": "提示词",
+      "hintOverlay": "来自您的覆盖层目录，将替换内置的提示词。",
+      "hintDeployed": "此智能体运行的已部署提示词。只读：请在您的覆盖层目录中修改。",
+      "defaultKey": "{{key}} 是应用于所有智能体的后备设置，而非单独的智能体，因此没有提示词。请选择一个智能体以查看其提示词。",
+      "loading": "正在加载提示词…"
+    }
+  },
+  "appearance": {
+    "language": {
+      "title": "语言",
+      "hint": "选择 Tendril 使用的语言。“系统默认”将跟随您的操作系统。",
+      "label": "语言",
+      "system": "系统默认",
+      "saved": "语言已设置为 {{language}}",
+      "loadFailed": "无法加载 {{language}}。Tendril 将保持当前语言。"
+    },
+    "title": "外观",
+    "hint": "选择 Tendril 的外观。“跟随系统”将与操作系统设置保持一致。",
+    "themeMode": {
+      "light": "浅色",
+      "dark": "深色",
+      "system": "跟随系统",
+      "saved_light": "外观已设置为浅色",
+      "saved_dark": "外观已设置为深色",
+      "saved_system": "外观已设置为跟随系统"
+    },
+    "theme": {
+      "title": "主题",
+      "hint": "为 Tendril 选择配色方案预设。",
+      "label": "主题",
+      "vaultOption": "{{name}}（保管库：{{vault}}）",
+      "vaultFallback": "团队",
+      "vaultBadge": "团队保管库",
+      "saved": "主题已设置为 {{name}}"
+    },
+    "sidebar": {
+      "title": "主侧边栏",
+      "hint": "为新的客户端会话选择主侧边栏的默认状态。",
+      "expanded": "展开",
+      "collapsed": "折叠",
+      "saved_expanded": "侧边栏默认设置为展开",
+      "saved_collapsed": "侧边栏默认设置为折叠"
+    },
+    "chatMode": {
+      "title": "聊天",
+      "hint": "选择“聊天”按钮与编程智能体的交互方式：聊天视图，或智能体自己的终端。",
+      "chat": "聊天",
+      "terminal": "终端",
+      "saved_chat": "聊天将以聊天视图打开",
+      "saved_terminal": "聊天将以终端打开"
+    },
+    "vaultThemesNote": "团队保管库发布的主题不会在此列出：此构建不包含保管库主题子系统，因此仅提供内置预设。"
+  },
+  "levels": {
+    "title": "优先级级别",
+    "hint": "定义用于对计划进行分类的优先级级别。",
+    "addButton": "添加级别",
+    "columns": {
+      "name": "名称",
+      "color": "颜色"
+    },
+    "unsetColor": "未设置",
+    "editAction": "编辑",
+    "empty": "尚未定义级别。",
+    "editor": {
+      "addTitle": "添加级别",
+      "editTitle": "编辑级别",
+      "nameLabel": "名称",
+      "namePlaceholder": "级别名称…",
+      "colorLabel": "颜色",
+      "colorPlaceholder": "例如 {{example}}",
+      "colorHint": "Ivy 颜色名称，与 config.yaml 中存储的形式一致（{{examples}}…）。",
+      "add": "添加"
+    },
+    "saved": "级别已保存",
+    "deleted": "已删除级别“{{name}}”",
+    "saveFailed": "保存级别失败：{{error}}",
+    "removeConsequence": "已归入此级别的计划会在其 plan.yaml 中保留该名称；它只是不再作为可选级别之一。",
+    "noEffect": "级别存储在 config.yaml 中并通过 MCP 公开，但此应用目前尚未读取它们，因此在此处编辑不会产生任何可见的行为变化。"
+  },
+  "removal": {
+    "title": "移除 {{kind}}",
+    "title_level": "移除级别",
+    "title_repository": "移除仓库",
+    "title_reviewAction": "移除审查操作",
+    "title_environmentFile": "移除环境文件",
+    "title_mcpServer": "移除 MCP 服务器",
+    "title_customSkill": "移除自定义技能",
+    "body": "要从此配置中移除 {{kind}} <name>{{name}}</name> 吗？",
+    "body_level": "要从此配置中移除级别 <name>{{name}}</name> 吗？",
+    "body_repository": "要从此配置中移除仓库 <name>{{name}}</name> 吗？",
+    "body_reviewAction": "要从此配置中移除审查操作 <name>{{name}}</name> 吗？",
+    "body_environmentFile": "要从此配置中移除环境文件 <name>{{name}}</name> 吗？",
+    "body_mcpServer": "要从此配置中移除 MCP 服务器 <name>{{name}}</name> 吗？",
+    "body_customSkill": "要从此配置中移除自定义技能 <name>{{name}}</name> 吗？",
+    "confirm": "移除"
+  },
+  "fields": {
+    "colorsLabel": "颜色",
+    "chooseColor": "选择颜色",
+    "defaultOption": "默认"
+  },
+  "configEditor": {
+    "samplePrompts": {
+      "explain": {
+        "label": "解释某项设置",
+        "prompt": "解释我的 config.yaml 中每个顶级键控制的内容。"
+      },
+      "addProject": {
+        "label": "添加项目",
+        "prompt": "在 config.yaml 中添加一个新项目，并告诉我还需要填写哪些字段。"
+      },
+      "check": {
+        "label": "检查我的配置",
+        "prompt": "检查我的 config.yaml，找出看起来有误或缺少合理默认值的设置。"
+      }
+    },
+    "saved": "config.yaml 已保存并重新加载",
+    "maskedNote_other": "{{count}} 个密钥值显示为 {{mask}}。保留占位符不变即可保留已存储的值；覆盖输入即可设置新值。",
+    "conflictReload": "从磁盘重新加载",
+    "reload": "从磁盘重新加载",
+    "discard": {
+      "title": "放弃未保存的更改",
+      "confirm": "放弃并重新加载",
+      "body": "重新加载会用磁盘上的文件替换编辑器中的内容。您未保存的编辑将会丢失。"
+    }
+  },
+  "security": {
+    "title": "安全与穿透",
+    "hint": "访问 Tendril 时需要输入密码，并可通过公共隧道公开此实例。",
+    "cloudflared": {
+      "intro": "下方两个隧道均运行 Cloudflare 的 <code>cloudflared</code>。运行 Tendril 的计算机上尚未安装它。",
+      "configuredPathTitle": "已配置的路径",
+      "installingTitle": "正在安装",
+      "downloadingPercent": "正在下载 {{asset}}：{{percent, percent}}",
+      "downloadingSize": "正在下载 {{asset}}：{{size}}",
+      "verifying": "正在根据 Cloudflare 发布的 SHA-256 校验下载内容",
+      "installing": "正在安装",
+      "resolving": "正在查找最新版本",
+      "cancelledTitle": "已取消",
+      "cancelledBody": "下载已取消，未安装任何内容。您可以重新开始下载，或自行安装 cloudflared。",
+      "failedTitle": "安装失败",
+      "retry": "重试",
+      "install": "安装 cloudflared",
+      "manualSummary": "改为自行安装",
+      "manualPackages": "macOS：<code>{{brew}}</code>。Linux：请参阅 <code>{{url}}</code>。",
+      "manualDownload": "或从 <code>{{url}}</code> 下载 <code>{{asset}}</code>，并将其保存为 <code>{{path}}</code>。"
+    },
+    "session": {
+      "heading": "会话保护",
+      "blurb": "访问 Tendril 界面时需要输入密码。",
+      "enableLabel": "启用密码保护",
+      "currentLabel": "当前密码",
+      "currentPlaceholder": "当前密码…",
+      "newLabel": "新密码",
+      "newPlaceholder": "新密码…",
+      "confirmLabel": "确认密码",
+      "confirmPlaceholder": "确认密码…",
+      "mismatch": "两次输入的密码不一致",
+      "disabledToast": "密码保护已禁用",
+      "enabledToast": "密码保护已启用"
+    },
+    "tunnel": {
+      "full": {
+        "heading": "隧道",
+        "blurb": "通过 Cloudflare 隧道将您的 Tendril 实例暴露到互联网，便于从移动设备访问或与他人共享。",
+        "startingTitle": "隧道启动中",
+        "activeTitle": "隧道已启用",
+        "activeBody": "您的隧道正在运行，可通过下方的 URL 访问。",
+        "startingBody": "正在启动隧道并等待其可路由，通常需要 15-30 秒。",
+        "stoppedToast": "隧道已停止",
+        "copiedToast": "隧道 URL 已复制到剪贴板",
+        "startFailed": "启动隧道失败：{{error}}",
+        "stopFailed": "停止隧道失败：{{error}}"
+      },
+      "share": {
+        "heading": "共享隧道",
+        "blurb": "公开一个只读、仅可评论的 Tendril 版本，供团队成员审查计划和草稿。",
+        "startingTitle": "共享隧道启动中",
+        "activeTitle": "共享隧道已启用",
+        "activeBody": "您的共享隧道正在运行，可通过下方的 URL 访问。",
+        "startingBody": "正在启动共享隧道并等待其可路由，通常需要 15-30 秒。",
+        "stoppedToast": "共享隧道已停止",
+        "copiedToast": "共享隧道 URL 已复制到剪贴板",
+        "startFailed": "启动共享隧道失败：{{error}}",
+        "stopFailed": "停止共享隧道失败：{{error}}"
+      },
+      "warningTitle": "这会公开所有内容",
+      "warningBody": "全权限隧道会将整个 Tendril 实例放到公共 URL 上。任何知道该地址和会话密码的人都可以像坐在这台计算机前一样使用它，因此必须先设置密码才能启动。下方的共享隧道是只读选项。",
+      "deactivatedTitle": "已停用",
+      "copiedTitle": "URL 已复制",
+      "copyFailed": "无法复制 URL：{{error}}",
+      "deactivate": "停用",
+      "copyUrl": "复制 URL",
+      "openInBrowser": "在浏览器中打开",
+      "activate": "启用"
+    }
+  },
+  "vault": {
+    "errors": {
+      "listVaults": "无法列出保管库：{{error}}",
+      "status": "无法读取保管库状态：{{error}}",
+      "catalog": "无法读取保管库目录：{{error}}",
+      "failure": "保管库服务报告了故障。"
+    },
+    "createdPr": "已创建 PR：{{url}}",
+    "createdBranch": "已创建分支 {{branch}}",
+    "createdDeletionBranch": "已创建删除分支 {{branch}}",
+    "done": "完成。",
+    "activeVault": "当前保管库",
+    "selectVault": "选择保管库",
+    "refresh": "刷新",
+    "sync": "同步",
+    "openPr": "创建 PR",
+    "connect": "连接保管库",
+    "create": "创建保管库",
+    "sharedProjects": "共享项目",
+    "displayNameFallback": "团队保管库"
+  },
+  "modelCatalog": {
+    "title": "模型目录",
+    "hint": "Tendril 会将精选模型表与缓存在磁盘上的 models.dev 快照合并。",
+    "refresh": "立即刷新",
+    "refreshing": "正在刷新…",
+    "refreshed_other": "已刷新：来自 models.dev 的 {{count}} 个模型",
+    "show": "显示目录状态和设置",
+    "hide": "隐藏目录状态和设置",
+    "sourceLabel": "来源：",
+    "liveTitle": "模型目录数据来自 models.dev",
+    "live": "实时（models.dev）",
+    "staticTitle": "模型目录正在使用静态后备表",
+    "static": "静态后备",
+    "modelsLabel": "模型：",
+    "modelSplit": "{{dynamic}} 个已扩充 / {{static}} 个精选",
+    "cacheUpdatedLabel": "缓存更新时间：",
+    "cacheFileLabel": "缓存文件：",
+    "age": {
+      "never": "从未（无缓存文件）",
+      "justNow": "刚刚",
+      "marked_stale": "{{age}}（已过时）",
+      "marked_expired": "{{age}}（已过期，正在使用精选表）",
+      "marked_staleExpired": "{{age}}（已过时）（已过期，正在使用精选表）"
+    },
+    "enrichLabel": "从 models.dev 扩充模型目录",
+    "intervalLabel": "刷新间隔",
+    "intervalHint": "后台刷新之间的间隔小时数。0 表示仅在启动时刷新一次，之后不再刷新。",
+    "warnAgeLabel": "缓存警告时长",
+    "warnAgeHint": "超过此天数后，缓存仍会使用，但会标记为已过时。0 表示从不警告。",
+    "maxAgeLabel": "缓存最长时长",
+    "maxAgeHint": "超过此天数后，将忽略缓存并改用精选表。0 表示永不过期。"
+  },
+  "newsletter": {
+    "subscribed": "已订阅！",
+    "emailLabel": "电子邮件地址",
+    "subscribing": "正在订阅…",
+    "subscribe": "订阅"
+  }
+}

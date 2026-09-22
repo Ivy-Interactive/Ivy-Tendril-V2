@@ -1,1 +1,261 @@
-{}
+{
+  "actions": {
+    "cancel": "取消",
+    "close": "关闭",
+    "confirm": "确认",
+    "copy": "复制",
+    "delete": "删除",
+    "retry": "重试",
+    "save": "保存"
+  },
+  "status": {
+    "copied": "已复制",
+    "error": "错误",
+    "loading": "正在加载…",
+    "none": "无",
+    "unknown": "未知"
+  },
+  "enums": {
+    "jobStatus": {
+      "pending": "待处理",
+      "queued": "排队中",
+      "running": "运行中",
+      "completed": "已完成",
+      "failed": "失败",
+      "timeout": "超时",
+      "stopped": "已停止",
+      "blocked": "已阻塞"
+    },
+    "jobType": {
+      "executePlan": "ExecutePlan",
+      "createPlan": "CreatePlan",
+      "retryPlan": "RetryPlan",
+      "updatePlan": "UpdatePlan",
+      "expandPlan": "ExpandPlan",
+      "splitPlan": "SplitPlan",
+      "createPr": "CreatePr",
+      "createIssue": "CreateIssue",
+      "setupProject": "SetupProject",
+      "addProject": "AddProject",
+      "syncRepo": "SyncRepo"
+    },
+    "planState": {
+      "draft": "草稿",
+      "creating": "创建中",
+      "updating": "更新中",
+      "executing": "执行中",
+      "review": "待审查",
+      "failed": "失败",
+      "completed": "已完成",
+      "skipped": "已跳过",
+      "blocked": "已阻塞",
+      "icebox": "待办箱"
+    }
+  },
+  "appTitles": {
+    "dashboard": "仪表盘",
+    "plans": "计划",
+    "review": "审查",
+    "recommendations": "改进建议",
+    "jobs": "任务",
+    "chat": "聊天",
+    "inbox": "收件箱",
+    "settings": "设置",
+    "pullRequests": "Pull Requests",
+    "icebox": "待办箱",
+    "reviewAction": "审查操作",
+    "agent": "智能体",
+    "plan": "计划 {{id}}",
+    "job": "任务 {{id}}"
+  },
+  "navigation": {
+    "errors": {
+      "tabGone": "该标签页已不存在。"
+    }
+  },
+  "sidebar": {
+    "version": "v {{version}}",
+    "nav": {
+      "dashboard": "仪表盘",
+      "plans": "计划",
+      "review": "审查",
+      "recommendations": "改进建议",
+      "jobs": "任务"
+    },
+    "chat": "聊天",
+    "inbox": "收件箱",
+    "settings": "设置",
+    "settingsMenu": {
+      "configuration": "配置",
+      "pullRequests": "Pull Requests",
+      "icebox": "待办箱",
+      "checkForUpdates": "检查更新",
+      "help": "帮助",
+      "documentation": "文档",
+      "reportIssue": "报告 Issue"
+    }
+  },
+  "shortcuts": {
+    "gotoChat": "切换到聊天",
+    "gotoInbox": "打开 GitHub Issue 收件箱",
+    "newPlan": "打开“新建计划”对话框",
+    "planSearch": "搜索计划",
+    "showShortcuts": "显示键盘快捷键"
+  },
+  "shortcutsHelp": {
+    "title": "键盘快捷键",
+    "empty": "当前没有可用的键盘快捷键。"
+  },
+  "updateCheck": {
+    "available": {
+      "title": "有可用更新",
+      "description": "版本 {{version}} 现已可用。"
+    },
+    "upToDate": {
+      "title": "已是最新版本",
+      "description": "您使用的是最新版本（v{{version}}）。"
+    },
+    "failed": {
+      "title": "检查更新失败"
+    }
+  },
+  "updateNotice": {
+    "available": "v{{latest}} 现已可用（当前版本为 v{{current}}）",
+    "copyCommand": "复制命令",
+    "dismiss": "忽略"
+  },
+  "offlineBanner": {
+    "reconnecting": "Tendril-Service 已断开连接，将在 {{seconds}} 秒后自动重连…",
+    "unreachable": "无法连接到 Tendril-Service 守护进程。",
+    "cachedState": "（正在使用缓存的状态）",
+    "reconnect": "立即重连"
+  },
+  "planPage": {
+    "loading": "正在加载计划 {{id}}…",
+    "loadError": "无法加载计划 {{id}}：{{error}}"
+  },
+  "jobPage": {
+    "placeholderType": "智能体任务"
+  },
+  "shellErrors": {
+    "restartFailed": "重启服务失败：{{error}}",
+    "repairFailed": "修复服务失败：{{error}}",
+    "dismissNavError": "关闭导航错误提示"
+  },
+  "stopQueued": {
+    "title": "停止排队任务",
+    "body_other": "停止全部 {{count}} 个排队中的任务？运行中的任务不受影响。",
+    "confirm": "全部停止",
+    "toast": {
+      "title": "任务",
+      "description_other": "已停止 {{count}} 个排队中的任务。"
+    }
+  },
+  "stopAll": {
+    "title": "停止所有任务",
+    "body_other": "停止全部 {{count}} 个活动任务？正在运行的智能体将被终止，其计划将恢复到之前的状态。此操作无法撤销。",
+    "confirm": "全部停止",
+    "toast": {
+      "title": "任务已停止",
+      "description_other": "已停止 {{count}} 个任务"
+    }
+  },
+  "errorBanner": {
+    "dismiss": "关闭错误提示"
+  },
+  "recommendationCard": {
+    "state": {
+      "pending": "待处理",
+      "accepted": "已接受",
+      "acceptedWithNotes": "已接受并附备注",
+      "declined": "已拒绝"
+    },
+    "impact": {
+      "small": "小",
+      "medium": "中",
+      "high": "高"
+    },
+    "declineReason": "拒绝原因：{{reason}}",
+    "notes": "备注：{{notes}}",
+    "accept": "接受",
+    "decline": "拒绝"
+  },
+  "service": {
+    "state": {
+      "connected": "已连接",
+      "disconnected": "已断开",
+      "unauthenticated": "未认证",
+      "notRunning": "未运行",
+      "foreignMaster": "外部主实例"
+    },
+    "ownership": {
+      "adoptedExternal": "外部（已接管）",
+      "managed": "托管"
+    }
+  },
+  "serviceStatus": {
+    "connectedExternal": "已连接（外部）",
+    "portUnavailable": "不可用",
+    "restart": "重启服务",
+    "repair": "修复服务",
+    "diagnostics": "诊断"
+  },
+  "serviceSettings": {
+    "controls": {
+      "title": "服务监管与控制",
+      "hint": "管理本地配套守护进程的生命周期、所有权接管和崩溃恢复。"
+    },
+    "actions": {
+      "restart": "重启服务",
+      "repair": "修复服务",
+      "switchToExternal": "切换到外部守护进程",
+      "adoptManaged": "改用托管配套进程",
+      "install": "安装后台服务",
+      "installTooltip": "将内置的守护进程复制到 {{path}}，并随您的登录会话启动",
+      "disableAutostart": "禁用登录时启动",
+      "disableAutostartTooltip": "不再在登录时启动守护进程。已安装的二进制文件将保留在原位置。",
+      "refreshLogs": "刷新日志",
+      "loadingLogs": "正在加载日志…"
+    },
+    "messages": {
+      "restartInitiated": "已发起服务重启。",
+      "restartFailed": "重启失败：{{error}}",
+      "repairFailed": "修复失败：{{error}}",
+      "installFailed": "安装失败：{{error}}",
+      "disableAutostartFailed": "无法禁用登录时启动：{{error}}",
+      "switchedToManaged": "已将服务所有权模式切换为托管。",
+      "switchedToExternal": "已将服务所有权模式切换为外部。",
+      "switchFailed": "模式切换失败：{{error}}"
+    },
+    "provision": {
+      "installed": "已将 {{binaries, list(type: unit)}} 安装到 {{dir}}。",
+      "upToDate": "{{dir}} 中的 {{binaries, list(type: unit)}} 已是最新版本。",
+      "missing": "此构建未内置 {{binaries, list(type: unit)}}。",
+      "registered": "已注册为随您的登录会话启动（{{detail}}）。",
+      "alreadyRegistered": "已注册为随您的登录会话启动。",
+      "registerFailed": "无法注册登录时启动：{{detail}}",
+      "skipped": "已跳过登录时启动：{{detail}}",
+      "nothing": "没有需要安装的内容。"
+    },
+    "details": {
+      "ownership": "所有权",
+      "ownershipFallback": "外部 / 独立",
+      "endpoint": "端点",
+      "pid": "进程 PID",
+      "crashCount": "崩溃次数",
+      "notAvailable": "不可用"
+    },
+    "logs": {
+      "title": "守护进程诊断与服务日志",
+      "hint": "敏感令牌已脱敏。读取自 {{path}}。",
+      "empty": "{{file}} 中尚无日志记录。",
+      "loadFailed": "加载服务日志失败：{{error}}"
+    }
+  },
+  "errors": {
+    "requestFailed": "请求 {{path}} 失败（{{status}}）",
+    "reviewActionFailed": "审查操作 {{endpoint}} 失败（{{status}}）：{{detail}}",
+    "subscribeFailed": "订阅 {{url}} 失败：HTTP {{status}}",
+    "agentTerminalFailed": "智能体终端 {{endpoint}} 失败：HTTP {{status}}"
+  }
+}

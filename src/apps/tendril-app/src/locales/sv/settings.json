@@ -1,1 +1,380 @@
-{}
+{
+  "shared": {
+    "toastSaved": "Sparat",
+    "saving": "Sparar…",
+    "saveFailed": "Det gick inte att spara: {{error}}",
+    "outOfRange": "{{key}} måste vara mellan {{min}} och {{max}}, men värdet är {{value}}.",
+    "notInteger": "{{key}} måste vara ett heltal, men värdet är ”{{value}}”."
+  },
+  "sections": {
+    "codingAgent": "Kodningsagent",
+    "plans": "Planer",
+    "appearance": "Utseende",
+    "projects": "Projekt",
+    "vault": "Team Vault",
+    "promptwares": "Arbetsflödesagenter",
+    "levels": "Nivåer",
+    "notifications": "Aviseringar",
+    "security": "Säkerhet och tunnling",
+    "advanced": "Avancerat",
+    "newsletter": "Nyhetsbrev",
+    "fallback": "Konfiguration"
+  },
+  "nav": {
+    "ariaLabel": "Konfigurationsavsnitt",
+    "mobilePickerLabel": "Konfigurationsavsnitt",
+    "addProject": "Lägg till projekt",
+    "openConfig": "Öppna config.yaml"
+  },
+  "projectToasts": {
+    "jobStartedTitle": "Jobbet har startats",
+    "backgroundJob": "Ett bakgrundsjobb har skapats för projektet ”{{name}}”",
+    "addedTitle": "Klart",
+    "added": "Projektet ”{{name}}” har lagts till",
+    "removedTitle": "Avregistrerat",
+    "removed": "Projektet ”{{name}}” har avregistrerats. Filerna finns kvar på disken.",
+    "deletedTitle": "Raderat",
+    "deleted": "Projektet ”{{name}}” och dess data har raderats"
+  },
+  "plans": {
+    "title": "Planer",
+    "hint": "Konfigurera standardplanmallen som används när nya planer skapas.",
+    "templateLabel": "Planmall",
+    "templatePlaceholder": "Planmall…",
+    "saved": "Planmallen har sparats"
+  },
+  "vaultSection": {
+    "title": "Team Vault",
+    "hint": "Dela och synkronisera Tendril-projekt, anpassade färdigheter, MCP-servrar och säkerhetsregler i teamet via ett versionshanterat Git-arkiv."
+  },
+  "notifications": {
+    "title": "Aviseringar",
+    "hint": "Ställ in hur Tendril aviserar dig om slutförda och misslyckade jobb och andra händelser.",
+    "desktopLabel": "Aktivera skrivbordsaviseringar",
+    "saved": "Aviseringsinställningarna har sparats"
+  },
+  "advanced": {
+    "title": "Avancerat",
+    "hint": "Konfigurera tidsgränser och gränser för samtidighet.",
+    "timeoutsHeading": "Tidsgränser",
+    "jobTimeout": "Tidsgräns för jobb",
+    "staleOutputTimeout": "Tidsgräns för inaktiv utdata",
+    "maxConcurrentJobs": "Max antal samtidiga jobb",
+    "minutesSuffix": "min",
+    "betaHeading": "Betafunktioner",
+    "betaLabel": "Aktivera betafunktioner",
+    "restartNote": "Tendril måste startas om för att ändringarna ska börja gälla.",
+    "saved": "Inställningarna har sparats och tillämpats"
+  },
+  "diagnostics": {
+    "title": "Daemon-diagnostik",
+    "ping": "Testa latens (ping)",
+    "pinging": "Pingar…",
+    "pong": "Pong! Svar på {{elapsed}} ms",
+    "pingFailed": "Ping misslyckades: {{error}}",
+    "connectionState": "Anslutningsstatus:",
+    "hostPort": "Daemonens värd och port:",
+    "pid": "Process-PID:",
+    "tendrilHome": "{{name}}:",
+    "secret": "Säkerhet/hemlighet:",
+    "secretValue": "Hanteras av systemet (dold för webbvyns lagring)",
+    "capabilities": "Funktioner:",
+    "noCapabilities": "Inga rapporterade",
+    "notAvailable": "Ej tillgänglig",
+    "states": {
+      "connected": "Ansluten",
+      "disconnected": "Frånkopplad",
+      "unauthenticated": "Inte autentiserad",
+      "notRunning": "Körs inte",
+      "foreignMaster": "Främmande master"
+    }
+  },
+  "newsletterSection": {
+    "title": "Nyhetsbrev",
+    "hint": "Prenumerera på nyhetsbrevet från Ivy & Tendril för att få uppdateringar, nyheter om funktioner och versionsanteckningar."
+  },
+  "promptwares": {
+    "title": "Arbetsflödesagenter",
+    "hint": "Läs varje agents prompt och konfigurera den profil för kodningsagenten och de verktygsbehörigheter som agenten körs med.",
+    "agentLabel": "Agent",
+    "defaultOption": "{{key}} (alla agenter)",
+    "notConfigured": "Inte konfigurerad ännu. Posten skapas när du sparar.",
+    "profileLabel": "Profil",
+    "profileDefault": "Standard (inte angiven)",
+    "profileTiers": {
+      "deep": "Djup",
+      "balanced": "Balanserad",
+      "quick": "Snabb"
+    },
+    "profileHint": "Den sista inställningen gäller: först {{key}}, sedan den här agenten och sist en åsidosättning per plan eller via CLI:et.",
+    "allowedLabel": "Tillåtna verktyg",
+    "allowedHint": "Läggs till ovanpå grunduppsättningen av verktyg, en regel per rad. Ersätter den aldrig.",
+    "deniedLabel": "Nekade verktyg",
+    "deniedHint": "Dras bort från den sammanslagna listan över tillåtna verktyg och slås samman med {{key}} i stället för att snäva in den.",
+    "reset": "Återställ",
+    "addLabel": "Lägg till agent",
+    "addPlaceholder": "Agentnamn (t.ex. {{example}})…",
+    "add": "Lägg till",
+    "saved": "Agenten har sparats",
+    "saveFailed": "Det gick inte att spara agenten: {{error}}",
+    "program": {
+      "title": "Prompt",
+      "hintOverlay": "Från din överlagringskatalog, som ersätter den medföljande prompten.",
+      "hintDeployed": "Den driftsatta prompten som agenten kör. Skrivskyddad: ändra den i din överlagringskatalog.",
+      "defaultKey": "{{key}} är standardvärdet som tillämpas på alla agenter och inte en egen agent, så den har ingen prompt. Välj en agent för att läsa dess prompt.",
+      "loading": "Läser in prompt…"
+    }
+  },
+  "appearance": {
+    "language": {
+      "title": "Språk",
+      "hint": "Välj vilket språk Tendril ska använda. Systemstandard följer ditt operativsystem.",
+      "label": "Språk",
+      "system": "Systemstandard",
+      "saved": "Språket har ställts in på {{language}}",
+      "loadFailed": "Det gick inte att läsa in {{language}}. Tendril behåller det språk som redan används."
+    },
+    "title": "Utseende",
+    "hint": "Välj hur Tendril ska se ut. System följer inställningen i operativsystemet.",
+    "themeMode": {
+      "light": "Ljust",
+      "dark": "Mörkt",
+      "system": "System",
+      "saved_light": "Utseendet har ställts in på Ljust",
+      "saved_dark": "Utseendet har ställts in på Mörkt",
+      "saved_system": "Utseendet har ställts in på System"
+    },
+    "theme": {
+      "title": "Tema",
+      "hint": "Välj en förinställd färgskala för Tendril.",
+      "label": "Tema",
+      "vaultOption": "{{name}} (valv: {{vault}})",
+      "vaultFallback": "Team",
+      "vaultBadge": "Team Vault",
+      "saved": "Temat har ställts in på {{name}}"
+    },
+    "sidebar": {
+      "title": "Huvudsidofält",
+      "hint": "Välj standardläget för huvudsidofältet i nya klientsessioner.",
+      "expanded": "Utfällt",
+      "collapsed": "Infällt",
+      "saved_expanded": "Sidofältet är nu utfällt som standard",
+      "saved_collapsed": "Sidofältet är nu infällt som standard"
+    },
+    "chatMode": {
+      "title": "Chatt",
+      "hint": "Välj hur chattknappen kommunicerar med din kodningsagent: via chattvyn eller agentens egen terminal.",
+      "chat": "Chatt",
+      "terminal": "Terminal",
+      "saved_chat": "Chatten öppnas i chattvyn",
+      "saved_terminal": "Chatten öppnas i terminalen"
+    },
+    "vaultThemesNote": "Teman som publicerats i ett Team Vault visas inte: valvets temadelsystem ingår inte i den här versionen, så bara de medföljande förinställningarna erbjuds."
+  },
+  "levels": {
+    "title": "Prioritetsnivåer",
+    "hint": "Definiera prioritetsnivåer som används för att kategorisera planer.",
+    "addButton": "Lägg till nivå",
+    "columns": {
+      "name": "Namn",
+      "color": "Färg"
+    },
+    "unsetColor": "inte angiven",
+    "editAction": "Redigera",
+    "empty": "Inga nivåer har definierats.",
+    "editor": {
+      "addTitle": "Lägg till nivå",
+      "editTitle": "Redigera nivå",
+      "nameLabel": "Namn",
+      "namePlaceholder": "Nivånamn…",
+      "colorLabel": "Färg",
+      "colorPlaceholder": "t.ex. {{example}}",
+      "colorHint": "Ett Ivy-färgnamn, så som config.yaml lagrar det ({{examples}}…).",
+      "add": "Lägg till"
+    },
+    "saved": "Nivån har sparats",
+    "deleted": "Nivån ”{{name}}” har tagits bort",
+    "saveFailed": "Det gick inte att spara nivån: {{error}}",
+    "removeConsequence": "Planer som redan har kategoriserats med den här nivån behåller namnet i sin plan.yaml; nivån erbjuds bara inte längre som ett av alternativen.",
+    "noEffect": "Nivåerna lagras i config.yaml och publiceras via MCP, men ingenting i den här appen läser dem ännu, så ändringar här ger ingen synlig effekt."
+  },
+  "removal": {
+    "title": "Ta bort {{kind}}",
+    "title_level": "Ta bort nivå",
+    "title_repository": "Ta bort arkiv",
+    "title_reviewAction": "Ta bort granskningsåtgärd",
+    "title_environmentFile": "Ta bort miljöfil",
+    "title_mcpServer": "Ta bort MCP-server",
+    "title_customSkill": "Ta bort anpassad färdighet",
+    "body": "Vill du ta bort {{kind}} <name>{{name}}</name> från den här konfigurationen?",
+    "body_level": "Vill du ta bort nivån <name>{{name}}</name> från den här konfigurationen?",
+    "body_repository": "Vill du ta bort arkivet <name>{{name}}</name> från den här konfigurationen?",
+    "body_reviewAction": "Vill du ta bort granskningsåtgärden <name>{{name}}</name> från den här konfigurationen?",
+    "body_environmentFile": "Vill du ta bort miljöfilen <name>{{name}}</name> från den här konfigurationen?",
+    "body_mcpServer": "Vill du ta bort MCP-servern <name>{{name}}</name> från den här konfigurationen?",
+    "body_customSkill": "Vill du ta bort den anpassade färdigheten <name>{{name}}</name> från den här konfigurationen?",
+    "confirm": "Ta bort"
+  },
+  "fields": {
+    "colorsLabel": "Färger",
+    "chooseColor": "Välj färg",
+    "defaultOption": "Standard"
+  },
+  "configEditor": {
+    "samplePrompts": {
+      "explain": {
+        "label": "Förklara en inställning",
+        "prompt": "Förklara vad varje nyckel på toppnivå i min config.yaml styr."
+      },
+      "addProject": {
+        "label": "Lägg till ett projekt",
+        "prompt": "Lägg till ett nytt projekt i config.yaml och berätta vilka fält jag fortfarande måste fylla i."
+      },
+      "check": {
+        "label": "Kontrollera min konfiguration",
+        "prompt": "Gå igenom min config.yaml och leta efter inställningar som ser felaktiga ut eller saknar ett rimligt standardvärde."
+      }
+    },
+    "saved": "config.yaml har sparats och lästs in på nytt",
+    "maskedNote_one": "{{count}} hemligt värde visas som {{mask}}. Låt platshållaren stå kvar om du vill behålla det lagrade värdet; skriv över den för att ange ett nytt.",
+    "maskedNote_other": "{{count}} hemliga värden visas som {{mask}}. Låt en platshållare stå kvar om du vill behålla det lagrade värdet; skriv över den för att ange ett nytt.",
+    "conflictReload": "Läs in från disken igen",
+    "reload": "Läs in från disken igen",
+    "discard": {
+      "title": "Kassera osparade ändringar",
+      "confirm": "Kassera och läs in igen",
+      "body": "När du läser in igen ersätts innehållet i redigeraren med filen på disken. De ändringar du inte har sparat går förlorade."
+    }
+  },
+  "security": {
+    "title": "Säkerhet och tunnling",
+    "hint": "Kräv ett lösenord för att komma åt Tendril och exponera den här instansen via en offentlig tunnel.",
+    "cloudflared": {
+      "intro": "Båda tunnlarna nedan kör Cloudflares <code>cloudflared</code>. Det är ännu inte installerat på datorn som kör Tendril.",
+      "configuredPathTitle": "Konfigurerad sökväg",
+      "installingTitle": "Installerar",
+      "downloadingPercent": "Laddar ned {{asset}} — {{percent, percent}}",
+      "downloadingSize": "Laddar ned {{asset}} — {{size}}",
+      "verifying": "Kontrollerar nedladdningen mot Cloudflares publicerade SHA-256",
+      "installing": "Installerar",
+      "resolving": "Söker efter den senaste versionen",
+      "cancelledTitle": "Avbruten",
+      "cancelledBody": "Nedladdningen avbröts och ingenting installerades. Du kan starta den igen eller installera cloudflared själv.",
+      "failedTitle": "Installationen misslyckades",
+      "retry": "Försök igen",
+      "install": "Installera cloudflared",
+      "manualSummary": "Installera det själv i stället",
+      "manualPackages": "macOS: <code>{{brew}}</code>. Linux: se <code>{{url}}</code>.",
+      "manualDownload": "Eller ladda ned <code>{{asset}}</code> från <code>{{url}}</code> och spara filen som <code>{{path}}</code>."
+    },
+    "session": {
+      "heading": "Sessionsskydd",
+      "blurb": "Kräv ett lösenord för att komma åt Tendrils gränssnitt.",
+      "enableLabel": "Aktivera lösenordsskydd",
+      "currentLabel": "Nuvarande lösenord",
+      "currentPlaceholder": "Nuvarande lösenord…",
+      "newLabel": "Nytt lösenord",
+      "newPlaceholder": "Nytt lösenord…",
+      "confirmLabel": "Bekräfta lösenord",
+      "confirmPlaceholder": "Bekräfta lösenordet…",
+      "mismatch": "Lösenorden matchar inte",
+      "disabledToast": "Lösenordsskyddet har inaktiverats",
+      "enabledToast": "Lösenordsskyddet har aktiverats"
+    },
+    "tunnel": {
+      "full": {
+        "heading": "Tunnel",
+        "blurb": "Exponera din Tendril-instans mot internet via en Cloudflare-tunnel. Praktiskt för att nå Tendril från mobila enheter eller dela med andra.",
+        "startingTitle": "Tunneln startar",
+        "activeTitle": "Tunneln är aktiv",
+        "activeBody": "Tunneln körs och kan nås via URL:en nedan.",
+        "startingBody": "Tunneln startas och vi väntar på att den ska bli nåbar. Det tar vanligtvis 15–30 sekunder.",
+        "stoppedToast": "Tunneln har stoppats",
+        "copiedToast": "Tunnelns URL har kopierats till urklipp",
+        "startFailed": "Det gick inte att starta tunneln: {{error}}",
+        "stopFailed": "Det gick inte att stoppa tunneln: {{error}}"
+      },
+      "share": {
+        "heading": "Delningstunnel",
+        "blurb": "Exponera en version av Tendril där teammedlemmar bara kan läsa och kommentera, så att de kan granska planer och utkast.",
+        "startingTitle": "Delningstunneln startar",
+        "activeTitle": "Delningstunneln är aktiv",
+        "activeBody": "Delningstunneln körs och kan nås via URL:en nedan.",
+        "startingBody": "Delningstunneln startas och vi väntar på att den ska bli nåbar. Det tar vanligtvis 15–30 sekunder.",
+        "stoppedToast": "Delningstunneln har stoppats",
+        "copiedToast": "Delningstunnelns URL har kopierats till urklipp",
+        "startFailed": "Det gick inte att starta delningstunneln: {{error}}",
+        "stopFailed": "Det gick inte att stoppa delningstunneln: {{error}}"
+      },
+      "warningTitle": "Det här publicerar allt",
+      "warningBody": "En tunnel med full åtkomst lägger ut hela den här Tendril-instansen på en offentlig URL. Den som har adressen och sessionslösenordet kan använda den som om hen satt vid den här datorn, så ett lösenord krävs innan tunneln kan startas. Delningstunneln nedan är alternativet med skrivskydd.",
+      "deactivatedTitle": "Inaktiverad",
+      "copiedTitle": "URL:en har kopierats",
+      "copyFailed": "Det gick inte att kopiera URL:en: {{error}}",
+      "deactivate": "Inaktivera",
+      "copyUrl": "Kopiera URL",
+      "openInBrowser": "Öppna i webbläsaren",
+      "activate": "Aktivera"
+    }
+  },
+  "vault": {
+    "errors": {
+      "listVaults": "Det gick inte att lista valven: {{error}}",
+      "status": "Det gick inte att läsa valvets status: {{error}}",
+      "catalog": "Det gick inte att läsa valvets katalog: {{error}}",
+      "failure": "Valvtjänsten rapporterade ett fel."
+    },
+    "createdPr": "PR skapad: {{url}}",
+    "createdBranch": "Grenen {{branch}} har skapats",
+    "createdDeletionBranch": "Borttagningsgrenen {{branch}} har skapats",
+    "done": "Klart.",
+    "activeVault": "Aktivt valv",
+    "selectVault": "Välj valv",
+    "refresh": "Uppdatera",
+    "sync": "Synka",
+    "openPr": "Öppna en PR",
+    "connect": "Anslut valv",
+    "create": "Skapa valv",
+    "sharedProjects": "Delade projekt",
+    "displayNameFallback": "Team Vault"
+  },
+  "modelCatalog": {
+    "title": "Modellkatalog",
+    "hint": "Tendril slår samman den kurerade modelltabellen med en ögonblicksbild från models.dev som cachelagras på disken.",
+    "refresh": "Uppdatera nu",
+    "refreshing": "Uppdaterar…",
+    "refreshed_one": "Uppdaterat: {{count}} modell från models.dev",
+    "refreshed_other": "Uppdaterat: {{count}} modeller från models.dev",
+    "show": "Visa katalogens status och inställningar",
+    "hide": "Dölj katalogens status och inställningar",
+    "sourceLabel": "Källa:",
+    "liveTitle": "Katalogen berikas med data från models.dev",
+    "live": "Live (models.dev)",
+    "staticTitle": "Katalogen använder den statiska reservtabellen",
+    "static": "Statisk reserv",
+    "modelsLabel": "Modeller:",
+    "modelSplit": "{{dynamic}} berikade / {{static}} kurerade",
+    "cacheUpdatedLabel": "Cache uppdaterad:",
+    "cacheFileLabel": "Cachefil:",
+    "age": {
+      "never": "Aldrig (ingen cachefil)",
+      "justNow": "Nyss",
+      "marked_stale": "{{age}} (inaktuell)",
+      "marked_expired": "{{age}} (har gått ut, den kurerade tabellen används)",
+      "marked_staleExpired": "{{age}} (inaktuell) (har gått ut, den kurerade tabellen används)"
+    },
+    "enrichLabel": "Berika katalogen med data från models.dev",
+    "intervalLabel": "Uppdateringsintervall",
+    "intervalHint": "Antal timmar mellan uppdateringar i bakgrunden. 0 uppdaterar en gång vid start och sedan aldrig igen.",
+    "warnAgeLabel": "Varningsålder för cache",
+    "warnAgeHint": "Antal dagar efter vilka cachen fortfarande används men rapporteras som inaktuell. 0 varnar aldrig.",
+    "maxAgeLabel": "Maxålder för cache",
+    "maxAgeHint": "Antal dagar efter vilka cachen ignoreras och den kurerade tabellen används i stället. 0 innebär att cachen aldrig går ut."
+  },
+  "newsletter": {
+    "subscribed": "Du prenumererar nu!",
+    "emailLabel": "E-postadress",
+    "subscribing": "Registrerar prenumeration…",
+    "subscribe": "Prenumerera"
+  }
+}

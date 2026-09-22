@@ -1,1 +1,143 @@
-{}
+{
+  "section": {
+    "title": "Agent de codage",
+    "hint": "Tendril se connecte à l'agent de codage IA que vous avez configuré ou à des moteurs open source fournis, comme OpenCode.",
+    "unknownAgent": "Agent de codage inconnu : « {{value}} ». Agents valides : {{agents}}"
+  },
+  "byo": {
+    "title": "Utiliser votre propre LLM",
+    "baseUrl": {
+      "label": "URL de base de l'API"
+    },
+    "apiKey": {
+      "label": "Clé API",
+      "hint": "Enregistrée en tant que ANTHROPIC_API_KEY et OPENAI_API_KEY dans l'environnement de l'agent {{agent}}, transmis à chaque lancement.",
+      "hint_ivy": "Enregistrée en tant que IVY_API_KEY, ANTHROPIC_API_KEY et OPENAI_API_KEY dans l'environnement de l'agent {{agent}}, transmis à chaque lancement."
+    },
+    "fetchModels": {
+      "label": "Récupérer les modèles",
+      "busy": "Récupération…"
+    },
+    "discovery": {
+      "found_one": "{{count}} modèle trouvé sur ce point de terminaison.",
+      "found_many": "{{count}} modèles trouvés sur ce point de terminaison.",
+      "found_other": "{{count}} modèles trouvés sur ce point de terminaison.",
+      "customNames": "Ce point de terminaison ne fournit aucune liste de modèles : les noms de modèles doivent donc être saisis à la main.",
+      "unreachable": "Impossible de joindre le démon pour récupérer les modèles : {{error}}"
+    }
+  },
+  "profiles": {
+    "title": "Modèles des profils",
+    "hint": {
+      "custom": "Indiquez des noms de modèles personnalisés et le niveau d'effort à utiliser pour chaque profil.",
+      "discovered": "Sélectionnez les modèles de votre point de terminaison pour chaque niveau de profil.",
+      "default": "Les agents de flux de travail sont configurés pour utiliser différents profils selon la complexité de la tâche. Vous pouvez indiquer le modèle et le niveau d'effort à utiliser pour chaque profil."
+    },
+    "customNames": "Noms de modèles personnalisés",
+    "effortUnsupported": "La CLI de cet agent n'accepte aucun argument d'effort ; l'effort est donc ignoré.",
+    "tiers": {
+      "deep": "Approfondi",
+      "balanced": "Équilibré",
+      "quick": "Rapide"
+    },
+    "effort": "Effort",
+    "efforts": {
+      "default": "Par défaut",
+      "low": "Faible",
+      "medium": "Moyen",
+      "high": "Élevé",
+      "xhigh": "Très élevé",
+      "max": "Max"
+    }
+  },
+  "environment": {
+    "title": "Arguments supplémentaires et environnement",
+    "arguments": {
+      "label": "Arguments supplémentaires",
+      "placeholder": "par ex. --verbose",
+      "hint": "Découpés selon les espaces et ajoutés à chaque lancement de cet agent."
+    },
+    "variables": {
+      "label": "Variables d'environnement",
+      "hint": "Une paire KEY=value par ligne. Les lignes commençant par # sont ignorées."
+    }
+  },
+  "help": {
+    "title": "Aide",
+    "hint": "Faire fonctionner {{agent}} sur cette machine.",
+    "install": "1. Installer",
+    "authenticate": "2. S'authentifier",
+    "apiKey": "2. Clé API",
+    "or": "ou",
+    "then": "Ensuite, à l'invite : <code>{{command}}</code>",
+    "binary": "Tendril recherche <code>{{binary}}</code> dans votre PATH."
+  },
+  "actions": {
+    "test": "Tester l'agent",
+    "saving": "Enregistrement…"
+  },
+  "save": {
+    "toastTitle": "Enregistré",
+    "toastMessage": "Paramètres de l'agent de codage enregistrés",
+    "failed": "Impossible d'enregistrer : {{error}}"
+  },
+  "test": {
+    "title": "Test de l'agent de codage",
+    "defaultModel": "Par défaut",
+    "columns": {
+      "test": "Test",
+      "result": "Résultat"
+    },
+    "status": {
+      "passed": "Réussi",
+      "failed": "Échec",
+      "warning": "Avertissement",
+      "running": "En cours",
+      "pending": "En attente"
+    },
+    "showRawOutput": "Afficher la sortie brute",
+    "rawOutputTitle": "Sortie brute",
+    "rows": {
+      "install": "Installation",
+      "auth": "Authentification",
+      "model": "Modèle : {{name}}",
+      "unexpectedError": "Erreur inattendue"
+    },
+    "install": {
+      "version": "v{{version}}",
+      "installed": "Installé",
+      "notInstalled": "Non installé"
+    },
+    "auth": {
+      "authenticated": "Authentifié",
+      "authenticatedWith": "Authentifié ({{provider}})",
+      "notAuthenticated": "Non authentifié",
+      "notAuthenticatedRun": "Non authentifié — exécutez `{{command}}`",
+      "notAuthenticatedRunThen": "Non authentifié — exécutez `{{command}}`, puis `{{prompt}}`",
+      "notAuthenticatedCreateKey": "Non authentifié — créez une clé sur {{url}}",
+      "inconclusive": "Vérification non concluante"
+    },
+    "model": {
+      "notChecked": "Non vérifié",
+      "ok": "OK",
+      "invalidModel": "Modèle non valide",
+      "authError": "Erreur d'authentification",
+      "rateLimit": "Quota épuisé ou limite de débit atteinte"
+    },
+    "cancelled": "Annulé",
+    "runFailed": "Échec de l'exécution du test"
+  },
+  "usage": {
+    "window": "Fenêtre {{window}}",
+    "left": "{{percent}} restant",
+    "ariaLabel": "Fenêtre {{window}}, {{percent}} restant",
+    "resetsIn": "réinitialisation dans {{countdown}}",
+    "resetsIn_now": "réinitialisation imminente",
+    "asOf": "mis à jour {{relative}}",
+    "countdown": {
+      "now": "maintenant",
+      "hoursMinutes": "{{hours}} {{minutes}}"
+    },
+    "justNow": "à l'instant"
+  }
+}

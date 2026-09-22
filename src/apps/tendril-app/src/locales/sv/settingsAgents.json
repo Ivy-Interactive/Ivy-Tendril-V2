@@ -1,1 +1,142 @@
-{}
+{
+  "section": {
+    "title": "Kodningsagent",
+    "hint": "Tendril ansluter till din konfigurerade AI-kodningsagent eller till medföljande motorer med öppen källkod som OpenCode.",
+    "unknownAgent": "Okänd kodningsagent ”{{value}}”. Giltiga agenter: {{agents}}"
+  },
+  "byo": {
+    "title": "Använd din egen LLM",
+    "baseUrl": {
+      "label": "Bas-URL för API"
+    },
+    "apiKey": {
+      "label": "API-nyckel",
+      "hint": "Sparas som ANTHROPIC_API_KEY och OPENAI_API_KEY för agenten {{agent}}, vars miljö används vid varje start.",
+      "hint_ivy": "Sparas som IVY_API_KEY, ANTHROPIC_API_KEY och OPENAI_API_KEY för agenten {{agent}}, vars miljö används vid varje start."
+    },
+    "fetchModels": {
+      "label": "Hämta modeller",
+      "busy": "Hämtar…"
+    },
+    "discovery": {
+      "found_one": "Hittade {{count}} modell på den här slutpunkten.",
+      "found_other": "Hittade {{count}} modeller på den här slutpunkten.",
+      "customNames": "Den här slutpunkten tillhandahåller ingen modellista, så modellnamnen måste anges manuellt.",
+      "unreachable": "Det gick inte att nå daemonen för att hämta modeller: {{error}}"
+    }
+  },
+  "profiles": {
+    "title": "Profilmodeller",
+    "hint": {
+      "custom": "Ange egna modellnamn och ansträngningsnivå för varje profil.",
+      "discovered": "Välj modeller från din slutpunkt för varje profilnivå.",
+      "default": "Arbetsflödesagenter är konfigurerade att använda olika profiler beroende på hur komplex uppgiften är. Du kan ange vilken modell och ansträngningsnivå som ska användas för varje profil."
+    },
+    "customNames": "Egna modellnamn",
+    "effortUnsupported": "Den här agentens CLI tar inget argument för ansträngning, så ansträngningen ignoreras.",
+    "tiers": {
+      "deep": "Djup",
+      "balanced": "Balanserad",
+      "quick": "Snabb"
+    },
+    "effort": "Ansträngning",
+    "efforts": {
+      "default": "Standard",
+      "low": "Låg",
+      "medium": "Medel",
+      "high": "Hög",
+      "xhigh": "Extra hög",
+      "max": "Max"
+    }
+  },
+  "environment": {
+    "title": "Extra argument och miljö",
+    "arguments": {
+      "label": "Extra argument",
+      "placeholder": "t.ex. --verbose",
+      "hint": "Delas upp vid blanksteg och läggs till vid varje start av den här agenten."
+    },
+    "variables": {
+      "label": "Miljövariabler",
+      "hint": "En KEY=value per rad. Rader som börjar med # ignoreras."
+    }
+  },
+  "help": {
+    "title": "Hjälp",
+    "hint": "Så får du {{agent}} att fungera på den här datorn.",
+    "install": "1. Installera",
+    "authenticate": "2. Autentisera",
+    "apiKey": "2. API-nyckel",
+    "or": "eller",
+    "then": "Skriv sedan vid prompten: <code>{{command}}</code>",
+    "binary": "Tendril letar efter <code>{{binary}}</code> i din PATH."
+  },
+  "actions": {
+    "test": "Testa agent",
+    "saving": "Sparar…"
+  },
+  "save": {
+    "toastTitle": "Sparat",
+    "toastMessage": "Inställningarna för kodningsagenten har sparats",
+    "failed": "Det gick inte att spara: {{error}}"
+  },
+  "test": {
+    "title": "Test av kodningsagent",
+    "defaultModel": "Standard",
+    "columns": {
+      "test": "Test",
+      "result": "Resultat"
+    },
+    "status": {
+      "passed": "Godkänd",
+      "failed": "Underkänd",
+      "warning": "Varning",
+      "running": "Körs",
+      "pending": "Väntar"
+    },
+    "showRawOutput": "Visa rå utdata",
+    "rawOutputTitle": "Rå utdata",
+    "rows": {
+      "install": "Installation",
+      "auth": "Autentisering",
+      "model": "Modell: {{name}}",
+      "unexpectedError": "Oväntat fel"
+    },
+    "install": {
+      "version": "v{{version}}",
+      "installed": "Installerad",
+      "notInstalled": "Inte installerad"
+    },
+    "auth": {
+      "authenticated": "Autentiserad",
+      "authenticatedWith": "Autentiserad ({{provider}})",
+      "notAuthenticated": "Inte autentiserad",
+      "notAuthenticatedRun": "Inte autentiserad – kör `{{command}}`",
+      "notAuthenticatedRunThen": "Inte autentiserad – kör `{{command}}` och sedan `{{prompt}}`",
+      "notAuthenticatedCreateKey": "Inte autentiserad – skapa en nyckel på {{url}}",
+      "inconclusive": "Kontrollen gav inget entydigt svar"
+    },
+    "model": {
+      "notChecked": "Inte kontrollerad",
+      "ok": "OK",
+      "invalidModel": "Ogiltig modell",
+      "authError": "Autentiseringsfel",
+      "rateLimit": "Kvoten är slut eller hastighetsgränsen nådd"
+    },
+    "cancelled": "Avbruten",
+    "runFailed": "Testkörningen misslyckades"
+  },
+  "usage": {
+    "window": "Fönster på {{window}}",
+    "left": "{{percent}} kvar",
+    "ariaLabel": "Fönster på {{window}}, {{percent}} kvar",
+    "resetsIn": "återställs om {{countdown}}",
+    "resetsIn_now": "återställs nu",
+    "asOf": "uppdaterat {{relative}}",
+    "countdown": {
+      "now": "nu",
+      "hoursMinutes": "{{hours}} {{minutes}}"
+    },
+    "justNow": "nyss"
+  }
+}

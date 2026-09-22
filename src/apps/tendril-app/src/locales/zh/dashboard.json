@@ -1,1 +1,229 @@
-{}
+{
+  "header": {
+    "greeting": {
+      "morning": "早上好！",
+      "afternoon": "下午好！",
+      "evening": "晚上好！"
+    },
+    "headline": "今天我们要产出什么？"
+  },
+  "kpis": {
+    "featuresShipped": {
+      "label": "已交付功能",
+      "hint_other": "最近 {{count}} 天"
+    },
+    "costPerFeature": {
+      "label": "单功能平均成本",
+      "noValue": "不适用",
+      "hint_other": "{{count}} 个功能共计 {{spend}}",
+      "hintNoFeatures_other": "{{count}} 天内未交付任何功能",
+      "hintNoSpend_other": "{{count}} 天内无计价支出"
+    },
+    "forecastMonth": {
+      "label": "本月预测",
+      "range": "{{lower}} – {{upper}}",
+      "hint": "按日历 {{calendarDays}} 天至按活跃 {{activityDays}} 天",
+      "hintNoSpend": "没有可用于预测的支出记录"
+    },
+    "avgCostPlan": {
+      "label": "单计划平均成本",
+      "hint": "上周为 {{cost}}",
+      "hintNoPrior": "上周没有已计价的计划"
+    },
+    "tokensConsumed": {
+      "label": "Token 消耗量",
+      "hint_other": "最近 {{count}} 天",
+      "hintSubsidized": "{{percent}} 由订阅覆盖"
+    }
+  },
+  "fallbackKpis": {
+    "featuresShipped": {
+      "label": "已交付功能",
+      "hint": "最近 30 天已合并的 PR 和已解决的 Issue"
+    },
+    "costPerFeature": {
+      "label": "单功能平均成本",
+      "value": "不适用",
+      "hint": "暂无成本数据"
+    },
+    "forecastMonth": {
+      "label": "本月预测",
+      "hint": "最近 30 天没有成本数据"
+    },
+    "avgCostPlan": {
+      "label": "单计划平均成本",
+      "hint": "暂无成本数据"
+    }
+  },
+  "format": {
+    "currencyCompact": {
+      "thousand": "${{value}}k",
+      "million": "${{value}}M",
+      "billion": "${{value}}B",
+      "trillion": "${{value}}T"
+    },
+    "tokensCompact": {
+      "thousand": "{{value}}k",
+      "million": "{{value}}M"
+    }
+  },
+  "kpiSheet": {
+    "title": "KPI 明细"
+  },
+  "breakdown": {
+    "titles": {
+      "featuresShipped": "已交付功能",
+      "costPerFeature": "单功能平均成本",
+      "forecastMonth": "本月预测",
+      "avgCostPlan": "单计划平均成本"
+    },
+    "empty": {
+      "title": "暂无数据"
+    },
+    "details": {
+      "metric": "指标",
+      "formula": "公式"
+    },
+    "delta": {
+      "notAvailable": "不适用"
+    },
+    "agents": {
+      "title": "按编程智能体划分的支出",
+      "empty": "此时间窗口内没有可归属到智能体的支出。",
+      "columns": {
+        "agent": "编程智能体",
+        "cost": "支出",
+        "costShare": "支出占比",
+        "tokens": "Token",
+        "tokenShare": "Token 占比",
+        "planCount": "计划"
+      },
+      "shareNotAvailable": "不适用",
+      "unknownAgent": "未知",
+      "partialAttribution": {
+        "title": "部分归属",
+        "body": "早于智能体记录功能的行显示为 {{agent}}，无法归属到具体的智能体。",
+        "bodyWithShare": "早于智能体记录功能的行显示为 {{agent}}，无法归属到具体的智能体。它们占此时间窗口内支出的 {{share}}。",
+        "bodyUninformative": "早于智能体记录功能的行显示为 {{agent}}，无法归属到具体的智能体。它们占此时间窗口内支出的 {{share}}，因此下方的分布不具有参考价值。"
+      }
+    },
+    "featuresShipped": {
+      "subtitle": "计入该数量的已合并 PR 和已解决 Issue",
+      "note": {
+        "title": "产出指标",
+        "body_other": "“已交付功能”统计最近 {{count}} 天内已合并的 PR 以及没有 PR 的已解决 Issue。一个包含三个 PR 的计划计为三个功能；仅有 Issue 的计划计为一个。"
+      },
+      "metric": "已交付功能",
+      "formula_other": "已合并 PR + 已解决 Issue，最近 {{count}} 天",
+      "last_other": "最近 {{count}} 天",
+      "prior_other": "之前 {{count}} 天",
+      "periodDelta": "{{days}} 天周期变化",
+      "byDay": {
+        "title_other": "每日功能数（最近 {{count}} 天）",
+        "empty": "{{days}} 天时间窗口内未交付任何功能。",
+        "columns": {
+          "date": "日期",
+          "count": "功能"
+        }
+      },
+      "mergedPrs": {
+        "title": "最近合并的 Pull Request",
+        "empty": "尚无已合并的 Pull Request 记录。",
+        "columns": {
+          "plan": "计划",
+          "title": "标题",
+          "repo": "仓库",
+          "merged": "合并时间",
+          "prUrl": "PR URL"
+        },
+        "open": "打开"
+      }
+    },
+    "costPerFeature": {
+      "subtitle": "用于计算商值的两个数值",
+      "note": {
+        "title": "单位成本",
+        "body": "“单功能平均成本”用 {{days}} 天的支出除以 {{days}} 天内已交付的功能数，因此该卡片显示的正是旁边两张卡片的精确商值。"
+      },
+      "metric": "单功能平均成本",
+      "formula": "{{days}} 天支出 / {{days}} 天已交付功能数",
+      "lastSpend_other": "最近 {{count}} 天（支出）",
+      "lastFeatures_other": "最近 {{count}} 天（功能）",
+      "lastCostPerFeature_other": "最近 {{count}} 天（单功能成本）",
+      "priorSpend_other": "之前 {{count}} 天（支出）",
+      "priorFeatures_other": "之前 {{count}} 天（功能）",
+      "priorCostPerFeature_other": "之前 {{count}} 天（单功能成本）",
+      "noValue": "不适用",
+      "periodDelta": "{{days}} 天周期变化"
+    },
+    "forecastMonth": {
+      "subtitle": "两种预测基准及其所依据的天数",
+      "empty": "没有活动记录。",
+      "note": {
+        "title": "用量与订阅覆盖分析",
+        "bodySubsidized_other": "“本月预测”根据最近 {{count}} 天的每日活动预测月末支出。此时间窗口内 {{percent}} 的 Token 由订阅覆盖（等值 {{subsidizedValue}}），API 直接费用为 {{apiCharges}}。",
+        "body_other": "“本月预测”根据最近 {{count}} 天的每日活动预测月末支出。API 直接预测估算实际计费的自付支出，总预测则反映 Token 的整体市场价值。"
+      },
+      "metric": "本月预测",
+      "apiCalendar": "API 直接预测（按日历日）",
+      "apiActivity": "API 直接预测（按活跃日）",
+      "totalCalendar": "总预测（按日历日）",
+      "totalActivity": "总预测（按活跃日）",
+      "subsidizedTokenShare": "订阅覆盖的 Token 占比",
+      "subsidizedTokenShareValue": "占 Token 的 {{percent}}",
+      "subsidizedValueShare": "订阅覆盖的价值占比",
+      "subsidizedValueShareValue": "占价值的 {{percent}}",
+      "mtdApiSpend": "本月至今 API 直接支出",
+      "mtdSubsidizedValue": "本月至今订阅覆盖价值",
+      "mtdUnattributedSpend": "本月至今未归属支出",
+      "mtdTotalMarketValue": "本月至今总市场价值",
+      "calendarDays": "时间窗口内的日历天数",
+      "activeDays": "有支出的活跃天数",
+      "daysRemaining": "剩余天数",
+      "daysInMonth": "本月天数",
+      "dayCount_other": "{{count}} 天",
+      "daily": {
+        "title_other": "每日支出（最近 {{count}} 天）",
+        "empty": "{{days}} 天时间窗口内没有每日支出记录。",
+        "columns": {
+          "date": "日期",
+          "cost": "总支出",
+          "apiCost": "API 支出",
+          "subsidizedCost": "订阅覆盖支出",
+          "tokens": "Token 总数",
+          "subsidizedShare": "订阅覆盖 %"
+        },
+        "incompleteSplit": {
+          "title": "拆分不完整",
+          "body": "此时间窗口内有 {{amount}} 的支出没有成本来源，因此计入了总支出，但既不在 API 列也不在订阅覆盖列中。这两列因此会少报，不应视为完整的拆分。"
+        }
+      }
+    },
+    "avgCostPlan": {
+      "subtitle": "最近的计划；短横线表示这些行从未计价",
+      "note": {
+        "title": "7 天滚动平均",
+        "body_other": "“单计划平均成本”计算最近 {{count}} 天内创建、且状态为{{states}}的计划的平均执行与智能体支出。未计价的计划（例如成本为 null 的订阅运行）不计入除数，以免人为拉低平均值。"
+      },
+      "metric": "单计划平均成本",
+      "window": "时间窗口",
+      "windowValue_other": "{{count}} 天（最近 {{count}} 天内创建的计划）",
+      "statesIncluded": "包含的计划状态",
+      "currentAverage": "当前 {{days}} 天平均",
+      "priorAverage": "之前 {{days}} 天平均（第 8-14 天）",
+      "periodDelta": "{{days}} 天周期变化",
+      "plans": {
+        "title_other": "滚动窗口内的计划（最近 {{count}} 天）",
+        "empty": "{{days}} 天滚动窗口内没有创建任何计划。",
+        "columns": {
+          "plan": "计划",
+          "title": "标题",
+          "state": "状态",
+          "created": "创建时间",
+          "tokens": "Token",
+          "cost": "总成本"
+        }
+      }
+    }
+  }
+}

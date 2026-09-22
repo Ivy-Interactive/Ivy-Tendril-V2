@@ -1,1 +1,143 @@
-{}
+{
+  "section": {
+    "title": "Agente de código",
+    "hint": "Tendril se conecta al agente de código de IA que hayas configurado o a motores de código abierto incluidos, como OpenCode.",
+    "unknownAgent": "Agente de código desconocido \"{{value}}\". Agentes válidos: {{agents}}"
+  },
+  "byo": {
+    "title": "Usa tu propio LLM",
+    "baseUrl": {
+      "label": "URL base de la API"
+    },
+    "apiKey": {
+      "label": "Clave de API",
+      "hint": "Se guarda como ANTHROPIC_API_KEY y OPENAI_API_KEY en el agente {{agent}}, que es el entorno que recibe cada ejecución.",
+      "hint_ivy": "Se guarda como IVY_API_KEY, ANTHROPIC_API_KEY y OPENAI_API_KEY en el agente {{agent}}, que es el entorno que recibe cada ejecución."
+    },
+    "fetchModels": {
+      "label": "Obtener modelos",
+      "busy": "Obteniendo..."
+    },
+    "discovery": {
+      "found_one": "Se ha encontrado {{count}} modelo en este endpoint.",
+      "found_many": "Se han encontrado {{count}} modelos en este endpoint.",
+      "found_other": "Se han encontrado {{count}} modelos en este endpoint.",
+      "customNames": "Este endpoint no ofrece una lista de modelos, así que hay que introducir los nombres de modelo a mano.",
+      "unreachable": "No se pudo conectar con el daemon para obtener los modelos: {{error}}"
+    }
+  },
+  "profiles": {
+    "title": "Modelos por perfil",
+    "hint": {
+      "custom": "Indica los nombres de modelo personalizados y el nivel de esfuerzo que se usarán en cada perfil.",
+      "discovered": "Selecciona modelos de tu endpoint para cada nivel de perfil.",
+      "default": "Los agentes de flujo de trabajo están configurados para usar distintos perfiles según la complejidad de la tarea. Puedes indicar qué modelo y qué nivel de esfuerzo usar en cada perfil."
+    },
+    "customNames": "Nombres de modelo personalizados",
+    "effortUnsupported": "La CLI de este agente no admite un argumento de esfuerzo, así que se ignora.",
+    "tiers": {
+      "deep": "Profundo",
+      "balanced": "Equilibrado",
+      "quick": "Rápido"
+    },
+    "effort": "Esfuerzo",
+    "efforts": {
+      "default": "Predeterminado",
+      "low": "Bajo",
+      "medium": "Medio",
+      "high": "Alto",
+      "xhigh": "Muy alto",
+      "max": "Máximo"
+    }
+  },
+  "environment": {
+    "title": "Argumentos adicionales y entorno",
+    "arguments": {
+      "label": "Argumentos adicionales",
+      "placeholder": "p. ej., --verbose",
+      "hint": "Se dividen por los espacios en blanco y se añaden a cada ejecución de este agente."
+    },
+    "variables": {
+      "label": "Variables de entorno",
+      "hint": "Un par KEY=value por línea. Se ignoran las líneas que empiezan por #."
+    }
+  },
+  "help": {
+    "title": "Ayuda",
+    "hint": "Cómo poner en marcha {{agent}} en esta máquina.",
+    "install": "1. Instalar",
+    "authenticate": "2. Autenticar",
+    "apiKey": "2. Clave de API",
+    "or": "o",
+    "then": "Después, en el prompt: <code>{{command}}</code>",
+    "binary": "Tendril busca <code>{{binary}}</code> en tu PATH."
+  },
+  "actions": {
+    "test": "Probar agente",
+    "saving": "Guardando..."
+  },
+  "save": {
+    "toastTitle": "Guardado",
+    "toastMessage": "Ajustes del agente de código guardados",
+    "failed": "Error al guardar: {{error}}"
+  },
+  "test": {
+    "title": "Prueba del agente de código",
+    "defaultModel": "Predeterminado",
+    "columns": {
+      "test": "Prueba",
+      "result": "Resultado"
+    },
+    "status": {
+      "passed": "Superada",
+      "failed": "Fallida",
+      "warning": "Advertencia",
+      "running": "En ejecución",
+      "pending": "Pendiente"
+    },
+    "showRawOutput": "Mostrar salida sin procesar",
+    "rawOutputTitle": "Salida sin procesar",
+    "rows": {
+      "install": "Instalación",
+      "auth": "Autenticación",
+      "model": "Modelo: {{name}}",
+      "unexpectedError": "Error inesperado"
+    },
+    "install": {
+      "version": "v{{version}}",
+      "installed": "Instalado",
+      "notInstalled": "No instalado"
+    },
+    "auth": {
+      "authenticated": "Autenticado",
+      "authenticatedWith": "Autenticado ({{provider}})",
+      "notAuthenticated": "No autenticado",
+      "notAuthenticatedRun": "No autenticado - ejecuta `{{command}}`",
+      "notAuthenticatedRunThen": "No autenticado - ejecuta `{{command}}` y luego `{{prompt}}`",
+      "notAuthenticatedCreateKey": "No autenticado - crea una clave en {{url}}",
+      "inconclusive": "Comprobación no concluyente"
+    },
+    "model": {
+      "notChecked": "Sin comprobar",
+      "ok": "OK",
+      "invalidModel": "Modelo no válido",
+      "authError": "Error de autenticación",
+      "rateLimit": "Cuota agotada o límite de frecuencia alcanzado"
+    },
+    "cancelled": "Cancelada",
+    "runFailed": "Error al ejecutar la prueba"
+  },
+  "usage": {
+    "window": "Ventana de {{window}}",
+    "left": "{{percent}} restante",
+    "ariaLabel": "Ventana de {{window}}, {{percent}} restante",
+    "resetsIn": "se restablece en {{countdown}}",
+    "resetsIn_now": "se restablece ahora",
+    "asOf": "actualizado {{relative}}",
+    "countdown": {
+      "now": "ahora",
+      "hoursMinutes": "{{hours}} {{minutes}}"
+    },
+    "justNow": "ahora mismo"
+  }
+}

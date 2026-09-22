@@ -1,1 +1,280 @@
-{}
+{
+  "agentPicker": {
+    "tooltip": "Агент, модель и уровень рассуждений",
+    "triggerLabel": "Агент: {{agent}}",
+    "menuLabel": "Агенты",
+    "optionsTooltip": "Модель и уровень рассуждений",
+    "optionsLabel": "Параметры {{agent}}",
+    "settingsLabel": "Настройки {{agent}}",
+    "model": "Модель",
+    "effort": "Уровень рассуждений",
+    "unlistedValue": "По умолчанию",
+    "effortLevels": {
+      "default": "По умолчанию",
+      "none": "Нет",
+      "low": "Низкий",
+      "medium": "Средний",
+      "high": "Высокий",
+      "xhigh": "Очень высокий",
+      "max": "Максимальный"
+    }
+  },
+  "composerAttachment": {
+    "remove": "Удалить {{name}}"
+  },
+  "lightbox": {
+    "fallbackTitle": "Предпросмотр изображения",
+    "fallbackAlt": "Предпросмотр вложения",
+    "closeLabel": "Закрыть предпросмотр"
+  },
+  "newChatButtons": {
+    "label": "Новый чат",
+    "tooltip": "Новый чат",
+    "tooltip_terminal": "Новый чат (терминал)",
+    "override_chat": "Новая сессия в интерфейсе чата",
+    "override_terminal": "Новый чат в терминале"
+  },
+  "planChat": {
+    "headline": "Попросите Tendril изменить что угодно"
+  },
+  "systemEvent": {
+    "linked": {
+      "completed": "Завершено задание {{type}} <plan>{{plan}}</plan>.",
+      "completed_plan": "Завершён план <plan>{{plan}}</plan>.",
+      "completed_pullRequest": "Завершён пулл-реквест <plan>{{plan}}</plan>.",
+      "failed": "Сбой задания {{type}} <plan>{{plan}}</plan>.",
+      "failed_plan": "Сбой плана <plan>{{plan}}</plan>.",
+      "failed_pullRequest": "Сбой пулл-реквеста <plan>{{plan}}</plan>.",
+      "timeout": "Истёк таймаут задания {{type}} <plan>{{plan}}</plan>.",
+      "timeout_plan": "Истёк таймаут плана <plan>{{plan}}</plan>.",
+      "timeout_pullRequest": "Истёк таймаут пулл-реквеста <plan>{{plan}}</plan>.",
+      "cancelled": "Отменено задание {{type}} <plan>{{plan}}</plan>.",
+      "cancelled_plan": "Отменён план <plan>{{plan}}</plan>.",
+      "cancelled_pullRequest": "Отменён пулл-реквест <plan>{{plan}}</plan>.",
+      "unknown": "{{status}}: задание {{type}} <plan>{{plan}}</plan>.",
+      "unknown_plan": "{{status}}: план <plan>{{plan}}</plan>.",
+      "unknown_pullRequest": "{{status}}: пулл-реквест <plan>{{plan}}</plan>."
+    },
+    "quoted": {
+      "completed": "Завершено задание {{type}} «{{subject}}»",
+      "completed_plan": "Завершён план «{{subject}}»",
+      "completed_pullRequest": "Завершён пулл-реквест «{{subject}}»",
+      "failed": "Сбой задания {{type}} «{{subject}}»",
+      "failed_plan": "Сбой плана «{{subject}}»",
+      "failed_pullRequest": "Сбой пулл-реквеста «{{subject}}»",
+      "timeout": "Истёк таймаут задания {{type}} «{{subject}}»",
+      "timeout_plan": "Истёк таймаут плана «{{subject}}»",
+      "timeout_pullRequest": "Истёк таймаут пулл-реквеста «{{subject}}»",
+      "cancelled": "Отменено задание {{type}} «{{subject}}»",
+      "cancelled_plan": "Отменён план «{{subject}}»",
+      "cancelled_pullRequest": "Отменён пулл-реквест «{{subject}}»",
+      "unknown": "{{status}}: задание {{type}} «{{subject}}»",
+      "unknown_plan": "{{status}}: план «{{subject}}»",
+      "unknown_pullRequest": "{{status}}: пулл-реквест «{{subject}}»"
+    },
+    "started": "Запущен план «{{plan}}»",
+    "fullStop": "{{sentence}}.",
+    "openPlan": "Открыть план"
+  },
+  "terminal": {
+    "untitled": "Агент",
+    "newChat": "Новый чат",
+    "starting": "Запуск {{agent}}…",
+    "startingUnknown": "Запуск агента…"
+  },
+  "jobsMenu": {
+    "triggerLabel": "Показать выполняемые задания",
+    "triggerTitle": "Показать задания",
+    "triggerTitleRunning_one": "Выполняется {{count}} задание",
+    "triggerTitleRunning_few": "Выполняется {{count}} задания",
+    "triggerTitleRunning_many": "Выполняется {{count}} заданий",
+    "triggerTitleRunning_other": "Выполняется {{count}} задания",
+    "pillRunning_one": "выполняется: {{count}}",
+    "pillRunning_few": "выполняется: {{count}}",
+    "pillRunning_many": "выполняется: {{count}}",
+    "pillRunning_other": "выполняется: {{count}}",
+    "pillJobs_one": "{{count}} задание",
+    "pillJobs_few": "{{count}} задания",
+    "pillJobs_many": "{{count}} заданий",
+    "pillJobs_other": "{{count}} задания",
+    "pillWithFailures_one": "{{jobs}} (со сбоем: {{count}})",
+    "pillWithFailures_few": "{{jobs}} (со сбоем: {{count}})",
+    "pillWithFailures_many": "{{jobs}} (со сбоем: {{count}})",
+    "pillWithFailures_other": "{{jobs}} (со сбоем: {{count}})",
+    "listLabel": "Задания",
+    "title": "Выполняемые задания ({{count}})",
+    "title_spawned": "Порождённые задания ({{count}})",
+    "summaryRunning_one": "выполняется: {{count}}",
+    "summaryRunning_few": "выполняется: {{count}}",
+    "summaryRunning_many": "выполняется: {{count}}",
+    "summaryRunning_other": "выполняется: {{count}}",
+    "summaryCompleted_one": "завершено: {{count}}",
+    "summaryCompleted_few": "завершено: {{count}}",
+    "summaryCompleted_many": "завершено: {{count}}",
+    "summaryCompleted_other": "завершено: {{count}}",
+    "summaryFailed_one": "со сбоем: {{count}}",
+    "summaryFailed_few": "со сбоем: {{count}}",
+    "summaryFailed_many": "со сбоем: {{count}}",
+    "summaryFailed_other": "со сбоем: {{count}}",
+    "genericJobType": "Задание",
+    "openPlan": "Открыть план",
+    "review": "Попросить агента проверить результаты"
+  },
+  "chatHeader": {
+    "titleInputLabel": "Название чата",
+    "optionsLabel": "Параметры чата",
+    "optionsMenuLabel": "Параметры чата",
+    "editName": "Изменить название",
+    "deleteChat": "Удалить чат"
+  },
+  "messageRow": {
+    "openAttachment": "Открыть {{name}}",
+    "submittingAnswer": "Отправка ответа…"
+  },
+  "view": {
+    "dropOverlay": "Перетащите файлы сюда, чтобы прикрепить их к сообщению",
+    "noActiveChat": "Нет активного чата",
+    "working": "Агент работает…",
+    "jumpToQuestion_down": "Перейти к ожидающему вопросу ↓",
+    "jumpToQuestion_up": "Перейти к ожидающему вопросу ↑",
+    "scrollToStreamingTail": "Прокрутить к концу потока",
+    "scrollToBottom": "Прокрутить вниз"
+  },
+  "composer": {
+    "attach": "Прикрепить файл",
+    "promptLabel": "Промпт чата",
+    "placeholder": "Спросите Tendril о чём угодно…",
+    "voice": "Голосовой ввод",
+    "voiceErrorDismiss": "Скрыть ошибку голосового ввода",
+    "nothingTranscribed": "Ничего не распознано. Попробуйте ещё раз.",
+    "clearAttachments": "Убрать все",
+    "queue": "Поставить сообщение в очередь",
+    "stop": "Остановить агента",
+    "stopping": "Остановка агента",
+    "stopTooltip": "Остановить агента",
+    "stoppingTooltip": "Остановка агента…",
+    "send": "Отправить сообщение"
+  },
+  "emptyState": {
+    "headline": "Что создаём сегодня?"
+  },
+  "greeting": {
+    "morning": "Доброе утро",
+    "afternoon": "Добрый день",
+    "evening": "Добрый вечер"
+  },
+  "deleteSession": {
+    "title": "Удалить сессию",
+    "body": "Вы действительно хотите удалить «{{title}}»? Это действие нельзя отменить.",
+    "bodyUntitled": "Вы действительно хотите удалить эту сессию чата? Это действие нельзя отменить."
+  },
+  "jobsReview": {
+    "prompt": "Проверьте результаты заданий, запущенных в этом разговоре, и расскажите, что изменилось:\n{{jobs}}"
+  },
+  "search": {
+    "title": "Поиск по чатам",
+    "inputLabel": "Поиск по чатам",
+    "placeholder": "Поиск по чатам",
+    "empty": "Чаты не найдены."
+  },
+  "queue": {
+    "title": "Сообщения в очереди",
+    "hint": "Отправится, когда агент закончит работу",
+    "collapse": "Свернуть сообщения в очереди",
+    "expand": "Развернуть сообщения в очереди",
+    "editInputLabel": "Изменить промпт в очереди",
+    "save": "Сохранить промпт в очереди",
+    "cancelEdit": "Отменить изменение",
+    "attachments_one": "{{count}} вложение",
+    "attachments_few": "{{count}} вложения",
+    "attachments_many": "{{count}} вложений",
+    "attachments_other": "{{count}} вложения",
+    "sendNow": "Отправить сейчас",
+    "edit": "Изменить промпт в очереди",
+    "remove": "Убрать из очереди"
+  },
+  "samplePrompts": {
+    "chat": {
+      "review": {
+        "label_one": "Проверить {{count}} ожидающий план",
+        "label_few": "Проверить {{count}} ожидающих плана",
+        "label_many": "Проверить {{count}} ожидающих планов",
+        "label_other": "Проверить {{count}} ожидающего плана",
+        "prompt_one": "{{count}} план ожидает ревью: {{plans}}. Кратко опишите, что даёт каждый, и скажите, какой объединить первым.",
+        "prompt_few": "{{count}} плана ожидают ревью: {{plans}}. Кратко опишите, что даёт каждый, и скажите, какой объединить первым.",
+        "prompt_many": "{{count}} планов ожидает ревью: {{plans}}. Кратко опишите, что даёт каждый, и скажите, какой объединить первым.",
+        "prompt_other": "{{count}} плана ожидает ревью: {{plans}}. Кратко опишите, что даёт каждый, и скажите, какой объединить первым."
+      },
+      "failed": {
+        "label": "Почему план #{{id}} завершился сбоем?",
+        "prompt": "План #{{id}} {{title}} завершился сбоем. Прочитайте его логи и отчёты верификации и объясните, что пошло не так."
+      },
+      "blocked": {
+        "label": "Что блокирует план #{{id}}?",
+        "prompt": "План #{{id}} {{title}} заблокирован. Перечислите планы, от которых он зависит, и что ещё нужно каждому из них."
+      },
+      "jobs": {
+        "label": "Чем заняты мои задания?",
+        "prompt_one": "Выполняется {{count}} задание. Кратко опишите, над чем работает каждое.",
+        "prompt_few": "Выполняется {{count}} задания. Кратко опишите, над чем работает каждое.",
+        "prompt_many": "Выполняется {{count}} заданий. Кратко опишите, над чем работает каждое.",
+        "prompt_other": "Выполняется {{count}} задания. Кратко опишите, над чем работает каждое."
+      },
+      "addProject": {
+        "label": "Добавить новый проект",
+        "prompt": "Добавьте новый проект в мой Tendril"
+      },
+      "editVerifications": {
+        "label": "Изменить верификации",
+        "prompt": "Измените верификации для моих проектов"
+      },
+      "teamVault": {
+        "label": "Создать Team Vault",
+        "prompt": "Создайте общий Team Vault для команды"
+      },
+      "nextWork": {
+        "label": "Чем заняться дальше?",
+        "prompt": "Просмотрите мои черновики планов во всех проектах и порекомендуйте, какие два выполнить следующими, с обоснованием."
+      },
+      "shipped": {
+        "label": "Что выпущено на этой неделе?",
+        "prompt": "Кратко опишите планы, которые перешли в состояние {{state}} за последние семь дней, с группировкой по проектам."
+      }
+    },
+    "plan": {
+      "failedVerification": {
+        "label": "Почему не прошла {{name}}?",
+        "prompt": "Верификация {{name}} для этого плана не пройдена. Прочитайте её отчёт в {{report}}, объясните причину сбоя и как его исправить."
+      },
+      "prFeedback": {
+        "label": "Кратко изложить отзывы по PR",
+        "prompt": "Прочитайте комментарии ревью к {{pr}} и перечислите изменения, которые в них запрошены."
+      },
+      "blocked": {
+        "label": "Что блокирует этот план?",
+        "prompt": "Этот план заблокирован зависимостями: {{dependencies}}. Расскажите, что ещё нужно каждой из них."
+      },
+      "tightenScope": {
+        "label": "Сузить рамки",
+        "prompt": "Прочитайте последнюю ревизию этого плана и укажите всё, что выходит за рамки задачи или описано недостаточно конкретно."
+      },
+      "explainSolution": {
+        "label": "Объяснить решение",
+        "prompt": "Объясните раздел {{section}} этого плана простыми словами и перечислите все файлы, которые он затронет."
+      },
+      "risks": {
+        "label": "Что может пойти не так?",
+        "prompt": "Какие части этого плана самые рискованные и что мне проверить на ревью?"
+      }
+    }
+  },
+  "sidebar": {
+    "title": "Чаты",
+    "searchLabel": "Поиск по чатам",
+    "newLabel": "Новый чат",
+    "untitled": "Новый чат"
+  },
+  "attachments": {
+    "pickerTitle": "Выбор файлов для прикрепления"
+  }
+}

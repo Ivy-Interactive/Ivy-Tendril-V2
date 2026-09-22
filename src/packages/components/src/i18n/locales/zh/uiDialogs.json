@@ -1,1 +1,294 @@
-{}
+{
+  "actions": {
+    "cancel": "取消",
+    "close": "关闭"
+  },
+  "status": {
+    "starting": "正在启动…"
+  },
+  "planStates": {
+    "draft": "草稿",
+    "creating": "创建中",
+    "updating": "更新中",
+    "executing": "执行中",
+    "review": "待审查",
+    "failed": "失败",
+    "completed": "已完成",
+    "skipped": "已跳过",
+    "blocked": "已阻塞",
+    "icebox": "待办箱"
+  },
+  "confirm": {
+    "working": "正在处理…"
+  },
+  "autoAcceptSettings": {
+    "title": "自动接受设置",
+    "save": "保存",
+    "saving": "正在保存…",
+    "intro": "定期将新分配给您的 GitHub Issue 自动导入为 Tendril 计划。",
+    "autoAcceptLabel": "自动接受分配的 Issue",
+    "intervalLabel": "检查间隔",
+    "intervalOption_other": "{{count}} 分钟",
+    "checkNow": "立即检查",
+    "checking": "正在检查…",
+    "checkAlreadyRunning": "已有检查正在运行。",
+    "checkSummary": "已导入 {{imported}} 个，已跳过 {{skipped}} 个。"
+  },
+  "createIssue": {
+    "title": "创建 GitHub Issue #{{planId}}",
+    "titleForSubject": "从 {{kind}} 创建 GitHub Issue",
+    "titleForSubject_recommendation": "从建议创建 GitHub Issue",
+    "description": "CreateIssue 会根据计划撰写 Issue 正文，并在所选仓库中使用 `gh` 创建该 Issue。",
+    "descriptionForSubject": "CreateIssue 会在所选仓库中使用 `gh` 创建此 Issue。该 Issue 关联到计划 #{{planId}}，但描述的是该 {{kind}}，而不是计划本身的工作。",
+    "descriptionForSubject_recommendation": "CreateIssue 会在所选仓库中使用 `gh` 创建此 Issue。该 Issue 关联到计划 #{{planId}}，但描述的是该建议，而不是计划本身的工作。",
+    "submit": "创建 Issue",
+    "issueTitle": {
+      "label": "标题",
+      "placeholder": "Issue 的主题",
+      "required": "必须填写标题：此处不会使用计划本身的标题。"
+    },
+    "body": {
+      "label": "正文",
+      "placeholder": "需要做什么，以及原因…",
+      "hint": "如果措辞过于简略，请在提交前进行编辑。智能体会将其整理为 Markdown 格式，并保留您的原话，而不是重写。"
+    },
+    "repository": {
+      "label": "仓库",
+      "none": "计划及其项目均未记录仓库，因此无处运行 <code>{{command}}</code>。请先为计划添加一个仓库。",
+      "hint": "创建 Issue 所针对的本地仓库路径，而不是 owner/name 格式的标识。"
+    },
+    "assignee": {
+      "label": "负责人"
+    },
+    "labels": {
+      "label": "标签",
+      "hint": "以逗号分隔。负责人和标签均为自由文本：服务只提供 Issue 元数据，不提供组织中可分配的用户，因此没有可供选择的列表。"
+    },
+    "comment": {
+      "label": "评论",
+      "placeholder": "要追加到 Issue 正文的额外上下文…"
+    }
+  },
+  "createPr": {
+    "title": "为 #{{planId}} 创建 PR",
+    "description": "CreatePr 会推送计划的分支并创建 PR，除非您另行指定，否则还会合并该 PR 并删除分支。",
+    "submit": "创建 PR",
+    "toggles": {
+      "solveMergeConflicts": {
+        "label": "解决合并冲突"
+      },
+      "merge": {
+        "label": "合并",
+        "hint": "不勾选时仅创建 PR，不合并。"
+      },
+      "deleteBranch": {
+        "label": "删除分支",
+        "label_multiple": "删除分支",
+        "hint": "合并成功后删除推送到 origin 的分支。",
+        "hint_multiple": "合并成功后删除推送到 origin 的各个分支。"
+      },
+      "includeArtifacts": {
+        "label": "包含产物"
+      },
+      "draft": {
+        "label": "创建为草稿",
+        "hint": "草稿 PR 无法合并。"
+      }
+    },
+    "reviewers": {
+      "label": "审查人员",
+      "hint": "以逗号分隔的 GitHub 登录名。V2 没有单独的负责人字段：CLI 会将负责人并入审查人员列表，因此两者是同一渠道。"
+    },
+    "comment": {
+      "label": "评论",
+      "placeholder": "审查人员在阅读差异前需要了解的任何信息…"
+    }
+  },
+  "deleteProject": {
+    "title": "删除项目",
+    "confirm": "删除项目",
+    "intro": "此操作将永久删除项目 <name>{{name}}</name> 及其在磁盘上拥有的全部内容，且无法撤销。",
+    "plans": "此项目的所有计划，包括其修订版本和验证报告。",
+    "folder": "<code>{{root}}</code><code>{{name}}</code>：其克隆的仓库、技能、MCP 定义和记忆，包括任何从未推送的提交。",
+    "database": "Tendril 数据库中该项目的计划、任务和建议。",
+    "config": "该项目在 config.yaml 中的条目。",
+    "logsKept": "任务日志将被保留：它们按任务 ID 而非按项目存储。",
+    "removeInstead": "如需仅从 Tendril 中移除项目而不改动磁盘上的任何内容，请取消并改用“移除项目”。",
+    "typeToConfirm": "输入 <name>{{name}}</name> 以确认",
+    "typeToConfirmAriaLabel": "输入 {{name}} 以确认"
+  },
+  "dirtyRepo": {
+    "title": "检测到本地更改",
+    "description_other": "⚠ {{count}} 个仓库有未提交的更改。这些更改不会包含在智能体工作所用的工作区中。",
+    "proceed": "仍然执行",
+    "changeCount_other": "{{count}} 处未提交的更改",
+    "moreChanges_other": "还有 {{count}} 处"
+  },
+  "jobDebug": {
+    "title": "任务调试",
+    "loading": "正在加载任务详情…",
+    "copy": "复制详情",
+    "copied": "已复制",
+    "copyFailed": "无法复制到剪贴板",
+    "values": {
+      "duration": "{{seconds}} 秒",
+      "cost": "{{cost, currency(minimumFractionDigits: 4; maximumFractionDigits: 4; useGrouping: false)}}",
+      "tokens": "{{tokens, number}}"
+    },
+    "fields": {
+      "jobId": "任务 ID",
+      "planId": "计划 ID",
+      "planTitle": "提示词/标题",
+      "status": "状态",
+      "type": "类型",
+      "project": "项目",
+      "provider": "提供商",
+      "model": "模型",
+      "started": "开始时间",
+      "completed": "完成时间",
+      "lastOutput": "最后输出",
+      "duration": "时长",
+      "cost": "成本",
+      "tokens": "Token",
+      "processId": "进程 ID",
+      "detached": "已分离",
+      "workingDirectory": "工作目录",
+      "arguments": "参数",
+      "args": "参数",
+      "failureReason": "失败原因",
+      "permissionDenials": "权限拒绝",
+      "planFolder": "计划文件夹",
+      "jobLog": "任务日志",
+      "jobPrompt": "任务提示词",
+      "jobRawLog": "任务原始日志",
+      "jobEventwireLog": "任务 Eventwire 日志"
+    }
+  },
+  "noProjects": {
+    "title": "没有项目",
+    "description": "每个计划都属于一个项目，而此 Tendril 主目录中还没有任何项目。",
+    "openSettings": "前往项目",
+    "body": "请在<location>设置 → 项目</location>中添加一个项目（包括名称、仓库及其计划要运行的验证），然后重新创建计划。"
+  },
+  "pendingAnnotations": {
+    "title": {
+      "changes": "未纳入的更改",
+      "answers": "未纳入的回答",
+      "annotations": "未纳入的批注"
+    },
+    "description": {
+      "items_other": "⚠ 此计划有 {{count}} 项内容尚未被任何 UpdatePlan 运行纳入。",
+      "annotations_other": "⚠ 此计划有 {{count}} 条批注尚未纳入。现在执行将忽略这些批注。",
+      "answers_other": "⚠ 此计划有 {{count}} 个已回答的问题尚未纳入。现在执行意味着智能体将按原样读取这些回答，而不是将其作为计划的一部分。",
+      "both": "⚠ 此计划有 {{annotations}} 和 {{answers}} 尚未纳入。现在执行将忽略这些批注，且智能体将按原样读取这些回答，而不是将其作为计划的一部分。",
+      "annotationCount_other": "{{count}} 条批注",
+      "answerCount_other": "{{count}} 个已回答的问题"
+    },
+    "updatePlan": "更新计划",
+    "decline": {
+      "discardAnnotations": "丢弃批注并执行",
+      "withoutUpdating": "不更新直接执行",
+      "anyway": "仍然执行"
+    },
+    "updateAndExecute": "更新计划并执行",
+    "body": "现在执行将按计划的现有内容运行，因此这些备注不会影响智能体的工作。先运行 UpdatePlan 可将它们并入计划正文。"
+  },
+  "resetToDraft": {
+    "title": "将计划 #{{planId}} 重置为草稿",
+    "confirm": "重置为草稿",
+    "body": "计划将返回<state>草稿</state>状态，其工作区将被移除，其中所有未提交的工作都会被丢弃。已推送的提交不受影响。"
+  },
+  "partialDelivery": {
+    "title": "验证失败",
+    "confirm": "以部分交付完成",
+    "body": "尽管以下验证失败，计划 #{{planId}} 仍将被记录为<state>已完成</state>，并标记为部分交付："
+  },
+  "deletePlan": {
+    "title": "删除计划",
+    "confirm": "删除",
+    "body": "确定要永久删除计划 #{{planId}} 吗？此操作将移除计划文件夹、所有修订版本和所有验证报告，且无法撤销。如需保留文件夹，请改为将计划移至已跳过或待办箱。",
+    "skip": "移至已跳过",
+    "archive": "移至待办箱"
+  },
+  "planSearch": {
+    "title": "搜索计划",
+    "inputLabel": "搜索计划",
+    "placeholder": "搜索计划",
+    "searching": "正在搜索…",
+    "empty": "未找到计划。"
+  },
+  "removeProject": {
+    "title": "移除项目",
+    "confirm": "移除项目",
+    "question": "确定要移除项目 <name>{{name}}</name> 吗？",
+    "consequence": "此操作会将项目从 config.yaml 中移除。其克隆的仓库、计划文件夹和历史记录仍保留在磁盘上，因此不会从您的计算机中删除任何内容。但 Tendril 将不再列出该项目，其现有的计划和任务将指向一个 Tendril 不再识别的项目。"
+  },
+  "shareTunnel": {
+    "title": "共享工作",
+    "intro": "通过安全的只读 Cloudflare 隧道与团队成员共享您的工作。审查人员可以查看计划和差异并发表评论，而无需访问您的终端或设置。",
+    "errorTitle": "错误",
+    "connecting": {
+      "title": "隧道启动中",
+      "body": "正在启动共享隧道…通常需要 15-30 秒。"
+    },
+    "active": {
+      "title": "共享已启用",
+      "body": "您的共享隧道已启用，权限为只读和仅评论。"
+    },
+    "copyLink": "复制链接",
+    "openInBrowser": "在浏览器中打开",
+    "stop": "停止共享",
+    "start": "启动共享隧道",
+    "errors": {
+      "start": "启动共享隧道失败：{{error}}",
+      "stop": "停止共享隧道失败：{{error}}",
+      "copy": "无法复制链接：{{error}}"
+    },
+    "notifications": {
+      "stoppedTitle": "已停用",
+      "stoppedMessage": "共享隧道已停止",
+      "copiedTitle": "链接已复制",
+      "copiedMessage": "共享 URL 已复制到剪贴板"
+    }
+  },
+  "suggestChanges": {
+    "notAllowed": {
+      "title": "计划 #{{planId}} 当前不接受更改",
+      "state": "计划当前状态为“{{state}}”。只有当计划处于待审查状态，或已在应用修改请求时，才能接收修改请求。",
+      "commentsKept_other": "这 {{count}} 条评论仍保留在此处，待计划回到待审查状态后再发送。"
+    },
+    "fromApp": {
+      "title": "更新计划 #{{planId}}",
+      "submit": "更新",
+      "queue": "排队更新",
+      "summary_other": "来自运行中应用的 {{count}} 条评论将作为修改请求发送给智能体。",
+      "queueNote_other": "计划 #{{planId}} 已有 {{count}} 个任务正在进行，因此此任务将排在它们之后，待它们完成后启动。",
+      "untaggedElement": "元素"
+    },
+    "diff": {
+      "title": "为计划 #{{planId}} 请求修改",
+      "description": "请提供对实现进行修改的建议或指令。RetryPlan 会在现有工作区中继续，并在已提交的工作基础上以增量方式应用这些修改。",
+      "submit": "请求修改",
+      "submitWithInline_other": "请求修改（{{count}} 条内联）",
+      "inlineNote_other": "文件差异上的 {{count}} 条内联评论将随您的反馈一并提交。",
+      "requestLabel": "修改请求",
+      "requestPlaceholder": "描述工作区中需要更改、修复或重写的内容…"
+    }
+  },
+  "unansweredQuestions": {
+    "title": "未回答的问题",
+    "description_other": "⚠ 此计划有 {{count}} 个问题尚未回答。现在执行将交由智能体处理：有推荐选项时采用推荐选项，没有时由智能体自行决定。",
+    "updatePlan": "更新计划…",
+    "proceed": "仍然执行",
+    "updateAndExecute": "更新计划并执行"
+  },
+  "updatePlan": {
+    "title": "更新计划 #{{planId}}",
+    "description": "请提供修订此计划的指令。UpdatePlan 会将计划重写为新的修订版本，不会改动任何代码。",
+    "submit": "更新",
+    "alreadyRunning": "UpdatePlan 已在为此计划运行，请稍候…",
+    "instructionsLabel": "指令",
+    "instructionsAriaLabel": "更新指令",
+    "instructionsPlaceholder": "纳入已回答的问题，然后将范围缩小到仅限守卫链…"
+  }
+}

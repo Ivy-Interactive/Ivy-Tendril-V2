@@ -1,1 +1,136 @@
-{}
+{
+  "actions": {
+    "back": "Tillbaka",
+    "next": "Nästa",
+    "skip": "Hoppa över",
+    "finish": "Slutför",
+    "createProject": "Skapa projekt"
+  },
+  "wizard": {
+    "title": "Välkommen till Tendril",
+    "stepsLabel": "Installationssteg",
+    "steps": {
+      "codingAgent": "Kodningsagent",
+      "dataStorage": "Datalagring",
+      "firstProject": "Ditt första projekt",
+      "complete": "Klart"
+    },
+    "skipSetup": "Hoppa över installationen",
+    "progress": {
+      "label": "Konfigurerar",
+      "checkingAgent": "Kontrollerar {{agent}}…",
+      "finishing": "Slutför installationen…",
+      "cloning": "Klonar arkiv…",
+      "settingUp": "Konfigurerar ditt projekt…"
+    },
+    "errors": {
+      "checksUnavailable": "Hälsokontrollerna är inte tillgängliga: {{error}}",
+      "agentProbeFailed": "Kontrollera att agenten finns och att du är behörig. ({{error}})",
+      "finishFailed": "Det gick inte att slutföra installationen: {{error}}",
+      "skipFailed": "Det gick inte att hoppa över installationen: {{error}}",
+      "setupNotStarted": "Projektet skapades, men {{jobType}} kunde inte starta: {{error}}",
+      "createFailed": "Det gick inte att skapa projektet: {{error}}",
+      "createAbandoned": "Slutade vänta på att projektet skulle skapas. Daemonen kanske fortfarande klonar; kontrollera dina projekt innan du skapar det igen."
+    }
+  },
+  "codingAgent": {
+    "title": "Vilken kodningsagent använder du?",
+    "description": "Tendril är en kodningsorkestrerare som körs ovanpå din egen kodningsagent. Välj den agent du vill använda:"
+  },
+  "prerequisites": {
+    "missing_one": "Tendril behöver {{names, list}}, men det är inte installerat. Installera det och tryck sedan på Kontrollera igen.",
+    "missing_other": "Tendril behöver {{names, list}}, men de är inte installerade. Installera dem och tryck sedan på Kontrollera igen.",
+    "description": "Verktygen som Tendril startar på din dator.",
+    "recheck": "Kontrollera igen",
+    "checking": "Kontrollerar…",
+    "empty": "Inga kontroller rapporterades.",
+    "required": "obligatorisk",
+    "install": "Installera",
+    "status": {
+      "ok": "OK",
+      "warn": "VARNING",
+      "fail": "FEL"
+    }
+  },
+  "dataStorage": {
+    "title": "Var ska vi lagra dina data?",
+    "description": "Tendril sparar din konfiguration och dina planer i den här mappen.",
+    "homeLabel": "Tendril home",
+    "homeHint": "Den körande daemonen har valt den här mappen. Ange <code>{{envVar}}</code> innan du startar Tendril om du vill flytta den.",
+    "homeMissing": "Ange en giltig sökväg."
+  },
+  "repoPicker": {
+    "label": "Lägg till ett eller flera Git-arkiv",
+    "inputLabel": "Arkiv-URL eller lokal sökväg",
+    "placeholder": "Arkiv-URL eller lokal sökväg",
+    "add": "Lägg till arkiv",
+    "willClone": "klonas när du väljer Skapa projekt",
+    "remove": "Ta bort {{path}}",
+    "invalidPath": "Ogiltig arkivsökväg."
+  },
+  "firstProject": {
+    "title": "Konfigurera ditt första projekt",
+    "description": "Ett projekt samlar ett eller flera arkiv så att Tendril kan planera och verifiera ändringar i dem.",
+    "browse": "Bläddra",
+    "browseTitle": "Välj arkivmapp",
+    "browseUnavailable": "Mappväljaren är inte tillgänglig ({{error}}). Skriv en sökväg i stället.",
+    "nameLabel": "Projektnamn",
+    "nameExists": {
+      "title": "Det finns redan ett projekt med det här namnet.",
+      "body": "Du kan lösa konflikten genom att ange ett annat namn ovan eller fortsätta med det befintliga projektets konfiguration (dess arkivsökväg och inställningar behålls).",
+      "useExisting": "Använd befintlig projektkonfiguration"
+    },
+    "registered": "{{name}} har registrerats. Med Nästa visas dess konfigurationskörning."
+  },
+  "validation": {
+    "invalidProjectName": "Ogiltigt projektnamn ”{{name}}”. Använd bara bokstäver, siffror, punkter, bindestreck och understreck (inga snedstreck eller blanksteg).",
+    "invalidProjectNameWithSuggestion": "Ogiltigt projektnamn ”{{name}}”. Använd bara bokstäver, siffror, punkter, bindestreck och understreck (inga snedstreck eller blanksteg). Förslag: ”{{suggestion}}”."
+  },
+  "agentRun": {
+    "title": "Konfigurerar ditt projekt",
+    "wizardHint": "Tendril identifierar din teknikstack och konfigurerar agentens valideringsuppsättning. Det tar några minuter, så unna dig en ☕ medan du väntar.",
+    "noRun": "Ingen konfigurationskörning är kopplad till det här projektet. Du kan konfigurera dess verifieringar och granskningsåtgärder från projektets egen vy när installationen är klar.",
+    "timedOut": "Tidsgränsen för installationen överskreds.",
+    "failed": "Installationen misslyckades."
+  },
+  "harness": {
+    "title": "Granskningsuppsättning",
+    "description": "Det här har konfigurationsagenten ställt in för ditt projekt. Allt kan redigeras från projektets egen vy.",
+    "verifications": {
+      "title": "Verifieringar",
+      "hint": "Stegen som körs efter varje planexekvering för att validera ändringarna."
+    },
+    "reviewActions": {
+      "title": "Granskningsåtgärder",
+      "hint": "Kommandon som gör det enkelt att starta projektet för manuell testning."
+    },
+    "loadError": "Det gick inte att läsa projektets valideringsuppsättning ({{error}}). Det säger ingenting om vad konfigurationsagenten har ställt in – öppna projektet från dess rad under Projekt för att se det.",
+    "empty": "Ingenting är konfigurerat ännu. Om konfigurationsagenten fortfarande körs visas resultaten här när den är klar – öppna projektet igen från dess rad under Projekt för att se dem."
+  },
+  "complete": {
+    "title": "Allt är klart!",
+    "description": "Ditt projekt är konfigurerat. Klicka på Slutför för att börja använda Tendril.",
+    "newsletter": {
+      "title": "Nyhetsbrev",
+      "description": "Bli först med att få veta när vi släpper en ny version!"
+    }
+  },
+  "addProject": {
+    "title": "Lägg till ett projekt",
+    "hint": "Namnge projektet och peka ut ett eller flera Git-arkiv. Tendril undersöker dem sedan och konfigurerar granskningsuppsättningen.",
+    "nameLabel": "Namn",
+    "namePlaceholder": "Projektnamn…",
+    "creating": "Skapar…",
+    "createInBackground": "Skapa i bakgrunden",
+    "nameRequired": "Ett projekt måste ha ett namn.",
+    "nameInvalidChars": "Ett projektnamn får inte innehålla / \\ : * ? \" < > eller |.",
+    "nameExists": "Det finns redan ett projekt med namnet ”{{name}}”.",
+    "createFailed": "Det gick inte att skapa projektet: {{error}}",
+    "setupNotStarted": "Projektet skapades, men konfigurationsagenten kunde inte starta: {{error}}. Projektet är registrerat och kan konfigureras från sin egen rad.",
+    "agentHint": "Tendril identifierar din teknikstack och konfigurerar agentens valideringsuppsättning. Det tar några minuter.",
+    "verificationRequired": "obligatorisk",
+    "noVerifications": "Inga verifieringar konfigurerades. Lägg till dem i projektets inställningar.",
+    "noReviewActions": "Inga granskningsåtgärder konfigurerades. Lägg till dem i projektets inställningar.",
+    "harnessEmpty": "Projektet är registrerat. Om konfigurationsagenten fortfarande körs visas resultaten här när den är klar – öppna projektet igen från dess rad under Projekt för att se dem."
+  }
+}

@@ -1,1 +1,227 @@
-{}
+{
+  "table": {
+    "columns": {
+      "id": {
+        "header": "ID"
+      },
+      "status": {
+        "header": "状态",
+        "filterPlaceholder": "全部"
+      },
+      "planId": {
+        "header": "计划 ID",
+        "filterPlaceholder": "ID…"
+      },
+      "prompt": {
+        "header": "提示词"
+      },
+      "type": {
+        "header": "类型",
+        "filterPlaceholder": "全部"
+      },
+      "project": {
+        "header": "项目",
+        "filterPlaceholder": "全部"
+      },
+      "timer": {
+        "header": "计时",
+        "filterPlaceholder": "秒数…"
+      },
+      "agentOutput": {
+        "header": "智能体输出",
+        "filterPlaceholder": "日期…"
+      },
+      "cost": {
+        "header": "成本",
+        "filterPlaceholder": "金额…"
+      },
+      "tokens": {
+        "header": "Token",
+        "filterPlaceholder": "数量…"
+      },
+      "timestamp": {
+        "header": "时间戳",
+        "filterPlaceholder": "日期…"
+      },
+      "statusMessage": {
+        "header": "状态消息"
+      }
+    },
+    "detached": {
+      "label": "已分离",
+      "title": "已分离（PID {{pid}}）：正在监控上次守护进程重启前启动的活动进程",
+      "unknownPid": "未知"
+    },
+    "empty": {
+      "filtered": "没有符合当前筛选条件的任务。",
+      "none": "暂无任务。启动计划、重试或创建 PR 都会生成任务。"
+    },
+    "queryError": "无法读取任务表：{{error}}",
+    "statusProgress": {
+      "ariaLabel": "按状态划分的任务"
+    },
+    "headerMenu": {
+      "ariaLabel": "任务列表操作",
+      "stopAllQueued": "停止所有排队任务（{{count}}）",
+      "stopAll": "停止所有任务（{{count}}）"
+    }
+  },
+  "actions": {
+    "menu": "任务操作",
+    "stop": {
+      "label": "停止",
+      "tooltip": "停止此任务",
+      "busy": "正在停止…"
+    },
+    "rerun": {
+      "label": "重新运行",
+      "unavailable": "无法重新运行：未保留原始参数。"
+    },
+    "forceStart": {
+      "label": "强制启动",
+      "tooltip": "强制启动此已阻塞的任务",
+      "busy": "正在启动…"
+    },
+    "debug": {
+      "label": "调试",
+      "tooltip": "显示此任务的调试详情"
+    },
+    "delete": {
+      "label": "删除",
+      "tooltip": "删除此任务"
+    }
+  },
+  "errors": {
+    "stopFailed": "停止失败：{{error}}",
+    "forceStartFailed": "强制启动失败：{{error}}",
+    "deleteFailed": "删除失败：{{error}}"
+  },
+  "deleteDialog": {
+    "title": "删除任务",
+    "body": "确定要删除此任务吗？此操作无法撤销。"
+  },
+  "statusMessage": {
+    "blocked": "正在等待依赖计划完成。",
+    "failed": "任务在执行期间遇到错误",
+    "timeout": "任务超过了配置的超时时间",
+    "queued": "正在等待可用的任务槽位",
+    "stopped": "任务已被手动停止",
+    "pending": "任务已排队，正在等待启动。"
+  },
+  "agentOutput": {
+    "starting": "正在启动…",
+    "done": "已完成"
+  },
+  "cost": {
+    "estimated": "~{{cost}}",
+    "notReported": "此任务未报告成本"
+  },
+  "tokens": {
+    "buckets": {
+      "input": "输入",
+      "output": "输出",
+      "cacheRead": "缓存读取",
+      "cacheWrite": "缓存写入",
+      "reasoning": "推理"
+    },
+    "breakdownEntry": "{{label}} {{tokens, number}}"
+  },
+  "outputSheet": {
+    "title": "{{type}} {{planId}}",
+    "fallbackTitle": "任务输出"
+  },
+  "session": {
+    "detachedBadge": "已分离（PID {{pid}}）：正在监控活动进程",
+    "tokens": "Token {{tokens}}",
+    "cost": "成本 {{cost}}",
+    "closeTab": "关闭会话标签页",
+    "noOutput": "没有可用的输出。",
+    "statusCallout": {
+      "title": "任务状态：{{status}}",
+      "title_pending": "任务待处理",
+      "title_queued": "任务排队中",
+      "title_blocked": "任务已阻塞",
+      "title_failed": "任务失败",
+      "title_timeout": "任务超时",
+      "title_stopped": "任务已停止"
+    }
+  },
+  "costSheet": {
+    "title": "成本与 Token",
+    "titleWithPlan": "成本与 Token：{{planId}}",
+    "details": {
+      "model": "模型",
+      "provider": "提供商",
+      "type": "类型",
+      "profile": "配置文件",
+      "agentCost": "智能体报告的成本"
+    },
+    "notProvided": "未提供",
+    "noUsage": "此任务未记录按 Token 划分的明细。",
+    "noUsage_total": "此任务未记录按 Token 划分的明细，仅记录了共 {{total}} 个 Token。",
+    "breakdown": {
+      "title": "明细",
+      "tokenType": "Token 类型",
+      "tokens": "Token",
+      "total": "合计"
+    },
+    "totalCost": "总成本"
+  },
+  "promptSheet": {
+    "title": "完整提示词",
+    "empty": "此任务未记录提示词文本。"
+  },
+  "clear": {
+    "dialogTitle": "清理任务",
+    "confirm": "清理",
+    "confirmCount": "清理 {{count}} 个",
+    "countFailed": "无法统计任务数量：{{error}}",
+    "failed": "清理失败：{{error}}",
+    "scopes": {
+      "completed": {
+        "label": "清理已完成的任务",
+        "counting": "正在统计已完成的任务…",
+        "empty": "没有可清理的已完成任务。",
+        "confirm_other": "删除 {{count}} 个已完成的任务？其日志和输出将一并删除，此操作无法撤销。"
+      },
+      "failed": {
+        "label": "清理失败的任务",
+        "counting": "正在统计失败的任务…",
+        "empty": "没有可清理的失败任务。",
+        "confirm_other": "删除 {{count}} 个失败的任务？其日志和输出将一并删除，此操作无法撤销。"
+      },
+      "timeout": {
+        "label": "清理超时的任务",
+        "counting": "正在统计超时的任务…",
+        "empty": "没有可清理的超时任务。",
+        "confirm_other": "删除 {{count}} 个超时的任务？其日志和输出将一并删除，此操作无法撤销。"
+      },
+      "stopped": {
+        "label": "清理已停止的任务",
+        "counting": "正在统计已停止的任务…",
+        "empty": "没有可清理的已停止任务。",
+        "confirm_other": "删除 {{count}} 个已停止的任务？其日志和输出将一并删除，此操作无法撤销。"
+      },
+      "all": {
+        "label": "清理所有已结束的任务",
+        "counting": "正在统计已结束的任务…",
+        "empty": "没有可清理的已结束任务。",
+        "confirm_other": "删除 {{count}} 个已结束的任务？其日志和输出将一并删除，此操作无法撤销。"
+      }
+    }
+  },
+  "notifications": {
+    "exit": {
+      "completed": "{{type}} 已完成",
+      "failed": "{{type}} 失败",
+      "timedOut": "{{type}} 超时",
+      "withReason": "{{subject}}：{{reason}}"
+    },
+    "summary": {
+      "title": "任务已结束",
+      "finished_other": "{{count}} 个任务已结束",
+      "finishedWithFailures_other": "{{count}} 个任务已结束，{{failures}}",
+      "failedCount_other": "{{count}} 个失败"
+    }
+  }
+}

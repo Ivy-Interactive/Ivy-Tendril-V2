@@ -1,1 +1,237 @@
-{}
+{
+  "workspace": {
+    "moreActions": {
+      "label": "Más acciones",
+      "tooltip": "Más",
+      "menuAriaLabel": "Más acciones"
+    },
+    "source": "Origen",
+    "verifications": "Verificaciones",
+    "questions": "Preguntas",
+    "resizer": {
+      "tooltip": "Arrastra para cambiar el tamaño; haz doble clic para restablecerlo",
+      "ariaLabel": "Cambiar el tamaño del chat"
+    },
+    "chatAriaLabel": "Chat del plan"
+  },
+  "diffView": {
+    "empty": "No hay ningún diff que mostrar",
+    "fileCount_one": "{{count}} archivo",
+    "fileCount_many": "{{count}} archivos",
+    "fileCount_other": "{{count}} archivos",
+    "jumpToFile": {
+      "ariaLabel": "Ir al archivo",
+      "placeholder": "Ir al archivo…"
+    },
+    "untitledFile": "Diff {{index}}",
+    "untitledPath": "Diff",
+    "viewed": "Visto",
+    "commentToggle": {
+      "noneTooltip": "No hay comentarios en este archivo",
+      "showTooltip_one": "Mostrar {{count}} comentario",
+      "showTooltip_many": "Mostrar {{count}} comentarios",
+      "showTooltip_other": "Mostrar {{count}} comentarios",
+      "hideTooltip_one": "Ocultar {{count}} comentario",
+      "hideTooltip_many": "Ocultar {{count}} comentarios",
+      "hideTooltip_other": "Ocultar {{count}} comentarios",
+      "showAriaLabel": "Mostrar comentarios",
+      "hideAriaLabel": "Ocultar comentarios"
+    },
+    "comment": {
+      "draftAuthor": "Instrucción para el agente (borrador)",
+      "resolvedBadge": "✓ Resuelto",
+      "edit": "Editar",
+      "reopenTooltip": "Reabrir comentario",
+      "resolveTooltip": "Marcar comentario como resuelto",
+      "unresolve": "Marcar como no resuelto",
+      "resolve": "Resolver",
+      "deleteTooltip": "Eliminar comentario",
+      "deleteAriaLabel": "Eliminar comentario",
+      "delete": "Eliminar"
+    },
+    "commentForm": {
+      "title": "Instrucción para el agente",
+      "editTitle": "Editar instrucción para el agente",
+      "placeholder": "Introduce una instrucción para el agente en esta línea...",
+      "cancel": "Cancelar",
+      "add": "Añadir comentario",
+      "update": "Actualizar comentario"
+    }
+  },
+  "changesView": {
+    "empty": "No hay cambios en archivos.",
+    "treeAriaLabel": "Archivos modificados",
+    "fileCount_one": "{{count}} archivo",
+    "fileCount_many": "{{count}} archivos",
+    "fileCount_other": "{{count}} archivos",
+    "jumpToFile": {
+      "ariaLabel": "Ir al archivo",
+      "placeholder": "Ir al archivo…"
+    }
+  },
+  "gitView": {
+    "atRisk": {
+      "title": "Commits en riesgo",
+      "unreachable_one": "{{count}} commit no es accesible desde ninguna rama, etiqueta ni remoto: <hashes/>. Solo existe como objeto suelto, así que el próximo <code>{{gcCommand}}</code> en el repositorio lo destruirá. Asígnale una referencia para conservarlo: <code>{{recoverCommand}}</code>.",
+      "unreachable_many": "{{count}} commits no son accesibles desde ninguna rama, etiqueta ni remoto: <hashes/>. Solo existen como objetos sueltos, así que el próximo <code>{{gcCommand}}</code> en el repositorio los destruirá. Asigna una referencia a uno para conservarlo: <code>{{recoverCommand}}</code>.",
+      "unreachable_other": "{{count}} commits no son accesibles desde ninguna rama, etiqueta ni remoto: <hashes/>. Solo existen como objetos sueltos, así que el próximo <code>{{gcCommand}}</code> en el repositorio los destruirá. Asigna una referencia a uno para conservarlo: <code>{{recoverCommand}}</code>.",
+      "missing_one": "{{count}} commit no se encuentra en ninguno de los repositorios del plan: <hashes/>. O bien el objeto ya se eliminó al podar el repositorio, o el repositorio en el que se creó no es uno de los repositorios del plan.",
+      "missing_many": "{{count}} commits no se encuentran en ninguno de los repositorios del plan: <hashes/>. O bien el objeto ya se eliminó al podar el repositorio, o el repositorio en el que se creó no es uno de los repositorios del plan.",
+      "missing_other": "{{count}} commits no se encuentran en ninguno de los repositorios del plan: <hashes/>. O bien el objeto ya se eliminó al podar el repositorio, o el repositorio en el que se creó no es uno de los repositorios del plan.",
+      "hashSeparator": ", ",
+      "badge": {
+        "unreachable": "inaccesible",
+        "missing": "no encontrado"
+      }
+    },
+    "commitTable": {
+      "commit": "Commit",
+      "message": "Mensaje",
+      "files": "Archivos",
+      "unresolved": "(commit sin resolver)"
+    },
+    "worktrees": {
+      "heading": "Worktrees",
+      "emptyFinished": "Los worktrees se eliminaron cuando el plan llegó a su estado final.",
+      "emptyNeverCreated": "Los worktrees nunca se crearon, o el limpiador de inactivos los recuperó cuando el plan superó su plazo de inactividad.",
+      "emptyUnknown": "Los worktrees se eliminaron o nunca se crearon.",
+      "copyPath": "Copiar la ruta de {{name}}",
+      "repository": "Repositorio",
+      "base": "Base",
+      "worktree": "Worktree",
+      "head": "Head",
+      "detachedHead": "HEAD desacoplado",
+      "uncommittedChanges": "Este worktree tiene cambios sin confirmar. No pertenecen a ningún commit, así que nada los conserva.",
+      "noCommits": "(sin commits)"
+    },
+    "commits": {
+      "heading": "Commits",
+      "description": "Registrados en el plan, pero no accesibles desde ningún worktree que el plan conserve — normalmente porque el worktree se eliminó al fusionarse la PR."
+    },
+    "pullRequests": {
+      "heading": "Pull requests",
+      "repository": "Repositorio",
+      "pr": "PR"
+    },
+    "empty": "Este plan todavía no tiene worktrees, commits ni pull requests."
+  },
+  "alert": {
+    "note": "Nota",
+    "tip": "Consejo",
+    "important": "Importante",
+    "warning": "Advertencia",
+    "caution": "Precaución"
+  },
+  "diagram": {
+    "loading": "Cargando diagrama...",
+    "invalidGraphviz": "Sintaxis DOT de Graphviz no válida",
+    "invalidMermaid": "Sintaxis de diagrama Mermaid no válida"
+  },
+  "codeBlock": {
+    "copy": "Copiar al portapapeles"
+  },
+  "image": {
+    "loadFailed": "No se pudo cargar la imagen",
+    "close": "Cerrar"
+  },
+  "search": {
+    "placeholder": "Buscar en el documento...",
+    "ariaLabel": "Buscar en el documento",
+    "noMatches": "Sin coincidencias",
+    "position": "{{current}} de {{total}}",
+    "previous": "Coincidencia anterior",
+    "next": "Coincidencia siguiente",
+    "close": "Cerrar búsqueda"
+  },
+  "annotation": {
+    "quote": "“{{text}}”",
+    "quoteTruncated": "“{{text}}...”",
+    "add": {
+      "placeholder": "Añade un comentario...",
+      "cancel": "Cancelar",
+      "submit": "Añadir"
+    },
+    "edit": {
+      "resolvedBadge": "✓ Resuelta",
+      "placeholder": "Edita el comentario...",
+      "reopenTooltip": "Reabrir anotación",
+      "resolveTooltip": "Marcar anotación como resuelta",
+      "unresolve": "Marcar como no resuelta",
+      "resolve": "Resolver",
+      "deleteTooltip": "Eliminar anotación",
+      "delete": "Eliminar",
+      "cancel": "Cancelar",
+      "save": "Guardar"
+    },
+    "selectionToolbar": {
+      "addComment": "Añadir comentario"
+    }
+  },
+  "wireframe": {
+    "invalid": "Este bloque de wireframe no es válido.",
+    "placeholder": "Wireframe: <strong>{{name}}</strong>. Abre el plan para verlo.",
+    "lastGoodBuild": "Se muestra la última versión que compiló",
+    "paused": "Actualizaciones en directo en pausa",
+    "openFullSize": "Abrir a tamaño completo",
+    "building": "Compilando wireframe...",
+    "missing": "Este plan no tiene ningún wireframe llamado <strong>{{name}}</strong>.",
+    "buildFailed": "Este wireframe no compila.",
+    "unavailable": "La vista previa del wireframe no está disponible en este momento.",
+    "retry": "Reintentar",
+    "close": "Cerrar",
+    "errors": {
+      "empty": "El bloque no nombra ningún wireframe. Añade una línea como `{{example}}`.",
+      "notYaml": "El bloque no es YAML válido.",
+      "notMapping": "Escribe el bloque como `{{example}}`, opcionalmente con {{height}} y {{viewport}}.",
+      "unknownKey": "Clave desconocida \"{{key}}\". Usa {{name}}, {{height}} o {{viewport}}.",
+      "badName": "{{name}} debe ser un slug en minúsculas, como {{example}}.",
+      "badHeight": "{{height}} debe ser un número entero de píxeles entre 1 y {{max}}.",
+      "badViewport": "{{viewport}} debe ser {{desktop}}, {{tablet}} o {{mobile}}."
+    }
+  },
+  "questions": {
+    "recommended": "Recomendada",
+    "optional": "Opcional",
+    "selectAll": "Selecciona todas las que correspondan",
+    "other": "Otra",
+    "otherPlaceholder": "Escribe tu respuesta",
+    "otherAriaLabel": "Otra respuesta para {{question}}",
+    "notAnswered": {
+      "skipped": "Sin responder (no obligatoria)",
+      "agentDecided": "Sin responder (decidió el agente)"
+    },
+    "clear": "Borrar",
+    "clearAllAriaLabel": "Borrar todas las respuestas de este bloque",
+    "clearOneAriaLabel": "Borrar respuesta",
+    "submit": "Enviar respuesta",
+    "submitNote": {
+      "noAnswers": "Responde al menos una pregunta para poder enviar.",
+      "oneUnanswered": "Sin responder: \"{{title}}\". Si envías ahora, la decidiré yo.",
+      "manyUnanswered_one": "{{count}} pregunta sin responder. Si envías ahora, la decidiré yo.",
+      "manyUnanswered_many": "{{count}} preguntas sin responder. Si envías ahora, las decidiré yo.",
+      "manyUnanswered_other": "{{count}} preguntas sin responder. Si envías ahora, las decidiré yo."
+    }
+  },
+  "answersCard": {
+    "ariaLabel": "Respuestas enviadas",
+    "title": "Respuestas",
+    "notAnswered": {
+      "skipped": "Sin responder (no obligatoria)",
+      "agentDecided": "Sin responder (decidió el agente)"
+    }
+  },
+  "verificationList": {
+    "dragHandle": "Asa para arrastrar",
+    "required": "Obligatoria",
+    "a11y": {
+      "roleDescription": "ordenable",
+      "instructions": "Para seleccionar un elemento arrastrable, pulsa la barra espaciadora. Mientras arrastras, usa las teclas de flecha para mover el elemento. Vuelve a pulsar la barra espaciadora para soltar el elemento en su nueva posición, o pulsa Esc para cancelar.",
+      "pickedUp": "Se ha seleccionado el elemento arrastrable {{active}}.",
+      "movedOver": "El elemento arrastrable {{active}} se ha movido sobre el área de destino {{over}}.",
+      "movedAway": "El elemento arrastrable {{active}} ya no está sobre un área de destino.",
+      "droppedOver": "El elemento arrastrable {{active}} se ha soltado sobre el área de destino {{over}}",
+      "dropped": "Se ha soltado el elemento arrastrable {{active}}.",
+      "cancelled": "Se ha cancelado el arrastre. Se ha soltado el elemento arrastrable {{active}}."
+    }
+  }
+}

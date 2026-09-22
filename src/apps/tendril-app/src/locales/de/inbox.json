@@ -1,1 +1,234 @@
-{}
+{
+  "rail": {
+    "ariaLabel": "Posteingangskategorien",
+    "myIssues": "Meine Issues",
+    "reviews": "Reviews",
+    "projects": "Projekte",
+    "noProjects": "Keine Projekte in den Einstellungen"
+  },
+  "header": {
+    "title": {
+      "myIssues": "Meine Issues",
+      "reviews": "Reviews",
+      "projectIssues": "Issues von {{project}}",
+      "projectIssues_noProject": "Projekt-Issues"
+    },
+    "refresh": "Aktualisieren",
+    "autoAccept": {
+      "on": "Automatisch annehmen: An",
+      "off": "Automatisch annehmen: Aus",
+      "onTooltip": "Neu zugewiesene Issues starten einen Plan, sobald sie gefunden werden",
+      "offTooltip": "Neu zugewiesene Issues werden unten als „Wartet auf Entscheidung“ markiert, damit Sie sie annehmen oder verwerfen können",
+      "settings": "Einstellungen für automatisches Annehmen"
+    },
+    "checkNow": {
+      "label": "Jetzt prüfen",
+      "checking": "Wird geprüft…",
+      "tooltip": "Ihnen zugewiesene GitHub-Issues jetzt importieren, ohne auf die nächste geplante Prüfung zu warten"
+    }
+  },
+  "bulk": {
+    "selectAll": "Alle auswählen",
+    "deselectAll": "Auswahl aufheben",
+    "summary": "{{selected}} von {{total}} ausgewählt",
+    "openChat": {
+      "label": "Chat öffnen",
+      "labelWithCount": "Chat öffnen ({{selected}})",
+      "tooltip": "Die ausgewählten Issues mit dem Coding-Agenten besprechen"
+    },
+    "fireOff": {
+      "label": "In Tendril starten",
+      "labelWithCount": "In Tendril starten ({{selected}})"
+    }
+  },
+  "freshness": {
+    "repo": {
+      "label": "Repo:",
+      "ariaLabel": "Nach Repository filtern"
+    },
+    "updated": "Aktualisiert {{when}}",
+    "updated_justNow": "Gerade eben aktualisiert",
+    "notYetUpdated": "Noch nicht aktualisiert",
+    "autoRefresh": {
+      "label": "Automatisch aktualisieren:",
+      "ariaLabel": "Intervall für automatische Aktualisierung",
+      "off": "Aus"
+    }
+  },
+  "fireNotice": {
+    "success_one": "{{count}} Issue in Tendril gestartet",
+    "success_other": "{{count}} Issues in Tendril gestartet",
+    "partial": "{{fired}} von {{total}} gestartet. Fehlgeschlagen bei #{{number}}: {{error}}",
+    "partial_unknownIssue": "{{fired}} von {{total}} gestartet. Fehlgeschlagen bei einem Issue: {{error}}"
+  },
+  "sweep": {
+    "alreadyRunning": "Es läuft bereits eine Prüfung.",
+    "notMaster": "Dieser Daemon ist nicht der Haupt-Daemon und hat daher nicht geprüft.",
+    "imported": "{{imported}} importiert, {{skipped}} übersprungen.",
+    "accepted_one": "Für {{count}} Issue wurde sofort ein Plan gestartet.",
+    "accepted_other": "Für {{count}} Issues wurde sofort ein Plan gestartet.",
+    "accepted_partial_one": "Für {{count}} Issue wurde sofort ein Plan gestartet (die übrigen warten auf Ihre Entscheidung).",
+    "accepted_partial_other": "Für {{count}} Issues wurde sofort ein Plan gestartet (die übrigen warten auf Ihre Entscheidung).",
+    "errors_one": "{{count}} Fehler: {{error}}",
+    "errors_other": "{{count}} Fehler: {{error}}",
+    "join": "{{previous}} {{next}}"
+  },
+  "chatTitle_one": "{{count}} Issue",
+  "chatTitle_other": "{{count}} Issues",
+  "errors": {
+    "noRemotes": "Für Projekt {{project}} wurden keine Git-Remotes aufgelöst.",
+    "noRemotes_noProject": "Für das Projekt wurden keine Git-Remotes aufgelöst (keines ausgewählt).",
+    "loadFailed": "GitHub-Issues konnten nicht geladen werden"
+  },
+  "loading": "Issues werden von GitHub geladen…",
+  "empty": {
+    "reviews": {
+      "title": "Alles erledigt!",
+      "description": "Derzeit wartet kein Pull Request auf Ihr Review."
+    },
+    "issues": {
+      "title": "Keine Issues gefunden",
+      "description": "Keine Issues entsprechen der ausgewählten Ansicht."
+    },
+    "filtered": "Keine Issues entsprechen Ihren aktuellen Such- und Filterkriterien."
+  },
+  "filters": {
+    "search": {
+      "ariaLabel": "Issues durchsuchen",
+      "placeholder": "Nach Titel, #Nummer, Autor oder Beschreibung suchen…"
+    },
+    "awaiting": {
+      "label": "Ausstehend",
+      "tooltip": "Nur zugewiesene Issues anzeigen, die auf Ihre Entscheidung warten"
+    },
+    "labelPlaceholder": "Nach Label filtern…",
+    "assigneePlaceholder": "Nach zugewiesener Person filtern…"
+  },
+  "issueTable": {
+    "columns": {
+      "issue": "Issue",
+      "repository": "Repository",
+      "labels": "Labels",
+      "assignees": "Zugewiesen"
+    },
+    "awaitingMark": {
+      "ariaLabel": "Wartet auf Entscheidung",
+      "tooltip": "Wartet auf Ihre Entscheidung. Von der Prüfung zugewiesener Issues {{when}} gefunden; „Annehmen“ startet einen Plan in {{project}}.",
+      "tooltip_justNow": "Wartet auf Ihre Entscheidung. Von der Prüfung zugewiesener Issues gerade eben gefunden; „Annehmen“ startet einen Plan in {{project}}."
+    },
+    "actions": {
+      "fireOff": {
+        "label": "In Tendril starten",
+        "tooltip": "Dieses Issue in Tendril starten"
+      },
+      "viewDetails": {
+        "label": "Details anzeigen",
+        "tooltip": "Issue-Details anzeigen"
+      },
+      "openGitHub": {
+        "label": "In GitHub öffnen",
+        "tooltip": "Issue auf GitHub öffnen"
+      },
+      "accept": {
+        "label": "Annehmen",
+        "tooltip": "Annehmen: einen Plan für dieses Issue in {{project}} starten"
+      },
+      "more": {
+        "label": "Weitere Aktionen",
+        "tooltip": "In GitHub öffnen oder verwerfen"
+      },
+      "dismiss": {
+        "label": "Verwerfen"
+      }
+    }
+  },
+  "reviewTable": {
+    "columns": {
+      "pullRequest": "Pull Request",
+      "repository": "Repository",
+      "updated": "Aktualisiert"
+    },
+    "actions": {
+      "openGitHub": {
+        "label": "Auf GitHub prüfen",
+        "tooltip": "Pull Request auf GitHub öffnen"
+      },
+      "viewDetails": {
+        "label": "Details anzeigen",
+        "tooltip": "Review-Details anzeigen"
+      }
+    }
+  },
+  "sheet": {
+    "titleFallback": "Issue",
+    "assigned": "Zugewiesen: {{assignees}}",
+    "openOnGitHub": "Auf GitHub öffnen",
+    "dismiss": {
+      "label": "Verwerfen",
+      "tooltip": "Endgültig verwerfen: Die Prüfung zugewiesener Issues schlägt dieses Issue nicht erneut vor"
+    },
+    "accept": {
+      "label": "Annehmen",
+      "tooltip": "Einen Plan für dieses Issue in {{project}} starten"
+    },
+    "fireOff": "In Tendril starten",
+    "noDescription": "Keine Beschreibung angegeben."
+  },
+  "pullRequests": {
+    "title": "Pull Requests",
+    "status": {
+      "open": "Offen",
+      "merged": "Gemergt",
+      "closed": "Geschlossen",
+      "unknown": "Unbekannt"
+    },
+    "statusTooltip": {
+      "unknown": "Unbekannt: Der Daemon konnte diesen Pull Request nicht auflösen (zuletzt geprüft: {{lastChecked}}). Synchronisieren Sie neu, um es erneut zu versuchen.",
+      "unknown_neverChecked": "Unbekannt: Der Daemon konnte diesen Pull Request nicht auflösen (noch nie geprüft). Synchronisieren Sie neu, um es erneut zu versuchen.",
+      "merged": "Gemergt (zuletzt geprüft: {{lastChecked}}). Gemergte Pull Requests werden nie erneut geprüft.",
+      "merged_neverChecked": "Gemergt (noch nie geprüft). Gemergte Pull Requests werden nie erneut geprüft.",
+      "other": "{{status}}, Stand der letzten Prüfung: {{lastChecked}}.",
+      "other_neverChecked": "{{status}}, noch nie geprüft."
+    },
+    "syncNotice": {
+      "unreachableAll": "Es konnte kein Status aktualisiert werden: GitHub war für {{repos}} nicht erreichbar. Prüfen Sie, ob die `{{cli}}`-CLI installiert und authentifiziert ist (`{{command}}`).",
+      "unreachableSome": "Einige Status sind unverändert: GitHub war für {{repos}} nicht erreichbar. Prüfen Sie, ob die `{{cli}}`-CLI installiert und authentifiziert ist (`{{command}}`).",
+      "nothingToRefresh": "Nichts zu aktualisieren: {{fresh}} kürzlich geprüft, {{merged}} bereits gemergt.",
+      "alreadyRunning": "Es läuft bereits ein Synchronisationsdurchlauf."
+    },
+    "columns": {
+      "plan": "Plan",
+      "project": "Projekt",
+      "status": "Status",
+      "pr": "PR",
+      "tokens": "Tokens",
+      "cost": "Kosten",
+      "repository": "Repository",
+      "branch": "Branch"
+    },
+    "actions": {
+      "viewPlan": "Plan anzeigen",
+      "followUp": "Folge-Plan erstellen",
+      "openPr": "PR öffnen",
+      "resync": "Neu synchronisieren"
+    },
+    "empty": {
+      "title": "Keine Pull Requests",
+      "description": "Für noch keinen Plan ist ein Pull Request erfasst. Erstellen Sie einen auf dem Tab „Review“, dann erscheint er hier.",
+      "loadFailed": "Die Pull-Request-Liste konnte nicht geladen werden, daher kann nichts angezeigt werden.",
+      "filtered": "Keine Pull Requests entsprechen Ihrer aktuellen Suchanfrage oder Ihren Filterkriterien."
+    },
+    "search": {
+      "ariaLabel": "Pull Requests durchsuchen",
+      "placeholder": "Nach Plan, Projekt, Repository oder Branch suchen…"
+    },
+    "statusFilterPlaceholder": "Nach Status filtern…",
+    "resyncAll": "Alle neu synchronisieren",
+    "resyncing": "Wird neu synchronisiert…",
+    "sheet": {
+      "titleFallback": "Plan",
+      "loadingRevision": "Revision wird geladen…",
+      "notFound": "Plan nicht gefunden oder leer."
+    }
+  }
+}

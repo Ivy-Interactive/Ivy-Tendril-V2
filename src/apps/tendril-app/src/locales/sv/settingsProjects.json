@@ -1,1 +1,359 @@
-{}
+{
+  "view": {
+    "ariaLabel": "Projektkonfiguration",
+    "subtitle": "Projektkonfiguration",
+    "rename": "Byt namn på projekt"
+  },
+  "notifications": {
+    "saved": "Sparat",
+    "cloned": "Klonat",
+    "renamed": "Namnet har ändrats"
+  },
+  "saveError": "Det gick inte att spara projektet: {{error}}",
+  "rowActions": {
+    "edit": "Redigera"
+  },
+  "bladeFooter": {
+    "add": "Lägg till"
+  },
+  "basic": {
+    "title": "Grundläggande",
+    "hint": "Projektets färg och den AI-kontext som ges till varje agent som arbetar med det.",
+    "color": {
+      "label": "Färg",
+      "hint": "Ett Ivy-färgnamn, så som config.yaml lagrar det."
+    },
+    "context": {
+      "label": "Kontext",
+      "placeholder": "Det här bör en agent veta om projektet…"
+    },
+    "saved": "Projektet har sparats"
+  },
+  "repositories": {
+    "title": "Arkiv",
+    "hint": "Källarkiv och den basgren som varje plan förgrenas från.",
+    "empty": "Inga arkiv än.",
+    "baseBranch": {
+      "ariaLabel": "Basgren för {{path}}",
+      "placeholder": "Basgren",
+      "saved": "Basgrenen har sparats för {{path}}"
+    },
+    "remove": {
+      "ariaLabel": "Ta bort {{path}}",
+      "consequence": "Utcheckningen på disken lämnas orörd — det här gör bara att nya planer för projektet inte längre baseras på den.",
+      "removed": "{{path}} har tagits bort"
+    },
+    "add": {
+      "ariaLabel": "Arkiv-URL eller lokal sökväg",
+      "placeholder": "Arkiv-URL eller lokal sökväg",
+      "button": "Lägg till arkiv",
+      "cloning": "Klonar…",
+      "invalidPath": "Ogiltig arkivsökväg.",
+      "added": "{{path}} har lagts till",
+      "cloned": "Arkivet har klonats till {{path}}",
+      "failed": "Det gick inte att lägga till arkivet: {{error}}"
+    },
+    "note": "En fjärr-URL klonas till TENDRIL_HOME, och raden visar var den klonades i stället för URL:en; en lokal sökväg sparas som den skrevs."
+  },
+  "reviewActions": {
+    "title": "Granskningsåtgärder",
+    "hint": "Snabbstartsknappar som visas under granskning för att förhandsgranska eller köra appen.",
+    "addButton": "Lägg till granskningsåtgärd",
+    "addTitle": "Lägg till granskningsåtgärd",
+    "editTitle": "Redigera granskningsåtgärd",
+    "columns": {
+      "name": "Åtgärdsnamn",
+      "command": "Kommando",
+      "condition": "Villkor"
+    },
+    "empty": "Inga granskningsåtgärder för det här projektet.",
+    "removal": {
+      "consequence": "Den erbjuds inte längre på projektets planer i Granskning, och de återstående åtgärderna flyttas ihop kring dess plats i körordningen."
+    },
+    "saved": "Granskningsåtgärden ”{{name}}” har sparats",
+    "deleted": "Granskningsåtgärden ”{{name}}” har tagits bort"
+  },
+  "verifications": {
+    "title": "Verifieringar",
+    "hint": "Kvalitetskontroller som krävs innan planer markeras som slutförda. Dra för att ange körordningen.",
+    "addButton": "Lägg till verifiering",
+    "addTitle": "Lägg till verifiering",
+    "empty": "Inga verifieringar är definierade i config.yaml, så det finns inget att aktivera. Lägg till en för att skapa den och aktivera den här.",
+    "updated": "Verifieringarna har uppdaterats för {{project}}",
+    "orderSaved": "Körordningen för verifieringar har sparats",
+    "added": "Verifieringen har lagts till",
+    "addFailed": "Det gick inte att lägga till verifieringen: {{error}}"
+  },
+  "ports": {
+    "title": "Portar",
+    "hint": "Namngivna tjänsteportar. En plan använder en ledig port om standardporten är upptagen.",
+    "addButton": "Lägg till port",
+    "addTitle": "Lägg till port",
+    "editTitle": "Redigera port",
+    "columns": {
+      "name": "Namn",
+      "defaultPort": "Standardport",
+      "description": "Beskrivning"
+    },
+    "empty": "Inga tjänsteportar har konfigurerats. Definiera namngivna portar för dynamisk portallokering mellan samtidiga plangranskningar.",
+    "mergeLimitation": "Portar är en mappning, och PUT /api/config djupsammanfogar mappningar, så en port kan läggas till eller ändras här men inte tas bort eller byta namn.",
+    "saved": "Porten ”{{name}}” har sparats"
+  },
+  "envFiles": {
+    "title": "Miljöfiler",
+    "hint": "Filer som återskapas i varje planworktree, eftersom det startar utan ospårade .env-filer.",
+    "addButton": "Lägg till miljöfil",
+    "addTitle": "Lägg till miljöfil",
+    "editTitle": "Redigera miljöfil",
+    "columns": {
+      "path": "Sökväg",
+      "template": "Mall",
+      "overrides": "Åsidosättningar"
+    },
+    "empty": "Inga miljöfiler har konfigurerats. Definiera miljöfiler för att materialisera .env-mallar och injicera variabler i planernas worktrees.",
+    "removal": {
+      "consequence": "Dess variabler injiceras inte längre i nya planworktrees. Filer som redan har materialiserats i befintliga worktrees lämnas som de är."
+    },
+    "saved": "Miljöfilen ”{{path}}” har sparats",
+    "deleted": "Miljöfilen ”{{path}}” har tagits bort"
+  },
+  "agentBehavior": {
+    "title": "Agentbeteende",
+    "autoImplement": {
+      "label": "Granskning av artefakter / Policy för automatisk implementering",
+      "options": {
+        "autoImplementPlans": "Implementera planer automatiskt",
+        "alwaysAskReview": "Begär alltid granskning"
+      }
+    },
+    "saved": "Agentbeteendet har sparats"
+  },
+  "security": {
+    "title": "Säkerhet",
+    "hint": "Sandlåda, fil- och nätverksregler samt terminalbekräftelse för det här projektet.",
+    "preset": {
+      "label": "Säkerhetsförinställning",
+      "hint": "Alla val utom Anpassad åsidosätter fälten för sandlåda samt fil- och nätverksåtkomst nedan.",
+      "options": {
+        "custom": "Anpassad",
+        "permissive": "Tillåtande",
+        "restricted": "Begränsad",
+        "strict": "Strikt"
+      }
+    },
+    "sandboxMode": {
+      "label": "Sandlådeläge",
+      "hint": "Ärv allmän inställning innebär ingen sandlåda. Gäller: {{effective}}.",
+      "options": {
+        "inheritGeneral": "Ärv allmän inställning",
+        "enabled": "Aktiverat",
+        "disabled": "Inaktiverat"
+      }
+    },
+    "outsideFileAccess": {
+      "label": "Filåtkomst utanför arkivet",
+      "hint": "Neka tar bort alla filregler nedan. Gäller: {{effective}}.",
+      "options": {
+        "allow": "Tillåt",
+        "ask": "Fråga",
+        "deny": "Neka"
+      }
+    },
+    "terminalAutoExecution": {
+      "label": "Automatisk exekvering i terminalen",
+      "hint": "Påverkas inte av förinställningen. Gäller: {{effective}}.",
+      "options": {
+        "inheritGeneral": "Ärv allmän inställning",
+        "alwaysProceed": "Fortsätt alltid",
+        "alwaysAsk": "Fråga alltid"
+      }
+    },
+    "filePermissions": {
+      "label": "Filbehörigheter",
+      "hint": "En `{{syntax}}` per rad. {{allow}} lägger till en skrivbar katalog; {{deny}} nekar {{write}} och {{edit}} för sökvägen."
+    },
+    "networkRules": {
+      "label": "Regler för nätverksåtkomst",
+      "hintAllowed": "En `{{syntax}}` per rad. En enda {{deny}} stänger av nätverksåtkomsten helt. Gäller: tillåten.",
+      "hintDenied": "En `{{syntax}}` per rad. En enda {{deny}} stänger av nätverksåtkomsten helt. Gäller: nekad."
+    },
+    "allowedCommands": {
+      "label": "Tillåtna terminalkommandon",
+      "hint": "Ett kommando per rad, vart och ett tillåtet som `{{syntax}}`."
+    },
+    "enforcement": {
+      "enforces": "{{agent}} tillämpar: {{controls, list(style: narrow)}}.",
+      "enforcesNone": "{{agent}} tillämpar: ingen av dessa kontroller.",
+      "ignored": "Ignoreras av {{agent}}: {{controls, list(style: narrow)}}. De nycklarna skrivs ändå och respekteras av agenter som stöder dem.",
+      "controls": {
+        "sandbox": "sandlådeläge",
+        "network": "nätverksåtkomst",
+        "terminalPrompt": "terminalbekräftelse",
+        "fileRules": "fil- och kommandoregler"
+      }
+    },
+    "saved": "Säkerhetsinställningarna har sparats för {{project}}"
+  },
+  "mcpServers": {
+    "title": "Lokala behörigheter",
+    "hint": "Anpassade Model Context Protocol-servrar för det här projektet.",
+    "addButton": "Lägg till MCP-server",
+    "addTitle": "Lägg till MCP-server",
+    "editTitle": "Redigera MCP-server",
+    "columns": {
+      "name": "Namn",
+      "command": "Kommando",
+      "disabled": "Inaktiverad"
+    },
+    "disabledValue": {
+      "yes": "Ja",
+      "no": "Nej"
+    },
+    "empty": "Inga MCP-servrar har konfigurerats för det här projektet.",
+    "removal": {
+      "consequence": "Agenter som arbetar med projektet får inte längre dess verktyg. Det här tar bort projektets referens till servern, inte själva serverdefinitionen."
+    },
+    "saved": "MCP-servern ”{{name}}” har sparats",
+    "deleted": "MCP-servern ”{{name}}” har tagits bort"
+  },
+  "skills": {
+    "title": "Anpassningar",
+    "hint": "Anpassade färdigheter och promptinstruktioner för agenter som arbetar med det här projektet.",
+    "addButton": "Lägg till anpassad färdighet",
+    "addTitle": "Lägg till anpassad färdighet",
+    "editTitle": "Redigera anpassad färdighet",
+    "columns": {
+      "name": "Namn",
+      "description": "Beskrivning",
+      "path": "Sökväg"
+    },
+    "empty": "Inga anpassade färdigheter har konfigurerats för det här projektet.",
+    "removal": {
+      "consequence": "Agenter som arbetar med projektet får den inte längre. Det här tar bort projektets referens till färdigheten, inte färdighetens egna filer."
+    },
+    "saved": "Färdigheten ”{{name}}” har sparats",
+    "deleted": "Färdigheten ”{{name}}” har tagits bort",
+    "memoryNote": "Projektminnen sparas som Markdown-filer under {{path}}. Daemonen exponerar ingen API-väg för dem, så de kan inte redigeras här än."
+  },
+  "dangerZone": {
+    "title": "Farozon",
+    "remove": {
+      "button": "Avregistrera projekt",
+      "description": "Tar bort projektet från config.yaml. Klonade arkiv, planmappar och historik lämnas kvar på disken, så om du lägger till projektet igen med samma namn återställs det."
+    },
+    "delete": {
+      "button": "Radera projekt",
+      "description": "Raderar permanent projektets planer, dess klonade arkiv under {{path}}, dess databasrader och dess konfigurationspost. Det går inte att ångra, och du ombeds först skriva projektnamnet."
+    }
+  },
+  "reviewActionBlade": {
+    "name": {
+      "label": "Namn",
+      "placeholder": "Åtgärdsnamn…"
+    },
+    "command": {
+      "label": "Kommando",
+      "placeholder": "t.ex. dotnet test"
+    },
+    "condition": {
+      "label": "Villkor",
+      "placeholder": "t.ex. {{example}}"
+    }
+  },
+  "verificationBlade": {
+    "name": {
+      "label": "Namn",
+      "placeholder": "Verifieringsnamn…",
+      "duplicate": "Det finns redan en verifiering med namnet ”{{name}}”."
+    },
+    "prompt": {
+      "label": "Prompt",
+      "placeholder": "Verifieringsprompt…"
+    }
+  },
+  "mcpServerBlade": {
+    "name": {
+      "label": "Namn",
+      "placeholder": "Servernamn (t.ex. sqlite)…"
+    },
+    "command": {
+      "label": "Kommando",
+      "placeholder": "Körbar fil för kommandot (t.ex. npx)…"
+    },
+    "arguments": {
+      "label": "Argument",
+      "placeholder": "Argument (t.ex. -y @modelcontextprotocol/server-sqlite)…",
+      "hint": "Delas vid blanksteg, på samma sätt som EditMcpServerBladeView delar dem."
+    },
+    "environment": {
+      "label": "Miljövariabler",
+      "hint": "En KEY=VALUE per rad."
+    },
+    "disabled": "Inaktiverad"
+  },
+  "skillBlade": {
+    "name": {
+      "label": "Namn",
+      "placeholder": "Färdighetsnamn (t.ex. code-review)…"
+    },
+    "description": {
+      "label": "Beskrivning",
+      "placeholder": "Kort beskrivning…"
+    },
+    "instructions": {
+      "label": "Instruktioner",
+      "placeholder": "Markdown-instruktioner för agenten…"
+    },
+    "path": {
+      "label": "Fil-/mappsökväg",
+      "placeholder": "Sökväg till färdighetens mapp eller fil (t.ex. %TENDRIL_HOME%/Skills/my-skill)…"
+    },
+    "disabled": "Inaktiverad"
+  },
+  "portBlade": {
+    "name": {
+      "label": "Namn",
+      "placeholder": "t.ex. backend",
+      "hint": "Portidentifierare som refereras i miljöåsidosättningar via platshållare som {{placeholder}}."
+    },
+    "defaultPort": {
+      "label": "Standardport",
+      "invalid": "Standardporten måste vara mellan 1 och 65535.",
+      "hint": "Önskad port. Om den redan är upptagen allokerar Tendril en ledig port i stället."
+    },
+    "description": {
+      "label": "Beskrivning",
+      "placeholder": "Vad som lyssnar här…"
+    }
+  },
+  "envFileBlade": {
+    "path": {
+      "label": "Sökväg",
+      "placeholder": "t.ex. apps/web/.env",
+      "hint": "Relativ sökväg till miljöfilen som återskapas i planens worktree."
+    },
+    "template": {
+      "label": "Mall",
+      "placeholder": "t.ex. .env.example",
+      "hint": "Valfri basmall som kopieras till worktreet innan åsidosättningarna tillämpas."
+    },
+    "overrides": {
+      "label": "Åsidosättningar",
+      "hint": "KEY=VALUE-rader med stöd för platshållarna {{ports}}, {{env}} och {{variable}}."
+    }
+  },
+  "nameEditor": {
+    "ariaLabel": "Projektnamn",
+    "confirm": "Bekräfta namnbyte",
+    "cancel": "Avbryt namnbyte",
+    "duplicate": "Det finns redan ett projekt med namnet ”{{name}}”.",
+    "renamed": "Projektet har bytt namn till ”{{name}}”"
+  },
+  "removalKinds": {
+    "repository": "arkiv",
+    "reviewAction": "granskningsåtgärd",
+    "environmentFile": "miljöfil",
+    "mcpServer": "MCP-server",
+    "customSkill": "anpassad färdighet"
+  }
+}
