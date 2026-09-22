@@ -1,1 +1,230 @@
-{}
+{
+  "workspace": {
+    "moreActions": {
+      "label": "More actions",
+      "tooltip": "More",
+      "menuAriaLabel": "More actions"
+    },
+    "source": "Source",
+    "verifications": "Verifications",
+    "questions": "Questions",
+    "resizer": {
+      "tooltip": "Drag to resize, double-click to reset",
+      "ariaLabel": "Resize chat"
+    },
+    "chatAriaLabel": "Plan chat"
+  },
+  "diffView": {
+    "empty": "No diff to display",
+    "fileCount_one": "{{count}} file",
+    "fileCount_other": "{{count}} files",
+    "jumpToFile": {
+      "ariaLabel": "Jump to file",
+      "placeholder": "Jump to file…"
+    },
+    "untitledFile": "Diff {{index}}",
+    "untitledPath": "Diff",
+    "viewed": "Viewed",
+    "commentToggle": {
+      "noneTooltip": "No comments on this file",
+      "showTooltip_one": "Show {{count}} comment",
+      "showTooltip_other": "Show {{count}} comments",
+      "hideTooltip_one": "Hide {{count}} comment",
+      "hideTooltip_other": "Hide {{count}} comments",
+      "showAriaLabel": "Show comments",
+      "hideAriaLabel": "Hide comments"
+    },
+    "comment": {
+      "draftAuthor": "Agent Instruction (Draft)",
+      "resolvedBadge": "✓ Resolved",
+      "edit": "Edit",
+      "reopenTooltip": "Reopen comment",
+      "resolveTooltip": "Mark comment as resolved",
+      "unresolve": "Unresolve",
+      "resolve": "Resolve",
+      "deleteTooltip": "Delete comment",
+      "deleteAriaLabel": "Delete comment",
+      "delete": "Delete"
+    },
+    "commentForm": {
+      "title": "Agent Instruction",
+      "editTitle": "Edit Agent Instruction",
+      "placeholder": "Enter instruction for the agent at this line...",
+      "cancel": "Cancel",
+      "add": "Add Comment",
+      "update": "Update Comment"
+    }
+  },
+  "changesView": {
+    "empty": "No file changes.",
+    "treeAriaLabel": "Changed files",
+    "fileCount_one": "{{count}} file",
+    "fileCount_other": "{{count}} files",
+    "jumpToFile": {
+      "ariaLabel": "Jump to file",
+      "placeholder": "Jump to file…"
+    }
+  },
+  "gitView": {
+    "atRisk": {
+      "title": "Commits at risk",
+      "unreachable_one": "{{count}} commit is reachable from no branch, tag or remote: <hashes/>. They exist only as loose objects, so the next <code>{{gcCommand}}</code> in the repo destroys them. Give one a ref to keep it: <code>{{recoverCommand}}</code>.",
+      "unreachable_other": "{{count}} commits are reachable from no branch, tag or remote: <hashes/>. They exist only as loose objects, so the next <code>{{gcCommand}}</code> in the repo destroys them. Give one a ref to keep it: <code>{{recoverCommand}}</code>.",
+      "missing_one": "{{count}} commit is not found in the plan's repos at all: <hashes/>. Either the object was already pruned, or the repo it was made in is not one of the plan's repos.",
+      "missing_other": "{{count}} commits are not found in the plan's repos at all: <hashes/>. Either the object was already pruned, or the repo it was made in is not one of the plan's repos.",
+      "hashSeparator": ", ",
+      "badge": {
+        "unreachable": "unreachable",
+        "missing": "not found"
+      }
+    },
+    "commitTable": {
+      "commit": "Commit",
+      "message": "Message",
+      "files": "Files",
+      "unresolved": "(unresolved commit)"
+    },
+    "worktrees": {
+      "heading": "Worktrees",
+      "emptyFinished": "The worktrees were removed after the plan reached its final state.",
+      "emptyNeverCreated": "The worktrees were never created, or were reclaimed by the stale reaper once the plan sat idle past its window.",
+      "emptyUnknown": "The worktrees were removed, or were never created.",
+      "copyPath": "Copy path to {{name}}",
+      "repository": "Repository",
+      "base": "Base",
+      "worktree": "Worktree",
+      "head": "Head",
+      "detachedHead": "detached HEAD",
+      "uncommittedChanges": "This worktree has uncommitted changes. They belong to no commit, so nothing at all is keeping them.",
+      "noCommits": "(no commits)"
+    },
+    "commits": {
+      "heading": "Commits",
+      "description": "Recorded on the plan but reached from no worktree the plan still has — usually because the worktree was removed once the PR merged."
+    },
+    "pullRequests": {
+      "heading": "Pull Requests",
+      "repository": "Repository",
+      "pr": "PR"
+    },
+    "empty": "This plan has no worktrees, commits, or pull requests yet."
+  },
+  "alert": {
+    "note": "Note",
+    "tip": "Tip",
+    "important": "Important",
+    "warning": "Warning",
+    "caution": "Caution"
+  },
+  "diagram": {
+    "loading": "Loading diagram...",
+    "invalidGraphviz": "Invalid Graphviz DOT syntax",
+    "invalidMermaid": "Invalid Mermaid diagram syntax"
+  },
+  "codeBlock": {
+    "copy": "Copy to clipboard"
+  },
+  "image": {
+    "loadFailed": "Image failed to load",
+    "close": "Close"
+  },
+  "search": {
+    "placeholder": "Find in document...",
+    "ariaLabel": "Find in document",
+    "noMatches": "No matches",
+    "position": "{{current}} of {{total}}",
+    "previous": "Previous match",
+    "next": "Next match",
+    "close": "Close search"
+  },
+  "annotation": {
+    "quote": "“{{text}}”",
+    "quoteTruncated": "“{{text}}...”",
+    "add": {
+      "placeholder": "Add a comment...",
+      "cancel": "Cancel",
+      "submit": "Add"
+    },
+    "edit": {
+      "resolvedBadge": "✓ Resolved",
+      "placeholder": "Edit comment...",
+      "reopenTooltip": "Reopen annotation",
+      "resolveTooltip": "Mark annotation as resolved",
+      "unresolve": "Unresolve",
+      "resolve": "Resolve",
+      "deleteTooltip": "Delete annotation",
+      "delete": "Delete",
+      "cancel": "Cancel",
+      "save": "Save"
+    },
+    "selectionToolbar": {
+      "addComment": "Add Comment"
+    }
+  },
+  "wireframe": {
+    "invalid": "This wireframe block is not valid.",
+    "placeholder": "Wireframe: <strong>{{name}}</strong>. Open the plan to view it.",
+    "lastGoodBuild": "Showing the last version that built",
+    "paused": "Live updates paused",
+    "openFullSize": "Open Full Size",
+    "building": "Building wireframe...",
+    "missing": "This plan has no wireframe named <strong>{{name}}</strong>.",
+    "buildFailed": "This wireframe does not build.",
+    "unavailable": "The wireframe preview is not available right now.",
+    "retry": "Retry",
+    "close": "Close",
+    "errors": {
+      "empty": "The block names no wireframe. Add a line such as `{{example}}`.",
+      "notYaml": "The block is not valid YAML.",
+      "notMapping": "Write the block as `{{example}}`, optionally with {{height}} and {{viewport}}.",
+      "unknownKey": "Unknown key '{{key}}'. Use {{name}}, {{height}} or {{viewport}}.",
+      "badName": "{{name}} must be a lowercase slug such as {{example}}.",
+      "badHeight": "{{height}} must be a whole number of pixels between 1 and {{max}}.",
+      "badViewport": "{{viewport}} must be {{desktop}}, {{tablet}} or {{mobile}}."
+    }
+  },
+  "questions": {
+    "recommended": "Recommended",
+    "optional": "Optional",
+    "selectAll": "Select all that apply",
+    "other": "Other",
+    "otherPlaceholder": "Type your answer",
+    "otherAriaLabel": "Other answer for {{question}}",
+    "notAnswered": {
+      "skipped": "Not answered (not required)",
+      "agentDecided": "Not answered (agent decided)"
+    },
+    "clear": "Clear",
+    "clearAllAriaLabel": "Clear all answers in this block",
+    "clearOneAriaLabel": "Clear answer",
+    "submit": "Submit response",
+    "submitNote": {
+      "noAnswers": "Answer a question to submit.",
+      "oneUnanswered": "Unanswered: \"{{title}}\". Submitting leaves it to me.",
+      "manyUnanswered_one": "{{count}} question unanswered. Submitting leaves them to me.",
+      "manyUnanswered_other": "{{count}} questions unanswered. Submitting leaves them to me."
+    }
+  },
+  "answersCard": {
+    "ariaLabel": "Submitted answers",
+    "title": "Answers",
+    "notAnswered": {
+      "skipped": "Not answered (not required)",
+      "agentDecided": "Not answered (agent decided)"
+    }
+  },
+  "verificationList": {
+    "dragHandle": "Drag handle",
+    "required": "Required",
+    "a11y": {
+      "roleDescription": "sortable",
+      "instructions": "To pick up a draggable item, press the space bar. While dragging, use the arrow keys to move the item. Press space again to drop the item in its new position, or press escape to cancel.",
+      "pickedUp": "Picked up draggable item {{active}}.",
+      "movedOver": "Draggable item {{active}} was moved over droppable area {{over}}.",
+      "movedAway": "Draggable item {{active}} is no longer over a droppable area.",
+      "droppedOver": "Draggable item {{active}} was dropped over droppable area {{over}}",
+      "dropped": "Draggable item {{active}} was dropped.",
+      "cancelled": "Dragging was cancelled. Draggable item {{active}} was dropped."
+    }
+  }
+}

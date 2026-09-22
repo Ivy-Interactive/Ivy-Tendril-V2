@@ -4,6 +4,7 @@ import type { PlanQuestion, QuestionOption } from "../PlanMarkdown/questionsSche
 import { DescriptionMarkdown } from "./DescriptionMarkdown";
 import { entryTitle, hasEntries, unansweredRequired } from "./answers";
 import type { AnswerMap } from "./answers";
+import { useTranslation } from "@/i18n/uiPlanWorkspace";
 import "./tendril-questions.css";
 
 export interface QuestionsSubmitAction {
@@ -57,55 +58,65 @@ const OptionCard: React.FC<OptionCardProps> = ({
   multiple,
   groupName,
   onSelect,
-}) => (
-  <div
-    className="tq-option"
-    data-selected={selected}
-    onClick={(e) => {
-      if (ignoresCardClick(e)) return;
-      onSelect();
-    }}
-  >
-    <label className="tq-option-main">
-      <input
-        type={multiple ? "checkbox" : "radio"}
-        name={groupName}
-        className="tq-option-input"
-        checked={selected}
-        onChange={onSelect}
-      />
-      {multiple && (
-        <span className="tq-option-box" aria-hidden="true">
-          <Check size={12} strokeWidth={3} />
+}) => {
+  const { t } = useTranslation("uiPlanWorkspace");
+  return (
+    <div
+      className="tq-option"
+      data-selected={selected}
+      onClick={(e) => {
+        if (ignoresCardClick(e)) return;
+        onSelect();
+      }}
+    >
+      <label className="tq-option-main">
+        <input
+          type={multiple ? "checkbox" : "radio"}
+          name={groupName}
+          className="tq-option-input"
+          checked={selected}
+          onChange={onSelect}
+        />
+        {multiple && (
+          <span className="tq-option-box" aria-hidden="true">
+            <Check size={12} strokeWidth={3} />
+          </span>
+        )}
+        <span className="tq-option-title">
+          {option.title}
+          {option.recommended && (
+            <span className="tq-option-recommended">{t("questions.recommended")}</span>
+          )}
         </span>
+      </label>
+      {option.description && (
+        <div className="tq-option-description">
+          <DescriptionMarkdown text={option.description} />
+        </div>
       )}
-      <span className="tq-option-title">
-        {option.title}
-        {option.recommended && <span className="tq-option-recommended">Recommended</span>}
-      </span>
-    </label>
-    {option.description && (
-      <div className="tq-option-description">
-        <DescriptionMarkdown text={option.description} />
-      </div>
-    )}
-  </div>
-);
-
-const QuestionHeading: React.FC<{ question: PlanQuestion }> = ({ question }) => (
-  <>
-    {question.header && <div className="tq-question-header">{question.header}</div>}
-    <div className="tq-question-title">
-      {question.title}
-      {question.optional && <span className="tq-question-optional">Optional</span>}
     </div>
-    {question.description && (
-      <div className="tq-question-description">
-        <DescriptionMarkdown text={question.description} />
+  );
+};
+
+const QuestionHeading: React.FC<{ question: PlanQuestion }> = ({ question }) => {
+  const { t } = useTranslation("uiPlanWorkspace");
+  return (
+    <>
+      {question.header && <div className="tq-question-header">{question.header}</div>}
+      <div className="tq-question-title">
+        {question.title}
+        {question.optional && (
+          <span className="tq-question-optional">{t("questions.optional")}</span>
+        )}
       </div>
-    )}
-  </>
-);
+      {question.description && (
+        <div className="tq-question-description">
+          <DescriptionMarkdown text={question.description} />
+        </div>
+      )}
+    </>
+  );
+};
 
 interface QuestionCardProps {
   question: PlanQuestion;
@@ -127,6 +138,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
   onChange,
   onOtherOpenChange,
 }) => {
+  const { t } = useTranslation("uiPlanWorkspace");
   const options = question.options ?? [];
   const hasOptions = options.length > 0;
   const optionValues = new Set(options.map((option) => option.value));
@@ -182,8 +194,8 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       type="text"
       className="tq-text-input"
       value={draft}
-      placeholder="Type your answer"
-      aria-label={`Other answer for ${question.title || question.id}`}
+      placeholder={t("questions.otherPlaceholder")}
+      aria-label={t("questions.otherAriaLabel", { question: question.title || question.id })}
       onChange={(e) => writeOther(e.target.value)}
     />
   );
@@ -196,7 +208,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
     >
       <QuestionHeading question={question} />
       {question.multiple && hasOptions && (
-        <div className="tq-question-hint">Select all that apply</div>
+        <div className="tq-question-hint">{t("questions.selectAll")}</div>
       )}
       <div className="tq-options">
         {options.map((option) => (
@@ -233,7 +245,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
                   <Check size={12} strokeWidth={3} />
                 </span>
               )}
-              <span className="tq-option-title">Other</span>
+              <span className="tq-option-title">{t("questions.other")}</span>
             </label>
             {showOther && textInput}
           </div>
@@ -248,24 +260,29 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
 const ReadOnlyQuestion: React.FC<{ question: PlanQuestion; entries: string[] }> = ({
   question,
   entries,
-}) => (
-  <div className="tq-question" data-question-id={question.id}>
-    <QuestionHeading question={question} />
-    {entries.length > 0 ? (
-      <div className="tq-answer">
-        {entries.map((entry) => (
-          <span key={entry} className="tq-answer-value">
-            {entryTitle(question, entry)}
-          </span>
-        ))}
-      </div>
-    ) : (
-      <div className="tq-answer tq-answer--none">
-        {question.optional ? "Not answered (not required)" : "Not answered (agent decided)"}
-      </div>
-    )}
-  </div>
-);
+}) => {
+  const { t } = useTranslation("uiPlanWorkspace");
+  return (
+    <div className="tq-question" data-question-id={question.id}>
+      <QuestionHeading question={question} />
+      {entries.length > 0 ? (
+        <div className="tq-answer">
+          {entries.map((entry) => (
+            <span key={entry} className="tq-answer-value">
+              {entryTitle(question, entry)}
+            </span>
+          ))}
+        </div>
+      ) : (
+        <div className="tq-answer tq-answer--none">
+          {question.optional
+            ? t("questions.notAnswered.skipped")
+            : t("questions.notAnswered.agentDecided")}
+        </div>
+      )}
+    </div>
+  );
+};
 
 /**
  * The questions block as a form: every question of the block stacked, each with its option
@@ -282,6 +299,7 @@ export const QuestionsForm: React.FC<QuestionsFormProps> = ({
   onClear,
   submit,
 }) => {
+  const { t } = useTranslation("uiPlanWorkspace");
   const reactId = useId();
   const hasAnyAnswers = Object.values(answers).some(hasEntries);
   const showFooter = !readOnly && ((onClear && hasAnyAnswers) || submit);
@@ -319,9 +337,13 @@ export const QuestionsForm: React.FC<QuestionsFormProps> = ({
               type="button"
               className="tq-clear"
               onClick={onClear}
-              aria-label={questions.length > 1 ? "Clear all answers in this block" : "Clear answer"}
+              aria-label={
+                questions.length > 1
+                  ? t("questions.clearAllAriaLabel")
+                  : t("questions.clearOneAriaLabel")
+              }
             >
-              Clear
+              {t("questions.clear")}
             </button>
           )}
           {submit && (
@@ -332,7 +354,7 @@ export const QuestionsForm: React.FC<QuestionsFormProps> = ({
               title={submit.note}
               onClick={submit.onSubmit}
             >
-              {submit.label ?? "Submit response"}
+              {submit.label ?? t("questions.submit")}
             </button>
           )}
         </div>

@@ -9,6 +9,7 @@ import {
 } from "./PlanDiffView";
 import { getWidth, getHeight } from "@/lib/styles";
 import { NativeSelect } from "../ui/native-select";
+import { useTranslation } from "@/i18n/uiPlanWorkspace";
 import "./plan-diff.css";
 
 export interface ChangedFile {
@@ -208,6 +209,7 @@ export const PlanChangesView: React.FC<PlanChangesViewProps> = ({
   currentAuthor,
   showTree = true,
 }) => {
+  const { t } = useTranslation("uiPlanWorkspace");
   const dispatchEvent = eventHandler || onIvyEvent;
   const [containerRef, isNarrow] = useIsNarrow();
   const [selectedPath, setSelectedPath] = useState<string | null>(null);
@@ -247,7 +249,7 @@ export const PlanChangesView: React.FC<PlanChangesViewProps> = ({
   if (orderedFiles.length === 0) {
     return (
       <div ref={containerRef} style={style} className="text-muted-foreground p-4 text-sm">
-        No file changes.
+        {t("changesView.empty")}
       </div>
     );
   }
@@ -259,7 +261,7 @@ export const PlanChangesView: React.FC<PlanChangesViewProps> = ({
       className={`ivy-changes-view${isNarrow ? " ivy-changes-view-narrow" : ""}`}
     >
       {!isNarrow && showTree && (
-        <div role="tree" aria-label="Changed files" className="ivy-changes-tree">
+        <div role="tree" aria-label={t("changesView.treeAriaLabel")} className="ivy-changes-tree">
           <TreeRows
             node={tree}
             depth={0}
@@ -273,10 +275,10 @@ export const PlanChangesView: React.FC<PlanChangesViewProps> = ({
       {isNarrow && (
         <div className="ivy-changes-jump">
           <span className="text-xs text-muted-foreground shrink-0">
-            {orderedFiles.length} files
+            {t("changesView.fileCount", { count: orderedFiles.length })}
           </span>
           <NativeSelect
-            aria-label="Jump to file"
+            aria-label={t("changesView.jumpToFile.ariaLabel")}
             density="Small"
             wrapperClassName="flex-1 min-w-0"
             value={selectedPath ?? ""}
@@ -285,7 +287,7 @@ export const PlanChangesView: React.FC<PlanChangesViewProps> = ({
             }}
           >
             <option value="" disabled>
-              Jump to file…
+              {t("changesView.jumpToFile.placeholder")}
             </option>
             {orderedFiles.map((file) => (
               <option key={file.filePath} value={file.filePath}>

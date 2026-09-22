@@ -5,11 +5,21 @@ import { isMac } from "../../lib/shortcut";
 import { TuiBadge } from "../ui/TuiBadge";
 import { TuiKbd } from "../ui/TuiKbd";
 import { Tooltip } from "../ui/TuiTooltip";
+import { useTranslation, type TFunction } from "@/i18n/uiPlanWorkspace";
 
 interface Position {
   top: number;
   left: number;
 }
+
+/** How much of the selected text the popover quotes before cutting it short. */
+const QUOTE_LENGTH = 50;
+
+/** The selected text as the popover quotes it: in quotation marks, cut short past a length. */
+const quoteSelection = (text: string, t: TFunction): string =>
+  text.length > QUOTE_LENGTH
+    ? t("annotation.quoteTruncated", { text: text.slice(0, QUOTE_LENGTH) })
+    : t("annotation.quote", { text });
 
 interface AddAnnotationPopoverProps {
   position: Position;
@@ -29,6 +39,7 @@ export const AddAnnotationPopover: React.FC<AddAnnotationPopoverProps> = ({
   onAdd,
   onCancel,
 }) => {
+  const { t } = useTranslation("uiPlanWorkspace");
   const [comment, setComment] = useState("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -64,15 +75,12 @@ export const AddAnnotationPopover: React.FC<AddAnnotationPopoverProps> = ({
       className="tui-popover-shell pmv-popover"
       style={{ top: position.top, left: position.left, visibility: visible ? "visible" : "hidden" }}
     >
-      <div className="pmv-popover-quote">
-        &ldquo;{selectedText.slice(0, 50)}
-        {selectedText.length > 50 ? "..." : ""}&rdquo;
-      </div>
+      <div className="pmv-popover-quote">{quoteSelection(selectedText, t)}</div>
       <textarea
         ref={textareaRef}
         className="pmv-popover-textarea tui-comment-textarea"
         rows={3}
-        placeholder="Add a comment..."
+        placeholder={t("annotation.add.placeholder")}
         value={comment}
         onChange={(e) => setComment(e.target.value)}
         onKeyDown={(e) => {
@@ -84,14 +92,14 @@ export const AddAnnotationPopover: React.FC<AddAnnotationPopoverProps> = ({
       />
       <div className="pmv-popover-actions pmv-popover-actions--end">
         <button type="button" className="tui-btn tui-btn--ghost pmv-popover-btn" onClick={onCancel}>
-          Cancel
+          {t("annotation.add.cancel")}
         </button>
         <button
           type="button"
           className="tui-btn tui-btn--primary pmv-popover-btn"
           onClick={handleSubmit}
         >
-          Add
+          {t("annotation.add.submit")}
         </button>
       </div>
     </div>,
@@ -123,6 +131,7 @@ export const EditAnnotationPopover: React.FC<EditAnnotationPopoverProps> = ({
   onRemove,
   onCancel,
 }) => {
+  const { t } = useTranslation("uiPlanWorkspace");
   const [comment, setComment] = useState(annotation.comment);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
@@ -173,17 +182,14 @@ export const EditAnnotationPopover: React.FC<EditAnnotationPopoverProps> = ({
             <span className="pmv-popover-author-name">{annotation.author.trim()}</span>
           </div>
         )}
-        {isResolved && <TuiBadge kind="success">✓ Resolved</TuiBadge>}
+        {isResolved && <TuiBadge kind="success">{t("annotation.edit.resolvedBadge")}</TuiBadge>}
       </div>
-      <div className="pmv-popover-quote">
-        &ldquo;{annotation.selectedText.slice(0, 50)}
-        {annotation.selectedText.length > 50 ? "..." : ""}&rdquo;
-      </div>
+      <div className="pmv-popover-quote">{quoteSelection(annotation.selectedText, t)}</div>
       <textarea
         ref={textareaRef}
         className="pmv-popover-textarea tui-comment-textarea"
         rows={3}
-        placeholder="Edit comment..."
+        placeholder={t("annotation.edit.placeholder")}
         value={comment}
         onChange={(e) => setComment(e.target.value)}
         onKeyDown={(e) => {
@@ -196,24 +202,30 @@ export const EditAnnotationPopover: React.FC<EditAnnotationPopoverProps> = ({
       <div className="pmv-popover-actions pmv-popover-actions--between">
         <div className="flex items-center gap-1">
           {canResolve && onToggleResolve && (
-            <Tooltip content={isResolved ? "Reopen annotation" : "Mark annotation as resolved"}>
+            <Tooltip
+              content={
+                isResolved
+                  ? t("annotation.edit.reopenTooltip")
+                  : t("annotation.edit.resolveTooltip")
+              }
+            >
               <button
                 type="button"
                 className={`tui-btn pmv-popover-btn ${isResolved ? "tui-btn--ghost" : "pmv-popover-btn--success"}`}
                 onClick={onToggleResolve}
               >
-                {isResolved ? "Unresolve" : "Resolve"}
+                {isResolved ? t("annotation.edit.unresolve") : t("annotation.edit.resolve")}
               </button>
             </Tooltip>
           )}
           {canRemove && (
-            <Tooltip content="Delete annotation">
+            <Tooltip content={t("annotation.edit.deleteTooltip")}>
               <button
                 type="button"
                 className="tui-btn tui-btn--danger pmv-popover-btn pmv-popover-btn--danger"
                 onClick={onRemove}
               >
-                Delete
+                {t("annotation.edit.delete")}
               </button>
             </Tooltip>
           )}
@@ -224,14 +236,14 @@ export const EditAnnotationPopover: React.FC<EditAnnotationPopoverProps> = ({
             className="tui-btn tui-btn--ghost pmv-popover-btn"
             onClick={onCancel}
           >
-            Cancel
+            {t("annotation.edit.cancel")}
           </button>
           <button
             type="button"
             className="tui-btn tui-btn--primary pmv-popover-btn"
             onClick={handleSave}
           >
-            Save
+            {t("annotation.edit.save")}
           </button>
         </div>
       </div>
@@ -255,6 +267,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
   visible = true,
   onAddComment,
 }) => {
+  const { t } = useTranslation("uiPlanWorkspace");
   return createPortal(
     <div
       className="pmv-selection-toolbar"
@@ -275,7 +288,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
           <path d="m9 11-6 6v3h9l3-3" />
           <path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4" />
         </svg>
-        Add Comment
+        {t("annotation.selectionToolbar.addComment")}
         <TuiKbd keys={ADD_COMMENT_SHORTCUT} className="pmv-selection-toolbar-kbd" />
       </button>
     </div>,

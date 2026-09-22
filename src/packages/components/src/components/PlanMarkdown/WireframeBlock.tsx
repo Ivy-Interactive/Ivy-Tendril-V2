@@ -5,6 +5,7 @@ import { IconButton } from "../ui/IconButton";
 import { WireframeBaseContext } from "./wireframeContext";
 import { parseWireframeFence, VIEWPORT_WIDTHS } from "./wireframeSource";
 import type { WireframeSpec } from "./wireframeSource";
+import { Trans, useTranslation } from "@/i18n/uiPlanWorkspace";
 
 /**
  * Renders a `wireframe` fence as a live preview of the plan's wireframe.
@@ -14,14 +15,15 @@ import type { WireframeSpec } from "./wireframeSource";
  * reloads while the agent edits it.
  */
 export const WireframeBlock: React.FC<{ content: string }> = ({ content }) => {
+  const { t } = useTranslation("uiPlanWorkspace");
   const base = useContext(WireframeBaseContext);
-  const parsed = useMemo(() => parseWireframeFence(content), [content]);
+  const parsed = useMemo(() => parseWireframeFence(content, t), [content, t]);
 
   if (!parsed.ok) {
     return (
       <div className="pmv-wireframe pmv-wireframe-invalid" role="note">
         <div className="pmv-wireframe-state">
-          <span>This wireframe block is not valid.</span>
+          <span>{t("wireframe.invalid")}</span>
           <span className="pmv-wireframe-detail">{parsed.error}</span>
         </div>
       </div>
@@ -31,7 +33,12 @@ export const WireframeBlock: React.FC<{ content: string }> = ({ content }) => {
   if (!base) {
     return (
       <div className="pmv-wireframe-placeholder" data-wireframe={parsed.spec.name}>
-        Wireframe: <strong>{parsed.spec.name}</strong>. Open the plan to view it.
+        <Trans
+          ns="uiPlanWorkspace"
+          i18nKey="wireframe.placeholder"
+          values={{ name: parsed.spec.name }}
+          components={{ strong: <strong /> }}
+        />
       </div>
     );
   }
@@ -57,6 +64,7 @@ const isWireframeMessage = (data: unknown): data is WireframeMessage =>
   (data as { source?: unknown }).source === "tendril-wireframe";
 
 const LiveWireframe: React.FC<{ base: string; spec: WireframeSpec }> = ({ base, spec }) => {
+  const { t } = useTranslation("uiPlanWorkspace");
   const src = `${base.endsWith("/") ? base : `${base}/`}${spec.name}/`;
   // Names the frame for assistive technology; nothing on screen shows it.
   const label = spec.name;
@@ -177,8 +185,8 @@ const LiveWireframe: React.FC<{ base: string; spec: WireframeSpec }> = ({ base, 
   };
 
   let note: string | null = null;
-  if (phase === "running" && latestFailed) note = "Showing the last version that built";
-  else if (phase === "running" && paused) note = "Live updates paused";
+  if (phase === "running" && latestFailed) note = t("wireframe.lastGoodBuild");
+  else if (phase === "running" && paused) note = t("wireframe.paused");
 
   return (
     <figure className="pmv-wireframe" data-wireframe={spec.name} data-phase={phase}>
@@ -187,19 +195,28 @@ const LiveWireframe: React.FC<{ base: string; spec: WireframeSpec }> = ({ base, 
         <div className="pmv-wireframe-actions">
           {note && <span className="pmv-wireframe-note">{note}</span>}
           {phase === "running" && (
-            <IconButton label="Open Full Size" size="sm" onClick={() => setFullSize(true)}>
+            <IconButton
+              label={t("wireframe.openFullSize")}
+              size="sm"
+              onClick={() => setFullSize(true)}
+            >
               <Maximize2 size={14} aria-hidden="true" />
             </IconButton>
           )}
         </div>
       )}
 
-      {phase === "checking" && <div className="pmv-wireframe-state">Building wireframe...</div>}
+      {phase === "checking" && <div className="pmv-wireframe-state">{t("wireframe.building")}</div>}
 
       {phase === "missing" && (
         <div className="pmv-wireframe-state">
           <span>
-            This plan has no wireframe named <strong>{spec.name}</strong>.
+            <Trans
+              ns="uiPlanWorkspace"
+              i18nKey="wireframe.missing"
+              values={{ name: spec.name }}
+              components={{ strong: <strong /> }}
+            />
           </span>
         </div>
       )}
@@ -208,11 +225,11 @@ const LiveWireframe: React.FC<{ base: string; spec: WireframeSpec }> = ({ base, 
         <div className="pmv-wireframe-state">
           <span>
             {phase === "failed"
-              ? (message ?? "This wireframe does not build.")
-              : "The wireframe preview is not available right now."}
+              ? (message ?? t("wireframe.buildFailed"))
+              : t("wireframe.unavailable")}
           </span>
           <button type="button" className="pmv-wireframe-button" onClick={retry}>
-            Retry
+            {t("wireframe.retry")}
           </button>
         </div>
       )}
@@ -232,7 +249,11 @@ const LiveWireframe: React.FC<{ base: string; spec: WireframeSpec }> = ({ base, 
           >
             <div className="pmv-wireframe-overlay-panel">
               <div className="pmv-wireframe-bar pmv-wireframe-overlay-bar">
-                <IconButton label="Close" size="sm" onClick={() => setFullSize(false)}>
+                <IconButton
+                  label={t("wireframe.close")}
+                  size="sm"
+                  onClick={() => setFullSize(false)}
+                >
                   <X size={14} aria-hidden="true" />
                 </IconButton>
               </div>

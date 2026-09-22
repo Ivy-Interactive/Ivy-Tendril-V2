@@ -4,6 +4,7 @@ import { CodeBlock } from "./CodeBlock";
 import { QuestionsCallout } from "./QuestionsCallout";
 import { QuestionsAnswerContext, QuestionsSubmitContext } from "./questionsContext";
 import { WireframeBlock } from "./WireframeBlock";
+import { useTranslation } from "@/i18n/uiPlanWorkspace";
 
 /** `questions`, or `questions_<n>` once `tagQuestionBlocks` has stamped the block's index on it. */
 const QUESTIONS_LANG = /^questions(?:_(\d+))?$/;
@@ -26,6 +27,7 @@ export const BlockHandler: React.FC<React.HTMLAttributes<HTMLElement>> = ({
   const content = text.replace(/\n$/, "");
   const onAnswer = useContext(QuestionsAnswerContext);
   const onSubmit = useContext(QuestionsSubmitContext);
+  const { t } = useTranslation("uiPlanWorkspace");
 
   if (match) {
     const lang = match[1];
@@ -35,7 +37,7 @@ export const BlockHandler: React.FC<React.HTMLAttributes<HTMLElement>> = ({
         <Suspense
           fallback={
             <div className="pmv-diagram-loading">
-              <span>Loading diagram...</span>
+              <span>{t("diagram.loading")}</span>
             </div>
           }
         >
@@ -56,7 +58,7 @@ export const BlockHandler: React.FC<React.HTMLAttributes<HTMLElement>> = ({
         <Suspense
           fallback={
             <div className="pmv-diagram-loading">
-              <span>Loading diagram...</span>
+              <span>{t("diagram.loading")}</span>
             </div>
           }
         >

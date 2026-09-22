@@ -3,6 +3,7 @@ import type { PlanQuestion } from "../PlanMarkdown/questionsSchema";
 import { QuestionsDraftContext } from "../PlanMarkdown/questionsContext";
 import type { QuestionSubmitCallback, QuestionsDraftState } from "../PlanMarkdown/questionsContext";
 import { QuestionsForm } from "./QuestionsForm";
+import { useTranslation } from "@/i18n/uiPlanWorkspace";
 import {
   buildAnswersSummary,
   canSubmitAnswers,
@@ -26,6 +27,8 @@ export const ChatQuestionsBlock: React.FC<ChatQuestionsBlockProps> = ({ question
   // Question ids are unique per block by schema, so they identify the block within its message.
   const blockKey = questions.map((question) => question.id).join("|");
   const store = useContext(QuestionsDraftContext);
+  // Also what re-renders the block, and so re-writes `submitNote`, when the language changes.
+  const { t } = useTranslation("uiPlanWorkspace");
 
   const [draft, setDraft] = useState<QuestionsDraftState>(
     () =>
@@ -80,7 +83,7 @@ export const ChatQuestionsBlock: React.FC<ChatQuestionsBlockProps> = ({ question
       onOtherOpenChange={handleOtherOpenChange}
       onClear={hasAnyAnswers ? clearAll : undefined}
       submit={{
-        label: "Submit response",
+        label: t("questions.submit"),
         disabled: !submitEnabled,
         note: submitNote(questions, draft.answers),
         onSubmit: handleSubmit,
