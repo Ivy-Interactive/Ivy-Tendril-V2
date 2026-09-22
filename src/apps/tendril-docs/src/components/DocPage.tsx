@@ -66,7 +66,7 @@ export function DocPage({
     [baseTypography],
   );
 
-  const showUntranslated = isFallback ?? (locale && locale !== "en");
+  const showUntranslated = isFallback ?? page.isFallback ?? (locale && locale !== "en");
 
   return (
     <article
