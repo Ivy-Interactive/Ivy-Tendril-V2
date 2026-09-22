@@ -504,8 +504,7 @@ describe("SettingsView", () => {
       expect(pane.textContent).toContain("Do the ExecutePlan thing.");
       // Rendered as markdown through the shared renderer, not dumped as raw text.
       expect(pane.querySelector(".pmv-markdown h1")).toHaveTextContent("ExecutePlan");
-      // Opening a Radix Select and mounting the markdown renderer costs more than the 5s default.
-    }, 20000);
+    });
 
     it("says why the pane is empty when nothing is deployed under that name", async () => {
       setPromptwareProgramTransport(() =>
@@ -518,7 +517,7 @@ describe("SettingsView", () => {
       expect(screen.getByTestId("promptware-program").textContent).toContain(
         "No prompt deployed for agent 'CreatePlan'",
       );
-    }, 20000);
+    });
 
     it("edits the reserved _default entry and merges it rather than replacing the map", async () => {
       getConfig.mockResolvedValue({
