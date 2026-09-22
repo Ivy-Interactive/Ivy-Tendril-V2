@@ -616,3 +616,89 @@ describe("DataTable loading, footer and selection", () => {
     ).toBe("true");
   });
 });
+
+/**
+ * Activating a row without a pointer, and not activating it when the click was really a text
+ * selection.
+ *
+ * The row carries a roving `tabIndex`, a focus ring and — once `onRowClick` is set — `cursor-pointer`,
+ * so a keyboard user is shown an affordance that has to work for them too. The selection case is the
+ * other half: the cell-range tracker only notices a drag that crosses *into another cell*, so
+ * highlighting a few words inside one cell still ends in an ordinary click, and opening a sheet over
+ * the text somebody just selected to copy is the bug that guard exists for.
+ */
+describe("DataTable row activation", () => {
+  const archive: DataTableRowAction<Person> = { tag: "archive", label: "Archive" };
+
+  /** Focuses the first body row and returns it. */
+  function focusFirstRow(container: HTMLElement): HTMLElement {
+    const row = container.querySelector("tbody tr[data-row-id]") as HTMLElement;
+    row.focus();
+    return row;
+  }
+
+  it("activates a focused row on Enter", () => {
+    const onRowClick = vi.fn();
+    const { container } = render(
+      <DataTable columns={columns} rows={[people[0]]} getRowId={rowId} onRowClick={onRowClick} />,
+    );
+
+    fireEvent.keyDown(focusFirstRow(container), { key: "Enter" });
+
+    expect(onRowClick).toHaveBeenCalledTimes(1);
+    expect(onRowClick).toHaveBeenCalledWith(people[0], "r1");
+  });
+
+  it("activates a focused row on Space", () => {
+    const onRowClick = vi.fn();
+    const { container } = render(
+      <DataTable columns={columns} rows={[people[0]]} getRowId={rowId} onRowClick={onRowClick} />,
+    );
+
+    fireEvent.keyDown(focusFirstRow(container), { key: " " });
+
+    expect(onRowClick).toHaveBeenCalledTimes(1);
+  });
+
+  it("leaves Enter to a control inside the row", () => {
+    const onRowClick = vi.fn();
+    render(
+      <DataTable
+        columns={columns}
+        rows={[people[0]]}
+        getRowId={rowId}
+        rowActions={[archive]}
+        onRowClick={onRowClick}
+      />,
+    );
+
+    // The row-action trigger owns its own Enter; the row must not activate underneath it.
+    fireEvent.keyDown(screen.getByRole("button", { name: "Archive" }), {
+      key: "Enter",
+      bubbles: true,
+    });
+
+    expect(onRowClick).not.toHaveBeenCalled();
+  });
+
+  it("does not activate the row when the click ended a text selection", () => {
+    const onRowClick = vi.fn();
+    const { container } = render(
+      <DataTable columns={columns} rows={[people[0]]} getRowId={rowId} onRowClick={onRowClick} />,
+    );
+
+    const getSelection = vi
+      .spyOn(window, "getSelection")
+      .mockReturnValue({ toString: () => "Charlie" } as unknown as Selection);
+    try {
+      fireEvent.click(container.querySelectorAll("tbody td")[0]);
+      expect(onRowClick).not.toHaveBeenCalled();
+    } finally {
+      getSelection.mockRestore();
+    }
+
+    // And still activates once nothing is selected, so the guard is not simply off.
+    fireEvent.click(container.querySelectorAll("tbody td")[0]);
+    expect(onRowClick).toHaveBeenCalledTimes(1);
+  });
+});
