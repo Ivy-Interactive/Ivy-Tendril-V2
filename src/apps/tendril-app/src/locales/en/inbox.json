@@ -1,1 +1,234 @@
-{}
+{
+  "rail": {
+    "ariaLabel": "Inbox categories",
+    "myIssues": "My issues",
+    "reviews": "Reviews",
+    "projects": "Projects",
+    "noProjects": "No projects in settings"
+  },
+  "header": {
+    "title": {
+      "myIssues": "My Issues",
+      "reviews": "Reviews",
+      "projectIssues": "{{project}} Issues",
+      "projectIssues_noProject": "Project Issues"
+    },
+    "refresh": "Refresh",
+    "autoAccept": {
+      "on": "Auto-Accept: On",
+      "off": "Auto-Accept: Off",
+      "onTooltip": "Newly assigned issues start a plan as soon as they are found",
+      "offTooltip": "Newly assigned issues are marked Awaiting decision below for you to accept or dismiss",
+      "settings": "Auto-Accept Settings"
+    },
+    "checkNow": {
+      "label": "Check Now",
+      "checking": "Checking...",
+      "tooltip": "Import GitHub issues assigned to you now, without waiting for the next scheduled check"
+    }
+  },
+  "bulk": {
+    "selectAll": "Select All",
+    "deselectAll": "Deselect All",
+    "summary": "{{selected}} of {{total}} selected",
+    "openChat": {
+      "label": "Open Chat",
+      "labelWithCount": "Open Chat ({{selected}})",
+      "tooltip": "Discuss the selected issues with the coding agent"
+    },
+    "fireOff": {
+      "label": "Fire off in Tendril",
+      "labelWithCount": "Fire off in Tendril ({{selected}})"
+    }
+  },
+  "freshness": {
+    "repo": {
+      "label": "Repo:",
+      "ariaLabel": "Filter by repository"
+    },
+    "updated": "Updated {{when}}",
+    "updated_justNow": "Updated just now",
+    "notYetUpdated": "Not yet updated",
+    "autoRefresh": {
+      "label": "Auto-refresh:",
+      "ariaLabel": "Auto-refresh interval",
+      "off": "Off"
+    }
+  },
+  "fireNotice": {
+    "success_one": "Fired off {{count}} issue in Tendril",
+    "success_other": "Fired off {{count}} issues in Tendril",
+    "partial": "Fired off {{fired}} of {{total}}. Failed on #{{number}}: {{error}}",
+    "partial_unknownIssue": "Fired off {{fired}} of {{total}}. Failed on an issue: {{error}}"
+  },
+  "sweep": {
+    "alreadyRunning": "A check is already running.",
+    "notMaster": "This daemon is not the master, so it did not check.",
+    "imported": "Imported {{imported}}, skipped {{skipped}}.",
+    "accepted_one": "{{count}} started a plan straight away.",
+    "accepted_other": "{{count}} started a plan straight away.",
+    "accepted_partial_one": "{{count}} started a plan straight away (the rest await your decision).",
+    "accepted_partial_other": "{{count}} started a plan straight away (the rest await your decision).",
+    "errors_one": "{{count}} error: {{error}}",
+    "errors_other": "{{count}} errors: {{error}}",
+    "join": "{{previous}} {{next}}"
+  },
+  "chatTitle_one": "{{count}} issue",
+  "chatTitle_other": "{{count}} issues",
+  "errors": {
+    "noRemotes": "No git remotes resolved for project {{project}}.",
+    "noRemotes_noProject": "No git remotes resolved for project (none selected).",
+    "loadFailed": "Failed to load GitHub issues"
+  },
+  "loading": "Loading issues from GitHub...",
+  "empty": {
+    "reviews": {
+      "title": "All Caught Up!",
+      "description": "No pull requests currently require your review."
+    },
+    "issues": {
+      "title": "No Issues Found",
+      "description": "No issues match the selected view."
+    },
+    "filtered": "No issues match your current search and filter criteria."
+  },
+  "filters": {
+    "search": {
+      "ariaLabel": "Search issues",
+      "placeholder": "Search by title, #number, author, or description..."
+    },
+    "awaiting": {
+      "label": "Awaiting",
+      "tooltip": "Show only the assigned issues awaiting your decision"
+    },
+    "labelPlaceholder": "Filter by label...",
+    "assigneePlaceholder": "Filter by assignee..."
+  },
+  "issueTable": {
+    "columns": {
+      "issue": "Issue",
+      "repository": "Repository",
+      "labels": "Labels",
+      "assignees": "Assignees"
+    },
+    "awaitingMark": {
+      "ariaLabel": "Awaiting decision",
+      "tooltip": "Awaiting your decision. Found by the assigned-issues check {{when}}; Accept starts a plan in {{project}}.",
+      "tooltip_justNow": "Awaiting your decision. Found by the assigned-issues check just now; Accept starts a plan in {{project}}."
+    },
+    "actions": {
+      "fireOff": {
+        "label": "Fire off in Tendril",
+        "tooltip": "Fire off this issue in Tendril"
+      },
+      "viewDetails": {
+        "label": "View Details",
+        "tooltip": "View issue details"
+      },
+      "openGitHub": {
+        "label": "Open in GitHub",
+        "tooltip": "Open issue on GitHub"
+      },
+      "accept": {
+        "label": "Accept",
+        "tooltip": "Accept: start a plan for this issue in {{project}}"
+      },
+      "more": {
+        "label": "More actions",
+        "tooltip": "Open in GitHub, or dismiss"
+      },
+      "dismiss": {
+        "label": "Dismiss"
+      }
+    }
+  },
+  "reviewTable": {
+    "columns": {
+      "pullRequest": "Pull Request",
+      "repository": "Repository",
+      "updated": "Updated"
+    },
+    "actions": {
+      "openGitHub": {
+        "label": "Review on GitHub",
+        "tooltip": "Open pull request on GitHub"
+      },
+      "viewDetails": {
+        "label": "View Details",
+        "tooltip": "View review details"
+      }
+    }
+  },
+  "sheet": {
+    "titleFallback": "Issue",
+    "assigned": "Assigned: {{assignees}}",
+    "openOnGitHub": "Open on GitHub",
+    "dismiss": {
+      "label": "Dismiss",
+      "tooltip": "Dismiss for good: the assigned-issues check will not propose this issue again"
+    },
+    "accept": {
+      "label": "Accept",
+      "tooltip": "Start a plan for this issue in {{project}}"
+    },
+    "fireOff": "Fire off in Tendril",
+    "noDescription": "No description provided."
+  },
+  "pullRequests": {
+    "title": "Pull Requests",
+    "status": {
+      "open": "Open",
+      "merged": "Merged",
+      "closed": "Closed",
+      "unknown": "Unknown"
+    },
+    "statusTooltip": {
+      "unknown": "Unknown: the daemon could not resolve this pull request (last checked {{lastChecked}}). Resync to try again.",
+      "unknown_neverChecked": "Unknown: the daemon could not resolve this pull request (never checked). Resync to try again.",
+      "merged": "Merged (last checked {{lastChecked}}). Merged pull requests are never re-checked.",
+      "merged_neverChecked": "Merged (never checked). Merged pull requests are never re-checked.",
+      "other": "{{status}} as of last checked {{lastChecked}}.",
+      "other_neverChecked": "{{status}} as of never checked."
+    },
+    "syncNotice": {
+      "unreachableAll": "No status could be refreshed: GitHub could not be reached for {{repos}}. Check that the `{{cli}}` CLI is installed and authenticated (`{{command}}`).",
+      "unreachableSome": "Some statuses are unchanged: GitHub could not be reached for {{repos}}. Check that the `{{cli}}` CLI is installed and authenticated (`{{command}}`).",
+      "nothingToRefresh": "Nothing to refresh: {{fresh}} recently checked, {{merged}} already merged.",
+      "alreadyRunning": "A sync pass is already running."
+    },
+    "columns": {
+      "plan": "Plan",
+      "project": "Project",
+      "status": "Status",
+      "pr": "PR",
+      "tokens": "Tokens",
+      "cost": "Cost",
+      "repository": "Repository",
+      "branch": "Branch"
+    },
+    "actions": {
+      "viewPlan": "View Plan",
+      "followUp": "Follow Up",
+      "openPr": "Open PR",
+      "resync": "Resync"
+    },
+    "empty": {
+      "title": "No pull requests",
+      "description": "No plan has a pull request recorded yet. Create one from the Review tab and it will appear here.",
+      "loadFailed": "The pull request list could not be loaded, so nothing can be shown.",
+      "filtered": "No pull requests match your current search query or filter criteria."
+    },
+    "search": {
+      "ariaLabel": "Search pull requests",
+      "placeholder": "Search by plan, project, repository, or branch..."
+    },
+    "statusFilterPlaceholder": "Filter by status...",
+    "resyncAll": "Resync All",
+    "resyncing": "Resyncing...",
+    "sheet": {
+      "titleFallback": "Plan",
+      "loadingRevision": "Loading revision...",
+      "notFound": "Plan not found or empty."
+    }
+  }
+}
