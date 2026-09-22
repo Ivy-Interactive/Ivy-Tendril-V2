@@ -1,8 +1,10 @@
 //! Projects and their repositories — the calls that may clone, and so carry their own timeout.
 
-use super::{path_segment, TendrilClient, CLONE_TIMEOUT};
+use super::{path_segment, urlencoding, TendrilClient, CLONE_TIMEOUT};
 use crate::error::BridgeError;
-use crate::models::{CreateProjectDto, ProjectSummaryDto, ReviewActionDto};
+use crate::models::{
+    CreateProjectDto, ProjectSummaryDto, ReviewActionConditionDto, ReviewActionDto,
+};
 use serde_json::json;
 
 impl TendrilClient {
@@ -92,6 +94,37 @@ impl TendrilClient {
             .collect();
 
         Ok(summaries)
+    }
+
+    /// Whether each of a project's review actions has its condition met for one plan
+    /// (`GET /api/projects/:name/review-actions?planId=...`).
+    ///
+    /// The daemon evaluates them against the plan folder, as V1 did, because only it has the
+    /// filesystem and shell a `Test-Path` or a POSIX condition needs. The shared 10s timeout is
+    /// enough: the daemon kills a slow shell condition after 5s and runs them all concurrently.
+    pub async fn review_action_conditions(
+        &self,
+        project_name: &str,
+        plan_id: &str,
+    ) -> Result<Vec<ReviewActionConditionDto>, BridgeError> {
+        let url = format!(
+            "{}/api/projects/{}/review-actions?planId={}",
+            self.base_url,
+            path_segment(project_name),
+            urlencoding(plan_id)
+        );
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "REVIEW_ACTION_CONDITIONS_FAILED",
+                format!("Failed to evaluate review action conditions ({status}): {text}"),
+            ));
+        }
+
+        Ok(resp.json().await?)
     }
 
     /// Creates a project. A duplicate name comes back as 409, which surfaces here as a

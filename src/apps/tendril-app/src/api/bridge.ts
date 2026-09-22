@@ -41,6 +41,7 @@ import type {
   RecommendationItem,
   RecommendationState,
   RepoStatus,
+  ReviewActionConditionResult,
   ReviewActionConfig,
   RevisionResult,
   ServiceHealth,
@@ -654,6 +655,22 @@ const tauriClient = {
     } catch {
       return [];
     }
+  },
+
+  /**
+   * Whether each of the project's review actions has its condition met for `planId`, decided by the
+   * daemon against the plan folder. `ReviewActionsBarView` disables a button on `notMet` and says why
+   * on hover; see `ReviewActionConditionResult`.
+   */
+  async getReviewActionConditions(
+    this: void,
+    projectName: string,
+    planId: string,
+  ): Promise<ReviewActionConditionResult[]> {
+    return invoke<ReviewActionConditionResult[]>("cmd_get_review_action_conditions", {
+      projectName,
+      planId,
+    });
   },
 
   /**

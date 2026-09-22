@@ -493,6 +493,24 @@ pub struct ReviewActionDto {
     pub command: String,
 }
 
+/// Whether one review action's condition holds for a plan, as the daemon decided it against the plan
+/// folder (`GET /api/projects/:name/review-actions?planId=...`).
+///
+/// `state` stays the daemon's string (`met`, `notMet` or `unknown`) rather than an enum here: this
+/// side only relays it, and a value a newer daemon adds should reach the webview, which treats
+/// anything it does not recognise as undecided, instead of failing the whole list here.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewActionConditionDto {
+    pub name: String,
+    #[serde(default)]
+    pub condition: String,
+    pub state: String,
+    /// Why the condition could not be evaluated; only present when `state` is `unknown`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ProjectSummaryDto {

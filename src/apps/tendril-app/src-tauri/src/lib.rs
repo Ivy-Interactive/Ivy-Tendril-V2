@@ -192,6 +192,7 @@ pub fn run() {
             cmd_refresh_models,
             cmd_get_version_info,
             cmd_check_version_now,
+            cmd_get_review_action_conditions,
             cmd_execute_review_action,
             cmd_send_review_action_input,
             cmd_resize_review_action,

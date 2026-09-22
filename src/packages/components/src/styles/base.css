@@ -187,18 +187,21 @@
  * through that regression. `base-cursor.test.ts` asserts the layer for exactly that reason.
  *
  * v3's rule was criticised for pointing at disabled buttons, and the complaint applies here:
- * `CodingAgentStep`'s agent card, `EmojiRating`, `ReviewActionsBarView` and `PlanDiffView`'s comments
- * toggle are all disabled-capable with no `pointer-events-none` guard, so a naked rule would promise
- * a click they will not accept. Hence the `:not()` guards and the second clause. `not-allowed`
- * rather than `default` because that is what this codebase already says: `buttonVariant` ships
- * `disabled:cursor-not-allowed`, and so do `SidebarListRow`'s `ROW_INTERACTIVE`, `checkbox`,
- * `toggleVariant`, `expandableVariant`, `IconButton` (ui.css:458) and `.tq-submit`
- * (tendril-questions.css:309).
+ * `CodingAgentStep`'s agent card, `EmojiRating` and `PlanDiffView`'s comments toggle are all
+ * disabled-capable with no `pointer-events-none` guard, so a naked rule would promise a click they
+ * will not accept. Hence the `:not()` guards and the second clause. A disabled control that does
+ * carry the guard (`buttonVariant`, `ReviewActionsBarView`) is never the element under the pointer,
+ * so its own `not-allowed` is inert: the `TuiTooltip` wrapper it sits in is what is hovered, and
+ * that wrapper writes `data-disabled=""` while its control is disabled so the clause below still
+ * reaches it. `not-allowed` rather than `default` because that is what this codebase already says:
+ * `buttonVariant` ships `disabled:cursor-not-allowed`, and so do `SidebarListRow`'s
+ * `ROW_INTERACTIVE`, `checkbox`, `toggleVariant`, `expandableVariant`, `IconButton` (ui.css:458) and
+ * `.tq-submit` (tendril-questions.css:309).
  *
- * `[data-disabled]:not([data-disabled="false"])` and not a bare `[data-disabled]`: `Card` writes
- * `data-disabled=""` and `Toolbar` writes `data-disabled="true"`, both only when actually disabled,
- * but Radix convention allows a literal `"false"` and a bare attribute selector would match that
- * string and put `not-allowed` on an enabled control.
+ * `[data-disabled]:not([data-disabled="false"])` and not a bare `[data-disabled]`: `Card` and the
+ * `TuiTooltip` trigger wrapper write `data-disabled=""` and `Toolbar` writes `data-disabled="true"`,
+ * all only when actually disabled, but Radix convention allows a literal `"false"` and a bare
+ * attribute selector would match that string and put `not-allowed` on an enabled control.
  *
  * Roles are listed rather than a blanket `[role]`: `combobox` is excluded because a text-entry
  * combobox wants the I-beam (`BadgeSelect`'s trigger sets its own pointer in badge-select.css:34),

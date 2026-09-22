@@ -40,7 +40,11 @@ import { ProjectBadges } from "../components/ProjectBadges";
 import { TendrilProcessWallpaper } from "../components/TendrilProcessWallpaper";
 import { RecommendationCard } from "../components/RecommendationCard";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
-import { ReviewActionsBarView } from "../components/ReviewActionsBarView";
+import {
+  ReviewActionsBarView,
+  conditionVerdictsFrom,
+  type ReviewActionConditionVerdict,
+} from "../components/ReviewActionsBarView";
 import { formatPlanId, parseProjects } from "./PlansView";
 import { isPlanId, nextAfterRemoval, plansStore, resolvePlanSelection } from "../state/plansStore";
 import { reviewQueueFor } from "../utils/planQueues";
@@ -401,6 +405,49 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
       cancelled = true;
     };
   }, [selectedPlan?.project]);
+
+  /**
+   * Whether each review action's condition holds for the selected plan: V1's `ReviewActionStates`,
+   * which `ContentView` computed in the query that loaded the plan with
+   * `PlatformHelper.EvaluatePowerShellCondition(action.Condition, folderPath)` and
+   * `ReviewActionsBarView.BuildActionButton` disabled on. That needs the plan folder on disk, so the
+   * daemon answers it; the bar's own evaluator has neither a filesystem nor a shell.
+   *
+   * Held with the plan it answers for, so a switch never shows one plan's verdicts on another's
+   * buttons, and `verdicts: null` records that the daemon could not answer - the bar then falls back
+   * to deciding what it can itself rather than waiting on an answer that is not coming. Asked again
+   * when the plan's `updated` moves, which is what a new worktree or commit does to it.
+   */
+  const [actionConditions, setActionConditions] = useState<{
+    planId: string;
+    verdicts: Record<string, ReviewActionConditionVerdict> | null;
+  } | null>(null);
+
+  useEffect(() => {
+    const project = selectedPlan?.project;
+    if (!selectedId || !project) return;
+
+    let cancelled = false;
+    bridge
+      .getReviewActionConditions(project, selectedId)
+      .then((results) => {
+        if (!cancelled) {
+          setActionConditions({
+            planId: selectedId,
+            verdicts: conditionVerdictsFrom(results ?? []),
+          });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setActionConditions({ planId: selectedId, verdicts: null });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, selectedPlan?.project, selectedPlan?.updated]);
+
+  const conditionsAnswer = actionConditions?.planId === selectedId ? actionConditions : null;
 
   const allocatedPorts = planDetail?.allocatedPorts ?? selectedPlan?.allocatedPorts;
 
@@ -1147,6 +1194,8 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                     project={selectedPlan.project}
                     planId={selectedPlan.id}
                     actions={reviewActions}
+                    actionStates={conditionsAnswer?.verdicts ?? undefined}
+                    conditionsPending={conditionsAnswer === null}
                     allocatedPorts={allocatedPorts}
                     onExecuteAction={handleExecuteReviewAction}
                   />

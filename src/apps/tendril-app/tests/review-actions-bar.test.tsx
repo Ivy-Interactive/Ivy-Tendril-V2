@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
 import {
   ReviewActionsBarView,
+  conditionVerdictsFrom,
   evaluateCondition,
   evaluateConditionState,
   getReviewActionTooltip,
@@ -111,16 +112,23 @@ describe("ReviewActionsBarView component", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  it("renders action buttons with correct enabled/disabled state and tooltips", () => {
+  /*
+   * Asserted as the accessible description rather than a `title`, deliberately: the native `title`
+   * was the bug. A disabled button emits no pointer events, so the one tooltip explaining it never
+   * showed. The hover itself is covered in "ReviewActionsBarView disabled reasons" below.
+   */
+  it("renders action buttons with correct enabled/disabled state and descriptions", () => {
     render(<ReviewActionsBarView actions={actions} allocatedPorts={{ http: 8080 }} />);
 
     const enabledBtn = screen.getByRole("button", { name: "Run Tests" });
     expect(enabledBtn).toBeEnabled();
-    expect(enabledBtn).toHaveAttribute("title", "Run: pnpm test (ports: http: 8080)");
+    expect(enabledBtn).toHaveAccessibleDescription("Run: pnpm test (ports: http: 8080)");
+    expect(enabledBtn).not.toHaveAttribute("title");
 
     const disabledBtn = screen.getByRole("button", { name: "Start Server" });
     expect(disabledBtn).toBeDisabled();
-    expect(disabledBtn).toHaveAttribute("title", "Disabled: Condition not met ($false)");
+    expect(disabledBtn).toHaveAccessibleDescription("Disabled: Condition not met ($false)");
+    expect(disabledBtn).not.toHaveAttribute("title");
   });
 
   it("calls onExecuteAction callback when clicked", async () => {
@@ -302,8 +310,7 @@ describe("ReviewActionsBarView undecidable conditions", () => {
 
     const btn = screen.getByRole("button", { name: "Dev Server" });
     expect(btn).toBeEnabled();
-    expect(btn).toHaveAttribute(
-      "title",
+    expect(btn).toHaveAccessibleDescription(
       "Run: pnpm dev:app. Condition not evaluated here: Test-Path src/apps/tendril-app",
     );
   });
@@ -313,8 +320,7 @@ describe("ReviewActionsBarView undecidable conditions", () => {
 
     const btn = screen.getByRole("button", { name: "Dev Server" });
     expect(btn).toBeDisabled();
-    expect(btn).toHaveAttribute(
-      "title",
+    expect(btn).toHaveAccessibleDescription(
       "Disabled: Condition not met (Test-Path src/apps/tendril-app)",
     );
   });
@@ -344,6 +350,335 @@ describe("ReviewActionsBarView undecidable conditions", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Docs" }));
     await waitFor(() => expect(onExecute).toHaveBeenCalledWith("Docs"));
-    release?.();
+    // Inside `act`: settling the handover re-renders the bar from its `finally`.
+    await act(async () => {
+      release?.();
+    });
+  });
+});
+
+/**
+ * Hovers a review-action button's wrapper, which is where the tooltip is anchored: a disabled button
+ * emits no pointer events of its own, so the wrapper is where the hover has to land for the reason
+ * to show. jsdom cannot say whether a real pointer gets there — it applies no `pointer-events` and
+ * blocks nothing on a disabled element — so the `disabled:pointer-events-none` that lets the hover
+ * through is pinned by a class assertion in the test that uses this, not by this.
+ */
+function hoverAction(button: HTMLElement): void {
+  const wrapper = button.parentElement!;
+  fireEvent.pointerEnter(wrapper, { pointerType: "mouse" });
+  fireEvent.pointerMove(wrapper, { pointerType: "mouse" });
+  act(() => {
+    vi.advanceTimersByTime(600);
+  });
+}
+
+describe("ReviewActionsBarView disabled reasons", () => {
+  const docs: ReviewActionConfig = {
+    name: "Docs",
+    condition: 'Test-Path "Worktrees/ivy-framework/src/Ivy.Docs"',
+    command: "dotnet watch",
+  };
+
+  it("shows why a disabled action is disabled when it is hovered", () => {
+    vi.useFakeTimers();
+    try {
+      render(<ReviewActionsBarView actions={[docs]} actionStates={{ Docs: { state: false } }} />);
+
+      const btn = screen.getByRole("button", { name: "Docs" });
+      expect(btn).toBeDisabled();
+      expect(screen.queryByRole("tooltip")).toBeNull();
+      // What gets a real pointer past the disabled button to the wrapper, and what gives that
+      // wrapper the `not-allowed` cursor the button can no longer show (base.css `[data-disabled]`).
+      expect(btn).toHaveClass("disabled:pointer-events-none");
+      expect(btn.parentElement).toHaveAttribute("data-disabled", "");
+
+      hoverAction(btn);
+
+      expect(screen.getByRole("tooltip")).toHaveTextContent(
+        'Disabled: Condition not met (Test-Path "Worktrees/ivy-framework/src/Ivy.Docs")',
+      );
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("lets a keyboard reach the reason too, through the wrapper, only while disabled", () => {
+    const { rerender } = render(
+      <ReviewActionsBarView actions={[docs]} actionStates={{ Docs: false }} />,
+    );
+    // A disabled button is not focusable, so the wrapper stands in for it as the tab stop...
+    expect(screen.getByRole("button", { name: "Docs" }).parentElement).toHaveAttribute(
+      "tabindex",
+      "0",
+    );
+
+    rerender(<ReviewActionsBarView actions={[docs]} actionStates={{ Docs: true }} />);
+    // ...and steps aside once the button can take focus itself.
+    expect(screen.getByRole("button", { name: "Docs" }).parentElement).not.toHaveAttribute(
+      "tabindex",
+    );
+  });
+
+  it("still shows what an enabled action runs on hover", () => {
+    vi.useFakeTimers();
+    try {
+      render(<ReviewActionsBarView actions={[docs]} actionStates={{ Docs: { state: true } }} />);
+
+      hoverAction(screen.getByRole("button", { name: "Docs" }));
+
+      expect(screen.getByRole("tooltip")).toHaveTextContent("Run: dotnet watch");
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("keeps an action the daemon could not evaluate enabled, and says why", () => {
+    render(
+      <ReviewActionsBarView
+        actions={[docs]}
+        actionStates={{
+          Docs: { state: "unknown", reason: "the condition timed out after 5s and was terminated" },
+        }}
+      />,
+    );
+
+    const btn = screen.getByRole("button", { name: "Docs" });
+    expect(btn).toBeEnabled();
+    expect(btn).toHaveAccessibleDescription(
+      "Run: dotnet watch. Condition could not be evaluated: the condition timed out after 5s and was terminated",
+    );
+  });
+
+  it("holds an action it cannot decide itself while the host is still checking", () => {
+    const always: ReviewActionConfig = { name: "Always", condition: "$true", command: "echo" };
+    const never: ReviewActionConfig = { name: "Never", condition: "$false", command: "echo" };
+    render(<ReviewActionsBarView actions={[docs, always, never]} conditionsPending />);
+
+    const btn = screen.getByRole("button", { name: "Docs" });
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveAttribute("aria-busy", "true");
+    expect(btn).toHaveAccessibleDescription(
+      'Checking the condition: Test-Path "Worktrees/ivy-framework/src/Ivy.Docs"',
+    );
+    // Drawn as the disabled action it is, not as one that looks pressable and swallows the click.
+    const notMet = screen.getByRole("button", { name: "Never" });
+    expect(notMet).toBeDisabled();
+    expect(btn.className).toBe(notMet.className);
+    // A condition the bar can decide on its own does not wait for anyone.
+    const enabled = screen.getByRole("button", { name: "Always" });
+    expect(enabled).toBeEnabled();
+    expect(enabled.className).not.toBe(notMet.className);
+  });
+
+  it("says why when the whole bar is disabled, instead of what the action would run", () => {
+    render(
+      <ReviewActionsBarView
+        actions={[docs]}
+        actionStates={{ Docs: true }}
+        disabled
+        disabledReason="the plan is being updated"
+      />,
+    );
+
+    const btn = screen.getByRole("button", { name: "Docs" });
+    expect(btn).toBeDisabled();
+    expect(btn).toHaveAccessibleDescription("Disabled: the plan is being updated");
+  });
+
+  it("says the action is starting while it is handed over", async () => {
+    let release: (() => void) | undefined;
+    const onExecute = vi.fn(
+      () =>
+        new Promise<void>((resolve) => {
+          release = resolve;
+        }),
+    );
+    render(
+      <ReviewActionsBarView
+        actions={[docs]}
+        actionStates={{ Docs: true }}
+        onExecuteAction={onExecute}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Docs" }));
+
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Docs" })).toHaveAccessibleDescription(
+        "Starting Docs…",
+      ),
+    );
+    expect(screen.getByRole("button", { name: "Docs" })).toHaveAttribute("aria-busy", "true");
+
+    await act(async () => {
+      release?.();
+    });
+    // Handed over, the button is itself again.
+    const btn = screen.getByRole("button", { name: "Docs" });
+    expect(btn).toBeEnabled();
+    expect(btn).not.toHaveAttribute("aria-busy");
+    expect(btn).toHaveAccessibleDescription("Run: dotnet watch");
+  });
+});
+
+describe("conditionVerdictsFrom", () => {
+  it("maps the daemon's states onto the bar's, keeping only an unknown's reason", () => {
+    expect(
+      conditionVerdictsFrom([
+        { name: "A", condition: "$true", state: "met" },
+        { name: "B", condition: "$false", state: "notMet" },
+        { name: "C", condition: "$env:CI", state: "unknown", reason: "unsupported" },
+      ]),
+    ).toEqual({
+      A: { state: true, reason: undefined },
+      B: { state: false, reason: undefined },
+      C: { state: "unknown", reason: "unsupported" },
+    });
+  });
+
+  it("reads a state it does not recognise as undecided rather than guessing", () => {
+    expect(
+      conditionVerdictsFrom([{ name: "A", condition: "x", state: "somethingNew" }]).A.state,
+    ).toBe("unknown");
+  });
+});
+
+describe("ReviewView asks the daemon whether each condition holds", () => {
+  const samplePlan = planSummary({ id: "00509", project: "Ivy-Tendril-V2", state: "Review" });
+  const docsAction: ReviewActionConfig = {
+    name: "Docs",
+    condition: 'Test-Path "Worktrees/ivy-framework/src/Ivy.Docs"',
+    command: "dotnet watch",
+  };
+
+  it("disables an action whose condition does not hold for the plan, and says why", async () => {
+    vi.spyOn(bridge, "listRecommendations").mockResolvedValue([]);
+    vi.spyOn(bridge, "getProjectReviewActions").mockResolvedValue([
+      docsAction,
+      { name: "Dev Server", condition: "", command: "vp dev" },
+    ]);
+    const conditions = vi.spyOn(bridge, "getReviewActionConditions").mockResolvedValue([
+      { name: "Docs", condition: docsAction.condition, state: "notMet" },
+      { name: "Dev Server", condition: "", state: "met" },
+    ]);
+
+    render(<ReviewView plans={[samplePlan]} onSelectPlan={() => {}} />);
+
+    const docs = await screen.findByRole("button", { name: "Docs" });
+    await waitFor(() =>
+      expect(docs).toHaveAccessibleDescription(
+        'Disabled: Condition not met (Test-Path "Worktrees/ivy-framework/src/Ivy.Docs")',
+      ),
+    );
+    expect(docs).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Dev Server" })).toBeEnabled();
+    expect(conditions).toHaveBeenCalledWith("Ivy-Tendril-V2", "00509");
+  });
+
+  it("enables an action whose condition the daemon found to hold", async () => {
+    vi.spyOn(bridge, "listRecommendations").mockResolvedValue([]);
+    vi.spyOn(bridge, "getProjectReviewActions").mockResolvedValue([docsAction]);
+    vi.spyOn(bridge, "getReviewActionConditions").mockResolvedValue([
+      { name: "Docs", condition: docsAction.condition, state: "met" },
+    ]);
+
+    render(<ReviewView plans={[samplePlan]} onSelectPlan={() => {}} />);
+
+    const docs = await screen.findByRole("button", { name: "Docs" });
+    await waitFor(() => expect(docs).toBeEnabled());
+    expect(docs).toHaveAccessibleDescription("Run: dotnet watch");
+  });
+
+  /*
+   * The answer is held with the plan it is about. Switching plans while the next answer is still out
+   * must not leave the previous plan's "not met" on the new plan's buttons, which would be a false
+   * reason on a button that may well be usable.
+   */
+  it("never shows one plan's verdicts on another plan's buttons", async () => {
+    const planA = planSummary({ id: "00509", project: "Ivy-Tendril-V2", state: "Review" });
+    const planB = planSummary({ id: "00510", project: "Ivy-Tendril-V2", state: "Review" });
+    vi.spyOn(bridge, "listRecommendations").mockResolvedValue([]);
+    vi.spyOn(bridge, "getProjectReviewActions").mockResolvedValue([docsAction]);
+    const conditions = vi
+      .spyOn(bridge, "getReviewActionConditions")
+      .mockImplementation((_project, planId) =>
+        planId === "00509"
+          ? Promise.resolve([{ name: "Docs", condition: docsAction.condition, state: "notMet" }])
+          : new Promise(() => {}),
+      );
+
+    const { rerender } = render(
+      <ReviewView plans={[planA, planB]} selectedPlanId="00509" onSelectPlan={() => {}} />,
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("button", { name: "Docs" })).toHaveAccessibleDescription(
+        'Disabled: Condition not met (Test-Path "Worktrees/ivy-framework/src/Ivy.Docs")',
+      ),
+    );
+
+    rerender(<ReviewView plans={[planA, planB]} selectedPlanId="00510" onSelectPlan={() => {}} />);
+
+    await waitFor(() => expect(conditions).toHaveBeenCalledWith("Ivy-Tendril-V2", "00510"));
+    const docs = screen.getByRole("button", { name: "Docs" });
+    expect(docs).toBeDisabled();
+    expect(docs).toHaveAccessibleDescription(
+      'Checking the condition: Test-Path "Worktrees/ivy-framework/src/Ivy.Docs"',
+    );
+  });
+
+  /*
+   * A new worktree or commit moves the plan's `updated`, and can change what a `Test-Path` finds, so
+   * the conditions are asked again for the same plan, as V1's query re-ran when the plan reloaded.
+   */
+  it("asks again when the plan's updated timestamp moves", async () => {
+    const plan = planSummary({
+      id: "00509",
+      project: "Ivy-Tendril-V2",
+      state: "Review",
+      updated: "2026-09-07T10:41:11Z",
+    });
+    vi.spyOn(bridge, "listRecommendations").mockResolvedValue([]);
+    vi.spyOn(bridge, "getProjectReviewActions").mockResolvedValue([docsAction]);
+    let answer: "met" | "notMet" = "notMet";
+    const conditions = vi
+      .spyOn(bridge, "getReviewActionConditions")
+      .mockImplementation(() =>
+        Promise.resolve([{ name: "Docs", condition: docsAction.condition, state: answer }]),
+      );
+
+    const { rerender } = render(<ReviewView plans={[plan]} onSelectPlan={() => {}} />);
+    await waitFor(() => expect(screen.getByRole("button", { name: "Docs" })).toBeDisabled());
+    const callsBefore = conditions.mock.calls.length;
+
+    answer = "met";
+    rerender(
+      <ReviewView plans={[{ ...plan, updated: "2026-09-07T11:02:00Z" }]} onSelectPlan={() => {}} />,
+    );
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Docs" })).toBeEnabled());
+    expect(conditions.mock.calls.length).toBe(callsBefore + 1);
+    expect(conditions).toHaveBeenLastCalledWith("Ivy-Tendril-V2", "00509");
+    expect(screen.getByRole("button", { name: "Docs" })).toHaveAccessibleDescription(
+      "Run: dotnet watch",
+    );
+  });
+
+  /*
+   * A daemon without the route (or one that is down) must not leave the bar waiting forever: the
+   * bar goes back to what it could decide before there was a daemon answer at all.
+   */
+  it("falls back to deciding what it can when the daemon cannot answer", async () => {
+    vi.spyOn(bridge, "listRecommendations").mockResolvedValue([]);
+    vi.spyOn(bridge, "getProjectReviewActions").mockResolvedValue([docsAction]);
+    vi.spyOn(bridge, "getReviewActionConditions").mockRejectedValue(new Error("404"));
+
+    render(<ReviewView plans={[samplePlan]} onSelectPlan={() => {}} />);
+
+    const docs = await screen.findByRole("button", { name: "Docs" });
+    await waitFor(() => expect(docs).toBeEnabled());
+    expect(docs).toHaveAccessibleDescription(
+      'Run: dotnet watch. Condition not evaluated here: Test-Path "Worktrees/ivy-framework/src/Ivy.Docs"',
+    );
   });
 });
