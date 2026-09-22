@@ -1,11 +1,14 @@
 import React from "react";
 import { type PlanQuestion } from "@ivy-interactive/components/tendril";
+import { formatList } from "@ivy-interactive/components/i18n";
 import type { Job, PlanDetail, PlanSummary } from "../../types/api";
 import type { ChatSession } from "../../types/chat";
 import { sessionBelongsToPlan } from "../../state/chatStore";
 import { planFolderName } from "../../components/chat/PlanChatPanel";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { formatPlanId } from "../PlansView";
+import { verificationStatusLabel } from "../PlanVerifications";
+import { i18n, Trans, useTranslation } from "../../i18n";
 
 /**
  * The plan page's vocabulary: the tab and dialog ids it switches on, the two in-flight sets its
@@ -16,6 +19,20 @@ import { formatPlanId } from "../PlansView";
  */
 
 export type PlanDetailTab = "plan" | "details" | "diff" | "recommendations" | "git";
+
+/**
+ * The actions `runAction` runs, by id. The id is what the page tracks as in flight and compares -
+ * `"executePlan"` is what turns the Execute button into *Starting...* - and it picks the translated
+ * failure message, so no displayed label is ever used as an identity.
+ */
+export type PlanRunAction =
+  | "executePlan"
+  | "updatePlan"
+  | "expandPlan"
+  | "splitPlan"
+  | "copyPlanId"
+  | "copyFolderPath"
+  | "openFolder";
 
 /**
  * The job statuses V1 counts as "a job already holds this plan"
@@ -45,7 +62,9 @@ export const IN_FLIGHT_PLAN_STATES: ReadonlyArray<string> = ["Creating", "Updati
  * (`ContentView.Build`: `.Source(..., selectedPlan.IsPullRequestSource ? "PR" : "Issue")`).
  */
 export const sourceLabel = (sourceUrl: string | undefined): string =>
-  sourceUrl?.includes("/pull/") ? "PR" : "Issue";
+  sourceUrl?.includes("/pull/")
+    ? i18n.t("plans:detail.sourceLabel.pr")
+    : i18n.t("plans:detail.sourceLabel.issue");
 
 /** `#21` from a `00021-SomeFolderName` plan folder, as `DetailsTabView.ParsePlanLinks` does. */
 export const planLinkLabel = (folder: string): string => {
@@ -58,6 +77,7 @@ export const planLinkLabel = (folder: string): string => {
 /**
  * The workspace's meta line, from `ContentView.BuildMeta`: the plan's position in the list, and
  * the plans it waits on. Position is computed over the same newest-first ordering the list uses.
+ * Translated at the call, which is every render of the page.
  */
 export const buildMeta = (plan: PlanDetail, allPlans: PlanSummary[]): string | null => {
   const ordered = [...allPlans].sort(
@@ -65,9 +85,16 @@ export const buildMeta = (plan: PlanDetail, allPlans: PlanSummary[]): string | n
   );
   const index = ordered.findIndex((p) => p.id === plan.id);
   const parts: string[] = [];
-  if (index >= 0 && ordered.length > 0) parts.push(`${index + 1}/${ordered.length} plans`);
+  if (index >= 0 && ordered.length > 0)
+    parts.push(
+      i18n.t("plans:detail.meta.position", { position: index + 1, count: ordered.length }),
+    );
   if (plan.dependsOn && plan.dependsOn.length > 0)
-    parts.push(`Depends on ${plan.dependsOn.map(planLinkLabel).join(", ")}`);
+    parts.push(
+      i18n.t("plans:detail.meta.dependsOn", {
+        plans: formatList(plan.dependsOn.map(planLinkLabel), { type: "unit", style: "short" }),
+      }),
+    );
   return parts.length > 0 ? parts.join(" \u00b7 ") : null;
 };
 
@@ -82,6 +109,7 @@ export const ExecutionFailedCallout: React.FC<{ plan: PlanDetail; jobs: Job[] }>
   plan,
   jobs,
 }) => {
+  const { t } = useTranslation("plans");
   const failed = (plan.verifications ?? []).filter(
     (v) => v.status === "Fail" || v.status === "Pending",
   );
@@ -98,19 +126,23 @@ export const ExecutionFailedCallout: React.FC<{ plan: PlanDetail; jobs: Job[] }>
   const reason = lastFailure?.statusMessage?.trim();
   return (
     <ErrorBanner data-testid="plan-failure-callout" className="mb-4">
-      <p className="font-semibold">Execution Failed</p>
+      <p className="font-semibold">{t("failureCallout.title")}</p>
       {failed.length > 0 ? (
         <ul className="mt-1 space-y-0.5">
           {failed.map((v) => (
             <li key={v.name}>
-              <span className="font-semibold">{v.name}</span> {v.status}, see verification report
-              for details
+              <Trans
+                ns="plans"
+                i18nKey="failureCallout.verification"
+                values={{ name: v.name, status: verificationStatusLabel(t, v.status) }}
+                components={{ bold: <span className="font-semibold" /> }}
+              />
             </li>
           ))}
         </ul>
       ) : (
         <p className="mt-1" data-testid="plan-failure-reason">
-          {reason || "No details available. Check the job logs."}
+          {reason || t("failureCallout.noDetails")}
         </p>
       )}
     </ErrorBanner>
@@ -172,13 +204,14 @@ export const PlanQuestionsPanel: React.FC<{
   savingIds: ReadonlySet<string>;
   onSelect: (questionId: string) => void;
 }> = ({ questions, savingIds, onSelect }) => {
+  const { t } = useTranslation("plans");
   const answered = questions.filter((q) => q.answerPresent).length;
   const label = (question: PlanQuestion) => question.title || question.header || question.id;
 
   return (
     <div className="space-y-2" data-testid="plan-questions-panel">
       <p className="text-xs text-muted-foreground">
-        {answered} of {questions.length} answered
+        {t("questionsPanel.answered", { answered, count: questions.length })}
       </p>
       <ul className="space-y-1">
         {questions.map((question, index) => (
@@ -200,10 +233,12 @@ export const PlanQuestionsPanel: React.FC<{
                 question.answerPresent ? "text-muted-foreground line-through" : "text-foreground"
               }`}
             >
-              {question.optional ? `${label(question)} (Optional)` : label(question)}
+              {question.optional
+                ? t("questionsPanel.optional", { label: label(question) })
+                : label(question)}
             </button>
             {savingIds.has(question.id) && (
-              <span className="text-2xs text-muted-foreground">saving…</span>
+              <span className="text-2xs text-muted-foreground">{t("questionsPanel.saving")}</span>
             )}
           </li>
         ))}

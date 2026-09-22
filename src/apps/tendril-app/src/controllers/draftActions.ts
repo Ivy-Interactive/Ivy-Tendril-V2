@@ -1,4 +1,5 @@
 import { PlanActionsController } from "./planActions";
+import { i18n } from "../i18n";
 import type { PlanDetail } from "../types/api";
 
 /**
@@ -27,55 +28,62 @@ export interface DraftAction {
   isAvailable: (plan: PlanDetail) => boolean;
 }
 
+/** Translates into the language current at each call, so it is safe at module level. */
+const t = i18n.getFixedT(null, "plans");
+
+/**
+ * The labels are translated when the set is built, which is on every render of the page that shows
+ * them, so they follow a language change. `id` is what the page switches on, never `label`.
+ */
 export function draftActions(): DraftAction[] {
   return [
     {
       id: "execute",
-      label: "Execute Plan",
+      label: t("draftActions.execute"),
       variant: "primary",
       isAvailable: (plan) => PlanActionsController.canExecute(plan).allowed,
     },
     {
       id: "update",
-      label: "Update Plan…",
+      label: t("draftActions.update"),
       variant: "default",
       isAvailable: (plan) => PlanActionsController.canRefine(plan).allowed,
     },
     {
       id: "expand",
-      label: "Expand Plan",
+      label: t("draftActions.expand"),
       variant: "default",
       isAvailable: (plan) => PlanActionsController.canRefine(plan).allowed,
     },
     {
       id: "split",
-      label: "Split Plan",
+      label: t("draftActions.split"),
       variant: "default",
       isAvailable: (plan) => PlanActionsController.canRefine(plan).allowed,
     },
     {
       id: "createIssue",
-      label: "Create Issue…",
+      label: t("draftActions.createIssue"),
       variant: "default",
       // Needs somewhere to run `gh`: the plan's repos, or the project's.
       isAvailable: () => true,
     },
-    { id: "copyId", label: "Copy Plan ID", variant: "default", isAvailable: () => true },
+    { id: "copyId", label: t("draftActions.copyId"), variant: "default", isAvailable: () => true },
     {
       id: "copyPath",
-      label: "Copy Folder Path",
+      label: t("draftActions.copyPath"),
       variant: "default",
       isAvailable: (plan) => Boolean(plan.folderPath),
     },
     {
       id: "openFolder",
-      label: "Open Folder",
+      label: t("draftActions.openFolder"),
       variant: "default",
       isAvailable: (plan) => Boolean(plan.folderPath),
     },
     {
       id: "delete",
-      label: "Delete Plan…",
+      label: t("draftActions.delete"),
       variant: "destructive",
       isAvailable: (plan) => PlanActionsController.canDelete(plan).allowed,
     },

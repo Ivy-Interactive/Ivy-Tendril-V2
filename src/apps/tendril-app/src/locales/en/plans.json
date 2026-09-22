@@ -1,1 +1,281 @@
-{}
+{
+  "plansView": {
+    "newPlanShortcut": "New Plan",
+    "empty": {
+      "title": "No plans",
+      "description": "Plans you create will appear here"
+    },
+    "noSelection": "Select a plan from the sidebar"
+  },
+  "sidebar": {
+    "title": "Plans"
+  },
+  "searchBadges": {
+    "verified": "Verified",
+    "unverified": "Unverified"
+  },
+  "detail": {
+    "tabs": {
+      "plan": "Plan",
+      "details": "Details",
+      "diff": "Diff View",
+      "recommendations": "Recommendations ({{n}})",
+      "git": "Git",
+      "gitCount": "Git ({{n}})",
+      "gitAtRisk_one": "Git ({{n}}) · {{count}} at risk",
+      "gitAtRisk_other": "Git ({{n}}) · {{count}} at risk",
+      "gitAtRiskUncounted_one": "Git · {{count}} at risk",
+      "gitAtRiskUncounted_other": "Git · {{count}} at risk"
+    },
+    "questions": {
+      "label": "Questions",
+      "labelUnanswered_one": "Questions ({{count}} unanswered)",
+      "labelUnanswered_other": "Questions ({{count}} unanswered)"
+    },
+    "sourceLabel": {
+      "pr": "PR",
+      "issue": "Issue"
+    },
+    "meta": {
+      "position_one": "{{position}}/{{count}} plans",
+      "position_other": "{{position}}/{{count}} plans",
+      "dependsOn": "Depends on {{plans}}"
+    },
+    "errors": {
+      "saveAnswer": "Failed to save answer: {{error}}",
+      "saveAnnotation": "Failed to save annotation: {{error}}",
+      "updateRecommendation": "Failed to update recommendation \"{{title}}\": {{error}}",
+      "completePlan": "Could not complete plan {{id}}: {{error}}"
+    },
+    "runActionFailed": {
+      "executePlan": "Execute Plan failed: {{error}}",
+      "updatePlan": "Update Plan failed: {{error}}",
+      "expandPlan": "Expand Plan failed: {{error}}",
+      "splitPlan": "Split Plan failed: {{error}}",
+      "copyPlanId": "Copy Plan ID failed: {{error}}",
+      "copyFolderPath": "Copy Folder Path failed: {{error}}",
+      "openFolder": "Open Folder failed: {{error}}"
+    },
+    "discussDraft": {
+      "outcome": "I want to discuss the outcome of this plan before completing it. Summarize what was done and point out anything worth a closer look.",
+      "plan": "I want to discuss this plan before executing it. Summarize it and point out anything you would change."
+    }
+  },
+  "actions": {
+    "discussWithAgent": "Discuss with agent",
+    "updatePlan": "Update Plan",
+    "checking": "Checking...",
+    "starting": "Starting...",
+    "createPr": "Create PR",
+    "completePlan": "Complete Plan",
+    "retryPlan": "Retry Plan",
+    "acceptPartialDelivery": "Accept Partial Delivery",
+    "resetToDraft": "Reset to Draft…"
+  },
+  "draftActions": {
+    "execute": "Execute Plan",
+    "update": "Update Plan…",
+    "expand": "Expand Plan",
+    "split": "Split Plan",
+    "createIssue": "Create Issue…",
+    "copyId": "Copy Plan ID",
+    "copyPath": "Copy Folder Path",
+    "openFolder": "Open Folder",
+    "delete": "Delete Plan…"
+  },
+  "failureCallout": {
+    "title": "Execution Failed",
+    "verification": "<bold>{{name}}</bold> {{status}}, see verification report for details",
+    "noDetails": "No details available. Check the job logs."
+  },
+  "questionsPanel": {
+    "answered_one": "{{answered}} of {{count}} answered",
+    "answered_other": "{{answered}} of {{count}} answered",
+    "optional": "{{label}} (Optional)",
+    "saving": "saving…"
+  },
+  "planPane": {
+    "writing": "The agent is still drafting this plan. Its body appears here once the job writes the first revision.",
+    "neverWritten": "This plan has no revisions. Its folder was created but the job that was drafting it never wrote one, so there is no plan body to show.",
+    "neverWrittenUpdate": "Update Plan",
+    "unreadable_one": "This plan records {{count}} revision on disk, but its latest revision came back empty. The file may be unreadable.",
+    "unreadable_other": "This plan records {{count}} revisions on disk, but its latest revision came back empty. The file may be unreadable."
+  },
+  "recommendationsTab": {
+    "title": "Plan Recommendations",
+    "description": "Out-of-scope follow-ups and improvements discovered during execution.",
+    "empty": "{{jobType}} registered no recommendations for this plan."
+  },
+  "gitTab": {
+    "loading": "Loading git state…"
+  },
+  "details": {
+    "planId": "Plan ID",
+    "folder": "Folder",
+    "initialPrompt": "Initial Prompt",
+    "revision": "Revision",
+    "profile": "Profile",
+    "relatedPlans": "Related Plans",
+    "dependsOn": "Depends On",
+    "issue": "Issue",
+    "created": "Created",
+    "level": "Level",
+    "project": "Project",
+    "state": "State",
+    "copyPlanIdTooltip": "Copy to clipboard",
+    "copyFolderTooltip": "Copy to clipboard",
+    "repositories": "Repositories",
+    "noRepositories": "No repositories specified",
+    "commits": "Commits",
+    "noCommits": "No commits yet"
+  },
+  "verificationStatus": {
+    "pass": "Pass",
+    "fail": "Fail",
+    "pending": "Pending",
+    "skipped": "Skipped"
+  },
+  "verifications": {
+    "empty": "No verifications",
+    "updateFailed": "Failed to update verification {{name}}: {{error}}",
+    "viewReportTooltip": "View {{name}} report",
+    "viewReport": "View report",
+    "hideReport": "Hide report",
+    "noReport": "No report yet"
+  },
+  "reportSheet": {
+    "title": "Verification Report",
+    "description": "Verification report details for {{name}}",
+    "descriptionFallback": "Verification report details for plan",
+    "loading": "Loading verification report…",
+    "notFound": "No verification report file found for \"{{name}}\".",
+    "empty": "No report available for {{name}}."
+  },
+  "artifactSheet": {
+    "thumbnail": {
+      "openLabel": "Open {{fileName}}",
+      "noPreview": "No preview",
+      "loadingLabel": "Loading {{fileName}}"
+    },
+    "fallbackTitle": "Artifact",
+    "noPreviewTitle": "No preview",
+    "showInFolder": "Show in folder",
+    "loadingLabel": "Loading {{fileName}}",
+    "imageFailed": "Tendril could not load this image.",
+    "imageFailedWithError": "Tendril could not load this image: {{error}}",
+    "binary": "{{fileName}} is not a text file ({{size}}), so it has no preview here.",
+    "tooLarge": "{{fileName}} is {{size}}, too large to preview here.",
+    "plainNotice": "Shown as plain text: at {{size}}, {{fileName}} is too large to highlight.",
+    "plainNotice_markdown": "Shown as plain text: at {{size}}, {{fileName}} is too large to render as markdown.",
+    "copyPath": "Copy path",
+    "revealLabel": "Show in folder"
+  },
+  "pullRequests": {
+    "title": "Pull Requests",
+    "refresh": "Refresh",
+    "refreshing": "Refreshing...",
+    "unreachable": "GitHub could not be reached for: {{repos}}",
+    "syncInProgress": "A sync is already running; statuses will update when it finishes.",
+    "checked": "checked {{when}}",
+    "checkedJustNow": "checked just now",
+    "empty": "No PRs created",
+    "state": {
+      "open": "Open",
+      "closed": "Closed",
+      "merged": "Merged",
+      "unknown": "Unknown"
+    }
+  },
+  "revisionDiff": {
+    "singleRevision": "This plan has only one revision, so there is nothing to compare yet. A diff appears once {{createPlan}} or {{retryPlan}} writes a new revision.",
+    "compare": "<oldLabel><text>Compare revision</text><oldSelect/></oldLabel><newLabel><text>against</text><newSelect/></newLabel>",
+    "oldRevisionLabel": "Old revision",
+    "newRevisionLabel": "New revision",
+    "onDisk_one": "{{count}} revision on disk",
+    "onDisk_other": "{{count}} revisions on disk",
+    "loading": "Loading revisions {{from}} and {{to}}...",
+    "identical": "Revisions {{from}} and {{to}} are identical."
+  },
+  "icebox": {
+    "title": "Icebox",
+    "description": "Archived and deferred plans placed on hold.",
+    "searchPlaceholder": "Search icebox plans...",
+    "projectFilterLabel": "Project",
+    "allProjects": "All Projects",
+    "levelFilterLabel": "Level",
+    "allLevels": "All Levels",
+    "empty": {
+      "title": "Icebox is empty",
+      "description": "Plans you put on ice will appear here"
+    },
+    "noMatch": {
+      "title": "No plans match",
+      "description": "No icebox plans match the current filters."
+    },
+    "card": {
+      "priority": "P{{priority}}",
+      "verificationTooltip": "{{name}}: {{status}}",
+      "deleteLabel": "Delete plan {{id}}",
+      "thawLabel": "Thaw plan {{id}}",
+      "thaw": "Thaw",
+      "thawing": "Thawing..."
+    },
+    "thawFailed": "Could not thaw plan {{id}}: {{error}}"
+  },
+  "newPlan": {
+    "title": "Create New Plan",
+    "closeLabel": "Close modal",
+    "projectPickerLabel": "Target Project",
+    "autoProject": "Auto",
+    "addProject": "+ Add New Project",
+    "submit": "Create",
+    "placeholder": "Enter task description...",
+    "emptyDescription": "Please enter a description for the new plan."
+  },
+  "planActions": {
+    "canExecute": {
+      "alreadyCompleted": "Plan is already completed.",
+      "executing": "Plan is currently executing.",
+      "blockedByDependency": "Blocked by dependency '{{dependency}}' which is in state '{{state}}' (requires Completed)."
+    },
+    "canCreatePr": {
+      "wrongState": "Create PR is only allowed when plan is in Review or Failed (current: {{state}}).",
+      "verificationsFailed": "Cannot create PR: verifications failed ({{names}}).",
+      "verificationsPending": "Cannot create PR: verifications still pending ({{names}})."
+    },
+    "canRetry": {
+      "wrongState": "Retry is only allowed on plans in Review or Failed state (current: {{state}})."
+    },
+    "canRefine": {
+      "wrongState": "Plan refinement (Expand/Update/Split) is only allowed on Draft plans (current: {{state}})."
+    },
+    "canDelete": {
+      "inFlight": "Cannot delete a plan while it is {{state}} — cancel the job first."
+    },
+    "canReset": {
+      "terminal": "Plan is {{state}} and cannot be reset to Draft.",
+      "inFlight": "Cannot reset a plan while it is {{state}} — cancel the job first.",
+      "wrongState": "Reset to Draft is only allowed on plans in Review, Failed or Blocked (current: {{state}})."
+    },
+    "canCompletePartial": {
+      "wrongState": "Partial delivery is only allowed when plan is in Review or Failed (current: {{state}}).",
+      "noFailures": "No verifications failed — complete the plan normally instead."
+    },
+    "canComplete": {
+      "alreadyCompleted": "Plan is already completed.",
+      "inFlight": "Cannot complete a plan while it is {{state}} — cancel the job first."
+    },
+    "errors": {
+      "completeBlocked": "Complete plan blocked",
+      "executeBlocked": "Execution blocked",
+      "retryBlocked": "Retry blocked",
+      "createPrBlocked": "Create PR blocked",
+      "refineBlocked": "Refine blocked",
+      "repositoryRequired": "A repository is required to create an issue."
+    }
+  },
+  "store": {
+    "rollbackField": "Rollback: Failed to update {{field}}: {{error}}",
+    "rollbackVerification": "Rollback verification update: {{error}}"
+  }
+}

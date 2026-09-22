@@ -9,6 +9,9 @@ import { ErrorBanner } from "../components/ErrorBanner";
 import { LevelBadge } from "../components/LevelBadge";
 import { DeletePlanDialog } from "./dialogs";
 import { formatPlanId, parseProjects, planStateBadgeVariant } from "./PlansView";
+import { verificationStatusLabel } from "./PlanVerifications";
+import { useTranslation } from "../i18n";
+import { useEnumLabels } from "../i18n/enumLabels";
 
 interface IceboxViewProps {
   plans: PlanSummary[];
@@ -40,6 +43,8 @@ interface IceboxViewProps {
  * puts a plan in, and nothing took it out.
  */
 export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onPlanChanged }) => {
+  const { t } = useTranslation("plans");
+  const labels = useEnumLabels();
   const [search, setSearch] = useState("");
   const [selectedProject, setSelectedProject] = useState<string>("all");
   const [selectedLevel, setSelectedLevel] = useState<string>("all");
@@ -134,7 +139,9 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
       await plansStore.transitionPlanOptimistic(plan.id, "Draft");
       forget(plan.id);
     } catch (err) {
-      setActionError(`Could not thaw plan ${formatPlanId(plan.id)}: ${describeBridgeError(err)}`);
+      setActionError(
+        t("icebox.thawFailed", { id: formatPlanId(plan.id), error: describeBridgeError(err) }),
+      );
     } finally {
       setPendingId(null);
     }
@@ -144,8 +151,8 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
     <div data-testid="icebox-view" className="space-y-6">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight text-foreground">Icebox</h1>
-        <p className="text-sm text-muted-foreground">Archived and deferred plans placed on hold.</p>
+        <h1 className="text-2xl font-bold tracking-tight text-foreground">{t("icebox.title")}</h1>
+        <p className="text-sm text-muted-foreground">{t("icebox.description")}</p>
       </div>
 
       {actionError && (
@@ -160,20 +167,20 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            placeholder="Search icebox plans..."
+            placeholder={t("icebox.searchPlaceholder")}
             className="h-9 w-full rounded-field border border-border bg-background pl-9 pr-3 text-xs text-foreground placeholder:text-muted-foreground focus-visible:border-ring focus-visible:outline-none"
           />
         </div>
 
         {projects.length > 0 && (
           <NativeSelect
-            aria-label="Project"
+            aria-label={t("icebox.projectFilterLabel")}
             wrapperClassName="w-auto"
             className="w-auto text-xs"
             value={selectedProject}
             onChange={(e) => setSelectedProject(e.target.value)}
           >
-            <option value="all">All Projects</option>
+            <option value="all">{t("icebox.allProjects")}</option>
             {projects.map((p) => (
               <option key={p} value={p}>
                 {p}
@@ -184,13 +191,13 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
 
         {levels.length > 0 && (
           <NativeSelect
-            aria-label="Level"
+            aria-label={t("icebox.levelFilterLabel")}
             wrapperClassName="w-auto"
             className="w-auto text-xs"
             value={selectedLevel}
             onChange={(e) => setSelectedLevel(e.target.value)}
           >
-            <option value="all">All Levels</option>
+            <option value="all">{t("icebox.allLevels")}</option>
             {levels.map((l) => (
               <option key={l} value={l}>
                 {l}
@@ -208,11 +215,11 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
           // for an empty icebox; the filter message is the other case, when a filter hid a set that
           // is not empty. V1 passes this one no `cta`, so it carries no process wallpaper: the
           // pipeline has no icebox stage, and V1 hangs it only off Plans and Review.
-          title={iceboxPlans.length === 0 ? "Icebox is empty" : "No plans match"}
+          title={iceboxPlans.length === 0 ? t("icebox.empty.title") : t("icebox.noMatch.title")}
           description={
             iceboxPlans.length === 0
-              ? "Plans you put on ice will appear here"
-              : "No icebox plans match the current filters."
+              ? t("icebox.empty.description")
+              : t("icebox.noMatch.description")
           }
         />
       ) : (
@@ -247,7 +254,7 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
                     </span>
                     {plan.priority !== undefined && (
                       <span className="text-xs-tight text-muted-foreground/80">
-                        P{plan.priority}
+                        {t("icebox.card.priority", { priority: plan.priority })}
                       </span>
                     )}
                   </div>
@@ -258,7 +265,7 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
 
                   <div className="flex flex-wrap items-center gap-1.5 pt-1">
                     <Badge variant={planStateBadgeVariant(plan.state)} density="Small">
-                      {plan.state}
+                      {labels.planState(plan.state)}
                     </Badge>
 
                     {projectList.map((proj) => (
@@ -283,7 +290,10 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
                       {plan.verifications.map((v, i) => (
                         <span
                           key={i}
-                          title={`${v.name}: ${v.status}`}
+                          title={t("icebox.card.verificationTooltip", {
+                            name: v.name,
+                            status: verificationStatusLabel(t, v.status),
+                          })}
                           className={`size-2 rounded-full ${VERIFICATION_DOT_CLASS[v.status] || "bg-muted-foreground/50"}`}
                         />
                       ))}
@@ -300,23 +310,23 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
                     size="sm"
                     variant="outline"
                     disabled={isBusy}
-                    aria-label={`Delete plan ${formatPlanId(plan.id)}`}
+                    aria-label={t("icebox.card.deleteLabel", { id: formatPlanId(plan.id) })}
                     onClick={() => setDeleting(plan)}
                     className="h-auto px-2.5 py-1 text-xs"
                   >
                     <Trash2 className="size-3.5" />
-                    Delete
+                    {t("common:actions.delete")}
                   </Button>
                   <Button
                     type="button"
                     size="sm"
                     disabled={isBusy}
-                    aria-label={`Thaw plan ${formatPlanId(plan.id)}`}
+                    aria-label={t("icebox.card.thawLabel", { id: formatPlanId(plan.id) })}
                     onClick={() => void thaw(plan)}
                     className="h-auto px-2.5 py-1 text-xs"
                   >
                     <Flame className="size-3.5" />
-                    {pendingId === plan.id ? "Thawing..." : "Thaw"}
+                    {pendingId === plan.id ? t("icebox.card.thawing") : t("icebox.card.thaw")}
                   </Button>
                 </div>
               </div>
