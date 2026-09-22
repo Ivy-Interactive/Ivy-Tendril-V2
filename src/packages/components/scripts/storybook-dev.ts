@@ -17,8 +17,10 @@
  *   STORYBOOK_PORT_BASE  first port to probe (default 6006); the range is base..base+9
  */
 import { spawn } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import net from "node:net";
+import path from "node:path";
 
 const HOST = "127.0.0.1";
 const RANGE_SIZE = 10;
@@ -84,9 +86,35 @@ if (!callerOwnsPort && port === 0) {
   );
 }
 
-let cli: string;
+let cli: string | undefined;
 try {
-  cli = createRequire(import.meta.url).resolve("storybook/bin/index.cjs");
+  const require = createRequire(import.meta.url);
+  try {
+    const pkgPath = require.resolve("storybook/package.json");
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { bin?: string | Record<string, string> };
+    const binRel = typeof pkg.bin === "string" ? pkg.bin : pkg.bin?.storybook;
+    if (binRel) {
+      const resolved = path.resolve(path.dirname(pkgPath), binRel);
+      if (existsSync(resolved)) cli = resolved;
+    }
+  } catch {
+    // Fall back to direct subpath resolution
+  }
+
+  if (!cli) {
+    for (const subpath of ["storybook/bin/index.cjs", "storybook/dist/bin/dispatcher.js"]) {
+      try {
+        cli = require.resolve(subpath);
+        break;
+      } catch {
+        // Continue
+      }
+    }
+  }
+
+  if (!cli) {
+    throw new Error("Storybook CLI not found");
+  }
 } catch {
   process.stderr.write('Cannot resolve the storybook CLI - run "pnpm install" first.\n');
   process.exit(1);
