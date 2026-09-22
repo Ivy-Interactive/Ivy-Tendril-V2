@@ -3,7 +3,7 @@ import { RefreshCw } from "lucide-react";
 import { Button, Callout, Switch } from "@ivy-interactive/components/ui";
 import { bridge } from "../../api/bridge";
 import { describeBridgeError } from "../../types/api";
-import { DialogShell, DialogShortcutHint } from "./DialogShell";
+import { DialogShell, DialogShortcutHint } from "@ivy-interactive/components/tendril";
 import { SELECT_FIELD_CLASS } from "./selectField";
 
 export interface AutoAcceptSettingsDialogProps {

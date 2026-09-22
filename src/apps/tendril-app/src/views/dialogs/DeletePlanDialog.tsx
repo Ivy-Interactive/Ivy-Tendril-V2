@@ -2,7 +2,7 @@ import * as React from "react";
 import { Button } from "@ivy-interactive/components/ui";
 import { plansStore } from "../../state/plansStore";
 import { describeBridgeError, type PlanDetail, type PlanSummary } from "../../types/api";
-import { ConfirmDialog } from "./ConfirmDialog";
+import { ConfirmDialog } from "@ivy-interactive/components/tendril";
 
 export interface DeletePlanDialogProps {
   isOpen: boolean;

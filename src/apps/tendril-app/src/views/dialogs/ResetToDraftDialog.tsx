@@ -1,7 +1,7 @@
 import * as React from "react";
 import { describeBridgeError, type PlanDetail, type PlanSummary } from "../../types/api";
 import { plansStore } from "../../state/plansStore";
-import { ConfirmDialog } from "./ConfirmDialog";
+import { ConfirmDialog } from "@ivy-interactive/components/tendril";
 
 export interface ResetToDraftDialogProps {
   isOpen: boolean;

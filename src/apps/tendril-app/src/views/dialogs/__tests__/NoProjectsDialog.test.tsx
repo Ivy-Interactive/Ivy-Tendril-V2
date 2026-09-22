@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import * as React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { NoProjectsDialog } from "../NoProjectsDialog";
+import { NoProjectsDialog } from "@ivy-interactive/components/tendril";
 import { uiStore } from "../../../state/uiStore";
 
 /**

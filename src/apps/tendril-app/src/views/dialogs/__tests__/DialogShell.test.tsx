@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import * as React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { ConfirmDialog } from "../ConfirmDialog";
+import { ConfirmDialog } from "@ivy-interactive/components/tendril";
 
 /**
  * The accessibility contract lives in `DialogShell`, so it is asserted once here

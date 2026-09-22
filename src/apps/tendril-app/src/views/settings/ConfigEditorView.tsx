@@ -7,7 +7,7 @@ import { notificationsStore } from "../../state/notificationsStore";
 import { bridgeErrorCode, describeBridgeError } from "../../types/api";
 import { ChatView, type SamplePrompt } from "../ChatView";
 import { PLAN_CHAT_HEADLINE } from "../../components/chat/PlanChatPanel";
-import { ConfirmDialog } from "../dialogs/ConfirmDialog";
+import { ConfirmDialog } from "@ivy-interactive/components/tendril";
 
 /**
  * The in-app `config.yaml` editor, which is V1's `ConfigEditorApp` -> `RawConfigEditorView.cs`.

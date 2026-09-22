@@ -2,7 +2,7 @@ import * as React from "react";
 import { Callout, Input } from "@ivy-interactive/components/ui";
 import { bridge } from "../../api/bridge";
 import { describeBridgeError } from "../../types/api";
-import { ConfirmDialog } from "./ConfirmDialog";
+import { ConfirmDialog } from "@ivy-interactive/components/tendril";
 
 export interface DeleteProjectDialogProps {
   isOpen: boolean;

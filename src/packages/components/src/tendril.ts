@@ -324,3 +324,27 @@ export type {
   VaultStatus,
   VaultStatusCardProps,
 } from "./components/Vault/index.ts";
+
+// Plan lifecycle dialogs. Presentational only - a dialog that reaches the daemon keeps a connected
+// wrapper in the app, which supplies its callbacks. See `components/Dialogs/index.ts`.
+export {
+  DialogShell,
+  DialogShortcutHint,
+  ConfirmDialog,
+  DIALOG_WIDTH,
+  DirtyRepoDialog,
+  NoProjectsDialog,
+  PendingAnnotationsDialog,
+  UnansweredQuestionsDialog,
+  RemoveProjectDialog,
+  type DialogShellProps,
+  type ConfirmDialogProps,
+  type ConfirmVariant,
+  type DialogWidth,
+  type DirtyRepoDialogProps,
+  type DirtyRepo,
+  type NoProjectsDialogProps,
+  type PendingAnnotationsDialogProps,
+  type UnansweredQuestionsDialogProps,
+  type RemoveProjectDialogProps,
+} from "./components/Dialogs";

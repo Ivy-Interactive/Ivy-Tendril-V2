@@ -6,7 +6,7 @@ import { ClipboardCopy, ExternalLink, Share2 } from "lucide-react";
 import { describeBridgeError, bridgeErrorCode } from "../../types/api";
 import { notificationsStore } from "../../state/notificationsStore";
 import { tunnelApi, type TunnelSnapshot, type TunnelStatus } from "../../api/tunnelApi";
-import { DialogShell } from "./DialogShell";
+import { DialogShell } from "@ivy-interactive/components/tendril";
 
 /** `tendril_core::tunnel::TunnelStatus`, as the daemon serialises it. */
 export type ShareTunnelStatus = TunnelStatus;

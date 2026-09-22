@@ -1,5 +1,5 @@
 import React from "react";
-import { ConfirmDialog } from "../dialogs/ConfirmDialog";
+import { ConfirmDialog } from "@ivy-interactive/components/tendril";
 
 /** What is about to be removed, and what to do once the operator says yes. */
 export interface RemovalRequest {

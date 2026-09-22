@@ -1,13 +1,6 @@
 import * as React from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  TuiKbd,
-} from "@ivy-interactive/components/ui";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "../ui/dialog";
+import { TuiKbd } from "../ui/TuiKbd";
 import { DIALOG_WIDTH, type DialogWidth } from "./fieldStyles";
 
 /**

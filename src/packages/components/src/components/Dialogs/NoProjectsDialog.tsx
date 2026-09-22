@@ -1,5 +1,5 @@
 import * as React from "react";
-import { Button } from "@ivy-interactive/components/ui";
+import { Button } from "../ui/button";
 import { DialogShell, DialogShortcutHint } from "./DialogShell";
 
 export interface NoProjectsDialogProps {

@@ -1,6 +1,6 @@
 import * as React from "react";
-import { Button } from "@ivy-interactive/components/ui";
-import type { PlanQuestion } from "@ivy-interactive/components/tendril";
+import { Button } from "../ui/button";
+import type { PlanQuestion } from "../PlanMarkdown/questionsSchema";
 import { DialogShell } from "./DialogShell";
 
 export interface UnansweredQuestionsDialogProps {

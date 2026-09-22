@@ -10,7 +10,7 @@ import { describeBridgeError, type PlanSummary } from "../../types/api";
 import { formatPlanId, normalizePlanState, parseProjects, planRowBadges } from "../PlansView";
 import { useLevelColors } from "../../components/LevelBadge";
 import type { LevelColors } from "../../utils/levelColor";
-import { DialogShell } from "./DialogShell";
+import { DialogShell } from "@ivy-interactive/components/tendril";
 
 /** V1 `PlanSearchDialog.MaxResults`. */
 export const MAX_PLAN_SEARCH_RESULTS = 15;

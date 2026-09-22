@@ -4,7 +4,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { execFileSync } from "node:child_process";
-import { DialogShell } from "../src/views/dialogs/DialogShell";
+import { DialogShell } from "@ivy-interactive/components/tendril";
 import { RecommendationNoteDialog } from "../src/components/RecommendationNoteDialog";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));

@@ -1,12 +1,28 @@
 import * as React from "react";
-import { Button } from "@ivy-interactive/components/ui";
+import { Button } from "../ui/button";
 import { DialogShell, DialogShortcutHint } from "./DialogShell";
-import type { RepoStatus } from "../../types/api";
+/**
+ * A repository with uncommitted work, as this dialog renders it.
+ *
+ * Declared here rather than imported from the app, for the reason `PlanGitView` gives for owning
+ * its own shapes: this is the component that renders them and it cannot import from the app. The
+ * app's `RepoStatus` DTO is structurally identical and satisfies this, so the call site passes it
+ * straight through.
+ */
+export interface DirtyRepo {
+  path: string;
+  isDirty: boolean;
+  /** `git status --porcelain` lines, capped by the service. */
+  changes: string[];
+  /** Total changed entries, which may exceed `changes.length`. */
+  changeCount?: number;
+  error?: string;
+}
 
 export interface DirtyRepoDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  dirtyRepos: RepoStatus[];
+  dirtyRepos: DirtyRepo[];
   onProceed: () => void;
   /** V1's `proceedLabel`: the dialog is reused by every dispatch it guards. */
   proceedLabel?: string;

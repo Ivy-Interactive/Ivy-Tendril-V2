@@ -20,7 +20,7 @@ import type {
   ModelValidation,
   TestAgentResult,
 } from "../../types/agents";
-import { DialogShell } from "../dialogs/DialogShell";
+import { DialogShell } from "@ivy-interactive/components/tendril";
 
 /**
  * `Apps/Settings/Dialogs/AgentTestDialog.cs`.

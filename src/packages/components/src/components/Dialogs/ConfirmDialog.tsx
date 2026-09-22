@@ -1,5 +1,6 @@
 import * as React from "react";
-import { Button, Callout } from "@ivy-interactive/components/ui";
+import { Button } from "../ui/button";
+import { Callout } from "../ui/callout";
 import { DialogShell, DialogShortcutHint } from "./DialogShell";
 import { type DialogWidth } from "./fieldStyles";
 

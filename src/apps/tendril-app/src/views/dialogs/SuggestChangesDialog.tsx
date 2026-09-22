@@ -11,7 +11,7 @@ import {
   type PlanSummary,
   type StartJobResponse,
 } from "../../types/api";
-import { DialogShell } from "./DialogShell";
+import { DialogShell } from "@ivy-interactive/components/tendril";
 
 export interface SuggestChangesDialogProps {
   isOpen: boolean;

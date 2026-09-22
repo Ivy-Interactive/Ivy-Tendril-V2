@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
-import { ConfirmDialog } from "../src/views/dialogs/ConfirmDialog";
+import { ConfirmDialog } from "@ivy-interactive/components/tendril";
 import { CreateIssueDialog } from "../src/views/dialogs/CreateIssueDialog";
 import { planDetail } from "./fixtures/plan.fixture";
 
