@@ -44,9 +44,7 @@ describe("robots.txt", () => {
   });
 
   it("includes sitemap reference", () => {
-    expect(robots).toContain(
-      "Sitemap: https://ivy-interactive.github.io/Ivy-Tendril-V2/sitemap.xml",
-    );
+    expect(robots).toContain("Sitemap: https://docs.ivy.app/sitemap.xml");
   });
 });
 
@@ -59,17 +57,11 @@ describe("sitemap.xml", () => {
   });
 
   it("indexes root, trust pages, and documentation routes", () => {
-    expect(sitemap).toContain("<loc>https://ivy-interactive.github.io/Ivy-Tendril-V2/</loc>");
-    expect(sitemap).toContain("<loc>https://ivy-interactive.github.io/Ivy-Tendril-V2/about</loc>");
-    expect(sitemap).toContain(
-      "<loc>https://ivy-interactive.github.io/Ivy-Tendril-V2/contact</loc>",
-    );
-    expect(sitemap).toContain(
-      "<loc>https://ivy-interactive.github.io/Ivy-Tendril-V2/privacy</loc>",
-    );
-    expect(sitemap).toContain(
-      "<loc>https://ivy-interactive.github.io/Ivy-Tendril-V2/docs/gettingstarted/introduction</loc>",
-    );
+    expect(sitemap).toContain("<loc>https://docs.ivy.app/</loc>");
+    expect(sitemap).toContain("<loc>https://docs.ivy.app/about</loc>");
+    expect(sitemap).toContain("<loc>https://docs.ivy.app/contact</loc>");
+    expect(sitemap).toContain("<loc>https://docs.ivy.app/privacy</loc>");
+    expect(sitemap).toContain("<loc>https://docs.ivy.app/docs/gettingstarted/introduction</loc>");
     expect(sitemap.match(/<url>/g)?.length).toBeGreaterThanOrEqual(routes.length + 4);
   });
 });
@@ -195,18 +187,10 @@ describe("agent-friendly 404 and structured JSON errors", () => {
   it("includes a markdown error body with at least 20 characters and links", () => {
     expect(page404).toContain("# 404 Not Found");
     expect(page404).toContain("The requested path was not found");
-    expect(page404).toContain(
-      "Documentation: https://ivy-interactive.github.io/Ivy-Tendril-V2/docs",
-    );
-    expect(page404).toContain(
-      "Developer Portal: https://ivy-interactive.github.io/Ivy-Tendril-V2/developers",
-    );
-    expect(page404).toContain(
-      "Sitemap: https://ivy-interactive.github.io/Ivy-Tendril-V2/sitemap.xml",
-    );
-    expect(page404).toContain(
-      "LLM Agent Guidelines: https://ivy-interactive.github.io/Ivy-Tendril-V2/llms.txt",
-    );
+    expect(page404).toContain("Documentation: https://docs.ivy.app/docs");
+    expect(page404).toContain("Developer Portal: https://docs.ivy.app/developers");
+    expect(page404).toContain("Sitemap: https://docs.ivy.app/sitemap.xml");
+    expect(page404).toContain("LLM Agent Guidelines: https://docs.ivy.app/llms.txt");
   });
 
   it("provides clean standalone 404 markdown file", () => {
@@ -304,7 +288,7 @@ describe("Agentic Resource Discovery (ARD) Manifest", () => {
     expect(ard.specVersion).toBe("1.0");
     expect(ard.host).toBeDefined();
     expect(ard.host.displayName).toBe("Ivy Interactive");
-    expect(ard.host.url).toContain("https://ivy-interactive.github.io");
+    expect(ard.host.url).toBe("https://docs.ivy.app");
   });
 
   it("includes entries with domain-anchored urn:air identifiers", () => {
@@ -325,13 +309,13 @@ describe("Agentic Resource Discovery (ARD) Manifest", () => {
       (e: { type: string }) => e.type === "application/mcp-server+json",
     );
     expect(mcpEntry).toBeDefined();
-    expect(mcpEntry.identifier).toBe("urn:air:ivy-interactive.github.io:mcp:tendril");
+    expect(mcpEntry.identifier).toBe("urn:air:docs.ivy.app:mcp:tendril");
 
     const apiEntry = ard.entries.find(
       (e: { type: string }) => e.type === "application/openapi+json",
     );
     expect(apiEntry).toBeDefined();
-    expect(apiEntry.identifier).toBe("urn:air:ivy-interactive.github.io:api:openapi");
+    expect(apiEntry.identifier).toBe("urn:air:docs.ivy.app:api:openapi");
   });
 });
 

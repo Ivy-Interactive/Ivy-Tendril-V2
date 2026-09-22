@@ -175,11 +175,6 @@ class UiStore {
     this.notify();
   }
 
-  public toggleSidebar(): void {
-    this.prefs.sidebarCollapsed = !this.prefs.sidebarCollapsed;
-    this.notify();
-  }
-
   public setSearchFilter(query: string): void {
     this.prefs.searchFilter = query;
     this.notify();

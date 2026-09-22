@@ -9,16 +9,18 @@
  * never on absolute filesystem paths, so the same functions serve the browser bundle and the
  * `node:fs`-driven tests.
  */
+import {
+  DEFAULT_LOCALE,
+  isSiteLocale,
+  localizePath,
+  splitLocale,
+  type SiteLocale,
+} from "../config/locales.config";
 
-/** URL prefix every docs route carries. Matches `base` in `vite.config.ts`. */
-export const ROUTE_BASE = (() => {
-  const raw =
-    (typeof import.meta !== "undefined" && import.meta.env?.BASE_URL) ||
-    (typeof process !== "undefined" && (process.env?.VITE_BASE_PATH || process.env?.BASE_PATH)) ||
-    "/docs/";
-  const normalized = (raw.startsWith("/") ? raw : `/${raw}`).replace(/\/+$/, "");
-  return normalized.length > 0 ? normalized : "/docs";
-})();
+export { isSiteLocale, localizePath, splitLocale, type SiteLocale };
+
+/** URL prefix every docs route carries. */
+export const ROUTE_BASE = "/docs";
 
 /** File name (without extension) that makes a folder a section and gives it its own page. */
 export const SECTION_INDEX = "_Index";
@@ -68,14 +70,19 @@ export function isSectionIndex(contentPath: string): boolean {
  *
  * `01_GettingStarted/01_Introduction.md` -> `/docs/gettingstarted/introduction`
  * `02_Concepts/_Index.md`                -> `/docs/concepts`
+ * Optional `locale`: `('02_Concepts/_Index.md', 'de')` -> `/de/docs/concepts`
  */
-export function routeForPath(contentPath: string): string {
+export function routeForPath(contentPath: string, locale?: string | number): string {
   const segments = segmentsOf(contentPath.replace(/\.md$/i, ""));
   const slugs = segments
     .filter((segment, index) => !(segment === SECTION_INDEX && index === segments.length - 1))
     .map(slugify)
     .filter((slug) => slug.length > 0);
-  return slugs.length > 0 ? `${ROUTE_BASE}/${slugs.join("/")}` : ROUTE_BASE;
+  const baseRoute = slugs.length > 0 ? `${ROUTE_BASE}/${slugs.join("/")}` : ROUTE_BASE;
+  if (typeof locale === "string" && locale !== DEFAULT_LOCALE && isSiteLocale(locale)) {
+    return localizePath(baseRoute, locale);
+  }
+  return baseRoute;
 }
 
 /** Drops a trailing slash and any query/hash so `/docs/concepts/` and `/docs/concepts` agree. */
@@ -88,12 +95,15 @@ export function normalizeRoute(route: string): string {
 /**
  * Reverse of {@link routeForPath}. The `NN_` prefixes are not recoverable from a route, so the
  * known content paths have to be supplied — in the app that is `Object.keys(rawPages)`.
+ * Also resolves localized routes e.g. `/de/docs/concepts/plans` to `02_Concepts/01_Plans.md`.
  */
 export function contentPathForRoute(
   route: string,
   contentPaths: Iterable<string>,
 ): string | undefined {
-  const wanted = normalizeRoute(route);
+  const normalized = normalizeRoute(route);
+  const { path: cleanPath } = splitLocale(normalized);
+  const wanted = normalizeRoute(cleanPath);
   for (const contentPath of contentPaths) {
     if (routeForPath(contentPath) === wanted) {
       return contentPath;

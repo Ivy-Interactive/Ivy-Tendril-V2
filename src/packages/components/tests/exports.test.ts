@@ -94,6 +94,7 @@ describe("Package Exports", () => {
       expect(ui.Toggle).toBeDefined();
       expect(ui.Label).toBeDefined();
       expect(ui.Select).toBeDefined();
+      expect(ui.NativeSelect).toBeDefined();
       expect(ui.DataTable).toBeDefined();
       expect(ui.DataTablePagination).toBeDefined();
     });
@@ -103,6 +104,7 @@ describe("Package Exports", () => {
       expect(ui.ExpandableVariants).toBeDefined();
       expect(ui.InputVariants).toBeDefined();
       expect(ui.SelectVariants).toBeDefined();
+      expect(ui.nativeSelectVariant).toBeDefined();
       expect(ui.TableVariants).toBeDefined();
     });
 
@@ -132,7 +134,6 @@ describe("Package Exports", () => {
       expect(renderers.Icon).toBeDefined();
       expect(renderers.InvalidIcon).toBeDefined();
       expect(renderers.IvyLogo).toBeDefined();
-      expect(renderers.Kbd).toBeDefined();
       expect(renderers.Loading).toBeDefined();
       expect(renderers.LoadingScreen).toBeDefined();
       expect(renderers.LogoLoading).toBeDefined();
@@ -198,6 +199,18 @@ describe("Package Exports", () => {
     it("should export agent and execution visualizers", () => {
       expect(tendril.AgentViewer).toBeDefined();
       expect(tendril.TendrilProcessViewer).toBeDefined();
+    });
+
+    /**
+     * What a consumer needs to render an agent run's parts itself, rather than as one `AgentViewer`:
+     * the chat thread lays a turn's tool cards out inline and puts the run's own metrics under it.
+     */
+    it("should export the pieces of an agent run a consumer can render on its own", () => {
+      expect(tendril.AgentMetricsFooter).toBeDefined();
+      expect(tendril.EventWireStreamParser).toBeDefined();
+      expect(tendril.agentNodeKey).toBeDefined();
+      expect(tendril.groupToolUseEvents).toBeDefined();
+      expect(tendril.parseEventWireStream).toBeDefined();
     });
 
     it("should export inputs and form controls", () => {

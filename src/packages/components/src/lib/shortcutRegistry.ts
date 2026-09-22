@@ -15,6 +15,13 @@ export interface ShortcutRegistration {
   skipInInputs: boolean;
   /** Raw shortcut string for display (e.g., "Ctrl+K") */
   displayKey: string;
+  /**
+   * False opts this registration out of the 300ms duplicate-fire debounce (default true). The
+   * debounce exists to absorb a key repeat or an accidental double-fire during a UI transition, but
+   * it also makes a toggle non-idempotent: two genuine presses inside 300ms should flip the state
+   * twice, back to where it started, not once. A toggle action should set this false.
+   */
+  debounce?: boolean;
 }
 
 export interface ShortcutInfo {
@@ -103,7 +110,7 @@ function handleKeyDown(event: KeyboardEvent) {
   const isInputField = target !== null && isEditable(target) && isVisible(target);
 
   for (const registration of registry.values()) {
-    const { shortcut, handler, isActive, skipInInputs, id } = registration;
+    const { shortcut, handler, isActive, skipInInputs, id, debounce = true } = registration;
 
     // Skip if this shortcut should be excluded in input fields
     if (skipInInputs && isInputField) continue;
@@ -136,12 +143,14 @@ function handleKeyDown(event: KeyboardEvent) {
     if (!isActive()) continue;
 
     // Debounce check
-    const now = Date.now();
-    const lastTrigger = recentShortcuts.get(id) || 0;
-    if (now - lastTrigger < DEBOUNCE_MS) continue;
+    if (debounce) {
+      const now = Date.now();
+      const lastTrigger = recentShortcuts.get(id) || 0;
+      if (now - lastTrigger < DEBOUNCE_MS) continue;
 
-    recentShortcuts.set(id, now);
-    startSweepIfNeeded();
+      recentShortcuts.set(id, now);
+      startSweepIfNeeded();
+    }
 
     event.preventDefault();
     handler();

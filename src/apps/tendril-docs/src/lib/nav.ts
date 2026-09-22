@@ -8,6 +8,7 @@
  */
 import { parsePage, type DocPage } from "./page";
 import { SECTION_INDEX, orderOf, routeForPath, segmentsOf, titleFromName } from "./slug";
+import { DEFAULT_LOCALE, isSiteLocale, localizePath } from "../config/locales.config";
 
 export interface NavPage {
   title: string;
@@ -158,4 +159,42 @@ export function flattenNavContentPaths(sections: NavSection[]): string[] {
   };
   for (const section of sections) walk(section);
   return paths;
+}
+
+export type PageLookup = (route: string, contentPath?: string) => { title?: string } | undefined;
+
+/**
+ * Returns a localized copy of the navigation tree for the specified locale.
+ * English (default) routes remain unprefixed (`/docs/...`), whereas others
+ * are prefixed (`/{locale}/docs/...`).
+ *
+ * When `lookupPage` is provided, section and page titles are resolved from the
+ * localized page model. If a translation is not yet available, it falls back
+ * to the authored title.
+ */
+export function localizeNavTree(
+  sections: NavSection[],
+  locale: string,
+  lookupPage?: PageLookup,
+): NavSection[] {
+  if (locale === DEFAULT_LOCALE || !isSiteLocale(locale)) return sections;
+  return sections.map((section) => {
+    const locRoute = localizePath(section.route, locale);
+    const locSectionPage = lookupPage?.(locRoute, section.contentPath);
+    return {
+      ...section,
+      title: locSectionPage?.title || section.title,
+      route: locRoute,
+      pages: section.pages.map((page) => {
+        const locPageRoute = localizePath(page.route, locale);
+        const locPage = lookupPage?.(locPageRoute, page.contentPath);
+        return {
+          ...page,
+          title: locPage?.title || page.title,
+          route: locPageRoute,
+        };
+      }),
+      sections: localizeNavTree(section.sections, locale, lookupPage),
+    };
+  });
 }

@@ -14,9 +14,9 @@ import { copyFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Plugin } from "vite";
 import { readContentFiles, routesForContent } from "./emit-route-shells";
-import { ROUTE_BASE } from "../lib/slug";
 import { buildNavTree, flattenNavRoutes } from "../lib/nav";
 import { parsePages } from "../lib/page";
+import { SITE_LOCALES } from "../config/locales.config";
 
 export interface EmitAgenticAssetsOptions {
   contentDir: string;
@@ -24,9 +24,8 @@ export interface EmitAgenticAssetsOptions {
   origin?: string;
 }
 
-const DEFAULT_ORIGIN = "https://ivy-interactive.github.io";
-const REPO_SUBPATH = "/Ivy-Tendril-V2";
-const CANONICAL_BASE_URL = `${DEFAULT_ORIGIN}${REPO_SUBPATH}`;
+const DEFAULT_ORIGIN = "https://docs.ivy.app";
+const CANONICAL_BASE_URL = "https://docs.ivy.app";
 
 export interface ResolvedUrls {
   siteRootUrl: string;
@@ -39,15 +38,38 @@ export function resolveSiteUrls(rawSiteUrl: string = CANONICAL_BASE_URL): Resolv
   if (!clean.startsWith("http")) {
     clean = `${DEFAULT_ORIGIN}${clean.startsWith("/") ? clean : `/${clean}`}`;
   }
-  // If hosted on github.io and missing the repo subpath, ensure it includes /Ivy-Tendril-V2
-  if (clean.includes("ivy-interactive.github.io") && !clean.includes(REPO_SUBPATH)) {
-    clean = clean.replace("ivy-interactive.github.io", `ivy-interactive.github.io${REPO_SUBPATH}`);
-  }
   const siteRootUrl = clean.replace(/\/docs\/?$/, "") || CANONICAL_BASE_URL;
   const docsBaseUrl = `${siteRootUrl}/docs`;
   const urlObj = new URL(siteRootUrl);
-  const repoSubpath = urlObj.pathname.replace(/\/+$/, "") || REPO_SUBPATH;
+  const repoSubpath = urlObj.pathname.replace(/\/+$/, "");
   return { siteRootUrl, docsBaseUrl, repoSubpath };
+}
+
+export function renderStaticNav(siteRootUrl: string, docsBaseUrl: string): string {
+  const options = SITE_LOCALES.map((locale) => {
+    const isEn = locale.code === "en";
+    const href = isEn
+      ? `${docsBaseUrl}/gettingstarted/introduction`
+      : `${siteRootUrl}/${locale.code}/docs/gettingstarted/introduction`;
+    return `        <option value="${href}"${isEn ? " selected" : ""}>${locale.label}</option>`;
+  }).join("\n");
+
+  return `    <nav aria-label="Main Navigation">
+      <a href="${siteRootUrl}/">Home</a>
+      <a href="${siteRootUrl}/developers">Developer Portal</a>
+      <a href="${docsBaseUrl}/gettingstarted/introduction">Documentation</a>
+      <a href="${siteRootUrl}/about">About</a>
+      <a href="${siteRootUrl}/contact">Contact</a>
+      <a href="${siteRootUrl}/privacy">Privacy Policy</a>
+      <a href="${siteRootUrl}/llms.txt">llms.txt</a>
+      <a href="${siteRootUrl}/sitemap.xml">Sitemap</a>
+      <span style="display:inline-flex;align-items:center;margin-left:auto;gap:0.35rem">
+        <label for="lang-select" style="font-size:0.875rem;font-weight:500;color:#6b7280">Language:</label>
+        <select id="lang-select" onchange="window.location.href=this.value" style="padding:0.2rem 0.4rem;border:1px solid #d1d5db;border-radius:4px;font-size:0.85rem;background:#ffffff;color:#111827">
+${options}
+        </select>
+      </span>
+    </nav>`;
 }
 
 export function generateRobotsTxt(rawSiteUrl: string = CANONICAL_BASE_URL): string {
@@ -175,7 +197,6 @@ export function generateSitemap(routes: string[], rawSiteUrl: string = CANONICAL
   for (const route of routes) {
     const cleanSegment = route
       .replace(/^https?:\/\/[^/]+/i, "")
-      .replace(/^\/Ivy-Tendril-V2/i, "")
       .replace(/^\/docs\/?/i, "")
       .replace(/^\/+/, "");
 
@@ -466,7 +487,7 @@ export function generateOpenApiSpec(): string {
           "- **Sunset Timeline**: Deprecated API endpoints are supported for at least 180 days after deprecation notice.",
           "- **Error Responses**: All 4xx and 5xx errors return structured RFC 9457 Problem Details (`application/problem+json`) with machine-readable error codes and resolution hints.",
           "- **Rate Limiting**: Responses include standard RFC rate-limit headers (`RateLimit-Limit`, `RateLimit-Remaining`, `RateLimit-Reset`, and `Retry-After` on 429).",
-          "- **Developer Portal**: https://ivy-interactive.github.io/Ivy-Tendril-V2/developers",
+          "- **Developer Portal**: https://docs.ivy.app/developers",
         ].join("\n"),
         contact: {
           name: "Ivy Interactive Support",
@@ -888,8 +909,7 @@ export function generateOpenApiSpec(): string {
                 type: "string",
                 format: "uri",
                 description: "URI reference identifying the problem type.",
-                example:
-                  "https://ivy-interactive.github.io/Ivy-Tendril-V2/docs/advanced/rest#errors",
+                example: "https://docs.ivy.app/docs/advanced/rest#errors",
               },
               title: {
                 type: "string",
@@ -921,7 +941,7 @@ export function generateOpenApiSpec(): string {
               documentation_url: {
                 type: "string",
                 format: "uri",
-                example: "https://ivy-interactive.github.io/Ivy-Tendril-V2/developers",
+                example: "https://docs.ivy.app/developers",
               },
             },
           },
@@ -948,7 +968,7 @@ export function generateOpenApiSpec(): string {
               documentation_url: {
                 type: "string",
                 format: "uri",
-                example: "https://ivy-interactive.github.io/Ivy-Tendril-V2/developers",
+                example: "https://docs.ivy.app/developers",
               },
             },
           },
@@ -1081,7 +1101,7 @@ export function generateArdManifest(rawSiteUrl: string = CANONICAL_BASE_URL): st
       },
       entries: [
         {
-          identifier: "urn:air:ivy-interactive.github.io:mcp:tendril",
+          identifier: "urn:air:docs.ivy.app:mcp:tendril",
           displayName: "Ivy Tendril MCP Server",
           type: "application/mcp-server+json",
           url: "http://127.0.0.1:5010/mcp",
@@ -1095,7 +1115,7 @@ export function generateArdManifest(rawSiteUrl: string = CANONICAL_BASE_URL): st
           ],
         },
         {
-          identifier: "urn:air:ivy-interactive.github.io:api:openapi",
+          identifier: "urn:air:docs.ivy.app:api:openapi",
           displayName: "Ivy Tendril Daemon OpenAPI Specification",
           type: "application/openapi+json",
           url: `${siteRootUrl}/openapi.json`,
@@ -1109,7 +1129,7 @@ export function generateArdManifest(rawSiteUrl: string = CANONICAL_BASE_URL): st
           ],
         },
         {
-          identifier: "urn:air:ivy-interactive.github.io:portal:developers",
+          identifier: "urn:air:docs.ivy.app:portal:developers",
           displayName: "Ivy Tendril Developer Portal",
           type: "text/html",
           url: `${siteRootUrl}/developers`,
@@ -1123,7 +1143,7 @@ export function generateArdManifest(rawSiteUrl: string = CANONICAL_BASE_URL): st
           ],
         },
         {
-          identifier: "urn:air:ivy-interactive.github.io:doc:llms-txt",
+          identifier: "urn:air:docs.ivy.app:doc:llms-txt",
           displayName: "Ivy Tendril Agent Guidelines (llms.txt)",
           type: "text/markdown",
           url: `${siteRootUrl}/llms.txt`,
@@ -1136,7 +1156,7 @@ export function generateArdManifest(rawSiteUrl: string = CANONICAL_BASE_URL): st
           ],
         },
         {
-          identifier: "urn:air:ivy-interactive.github.io:doc:getting-started",
+          identifier: "urn:air:docs.ivy.app:doc:getting-started",
           displayName: "Ivy Tendril Getting Started & Setup Guide",
           type: "text/html",
           url: `${docsBaseUrl}/gettingstarted/introduction`,
@@ -1190,13 +1210,7 @@ export function generateGettingStartedPage(rawSiteUrl: string = CANONICAL_BASE_U
 </head>
 <body>
   <header>
-    <nav aria-label="Main Navigation">
-      <a href="${siteRootUrl}/">Home</a>
-      <a href="${siteRootUrl}/developers">Developer Portal</a>
-      <a href="${docsBaseUrl}/gettingstarted/introduction">Documentation</a>
-      <a href="${siteRootUrl}/llms.txt">llms.txt</a>
-      <a href="${siteRootUrl}/sitemap.xml">Sitemap</a>
-    </nav>
+${renderStaticNav(siteRootUrl, docsBaseUrl)}
     <h1>Getting Started with Ivy Tendril</h1>
     <p>The Agentic Software Factory for 10x Builders. Run autonomous coding agents in parallel git worktrees with verification gates and human-in-the-loop plan supervision.</p>
   </header>
@@ -1361,13 +1375,7 @@ export function generateMcpPage(rawSiteUrl: string = CANONICAL_BASE_URL): string
 </head>
 <body>
   <header>
-    <nav aria-label="Main Navigation">
-      <a href="${siteRootUrl}/">Home</a>
-      <a href="${siteRootUrl}/developers">Developer Portal</a>
-      <a href="${docsBaseUrl}/gettingstarted/introduction">Documentation</a>
-      <a href="${siteRootUrl}/llms.txt">llms.txt</a>
-      <a href="${siteRootUrl}/sitemap.xml">Sitemap</a>
-    </nav>
+${renderStaticNav(siteRootUrl, docsBaseUrl)}
     <h1>Ivy Tendril MCP Server</h1>
     <p>Connect Claude, ChatGPT, and custom orchestrators directly to Tendril's agentic execution engine.</p>
   </header>
@@ -1508,13 +1516,7 @@ export function generateDocsOverviewPage(rawSiteUrl: string = CANONICAL_BASE_URL
 </head>
 <body>
   <header>
-    <nav aria-label="Main Navigation">
-      <a href="${siteRootUrl}/">Home</a>
-      <a href="${siteRootUrl}/developers">Developer Portal</a>
-      <a href="${docsBaseUrl}/gettingstarted/introduction">Documentation</a>
-      <a href="${siteRootUrl}/llms.txt">llms.txt</a>
-      <a href="${siteRootUrl}/sitemap.xml">Sitemap</a>
-    </nav>
+${renderStaticNav(siteRootUrl, docsBaseUrl)}
     <h1>Ivy Tendril Documentation</h1>
     <p>Explore the complete documentation for the Ivy Tendril agentic software factory.</p>
   </header>
@@ -1670,15 +1672,7 @@ export function generateAboutPage(rawSiteUrl: string = CANONICAL_BASE_URL): stri
 </head>
 <body>
   <header>
-    <nav>
-      <a href="${siteRootUrl}/">Home</a>
-      <a href="${siteRootUrl}/developers">Developer Portal</a>
-      <a href="${docsBaseUrl}/gettingstarted/introduction">Documentation</a>
-      <a href="${siteRootUrl}/about">About</a>
-      <a href="${siteRootUrl}/contact">Contact</a>
-      <a href="${siteRootUrl}/privacy">Privacy Policy</a>
-      <a href="${siteRootUrl}/llms.txt">llms.txt</a>
-    </nav>
+${renderStaticNav(siteRootUrl, docsBaseUrl)}
     <h1>About Ivy Interactive & Ivy Tendril</h1>
   </header>
   <main>
@@ -1753,15 +1747,7 @@ export function generateContactPage(rawSiteUrl: string = CANONICAL_BASE_URL): st
 </head>
 <body>
   <header>
-    <nav>
-      <a href="${siteRootUrl}/">Home</a>
-      <a href="${siteRootUrl}/developers">Developer Portal</a>
-      <a href="${docsBaseUrl}/gettingstarted/introduction">Documentation</a>
-      <a href="${siteRootUrl}/about">About</a>
-      <a href="${siteRootUrl}/contact">Contact</a>
-      <a href="${siteRootUrl}/privacy">Privacy Policy</a>
-      <a href="${siteRootUrl}/llms.txt">llms.txt</a>
-    </nav>
+${renderStaticNav(siteRootUrl, docsBaseUrl)}
     <h1>Contact Ivy Interactive</h1>
   </header>
   <main>
@@ -1831,15 +1817,7 @@ export function generatePrivacyPage(rawSiteUrl: string = CANONICAL_BASE_URL): st
 </head>
 <body>
   <header>
-    <nav>
-      <a href="${siteRootUrl}/">Home</a>
-      <a href="${siteRootUrl}/developers">Developer Portal</a>
-      <a href="${docsBaseUrl}/gettingstarted/introduction">Documentation</a>
-      <a href="${siteRootUrl}/about">About</a>
-      <a href="${siteRootUrl}/contact">Contact</a>
-      <a href="${siteRootUrl}/privacy">Privacy Policy</a>
-      <a href="${siteRootUrl}/llms.txt">llms.txt</a>
-    </nav>
+${renderStaticNav(siteRootUrl, docsBaseUrl)}
     <h1>Privacy Policy</h1>
     <p>Last updated: September 21, 2026</p>
   </header>
@@ -1910,7 +1888,7 @@ Please refer to the following canonical resources to discover valid endpoints, g
 export function generateStructuredErrorJson(): string {
   return JSON.stringify(
     {
-      type: "https://ivy-interactive.github.io/Ivy-Tendril-V2/docs/advanced/rest#errors",
+      type: "https://docs.ivy.app/docs/advanced/rest#errors",
       title: "Not Found",
       status: 404,
       code: "RESOURCE_NOT_FOUND",
@@ -1918,7 +1896,7 @@ export function generateStructuredErrorJson(): string {
       detail:
         "The requested path does not match any registered API route, static documentation page, or plan entity.",
       hint: "Query GET /api/v1/plans or inspect the OpenAPI 3.1.0 specification at /openapi.json and the Developer Portal at /developers.",
-      documentation_url: "https://ivy-interactive.github.io/Ivy-Tendril-V2/developers",
+      documentation_url: "https://docs.ivy.app/developers",
     },
     null,
     2,
@@ -1979,16 +1957,7 @@ export function generateDeveloperPortalPage(rawSiteUrl: string = CANONICAL_BASE_
 </head>
 <body>
   <header>
-    <nav aria-label="Main Navigation">
-      <a href="${siteRootUrl}/">Home</a>
-      <a href="${siteRootUrl}/developers">Developer Portal</a>
-      <a href="${docsBaseUrl}/gettingstarted/introduction">Documentation</a>
-      <a href="${siteRootUrl}/about">About</a>
-      <a href="${siteRootUrl}/contact">Contact</a>
-      <a href="${siteRootUrl}/privacy">Privacy Policy</a>
-      <a href="${siteRootUrl}/llms.txt">llms.txt</a>
-      <a href="${siteRootUrl}/sitemap.xml">Sitemap</a>
-    </nav>
+${renderStaticNav(siteRootUrl, docsBaseUrl)}
     <h1>Ivy Tendril Developer Portal</h1>
     <p>Everything you need to integrate, orchestrate, and build on Ivy Tendril's agentic software factory.</p>
   </header>
@@ -2119,7 +2088,7 @@ curl -s http://127.0.0.1:5010/sandbox/plans</code></pre>
 }
 
 export function generate404Html(rawSiteUrl: string = CANONICAL_BASE_URL): string {
-  const { siteRootUrl, docsBaseUrl, repoSubpath } = resolveSiteUrls(rawSiteUrl);
+  const { siteRootUrl, docsBaseUrl } = resolveSiteUrls(rawSiteUrl);
   return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -2143,13 +2112,7 @@ export function generate404Html(rawSiteUrl: string = CANONICAL_BASE_URL): string
 </head>
 <body>
 <header>
-  <nav aria-label="Main Navigation">
-    <a href="${siteRootUrl}/">Home</a>
-    <a href="${siteRootUrl}/developers">Developer Portal</a>
-    <a href="${docsBaseUrl}/gettingstarted/introduction">Documentation</a>
-    <a href="${siteRootUrl}/llms.txt">llms.txt</a>
-    <a href="${siteRootUrl}/sitemap.xml">Sitemap</a>
-  </nav>
+${renderStaticNav(siteRootUrl, docsBaseUrl)}
 </header>
 <main>
   <h1>404 Not Found</h1>
@@ -2173,9 +2136,8 @@ If you are an automated agent, please refer to the following canonical resources
   <p>&copy; ${new Date().getFullYear()} Ivy Interactive AB. All rights reserved.</p>
 </footer>
 <script>
-  var base = "${repoSubpath}";
-  if (window.location.pathname.startsWith(base + "/docs")) {
-    window.location.replace(base + "/docs/gettingstarted/introduction");
+  if (window.location.pathname.startsWith("/docs")) {
+    window.location.replace("/docs/");
   }
 </script>
 </body>
@@ -2278,16 +2240,7 @@ export function generateHomepageHtml(rawSiteUrl: string = CANONICAL_BASE_URL): s
 </head>
 <body>
   <header>
-    <nav aria-label="Main Navigation">
-      <a href="${siteRootUrl}/">Home</a>
-      <a href="${siteRootUrl}/developers">Developer Portal</a>
-      <a href="${docsBaseUrl}/gettingstarted/introduction">Documentation</a>
-      <a href="${siteRootUrl}/about">About</a>
-      <a href="${siteRootUrl}/contact">Contact</a>
-      <a href="${siteRootUrl}/privacy">Privacy Policy</a>
-      <a href="${siteRootUrl}/llms.txt">llms.txt</a>
-      <a href="${siteRootUrl}/sitemap.xml">Sitemap</a>
-    </nav>
+${renderStaticNav(siteRootUrl, docsBaseUrl)}
   </header>
   <main>
     <section>
@@ -2392,8 +2345,12 @@ export function generateHomepageHtml(rawSiteUrl: string = CANONICAL_BASE_URL): s
 }
 
 export function emitAgenticAssets(options: EmitAgenticAssetsOptions): Plugin {
-  const base = options.base ?? `${ROUTE_BASE}/`;
-  const siteUrl = `${DEFAULT_ORIGIN}${base.endsWith("/") ? base.slice(0, -1) : base}`;
+  const base = options.base ?? "/";
+  const siteUrl =
+    options.origin ??
+    (base === "/"
+      ? DEFAULT_ORIGIN
+      : `${DEFAULT_ORIGIN}${base.endsWith("/") ? base.slice(0, -1) : base}`);
 
   return {
     name: "tendril-docs:emit-agentic-assets",

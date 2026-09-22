@@ -6,6 +6,7 @@
  * re-render when either the user or a link changes it. That is small enough to own outright.
  */
 import { useCallback, useEffect, useState } from "react";
+import { isSiteLocale } from "../config/locales.config";
 import { normalizeRoute, ROUTE_BASE } from "./slug";
 
 /** Fired after a programmatic {@link navigate}, since `pushState` raises no event of its own. */
@@ -18,20 +19,70 @@ export interface Location {
   hash: string;
 }
 
+/**
+ * Extracts any base subpath under which the docs are hosted (e.g. `/Ivy-Tendril-V2` on GitHub Pages).
+ */
+export function getBaseSubpath(): string {
+  if (typeof window !== "undefined") {
+    const pathname = window.location.pathname;
+    const match = /^\/([^/]+)(?=\/|$)/.exec(pathname);
+    if (match) {
+      const first = match[1];
+      if (
+        !isSiteLocale(first) &&
+        first !== "docs" &&
+        first !== "assets" &&
+        first !== "api" &&
+        first !== "developers" &&
+        first !== "about" &&
+        first !== "contact" &&
+        first !== "privacy" &&
+        first !== "mcp"
+      ) {
+        return `/${first}`;
+      }
+    }
+  }
+  const viteBase = typeof import.meta !== "undefined" ? import.meta.env?.BASE_URL : undefined;
+  if (viteBase && viteBase !== "/" && viteBase !== "./") {
+    return viteBase.replace(/\/+$/, "");
+  }
+  return "";
+}
+
+/** Prepends the app's base subpath to an absolute URL if not already present. */
+export function toAppHref(href: string): string {
+  const base = getBaseSubpath();
+  if (!base || !href.startsWith("/") || href.startsWith(base)) return href;
+  return `${base}${href}`;
+}
+
+/** Strips the app's base subpath from a pathname. */
+export function fromAppPath(pathname: string): string {
+  const base = getBaseSubpath();
+  if (base && pathname.startsWith(base)) {
+    const stripped = pathname.slice(base.length);
+    return stripped.startsWith("/") ? stripped : `/${stripped}`;
+  }
+  return pathname;
+}
+
 function readLocation(): Location {
   if (typeof window === "undefined") return { route: ROUTE_BASE, hash: "" };
-  return { route: normalizeRoute(window.location.pathname), hash: window.location.hash };
+  const cleanPath = fromAppPath(window.location.pathname);
+  return { route: normalizeRoute(cleanPath), hash: window.location.hash };
 }
 
 /** Pushes a route (optionally with a `#fragment`) and notifies subscribers. */
 export function navigate(href: string, options?: { replace?: boolean }): void {
   if (typeof window === "undefined") return;
+  const target = toAppHref(href);
   const current = `${window.location.pathname}${window.location.hash}`;
-  if (current === href) return;
+  if (current === target) return;
   if (options?.replace) {
-    window.history.replaceState({}, "", href);
+    window.history.replaceState({}, "", target);
   } else {
-    window.history.pushState({}, "", href);
+    window.history.pushState({}, "", target);
   }
   window.dispatchEvent(new Event(NAVIGATE_EVENT));
 }
@@ -75,6 +126,6 @@ export function useInternalLinkInterceptor(): (event: React.MouseEvent<HTMLEleme
     if (anchor.getAttribute("target") === "_blank") return;
 
     event.preventDefault();
-    navigate(href);
+    navigate(fromAppPath(href));
   }, []);
 }

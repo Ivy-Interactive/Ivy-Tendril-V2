@@ -17,6 +17,7 @@ import {
   Button,
   DataTable,
   HeaderLayout,
+  NativeSelect,
   Sheet,
   SheetContent,
   SheetHeader,
@@ -1251,22 +1252,24 @@ export const InboxView: React.FC<InboxViewProps> = ({
           {selectedCategory === "project-issues" && activeProjectRepos.length > 1 && (
             <div className="flex items-center gap-1.5">
               <label htmlFor="inbox-repo-select">Repo:</label>
-              <select
+              <NativeSelect
                 id="inbox-repo-select"
                 aria-label="Filter by repository"
+                density="Small"
+                wrapperClassName="w-auto"
+                className="w-auto"
                 value={selectedRepo}
                 onChange={(e) => {
                   setSelectedRepo(e.target.value);
                   resetToFirstPage();
                 }}
-                className="rounded-field border border-input bg-transparent px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
               >
                 {activeProjectRepos.map((r) => (
                   <option key={r} value={r}>
                     {r.split("/").pop()}
                   </option>
                 ))}
-              </select>
+              </NativeSelect>
             </div>
           )}
 
@@ -1284,19 +1287,21 @@ export const InboxView: React.FC<InboxViewProps> = ({
 
           <span className="flex items-center gap-1.5">
             <label htmlFor="inbox-poll-interval">Auto-refresh:</label>
-            <select
+            <NativeSelect
               id="inbox-poll-interval"
               aria-label="Auto-refresh interval"
+              density="Small"
+              wrapperClassName="w-auto"
+              className="w-auto"
               value={pollInterval}
               onChange={(e) => handlePollIntervalChange(e.target.value as PollInterval)}
-              className="rounded-field border border-input bg-transparent px-2 py-1 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
             >
               {(Object.keys(POLL_INTERVAL_LABELS) as PollInterval[]).map((opt) => (
                 <option key={opt} value={opt}>
                   {POLL_INTERVAL_LABELS[opt]}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </span>
         </div>
 

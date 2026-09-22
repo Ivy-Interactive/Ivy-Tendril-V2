@@ -1,0 +1,38 @@
+# Version control & git
+.git
+.gitignore
+
+# Dependencies (monorepo root and packages)
+node_modules
+**/node_modules
+
+# Build artifacts and caches
+dist
+**/dist
+dist-storybook
+**/dist-storybook
+storybook-static
+**/storybook-static
+dist-pages
+**/dist-pages
+.pnpm-store
+
+# Rust / Cargo artifacts (~14GB in CI/local debug)
+target
+**/target
+src-tauri/target
+src-tauri/gen
+
+# Local environment, agents, and IDE metadata
+.agents
+.env
+.env.*
+!.env.example
+.DS_Store
+Thumbs.db
+*.log
+.vscode
+.idea
+.plan
+.tmp-*
+.lycheecache

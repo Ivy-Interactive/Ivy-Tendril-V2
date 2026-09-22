@@ -17,6 +17,7 @@ mod events;
 mod lifecycle;
 mod recommendations;
 mod references;
+mod review;
 mod revisions;
 mod verifications;
 
@@ -49,6 +50,7 @@ pub use references::{
     remove_plan_depends_on, remove_plan_related, remove_plan_repo, PlanCommitBody,
     PlanDependsOnBody, PlanPrBody, PlanRelatedPlanBody, PlanRepoBody,
 };
+pub use review::{plan_artifacts_handler, plan_changes_handler, plan_summary_handler};
 pub use revisions::{
     get_revision_handler, update_latest_revision_handler, write_revision_handler, RevisionQuery,
     UpdateLatestRevisionBody, WriteRevisionBody,

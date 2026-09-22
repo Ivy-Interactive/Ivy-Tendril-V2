@@ -1,4 +1,5 @@
 import React from "react";
+import { Clock, Coins, Hash, type LucideIcon } from "lucide-react";
 
 import { formatElapsed, formatTokenCount } from "../ui/StatusLine";
 import { useElapsedMs } from "../ui/use-elapsed";
@@ -14,6 +15,8 @@ function formatCost(usd: number): string {
 
 interface MetricProps {
   label: string;
+  /** The figure's own glyph, so the strip can be read at a glance rather than word by word. */
+  icon: LucideIcon;
   value: string;
   /** Renders the "~" and says so on hover. */
   estimated?: boolean;
@@ -29,14 +32,25 @@ interface MetricProps {
  * convention `JobsView` uses for `JobCostSources.Estimated`. A number worked out from a character
  * count or a price list that presents itself as a measurement is worse than no number, because the
  * reader has no way to tell it apart from one they could act on.
+ *
+ * The icon is decorative: it repeats what the label already says, so it is `aria-hidden` and the
+ * label stays the accessible name.
  */
-const Metric: React.FC<MetricProps> = ({ label, value, estimated = false, provenance, testId }) => (
+const Metric: React.FC<MetricProps> = ({
+  label,
+  icon: Icon,
+  value,
+  estimated = false,
+  provenance,
+  testId,
+}) => (
   <span
     className="aov-metric"
     data-estimated={estimated}
     data-testid={testId}
     title={`${label}: ${provenance}`}
   >
+    <Icon className="aov-metric-icon" aria-hidden="true" />
     <span className="aov-metric-label">{label}</span>
     <span className="aov-metric-value">
       {estimated ? "~" : ""}
@@ -116,7 +130,8 @@ export const AgentMetricsFooter: React.FC<AgentMetricsFooterProps> = ({
     >
       {showElapsed && (
         <Metric
-          label="Elapsed"
+          label="Output time"
+          icon={Clock}
           value={formatElapsed(elapsedMs)}
           provenance={
             reportedMs != null
@@ -131,6 +146,7 @@ export const AgentMetricsFooter: React.FC<AgentMetricsFooterProps> = ({
       {tokens != null && (
         <Metric
           label="Tokens"
+          icon={Hash}
           value={formatTokenCount(tokens)}
           estimated={metrics.tokensEstimated}
           provenance={
@@ -144,6 +160,7 @@ export const AgentMetricsFooter: React.FC<AgentMetricsFooterProps> = ({
       {costUsd != null && (
         <Metric
           label="Cost"
+          icon={Coins}
           value={formatCost(costUsd)}
           estimated={metrics.costEstimated}
           provenance={

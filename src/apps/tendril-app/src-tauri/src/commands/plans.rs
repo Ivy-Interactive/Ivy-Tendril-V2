@@ -1,8 +1,9 @@
 use super::get_client_from_master;
 use crate::error::BridgeError;
 use crate::models::{
-    AnnotationDto, DraftCommentDto, PlanDetailDto, PlanGitDto, PlanQueryDto, PlanSummaryDto,
-    RecommendationDto, RepoStatusDto, RevisionResultDto, VerificationReportDto,
+    AnnotationDto, DraftCommentDto, PlanArtifactsDto, PlanChangesDto, PlanDetailDto, PlanGitDto,
+    PlanQueryDto, PlanSummaryDto, RecommendationDto, RepoStatusDto, RevisionResultDto,
+    VerificationReportDto,
 };
 
 #[tauri::command]
@@ -89,6 +90,66 @@ pub async fn cmd_get_repo_status(id: String) -> Result<Vec<RepoStatusDto>, Bridg
 #[tauri::command]
 pub async fn cmd_get_plan_git(id: String) -> Result<PlanGitDto, BridgeError> {
     get_client_from_master()?.get_plan_git(&id).await
+}
+
+/// The plan's code changes diff and file statistics.
+#[tauri::command]
+pub async fn cmd_get_plan_changes(id: String) -> Result<PlanChangesDto, BridgeError> {
+    if let Ok(client) = get_client_from_master() {
+        if let Ok(changes) = client.get_plan_changes(&id).await {
+            return Ok(changes);
+        }
+    }
+    let home = crate::daemon::resolve_tendril_home();
+    let plans_dir = home.join("Plans");
+    let changes = tendril_core::plans::read_plan_changes(&home, &plans_dir, &id);
+    Ok(PlanChangesDto {
+        files: changes
+            .files
+            .into_iter()
+            .map(|f| crate::models::ChangedFileDto {
+                file_path: f.file_path,
+                diff: f.diff,
+                additions: f.additions,
+                deletions: f.deletions,
+            })
+            .collect(),
+        raw_diff: changes.raw_diff,
+        total_additions: changes.total_additions,
+        total_deletions: changes.total_deletions,
+        repository: changes.repository,
+    })
+}
+
+/// The plan's summary markdown from Artifacts/summary.md,
+/// falling back to local disk and diagnostic synthesis if daemon is unavailable.
+#[tauri::command]
+pub async fn cmd_get_plan_summary(id: String) -> Result<Option<String>, BridgeError> {
+    if let Ok(client) = get_client_from_master() {
+        if let Ok(Some(summary)) = client.get_plan_summary(&id).await {
+            return Ok(Some(summary));
+        }
+    }
+    let home = crate::daemon::resolve_tendril_home();
+    let plans_dir = home.join("Plans");
+    Ok(tendril_core::plans::read_plan_summary(&home, &plans_dir, &id))
+}
+
+/// The plan's artifacts (screenshots and files) in the Artifacts folder.
+#[tauri::command]
+pub async fn cmd_get_plan_artifacts(id: String) -> Result<PlanArtifactsDto, BridgeError> {
+    if let Ok(client) = get_client_from_master() {
+        if let Ok(artifacts) = client.get_plan_artifacts(&id).await {
+            return Ok(artifacts);
+        }
+    }
+    let home = crate::daemon::resolve_tendril_home();
+    let plans_dir = home.join("Plans");
+    let artifacts = tendril_core::plans::read_plan_artifacts(&plans_dir, &id);
+    Ok(PlanArtifactsDto {
+        screenshots: artifacts.screenshots,
+        other: artifacts.other,
+    })
 }
 
 /// Read one verification report for a plan.

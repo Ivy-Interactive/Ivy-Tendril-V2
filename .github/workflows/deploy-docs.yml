@@ -10,6 +10,8 @@ on:
       - 'src/packages/components/**'
       - 'pnpm-lock.yaml'
       - '.github/workflows/deploy-docs.yml'
+    tags:
+      - 'docs-v*'
   workflow_dispatch:
 
 permissions:
@@ -51,12 +53,6 @@ jobs:
       - name: Build components library
         run: pnpm --filter @ivy-interactive/components build
 
-      - name: Run docs tests
-        run: pnpm --filter @ivy-interactive/tendril-docs test
-
-      - name: Run docs check
-        run: pnpm --filter @ivy-interactive/tendril-docs check
-
       - name: Setup Pages
         id: pages
         uses: actions/configure-pages@v5
@@ -64,7 +60,13 @@ jobs:
       - name: Build docs static site
         run: pnpm --filter @ivy-interactive/tendril-docs build
         env:
-          VITE_BASE_PATH: ${{ steps.pages.outputs.base_path }}/docs/
+          VITE_BASE_PATH: ${{ steps.pages.outputs.base_path }}/
+
+      - name: Run docs tests
+        run: pnpm --filter @ivy-interactive/tendril-docs test
+
+      - name: Run docs check
+        run: pnpm --filter @ivy-interactive/tendril-docs check
 
       - name: Prepare Pages directory structure
         run: |

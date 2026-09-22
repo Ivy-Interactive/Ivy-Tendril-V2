@@ -26,6 +26,8 @@ export interface DocPage {
   /** Markdown body with the frontmatter removed. */
   body: string;
   frontmatter: Frontmatter;
+  /** Whether this page is a fallback rendered for a locale that lacks a translation. */
+  isFallback?: boolean;
 }
 
 /**

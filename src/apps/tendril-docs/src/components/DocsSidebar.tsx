@@ -3,7 +3,7 @@ import { ChevronRight } from "lucide-react";
 import { cn } from "../lib/cn";
 import { iconFor } from "../lib/icons";
 import { flattenNavRoutes, type NavSection } from "../lib/nav";
-import { navigate } from "../lib/router";
+import { navigate, toAppHref } from "../lib/router";
 
 interface DocsSidebarProps {
   sections: NavSection[];
@@ -11,6 +11,8 @@ interface DocsSidebarProps {
   activeRoute: string;
   /** Called after a successful in-page navigation, so the mobile drawer can close itself. */
   onNavigate?: () => void;
+  /** Optional accessible navigation label. Defaults to "Documentation sections". */
+  navLabel?: string;
 }
 
 function NavLink({
@@ -28,7 +30,7 @@ function NavLink({
 }) {
   return (
     <a
-      href={href}
+      href={toAppHref(href)}
       aria-current={active ? "page" : undefined}
       onClick={(event) => {
         if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
@@ -88,7 +90,7 @@ function Section({
           />
         </button>
         <a
-          href={section.route}
+          href={toAppHref(section.route)}
           aria-current={activeRoute === section.route ? "page" : undefined}
           onClick={(event) => {
             if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
@@ -143,9 +145,9 @@ function Section({
  * hand-maintained navigation manifest to drift out of sync, which is what `nav-structure.test.ts`
  * pins down.
  */
-export function DocsSidebar({ sections, activeRoute, onNavigate }: DocsSidebarProps) {
+export function DocsSidebar({ sections, activeRoute, onNavigate, navLabel }: DocsSidebarProps) {
   return (
-    <nav aria-label="Documentation sections" className="text-sm">
+    <nav aria-label={navLabel ?? "Documentation sections"} className="text-sm">
       <ul className="flex flex-col gap-3">
         {sections.map((section) => (
           <Section

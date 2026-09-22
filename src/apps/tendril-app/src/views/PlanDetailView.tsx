@@ -19,6 +19,7 @@ import {
   type StartJobResponse,
 } from "../types/api";
 import { bridge } from "../api/bridge";
+import { plansStore } from "../state/plansStore";
 import { PlanChatPanel } from "../components/chat/PlanChatPanel";
 import { extractPlanQuestions, patchQuestionsMarkdown } from "../utils/questionMarkdown";
 import { PlanActionsController } from "../controllers/planActions";
@@ -37,6 +38,7 @@ import {
   planStateBadgeVariant,
 } from "./PlansView";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { VerificationReportSheet } from "../components/VerificationReportSheet";
 import { ProjectBadges } from "../components/ProjectBadges";
 import { LevelBadge } from "../components/LevelBadge";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
@@ -240,6 +242,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
    * A line the page wants the chat composer pre-filled with, and a token so asking twice works — the
    * same shape, and the same reason, as `scrollTo`. "Discuss with agent" is the one thing that sets it.
    */
+  const [openVerification, setOpenVerification] = useState<string | null>(null);
   const [chatDraft, setChatDraft] = useState<{ text: string; token: number }>({
     text: "",
     token: 0,
@@ -933,6 +936,28 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       return;
     }
     switch (tag) {
+      case "CompletePlan":
+        void (async () => {
+          setActionError(null);
+          setPendingAction("complete");
+          try {
+            const resp = await PlanActionsController.completePlan(effectivePlan);
+            if (resp) {
+              onJobStarted?.(resp);
+              onPlanChanged?.(effectivePlan.id);
+            } else {
+              await plansStore.transitionPlanOptimistic(effectivePlan.id, "Completed", true);
+              onPlanChanged?.(effectivePlan.id);
+            }
+          } catch (err) {
+            setActionError(
+              `Could not complete plan ${formatPlanId(effectivePlan.id)}: ${describeBridgeError(err)}`,
+            );
+          } finally {
+            setPendingAction(null);
+          }
+        })();
+        return;
       case "UpdatePlan":
         setActiveDialog("update");
         return;
@@ -1091,6 +1116,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
               onVerificationChange={(name, status) =>
                 setVerificationOverrides((prev) => ({ ...prev, [name]: status }))
               }
+              onOpenReport={(name) => setOpenVerification(name)}
             />,
           ],
           /**
@@ -1233,6 +1259,13 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         onClose={() => setActiveDialog(null)}
         plan={plan}
         onJobStarted={handleJobStarted}
+      />
+      <VerificationReportSheet
+        planId={plan.id}
+        verificationName={openVerification}
+        initialStatus={effectivePlan.verifications?.find((v) => v.name === openVerification)?.status}
+        onClose={() => setOpenVerification(null)}
+        wireframeBaseUrl={wireframeBaseUrl}
       />
     </div>
   );

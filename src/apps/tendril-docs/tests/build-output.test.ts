@@ -73,12 +73,10 @@ describe("shellPathForRoute", () => {
     expect(shellPathForRoute("/docs/concepts/plans", ROUTE_BASE)).toBe("concepts/plans/index.html");
   });
 
-  it("supports repo-prefixed base paths like GitHub Pages", () => {
-    expect(shellPathForRoute("/Ivy-Tendril-V2/docs/concepts/plans", "/Ivy-Tendril-V2/docs/")).toBe(
-      "concepts/plans/index.html",
+  it("supports root base path", () => {
+    expect(shellPathForRoute("/docs/concepts/plans", "/")).toBe("docs/concepts/plans/index.html");
+    expect(shellPathForRoute("/docs/gettingstarted/introduction", "/")).toBe(
+      "docs/gettingstarted/introduction/index.html",
     );
-    expect(
-      shellPathForRoute("/Ivy-Tendril-V2/docs/gettingstarted/introduction", "/Ivy-Tendril-V2/docs"),
-    ).toBe("gettingstarted/introduction/index.html");
   });
 });

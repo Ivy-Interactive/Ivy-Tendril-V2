@@ -71,6 +71,29 @@ describe("DocsLayout", () => {
     );
   });
 
+  it("renders translated section and page titles in the sidebar when localized route is visited", async () => {
+    renderDocs("/es/docs/concepts/plans");
+    await screen.findByRole("heading", { level: 1, name: "Planes" });
+
+    const sidebar = screen.getByRole("navigation", { name: "Secciones de la documentación" });
+    expect(within(sidebar).getByRole("link", { name: "Primeros pasos" })).toHaveAttribute(
+      "href",
+      "/es/docs/gettingstarted",
+    );
+    expect(within(sidebar).getByRole("link", { name: "Conceptos" })).toHaveAttribute(
+      "href",
+      "/es/docs/concepts",
+    );
+    expect(within(sidebar).getByRole("link", { name: "Bienvenido a Ivy Tendril" })).toHaveAttribute(
+      "href",
+      "/es/docs/gettingstarted/introduction",
+    );
+    expect(within(sidebar).getByRole("link", { name: "Planes", current: "page" })).toHaveAttribute(
+      "href",
+      "/es/docs/concepts/plans",
+    );
+  });
+
   it("rewrites a relative .md link to its route before the DOM sees it", async () => {
     renderDocs("/docs/concepts/plans");
     await screen.findByRole("heading", { level: 1, name: "Plans" });
@@ -145,5 +168,28 @@ describe("DocsLayout", () => {
     await waitFor(() => {
       expect(document.documentElement.classList.contains("light")).toBe(true);
     });
+  });
+
+  it("renders the language selector in the header and displays all 10 locales", async () => {
+    const user = userEvent.setup();
+    renderDocs("/docs/concepts/plans");
+    await screen.findByRole("heading", { level: 1, name: "Plans" });
+
+    const langTriggers = screen.getAllByRole("button", { name: "Choose language" });
+    expect(langTriggers.length).toBeGreaterThanOrEqual(1);
+    const headerTrigger = langTriggers[0];
+    expect(headerTrigger).toHaveTextContent("English");
+
+    await user.click(headerTrigger);
+    const menu = screen.getByRole("menu");
+    expect(within(menu).getByText("Deutsch")).toBeInTheDocument();
+    expect(within(menu).getByText("日本語")).toBeInTheDocument();
+    expect(within(menu).getByText("Español")).toBeInTheDocument();
+    expect(within(menu).getByText("Français")).toBeInTheDocument();
+    expect(within(menu).getByText("Português (Brasil)")).toBeInTheDocument();
+    expect(within(menu).getByText("简体中文")).toBeInTheDocument();
+    expect(within(menu).getByText("Русский")).toBeInTheDocument();
+    expect(within(menu).getByText("Svenska")).toBeInTheDocument();
+    expect(within(menu).getByText("हिन्दी")).toBeInTheDocument();
   });
 });

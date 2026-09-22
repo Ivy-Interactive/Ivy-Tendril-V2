@@ -23,6 +23,7 @@ interface PlanVerificationsProps {
   /** The plan's lifecycle state. Only a Draft's verifications are editable. */
   planState?: PlanLifecycleState;
   onVerificationChange?: (name: string, status: VerificationStatus) => void;
+  onOpenReport?: (name: string) => void;
 }
 
 /**
@@ -73,6 +74,7 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
   project,
   planState,
   onVerificationChange,
+  onOpenReport,
 }) => {
   const [localVerifications, setLocalVerifications] = useState<PlanVerification[]>(verifications);
   const [reports, setReports] = useState<Record<string, VerificationReport>>({});
@@ -222,13 +224,45 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
                     }
                     className="size-4 accent-primary disabled:cursor-not-allowed disabled:opacity-60"
                   />
-                  <span className={editable ? undefined : "text-muted-foreground"}>{v.name}</span>
+                  <span
+                    className={
+                      editable
+                        ? undefined
+                        : report
+                          ? "cursor-pointer hover:text-primary hover:underline text-foreground"
+                          : "text-muted-foreground"
+                    }
+                    onClick={(e) => {
+                      if (!editable && report) {
+                        e.preventDefault();
+                        if (onOpenReport) {
+                          onOpenReport(v.name);
+                        } else {
+                          setExpanded(isOpen ? null : v.name);
+                        }
+                      }
+                    }}
+                    title={report ? `View ${v.name} report` : undefined}
+                  >
+                    {v.name}
+                  </span>
                 </label>
                 {/* Only terminal outcomes get a badge; Pending and Skipped are conveyed by the box. */}
                 {terminal && (
                   <Badge
                     data-testid={`verification-status-${v.name}`}
                     variant={VERIFICATION_BADGE_VARIANT[terminal]}
+                    className={report ? "cursor-pointer hover:opacity-80" : undefined}
+                    onClick={() => {
+                      if (report) {
+                        if (onOpenReport) {
+                          onOpenReport(v.name);
+                        } else {
+                          setExpanded(isOpen ? null : v.name);
+                        }
+                      }
+                    }}
+                    title={report ? `View ${v.name} report` : undefined}
                   >
                     {terminal}
                   </Badge>
@@ -243,7 +277,13 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
                   type="button"
                   size="sm"
                   variant="secondary"
-                  onClick={() => setExpanded(isOpen ? null : v.name)}
+                  onClick={() => {
+                    if (onOpenReport) {
+                      onOpenReport(v.name);
+                    } else {
+                      setExpanded(isOpen ? null : v.name);
+                    }
+                  }}
                   aria-expanded={isOpen}
                   className="h-auto bg-muted px-2.5 py-1 text-xs text-muted-foreground"
                 >

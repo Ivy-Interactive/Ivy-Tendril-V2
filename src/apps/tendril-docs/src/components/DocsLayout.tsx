@@ -9,12 +9,15 @@ import {
   pages,
   resolveAsset,
 } from "../content";
-import { flattenNavRoutes, type NavSection } from "../lib/nav";
+import { flattenNavRoutes, localizeNavTree, type NavSection } from "../lib/nav";
 import type { DocPage as DocPageModel } from "../lib/page";
-import { navigate } from "../lib/router";
+import { navigate, toAppHref } from "../lib/router";
 import { ROUTE_BASE, normalizeRoute } from "../lib/slug";
+import { SITE_LOCALES, getLocale, localizePath, splitLocale } from "../config/locales.config";
+import { getTranslations } from "../config/translations";
 import { DocPage } from "./DocPage";
 import { DocsSidebar } from "./DocsSidebar";
+import { LanguageSwitcher } from "./LanguageSwitcher";
 import { NotFound } from "./NotFound";
 import { SearchDialog } from "./SearchDialog";
 import { ThemeToggle } from "./ThemeToggle";
@@ -45,7 +48,16 @@ function useNeighbours(
   }, [sections, route, lookup]);
 }
 
-function PageLink({ page, direction }: { page: DocPageModel; direction: "previous" | "next" }) {
+function PageLink({
+  page,
+  direction,
+  label,
+}: {
+  page: DocPageModel;
+  direction: "previous" | "next";
+  label?: string;
+}) {
+  const fallbackLabel = direction === "previous" ? "Previous" : "Next";
   return (
     <a
       href={page.route}
@@ -60,7 +72,7 @@ function PageLink({ page, direction }: { page: DocPageModel; direction: "previou
       )}
     >
       <span className="text-xs uppercase tracking-wide text-muted-foreground">
-        {direction === "previous" ? "Previous" : "Next"}
+        {label ?? fallbackLabel}
       </span>
       <span className="text-sm font-medium">{page.title}</span>
     </a>
@@ -68,14 +80,14 @@ function PageLink({ page, direction }: { page: DocPageModel; direction: "previou
 }
 
 /** The "On this page" rail: level 2 and 3 headings of the current page. */
-function OnThisPage({ page }: { page: DocPageModel }) {
+function OnThisPage({ page, label }: { page: DocPageModel; label?: string }) {
   const headings = page.headings.filter((heading) => heading.depth === 2 || heading.depth === 3);
   if (headings.length < 2) return null;
 
   return (
-    <aside className="docs-rail hidden w-56 shrink-0 xl:block" aria-label="On this page">
+    <aside className="docs-rail hidden w-56 shrink-0 xl:block" aria-label={label ?? "On this page"}>
       <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-        On this page
+        {label ?? "On this page"}
       </p>
       <ul className="flex flex-col gap-1 text-sm">
         {headings.map((heading) => (
@@ -110,17 +122,33 @@ export function DocsLayout({
   const [drawerOpen, setDrawerOpen] = useState(false);
 
   const normalized = normalizeRoute(route);
-  const homeRoute = flattenNavRoutes(sections)[0] ?? defaultHomeRoute;
+  const { locale: activeLocaleCode } = splitLocale(normalized);
+  const activeLocale = getLocale(activeLocaleCode);
+  const t = getTranslations(activeLocaleCode);
+
+  const localizedSections = useMemo(
+    () => localizeNavTree(sections, activeLocaleCode, lookupPage),
+    [sections, activeLocaleCode, lookupPage],
+  );
+
+  const rawHomeRoute = flattenNavRoutes(sections)[0] ?? defaultHomeRoute;
+  const homeRoute = localizePath(rawHomeRoute, activeLocaleCode);
+
   const isRootOrBase =
     normalized === ROUTE_BASE ||
     normalized === "" ||
     normalized === "/" ||
     normalized === "/docs" ||
-    normalized === ROUTE_BASE.replace(/\/docs$/, "");
+    normalized === ROUTE_BASE.replace(/\/docs$/, "") ||
+    normalized === `/${activeLocaleCode}` ||
+    normalized === `/${activeLocaleCode}/` ||
+    normalized === `/${activeLocaleCode}/docs` ||
+    normalized === `/${activeLocaleCode}${ROUTE_BASE}`;
+
   // The base route itself has no page of its own; it is the first page of the first section.
   const effectiveRoute = isRootOrBase ? homeRoute : normalized;
   const page = lookupPage(effectiveRoute);
-  const { previous, next } = useNeighbours(sections, effectiveRoute, lookupPage);
+  const { previous, next } = useNeighbours(localizedSections, effectiveRoute, lookupPage);
   const searchPages = allPages ?? pages.values();
 
   useEffect(() => {
@@ -132,6 +160,57 @@ export function DocsLayout({
   useEffect(() => {
     if (page) document.title = `${page.title} · Tendril Docs`;
   }, [page]);
+
+  // Synchronize document <head> metadata (lang, dir, canonical, og:locale, hreflang alternates)
+  useEffect(() => {
+    if (typeof document === "undefined") return;
+
+    // 1. html lang & dir
+    document.documentElement.lang = activeLocale.hreflang;
+    document.documentElement.dir = activeLocale.dir;
+
+    // 2. og:locale
+    let ogLocaleMeta = document.querySelector('meta[property="og:locale"]');
+    if (!ogLocaleMeta) {
+      ogLocaleMeta = document.createElement("meta");
+      ogLocaleMeta.setAttribute("property", "og:locale");
+      document.head.appendChild(ogLocaleMeta);
+    }
+    ogLocaleMeta.setAttribute("content", activeLocale.ogLocale);
+
+    // 3. canonical link
+    let canonicalLink = document.querySelector('link[rel="canonical"]');
+    if (!canonicalLink) {
+      canonicalLink = document.createElement("link");
+      canonicalLink.setAttribute("rel", "canonical");
+      document.head.appendChild(canonicalLink);
+    }
+    canonicalLink.setAttribute("href", `https://docs.ivy.app${effectiveRoute}`);
+
+    // 4. alternate hreflang tags (10 locales + x-default = 11 tags)
+    document
+      .querySelectorAll('link[rel="alternate"][data-tendril-hreflang]')
+      .forEach((el) => el.remove());
+
+    const canonicalPath = splitLocale(effectiveRoute).path;
+
+    // x-default pointing to English URL
+    const xDefaultLink = document.createElement("link");
+    xDefaultLink.setAttribute("rel", "alternate");
+    xDefaultLink.setAttribute("hreflang", "x-default");
+    xDefaultLink.setAttribute("href", `https://docs.ivy.app${canonicalPath}`);
+    xDefaultLink.setAttribute("data-tendril-hreflang", "true");
+    document.head.appendChild(xDefaultLink);
+
+    for (const loc of SITE_LOCALES) {
+      const link = document.createElement("link");
+      link.setAttribute("rel", "alternate");
+      link.setAttribute("hreflang", loc.hreflang);
+      link.setAttribute("href", `https://docs.ivy.app${localizePath(canonicalPath, loc.code)}`);
+      link.setAttribute("data-tendril-hreflang", "true");
+      document.head.appendChild(link);
+    }
+  }, [effectiveRoute, activeLocale]);
 
   // A deep link carrying a fragment lands before the markdown has rendered, so the browser's own
   // anchor scroll finds nothing. Retry once the article is in the DOM.
@@ -170,7 +249,7 @@ export function DocsLayout({
           </button>
 
           <a
-            href={homeRoute}
+            href={toAppHref(homeRoute)}
             onClick={(event) => {
               if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
               event.preventDefault();
@@ -190,11 +269,13 @@ export function DocsLayout({
             className="inline-flex items-center gap-2 rounded-field border border-border px-2.5 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
           >
             <Search className="size-4" aria-hidden="true" />
-            <span className="hidden sm:inline">Search</span>
+            <span className="hidden sm:inline">{t.search}</span>
             <span className="hidden sm:inline">
               <TuiKbd keys="⌘K" variant="outline" />
             </span>
           </button>
+
+          <LanguageSwitcher route={effectiveRoute} hash={hash} />
 
           <ThemeToggle />
         </div>
@@ -209,36 +290,56 @@ export function DocsLayout({
               "fixed inset-x-0 bottom-0 top-14 z-20 overflow-y-auto border-r border-border bg-background p-4 lg:static lg:inset-auto lg:p-0",
           )}
         >
-          <DocsSidebar
-            sections={sections}
-            activeRoute={effectiveRoute}
-            onNavigate={() => setDrawerOpen(false)}
-          />
+          <div className="flex flex-col gap-4">
+            <div className="lg:hidden pb-3 border-b border-border">
+              <LanguageSwitcher
+                route={effectiveRoute}
+                hash={hash}
+                className="w-full justify-between"
+                onSelect={() => setDrawerOpen(false)}
+              />
+            </div>
+            <DocsSidebar
+              sections={localizedSections}
+              activeRoute={effectiveRoute}
+              onNavigate={() => setDrawerOpen(false)}
+              navLabel={t.documentationSections}
+            />
+          </div>
         </div>
 
         <main className="min-w-0 flex-1">
           {page ? (
             <>
-              <DocPage page={page} resolveAsset={resolveAsset} />
+              <DocPage page={page} resolveAsset={resolveAsset} locale={activeLocaleCode} />
               {(previous || next) && (
                 <nav
                   aria-label="Page navigation"
                   className="mt-12 grid gap-3 border-t border-border pt-6 sm:grid-cols-2"
                 >
-                  {previous ? <PageLink page={previous} direction="previous" /> : <span />}
-                  {next ? <PageLink page={next} direction="next" /> : <span />}
+                  {previous ? (
+                    <PageLink page={previous} direction="previous" label={t.previous} />
+                  ) : (
+                    <span />
+                  )}
+                  {next ? <PageLink page={next} direction="next" label={t.next} /> : <span />}
                 </nav>
               )}
             </>
           ) : (
-            <NotFound route={normalized} homeRoute={homeRoute} />
+            <NotFound route={normalized} homeRoute={homeRoute} locale={activeLocaleCode} />
           )}
         </main>
 
-        {page && <OnThisPage page={page} />}
+        {page && <OnThisPage page={page} label={t.onThisPage} />}
       </div>
 
-      <SearchDialog open={searchOpen} onOpenChange={setSearchOpen} pages={searchPages} />
+      <SearchDialog
+        open={searchOpen}
+        onOpenChange={setSearchOpen}
+        pages={searchPages}
+        locale={activeLocaleCode}
+      />
     </div>
   );
 }

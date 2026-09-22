@@ -373,9 +373,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
     scrollContainerRef,
     anchorRef,
     spacerRef,
-    autoScrollEnabled,
     isAtBottom,
-    toggleAutoScroll,
     scrollToTail,
     resetToTail,
     pinMessage,
@@ -807,8 +805,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
               key={activeSessionId ?? "none"}
               title={activeSession ? displayTitle(activeSession) : "No Active Chat"}
               editable={Boolean(activeSession)}
-              autoScrollEnabled={autoScrollEnabled}
-              onToggleAutoScroll={toggleAutoScroll}
               jobs={spawnedJobs}
               onOpenPlan={onOpenPlan}
               onReviewJobs={handleReviewJobs}
@@ -872,6 +868,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                             wireframeBaseUrl={wireframeBaseUrl}
                             jobs={jobs}
                             threadMessages={messages}
+                            isLiveTurn={isGenerating && msg.id === latestMessage?.id}
                           />
                         </div>
                       );
@@ -889,6 +886,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         wireframeBaseUrl={wireframeBaseUrl}
                         jobs={jobs}
                         threadMessages={messages}
+                        isLiveTurn={isGenerating && msg.id === latestMessage?.id}
                       />
                     </div>
                   ))

@@ -15,7 +15,6 @@ export { HtmlRenderer, type HtmlRendererProps } from "./components/HtmlRenderer"
 export { Icon, type IconProps } from "./components/Icon";
 export { InvalidIcon, type InvalidIconProps } from "./components/InvalidIcon";
 export { IvyLogo, type IvyLogoProps } from "./components/IvyLogo";
-export { Kbd, ShortcutKeys, type KbdProps, type ShortcutKeysProps } from "./components/Kbd";
 export {
   Loading,
   Spinner,

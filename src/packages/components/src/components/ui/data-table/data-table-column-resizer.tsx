@@ -180,8 +180,12 @@ export function DataTableColumnResizer({
         // drag scrolling the viewport instead of resizing.
         "absolute inset-y-0 -right-[3px] z-10 w-[6px] cursor-col-resize touch-none select-none",
         // The visible line is a child pseudo-element so the grab target can be wider than the mark.
+        // Transparent at rest: the header cell already paints a `border-border` divider in exactly
+        // this place (see `data-table.css`), so a second line here would double it. Pointing at the
+        // handle replaces that divider with the brighter one below, which is why the highlight has to
+        // sit *over* the cell's own — hence the `z-10` on the handle above.
         "after:absolute after:inset-y-1 after:left-1/2 after:w-px after:-translate-x-1/2 after:bg-transparent",
-        "hover:after:bg-border focus-visible:after:bg-ring data-[dragging=true]:after:bg-ring",
+        "hover:after:bg-foreground/40 focus-visible:after:bg-ring data-[dragging=true]:after:bg-ring",
         "focus-visible:outline-none",
       )}
     />

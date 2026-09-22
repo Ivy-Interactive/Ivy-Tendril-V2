@@ -592,12 +592,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
           }
           // `rerun-job` is unreachable: the entry is disabled. See `RERUN_UNAVAILABLE_REASON`.
         }}
-        /* No `onRowClick`, which is V1's behaviour: its table selects nothing and activates nothing
-           (`c.SelectionMode = SelectionModes.None`), and hangs *five* separate cell actions off five
-           columns instead - Plan Id navigates, Agent Output opens the output sheet, Cost and Tokens
-           both open Cost & Tokens, and Prompt opens the full prompt. Routing every other cell to the
-           output sheet, as this did while those two sheets were missing, meant a click on Status or
-           Project opened something the reader did not ask for and hid the cell they were pointing at. */
+        onRowClick={(row) => openJobOutput(row.id)}
         emptyState={
           /* Which of the two it is turns on whether a filter is narrowing anything, not on the row
              count: a filtered-to-nothing table and an empty one look identical and mean opposite
@@ -731,9 +726,9 @@ export const JobsView: React.FC<JobsViewProps> = ({
             className="min-h-0 flex-1"
             showDivider={false}
             scrollContent={false}
-            contentClassName="flex h-full min-h-0 flex-col p-4"
+            contentClassName="flex h-full min-h-0 flex-col"
             header={
-              <SheetHeader className="pr-8">
+              <SheetHeader className="pl-2 pr-8">
                 <SheetTitle>{openJobTitle}</SheetTitle>
               </SheetHeader>
             }

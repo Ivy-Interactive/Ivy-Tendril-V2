@@ -1,0 +1,41 @@
+{
+	auto_https off
+	admin off
+}
+
+:{$PORT:3000} {
+	root * /usr/share/caddy
+
+	# Health check for Sliplane zero-downtime deployments
+	handle /healthz {
+		respond "OK" 200
+	}
+
+	# Modern compression
+	encode zstd gzip
+
+	# Standard security headers
+	header {
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "strict-origin-when-cross-origin"
+	}
+
+	# Long-term immutable caching for hashed static assets
+	@static {
+		path /assets/*
+	}
+	header @static Cache-Control "public, max-age=31536000, immutable"
+
+	# Non-asset files (HTML shells, SPA routes, manifests) must revalidate
+	@notStatic {
+		not path /assets/*
+	}
+	header @notStatic Cache-Control "no-cache, must-revalidate"
+
+	# All other requests serve static files or fall back to SPA routing
+	handle {
+		try_files {path} {path}/ /index.html
+		file_server
+	}
+}

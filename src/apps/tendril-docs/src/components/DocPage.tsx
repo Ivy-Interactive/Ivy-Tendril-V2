@@ -8,12 +8,15 @@ import { cn } from "../lib/cn";
 import { rewriteDocLinks } from "../lib/links";
 import { splitLeadHeading, type DocPage as DocPageModel } from "../lib/page";
 import { useInternalLinkInterceptor } from "../lib/router";
+import { UntranslatedNotice } from "./UntranslatedNotice";
 
 interface DocPageProps {
   page: DocPageModel;
   /** Resolves a `content/assets/...` path to the URL the bundler gave it. */
   resolveAsset?: (contentPath: string) => string | undefined;
   className?: string;
+  locale?: string;
+  isFallback?: boolean;
 }
 
 /**
@@ -31,13 +34,19 @@ interface DocPageProps {
  *    then all work, and the renderer's own `urlTransform` (which would turn `../02_Concepts/x.md`
  *    into `/../02_Concepts/x.md`) never sees a relative path.
  */
-export function DocPage({ page, resolveAsset, className }: DocPageProps) {
+export function DocPage({
+  page,
+  resolveAsset,
+  className,
+  locale = "en",
+  isFallback,
+}: DocPageProps) {
   const baseTypography = useTypography();
   const onClick = useInternalLinkInterceptor();
 
   const content = useMemo(
-    () => rewriteDocLinks(splitLeadHeading(page.body).rest, page.contentPath, resolveAsset),
-    [page.body, page.contentPath, resolveAsset],
+    () => rewriteDocLinks(splitLeadHeading(page.body).rest, page.contentPath, resolveAsset, locale),
+    [page.body, page.contentPath, resolveAsset, locale],
   );
 
   // Long-form spacing on top of the library's widget typography: headings need top margin, which a
@@ -57,12 +66,15 @@ export function DocPage({ page, resolveAsset, className }: DocPageProps) {
     [baseTypography],
   );
 
+  const showUntranslated = isFallback ?? page.isFallback ?? (locale && locale !== "en");
+
   return (
     <article
       className={cn("docs-article markdown-widget", className)}
       data-content-path={page.contentPath}
       onClick={onClick}
     >
+      {showUntranslated && <UntranslatedNotice locale={locale} />}
       <h1 id="top" className="mb-3 scroll-m-20 text-4xl font-semibold">
         {page.title}
       </h1>

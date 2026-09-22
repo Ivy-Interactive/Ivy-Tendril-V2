@@ -61,6 +61,26 @@ export interface PlanDetail {
   allocatedPorts?: Record<string, number>;
 }
 
+export interface ChangedFile {
+  filePath: string;
+  diff: string;
+  additions: number;
+  deletions: number;
+}
+
+export interface PlanChangesData {
+  files: ChangedFile[];
+  rawDiff: string;
+  totalAdditions: number;
+  totalDeletions: number;
+  repository?: string;
+}
+
+export interface PlanArtifacts {
+  screenshots: string[];
+  other: string[];
+}
+
 /** Mirrors `JobStatus` in tendril-core `models/job.rs`. */
 export type JobStatus =
   | "Pending"

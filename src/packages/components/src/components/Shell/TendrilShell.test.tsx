@@ -26,6 +26,7 @@ describe("TendrilShell", () => {
   let root: Root;
 
   beforeEach(() => {
+    localStorage.clear();
     container = document.createElement("div");
     document.body.appendChild(container);
     root = createRoot(container);
@@ -137,6 +138,80 @@ describe("TendrilShell", () => {
       window.dispatchEvent(new KeyboardEvent("keydown", { key: "b", ctrlKey: true }));
     });
     expect(handler).toHaveBeenCalledWith("OnCollapsedChanged", "test-shell", [false]);
+    expect(rootEl?.getAttribute("data-collapsed")).toBe("false");
+  });
+
+  it("toggles the sidebar exactly once per Cmd/Ctrl+B, and ignores it while typing in an input", () => {
+    const handler = vi.fn();
+    act(() => {
+      root.render(
+        <TendrilShell
+          id="test-shell"
+          events={["OnCollapsedChanged"]}
+          eventHandler={handler}
+          slots={{ Content: <div>Content</div> }}
+        />,
+      );
+    });
+
+    const rootEl = container.querySelector(".tsh-root");
+    expect(rootEl?.getAttribute("data-collapsed")).toBe("false");
+
+    // A single keypress toggles once: nothing else (e.g. a second, unregistered listener) also
+    // reacts to it and cancels the toggle out (#245).
+    act(() => {
+      window.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "b", code: "KeyB", ctrlKey: true, bubbles: true }),
+      );
+    });
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(handler).toHaveBeenCalledWith("OnCollapsedChanged", "test-shell", [true]);
+    expect(rootEl?.getAttribute("data-collapsed")).toBe("true");
+
+    // Typing Ctrl+B while focused in a text field must not toggle the sidebar.
+    const input = document.createElement("input");
+    container.appendChild(input);
+    input.focus();
+    act(() => {
+      input.dispatchEvent(
+        new KeyboardEvent("keydown", { key: "b", code: "KeyB", ctrlKey: true, bubbles: true }),
+      );
+    });
+    expect(handler).toHaveBeenCalledTimes(1);
+    expect(rootEl?.getAttribute("data-collapsed")).toBe("true");
+    input.remove();
+  });
+
+  it("toggles twice for two presses inside the registry's 300ms debounce window (a toggle is not idempotent)", () => {
+    const handler = vi.fn();
+    act(() => {
+      root.render(
+        <TendrilShell
+          id="test-shell"
+          events={["OnCollapsedChanged"]}
+          eventHandler={handler}
+          slots={{ Content: <div>Content</div> }}
+        />,
+      );
+    });
+
+    const rootEl = container.querySelector(".tsh-root");
+    expect(rootEl?.getAttribute("data-collapsed")).toBe("false");
+
+    const press = () =>
+      act(() => {
+        window.dispatchEvent(
+          new KeyboardEvent("keydown", { key: "b", code: "KeyB", ctrlKey: true, bubbles: true }),
+        );
+      });
+
+    // Two genuine presses back to back (well inside the registry's 300ms debounce window) must
+    // flip the sidebar twice, back to its starting state, rather than the second press being
+    // swallowed as a "duplicate" of the first.
+    press();
+    expect(rootEl?.getAttribute("data-collapsed")).toBe("true");
+    press();
+    expect(handler).toHaveBeenCalledTimes(2);
     expect(rootEl?.getAttribute("data-collapsed")).toBe("false");
   });
 

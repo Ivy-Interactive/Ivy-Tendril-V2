@@ -38,4 +38,8 @@ if (typeof window !== "undefined") {
       dispatchEvent: vi.fn(),
     }));
   }
+
+  // Ensure global Event and CustomEvent match window's instances so jsdom's dispatchEvent validates them
+  globalThis.Event = window.Event;
+  globalThis.CustomEvent = window.CustomEvent;
 }
