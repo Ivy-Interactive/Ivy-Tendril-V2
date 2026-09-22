@@ -3,6 +3,7 @@ import * as React from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/i18n/uiCommon";
 
 import { Blade } from "./Blade";
 import { BladesContext } from "./context";
@@ -43,12 +44,14 @@ export const BladeContainer = React.forwardRef<BladeContainerHandle, BladeContai
       collapseBreakpoint = 768,
       transitionDuration = 200,
       className,
-      "aria-label": ariaLabel = "Blades",
+      "aria-label": ariaLabelProp,
       onKeyDown,
       ...props
     },
     ref,
   ) {
+    const { t } = useTranslation("uiCommon");
+    const ariaLabel = ariaLabelProp ?? t("bladeContainer.ariaLabel");
     const animate = transitionDuration > 0;
     const {
       blades: stackBlades,

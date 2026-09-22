@@ -44,6 +44,14 @@ import type {
 } from "./remote-query";
 import { allOf, anyOf, not, whereColumn } from "./remote-query";
 import type { DataTableColumn } from "./types";
+import { i18n } from "@/i18n/uiCommon";
+
+/*
+ * The messages below are translated, at the moment a parse fails, but the grammar is not: the parser
+ * reads `AND`, `contains`, `is blank` and the rest in English only. Every keyword a message quotes is
+ * therefore passed in as a value, never written into the catalog, so a translation can change the
+ * sentence around a keyword and never the keyword itself.
+ */
 
 /** One filterable column, as the parser and the editor's help text see it. */
 export interface FilterExpressionColumn {
@@ -81,7 +89,7 @@ export function filterExpressionPlaceholder<TRow>(
   columns: readonly DataTableColumn<TRow>[],
 ): string {
   const first = filterExpressionColumns(columns)[0];
-  if (!first) return "No filterable columns";
+  if (!first) return i18n.t("uiCommon:dataTable.filter.noFilterableColumns");
   return `[${first.label}] contains "…"`;
 }
 
@@ -122,7 +130,7 @@ export function filterExpressionExamples<TRow>(
   return examples;
 }
 
-/** A parse either produced a filter or failed with a reason to show the user. */
+/** A parse either produced a filter or failed with a reason to show the user, in the UI's language. */
 export type FilterExpressionResult =
   | { filter: RemoteTableFilter | null; error?: undefined }
   | { filter: null; error: string };
@@ -164,7 +172,9 @@ function tokenize(text: string): Token[] {
     if (character === "[") {
       const end = text.indexOf("]", index + 1);
       if (end === -1) {
-        throw new ParseError(`Unclosed '[' at position ${index + 1}.`);
+        throw new ParseError(
+          i18n.t("uiCommon:dataTable.filter.errors.unclosedBracket", { position: index + 1 }),
+        );
       }
       tokens.push({ kind: "name", text: text.slice(index + 1, end).trim(), at: index });
       index = end + 1;
@@ -190,7 +200,9 @@ function tokenize(text: string): Token[] {
         cursor += 1;
       }
       if (!closed) {
-        throw new ParseError(`Unclosed quote at position ${index + 1}.`);
+        throw new ParseError(
+          i18n.t("uiCommon:dataTable.filter.errors.unclosedQuote", { position: index + 1 }),
+        );
       }
       tokens.push({ kind: "string", text: value, at: index });
       index = cursor;
@@ -218,7 +230,12 @@ function tokenize(text: string): Token[] {
       continue;
     }
 
-    throw new ParseError(`Unexpected '${character}' at position ${index + 1}.`);
+    throw new ParseError(
+      i18n.t("uiCommon:dataTable.filter.errors.unexpectedCharacter", {
+        text: character,
+        position: index + 1,
+      }),
+    );
   }
 
   return tokens;
@@ -239,7 +256,12 @@ class Parser {
     const extra = this.peek();
     if (extra) {
       throw new ParseError(
-        `Unexpected '${extra.text}' at position ${extra.at + 1}. Join conditions with AND or OR.`,
+        i18n.t("uiCommon:dataTable.filter.errors.unexpectedToken", {
+          text: extra.text,
+          position: extra.at + 1,
+          and: "AND",
+          or: "OR",
+        }),
       );
     }
     return filter;
@@ -251,7 +273,7 @@ class Parser {
 
   private next(): Token {
     const token = this.tokens[this.index];
-    if (!token) throw new ParseError("The expression ends before it is complete.");
+    if (!token) throw new ParseError(i18n.t("uiCommon:dataTable.filter.errors.incomplete"));
     this.index += 1;
     return token;
   }
@@ -301,7 +323,7 @@ class Parser {
     if (this.takeSymbol("(")) {
       const inner = this.parseOr();
       if (!this.takeSymbol(")")) {
-        throw new ParseError("Unclosed '(' — every group needs a matching ')'.");
+        throw new ParseError(i18n.t("uiCommon:dataTable.filter.errors.unclosedGroup"));
       }
       return inner;
     }
@@ -312,7 +334,10 @@ class Parser {
     const token = this.next();
     if (token.kind !== "name" && token.kind !== "word") {
       throw new ParseError(
-        `Expected a column name at position ${token.at + 1}, found '${token.text}'.`,
+        i18n.t("uiCommon:dataTable.filter.errors.expectedColumn", {
+          position: token.at + 1,
+          text: token.text,
+        }),
       );
     }
     const column = this.resolveColumn(token);
@@ -335,8 +360,8 @@ class Parser {
     const names = this.columns.map((column) => `[${column.label}]`).join(", ");
     throw new ParseError(
       this.columns.length === 0
-        ? `No column can be filtered on this table.`
-        : `Unknown column '${token.text}'. Filterable: ${names}.`,
+        ? i18n.t("uiCommon:dataTable.filter.errors.noFilterableColumn")
+        : i18n.t("uiCommon:dataTable.filter.errors.unknownColumn", { text: token.text, names }),
     );
   }
 
@@ -347,7 +372,11 @@ class Parser {
     const token = this.peek();
     if (!token) {
       throw new ParseError(
-        `'${columnToken.text}' needs a comparison, e.g. = "value" or contains "value".`,
+        i18n.t("uiCommon:dataTable.filter.errors.needsComparison", {
+          column: columnToken.text,
+          equalsExample: '= "value"',
+          containsExample: 'contains "value"',
+        }),
       );
     }
 
@@ -364,7 +393,12 @@ class Parser {
       };
       const fn = comparisons[token.text];
       if (!fn) {
-        throw new ParseError(`Unexpected '${token.text}' at position ${token.at + 1}.`);
+        throw new ParseError(
+          i18n.t("uiCommon:dataTable.filter.errors.unexpectedSymbol", {
+            text: token.text,
+            position: token.at + 1,
+          }),
+        );
       }
       this.index += 1;
       return { fn, args: [this.parseValue()] };
@@ -409,7 +443,14 @@ class Parser {
         if (this.takeWord("equals") || this.takeWord("equal")) {
           return { fn: "notEquals", args: [this.parseValue()] };
         }
-        throw new ParseError("After 'not' expected 'contains', 'in' or 'equals'.");
+        throw new ParseError(
+          i18n.t("uiCommon:dataTable.filter.errors.afterNot", {
+            keyword: "not",
+            contains: "contains",
+            in: "in",
+            equals: "equals",
+          }),
+        );
       }
       case "is": {
         const negated = this.takeWord("not");
@@ -419,20 +460,35 @@ class Parser {
         if (this.takeWord("null")) {
           return { fn: negated ? "isNotNull" : "isNull", args: [] };
         }
-        throw new ParseError("After 'is' expected 'blank', 'not blank', 'null' or 'not null'.");
+        throw new ParseError(
+          i18n.t("uiCommon:dataTable.filter.errors.afterIs", {
+            keyword: "is",
+            blank: "blank",
+            notBlank: "not blank",
+            null: "null",
+            notNull: "not null",
+          }),
+        );
       }
       default:
         throw new ParseError(
-          `Unknown comparison '${token.text}' at position ${token.at + 1}. Use =, !=, >, <, ` +
-            `equals, not equals, greater than, less than, contains, starts with, ends with, ` +
-            `in (…), is blank or is not blank.`,
+          i18n.t("uiCommon:dataTable.filter.errors.unknownComparison", {
+            text: token.text,
+            position: token.at + 1,
+            operators:
+              "=, !=, >, <, equals, not equals, greater than, less than, contains, starts with, " +
+              "ends with, in (…), is blank",
+            last: "is not blank",
+          }),
         );
     }
   }
 
   private expectWord(word: string, after: string): void {
     if (!this.takeWord(word)) {
-      throw new ParseError(`After '${after}' expected '${word}'.`);
+      throw new ParseError(
+        i18n.t("uiCommon:dataTable.filter.errors.expectedWord", { after, word }),
+      );
     }
   }
 
@@ -447,20 +503,31 @@ class Parser {
       if (word === "null") return null;
     }
     throw new ParseError(
-      `Expected a quoted value at position ${token.at + 1}, e.g. "Running". Found '${token.text}'.`,
+      i18n.t("uiCommon:dataTable.filter.errors.expectedValue", {
+        position: token.at + 1,
+        example: '"Running"',
+        text: token.text,
+      }),
     );
   }
 
   private parseValueList(): RemoteTableFilterArg[] {
     if (!this.takeSymbol("(")) {
-      throw new ParseError(`'in' takes a list: in ("Running", "Queued").`);
+      throw new ParseError(
+        i18n.t("uiCommon:dataTable.filter.errors.inNeedsList", {
+          keyword: "in",
+          example: 'in ("Running", "Queued")',
+        }),
+      );
     }
     const args: RemoteTableFilterArg[] = [this.parseValue()];
     while (this.takeSymbol(",")) {
       args.push(this.parseValue());
     }
     if (!this.takeSymbol(")")) {
-      throw new ParseError(`Unclosed '(' in an 'in' list.`);
+      throw new ParseError(
+        i18n.t("uiCommon:dataTable.filter.errors.unclosedList", { keyword: "in" }),
+      );
     }
     return args;
   }

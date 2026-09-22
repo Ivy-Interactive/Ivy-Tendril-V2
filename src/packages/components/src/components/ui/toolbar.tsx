@@ -13,6 +13,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { densityToButtonSize, densityToIconButtonSize } from "@/components/ui/density-scale";
 import { useDensity } from "@/contexts/density-context";
 import { Densities } from "@/types/density";
+import { useTranslation } from "@/i18n/uiCommon";
 import { toolbarGroupVariant, toolbarSeparatorVariant, toolbarVariant } from "./toolbar-variant";
 
 export type ToolbarOrientation = "horizontal" | "vertical";
@@ -142,6 +143,7 @@ const Toolbar = React.forwardRef<HTMLDivElement, ToolbarProps>(
     },
     ref,
   ) => {
+    const { t } = useTranslation("uiCommon");
     const contextDensity = useDensity();
     const effectiveDensity = density ?? contextDensity;
 
@@ -280,7 +282,7 @@ const Toolbar = React.forwardRef<HTMLDivElement, ToolbarProps>(
                     type="button"
                     variant="ghost"
                     size={densityToIconButtonSize(effectiveDensity)}
-                    aria-label="More actions"
+                    aria-label={t("toolbar.moreActions")}
                     data-toolbar-item=""
                     data-toolbar-overflow-trigger="true"
                   >

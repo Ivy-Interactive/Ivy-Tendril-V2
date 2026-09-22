@@ -1,5 +1,6 @@
 import { useState, useMemo, useRef } from "react";
 import { ChevronRight, ChevronDown } from "lucide-react";
+import { useTranslation } from "@/i18n/uiCommon";
 
 interface JsonRendererProps {
   data: unknown;
@@ -104,17 +105,18 @@ function collectAllPaths(value: unknown, path: string): string[] {
 }
 export type { JsonRendererProps };
 export const JsonRenderer = ({ data, initialExpanded }: JsonRendererProps) => {
+  const { t } = useTranslation("uiCommon");
   // Memoize parsed data to avoid creating new object references on every render
   const { parsedData, parseError } = useMemo(() => {
     if (typeof data === "string") {
       try {
-        return { parsedData: JSON.parse(data), parseError: null };
+        return { parsedData: JSON.parse(data), parseError: false };
       } catch (error) {
         console.error(error);
-        return { parsedData: null, parseError: "Invalid JSON string" };
+        return { parsedData: null, parseError: true };
       }
     }
-    return { parsedData: data, parseError: null };
+    return { parsedData: data, parseError: false };
   }, [data]);
 
   // Compute expanded paths based on parsedData and initialExpanded
@@ -141,7 +143,7 @@ export const JsonRenderer = ({ data, initialExpanded }: JsonRendererProps) => {
   }
 
   if (parseError) {
-    return <div className="text-destructive">{parseError}</div>;
+    return <div className="text-destructive">{t("jsonRenderer.invalid")}</div>;
   }
 
   const toggleNode = (path: string) => {

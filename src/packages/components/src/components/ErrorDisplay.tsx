@@ -5,6 +5,7 @@ import { ClipboardCopy, Check } from "lucide-react";
 import { copyToClipboard } from "@/lib/clipboard";
 import { prismTheme } from "@/lib/prismTheme";
 import { lazyWithRetry } from "@/lib/lazyWithRetry";
+import { useTranslation } from "@/i18n/uiCommon";
 
 /** `ErrorDisplay` is exported from both `index.ts` and `renderers.ts`, so a static import here is a
  * second eager path into the 617 kB syntax-highlighter chunk. Same shape as `PlanMarkdown/CodeBlock`. */
@@ -19,6 +20,7 @@ export interface ErrorDisplayProps {
 }
 
 export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ title, message, stackTrace }) => {
+  const { t } = useTranslation("uiCommon");
   const [copied, setCopied] = useState(false);
 
   const handleCopy = () => {
@@ -45,7 +47,7 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ title, message, stac
       <div className="shrink-0 min-w-0">
         {title && (
           <div>
-            <h4 className="text-sm font-medium mb-2">Type</h4>
+            <h4 className="text-sm font-medium mb-2">{t("errorDisplay.type")}</h4>
             {/* Exception type names are single unbroken tokens (`System.InvalidOperationException`),
              * which have no break opportunity of their own: without `break-words` one widens the
              * whole card past its container and scrolls the page sideways. */}
@@ -55,7 +57,7 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ title, message, stac
 
         {message && (
           <div className="mt-4">
-            <h4 className="text-sm font-medium mb-2">Message</h4>
+            <h4 className="text-sm font-medium mb-2">{t("errorDisplay.message")}</h4>
             {/* Same reason as the type above - a message is often one long token (a URL, a path, a
              * serialized payload) rather than prose that wraps on its own spaces. */}
             <p className="break-words">{message}</p>
@@ -69,7 +71,7 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ title, message, stac
          * `flex-1` against and sized to its content instead - a 470px box inside a 148px section -
          * so it spilled out the bottom and painted straight over the Copy Details row. */
         <div className="flex-1 min-h-0 min-w-0 flex flex-col">
-          <h4 className="text-sm font-medium mb-2 shrink-0">Stack Trace</h4>
+          <h4 className="text-sm font-medium mb-2 shrink-0">{t("errorDisplay.stackTrace")}</h4>
           {/* `flex-1 min-h-0` is what actually bounds this box to the space the section has left,
            * and only a bounded box can scroll - `overflow-auto` on a content-sized box never
            * engages. `min-h-0` overrides the `min-height: auto` a flex item gets by default, which
@@ -108,7 +110,7 @@ export const ErrorDisplay: React.FC<ErrorDisplayProps> = ({ title, message, stac
           ) : (
             <ClipboardCopy className="size-4" />
           )}
-          Copy Details
+          {t("errorDisplay.copyDetails")}
         </Button>
       </div>
     </div>

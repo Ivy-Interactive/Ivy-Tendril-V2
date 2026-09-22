@@ -2,6 +2,7 @@ import * as React from "react";
 import { ArrowDown, ArrowUp, ChevronsUpDown, GripVertical } from "lucide-react";
 
 import { cn } from "@/lib/utils";
+import { useTranslation, type TFunction } from "@/i18n/uiCommon";
 import { TableHead, type TableHeadProps } from "@/components/ui/table";
 import { tableHeadGripOffsetVariant } from "@/components/ui/table/table-variant";
 import { useTableScale } from "@/components/ui/table/useTableSize";
@@ -49,11 +50,15 @@ export interface DataTableColumnHeaderProps<TRow> extends Omit<
   columnTotal?: number;
 }
 
-function sortActionLabel(label: string, direction: DataTableSortDirection | null): string {
+function sortActionLabel(
+  t: TFunction,
+  label: string,
+  direction: DataTableSortDirection | null,
+): string {
   const next = nextSortDirection(direction);
-  if (next === "Ascending") return `Sort by ${label} ascending`;
-  if (next === "Descending") return `Sort by ${label} descending`;
-  return `Clear sort on ${label}`;
+  if (next === "Ascending") return t("dataTable.columnHeader.sortAscending", { column: label });
+  if (next === "Descending") return t("dataTable.columnHeader.sortDescending", { column: label });
+  return t("dataTable.columnHeader.clearSort", { column: label });
 }
 
 /**
@@ -89,6 +94,7 @@ function DataTableColumnHeaderInner<TRow>(
   }: DataTableColumnHeaderProps<TRow>,
   ref: React.ForwardedRef<HTMLTableCellElement>,
 ) {
+  const { t } = useTranslation("uiCommon");
   const label = column.header ?? column.name;
   /* The grip is positioned against this cell's own horizontal padding, which is keyed by density —
      the same source `TableHead` resolves its `px-*` from, so the two cannot drift. */
@@ -140,8 +146,11 @@ function DataTableColumnHeaderInner<TRow>(
         data-slot="data-table-column-grip"
         aria-label={
           columnPosition !== undefined && columnTotal !== undefined
-            ? `Reorder column, position ${columnPosition} of ${columnTotal}`
-            : "Reorder column"
+            ? t("dataTable.columnHeader.reorderAt", {
+                position: columnPosition,
+                total: columnTotal,
+              })
+            : t("dataTable.columnHeader.reorder")
         }
         aria-describedby={labelId}
         // Not draggable-by-HTML5: the drag is tracked on the pointer (see `use-column-reorder.ts`).
@@ -216,7 +225,7 @@ function DataTableColumnHeaderInner<TRow>(
         {sortable ? (
           <button
             type="button"
-            aria-label={sortActionLabel(label, direction)}
+            aria-label={sortActionLabel(t, label, direction)}
             onClick={() => onToggleSort?.(column.name)}
             className="group/sort inline-flex min-w-0 max-w-full items-center gap-1 rounded-field font-medium transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >

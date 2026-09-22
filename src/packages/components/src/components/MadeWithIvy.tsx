@@ -1,6 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 import { IvyLogo } from "./IvyLogo";
+import { useTranslation } from "@/i18n/uiCommon";
 import type React from "react";
 
 function toGitHubUrl(value: string): string {
@@ -11,6 +12,7 @@ function toGitHubUrl(value: string): string {
 export interface MadeWithIvyProps {}
 
 export function MadeWithIvy(_props?: MadeWithIvyProps) {
+  const { t } = useTranslation("uiCommon");
   const [isHovered, setIsHovered] = useState(false);
   const [isVisible, setIsVisible] = useState(false);
   const [gitHubUrl] = useState<string | null>(() => {
@@ -87,7 +89,7 @@ export function MadeWithIvy(_props?: MadeWithIvyProps) {
             ${isHovered ? "opacity-100" : "opacity-0"}
           `}
         >
-          <span className="font-mono font-bold opacity-70">MADE WITH</span>
+          <span className="font-mono font-bold opacity-70">{t("madeWithIvy.label")}</span>
           <IvyLogo className="w-24" />
         </div>
       </div>

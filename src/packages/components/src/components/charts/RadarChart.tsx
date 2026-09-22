@@ -1,6 +1,7 @@
 import React, { useCallback, useMemo, useRef } from "react";
 import { getHeight, getWidth } from "@/lib/styles";
 import { useThemeWithMonitoring } from "@/components/theme-provider";
+import { useTranslation } from "@/i18n/uiCommon";
 import ReactECharts from "echarts-for-react";
 import {
   getColors,
@@ -43,6 +44,7 @@ export const RadarChart: React.FC<RadarChartProps> = ({
   splitArea = false,
   axisLine = true,
 }) => {
+  const { t } = useTranslation("uiCommon");
   // Use enhanced theme hook with automatic monitoring
   const { colors, isDark } = useThemeWithMonitoring({
     monitorDOM: false,
@@ -103,7 +105,7 @@ export const RadarChart: React.FC<RadarChartProps> = ({
           type: "radar" as const,
           data: data.map((item: Record<string, unknown>) => ({
             value: radarIndicators.map((ind) => Number(getPropertyValue(item, ind.name) || 0)),
-            name: (item.name || item.Name || "Data") as string,
+            name: (item.name || item.Name || t("charts.radarDefaultSeries")) as string,
           })),
         },
       ];
@@ -135,7 +137,7 @@ export const RadarChart: React.FC<RadarChartProps> = ({
         })),
       };
     });
-  }, [radars, data, radarIndicators]);
+  }, [radars, data, radarIndicators, t]);
 
   const radarLayout = useMemo(
     () =>

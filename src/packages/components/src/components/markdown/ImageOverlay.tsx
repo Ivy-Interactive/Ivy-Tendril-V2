@@ -2,6 +2,7 @@ import React, { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { validateImageUrl } from "@/lib/url";
 import { IconButton } from "@/components/ui/IconButton";
+import { useTranslation } from "@/i18n/uiCommon";
 
 interface ImageOverlayProps {
   src: string | undefined;
@@ -20,6 +21,7 @@ export const ImageOverlay: React.FC<ImageOverlayProps> = ({
   currentIndex = 0,
   onNavigate,
 }) => {
+  const { t } = useTranslation("uiCommon");
   const overlayRef = useRef<HTMLDivElement>(null);
 
   const hasNavigation = images && images.length > 1 && onNavigate;
@@ -93,13 +95,13 @@ export const ImageOverlay: React.FC<ImageOverlayProps> = ({
       }}
       role="dialog"
       aria-modal="true"
-      aria-label="Image Overlay"
+      aria-label={t("imageOverlay.ariaLabel")}
     >
       <div className="relative max-w-[90vw] max-h-[90vh] flex items-center">
         {hasNavigation && (
           <IconButton
             className="absolute -left-12 top-1/2 -translate-y-1/2 z-10"
-            label="Previous image"
+            label={t("imageOverlay.previous")}
             tooltip={false}
             size="xl"
             shape="round"
@@ -128,7 +130,7 @@ export const ImageOverlay: React.FC<ImageOverlayProps> = ({
           <img src={validatedSrc} alt={alt} className="max-w-full max-h-[90vh] object-contain" />
           <IconButton
             className="absolute top-4 right-4"
-            label="Close"
+            label={t("imageOverlay.close")}
             tooltip={false}
             size="lg"
             shape="round"
@@ -139,14 +141,14 @@ export const ImageOverlay: React.FC<ImageOverlayProps> = ({
           </IconButton>
           {hasNavigation && (
             <div className="absolute bottom-4 left-1/2 -translate-x-1/2 bg-black/50 text-white text-sm px-3 py-1 rounded-full">
-              {currentIndex + 1} / {images.length}
+              {t("imageOverlay.position", { current: currentIndex + 1, total: images.length })}
             </div>
           )}
         </div>
         {hasNavigation && (
           <IconButton
             className="absolute -right-12 top-1/2 -translate-y-1/2 z-10"
-            label="Next image"
+            label={t("imageOverlay.next")}
             tooltip={false}
             size="xl"
             shape="round"

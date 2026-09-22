@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { Densities } from "@/types/density";
 import { useDensity } from "@/contexts/density-context";
 import { formatBytes } from "@/lib/formatters";
+import { useFormatters, useTranslation } from "@/i18n/uiCommon";
 
 interface SliderWithCurrencyProps extends React.ComponentPropsWithoutRef<
   typeof SliderPrimitive.Root
@@ -19,28 +20,26 @@ const Slider = React.forwardRef<
 >(({ className, currency, isBytesFormat = false, density, tooltipValue, ...props }, ref) => {
   const contextDensity = useDensity();
   const effectiveDensity = density ?? contextDensity;
+  const { t } = useTranslation("uiCommon");
+  // The UI language's formatters (a new object when it changes, so the value below re-formats).
+  const format = useFormatters();
 
   const currentValue = props.value?.[0] ?? props.defaultValue?.[0] ?? 0;
 
-  const formatter = React.useMemo(() => {
-    if (!currency) return null;
-    try {
-      return Intl.NumberFormat("en-US", {
-        style: "currency",
-        currency,
-        minimumFractionDigits: 0,
-        maximumFractionDigits: 2,
-      });
-    } catch {
-      return null;
-    }
-  }, [currency]);
-
   const formattedValue = React.useMemo(() => {
     if (isBytesFormat) return formatBytes(currentValue, 2);
-    if (formatter) return formatter.format(currentValue);
+    if (currency) {
+      try {
+        return format.currency(currentValue, currency, {
+          minimumFractionDigits: 0,
+          maximumFractionDigits: 2,
+        });
+      } catch {
+        // An unknown currency code: show the plain number, as before.
+      }
+    }
     return currentValue;
-  }, [currentValue, isBytesFormat, formatter]);
+  }, [currentValue, isBytesFormat, currency, format]);
 
   // Size variants for track and thumb
   const sizeVariant: Record<string, { track: string; thumb: string; tooltip: string }> = {
@@ -75,7 +74,7 @@ const Slider = React.forwardRef<
         <SliderPrimitive.Range className="absolute h-full bg-primary" />
       </SliderPrimitive.Track>
       <SliderPrimitive.Thumb
-        aria-label={props["aria-label"] ?? "Slider"}
+        aria-label={props["aria-label"] ?? t("slider.ariaLabel")}
         className={cn(
           "relative block rounded-full border bg-background shadow transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 cursor-pointer",
           variant.thumb,

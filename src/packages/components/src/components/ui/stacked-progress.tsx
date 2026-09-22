@@ -4,6 +4,7 @@ import { cn } from "@/lib/utils";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useDensity } from "@/contexts/density-context";
 import { Densities } from "@/types/density";
+import { useTranslation } from "@/i18n/uiCommon";
 import {
   stackedProgressDotSize,
   stackedProgressLabelVariant,
@@ -59,6 +60,7 @@ const StackedProgress = React.forwardRef<HTMLDivElement, StackedProgressProps>(
     },
     ref,
   ) => {
+    const { t } = useTranslation("uiCommon");
     const contextDensity = useDensity();
     const effectiveDensity = density ?? contextDensity;
     const total = totalProp ?? segments.reduce((sum, segment) => sum + segment.value, 0);
@@ -73,7 +75,7 @@ const StackedProgress = React.forwardRef<HTMLDivElement, StackedProgressProps>(
     };
 
     const renderSegment = (segment: StackedProgressSegment, index: number) => {
-      const label = segment.label ?? `Segment ${index + 1}`;
+      const label = segment.label ?? t("stackedProgress.segmentFallback", { number: index + 1 });
       const percentage = total > 0 ? (segment.value / total) * 100 : 0;
       // An indeterminate segment with no value still fills the remaining track.
       const flex = segment.indeterminate && segment.value === 0 ? "1 1 0%" : `${percentage} 1 0%`;
@@ -81,10 +83,14 @@ const StackedProgress = React.forwardRef<HTMLDivElement, StackedProgressProps>(
 
       // No `aria-valuenow` *is* the ARIA indeterminate state; `0` or `null` would be wrong.
       const progressAria = segment.indeterminate
-        ? { "aria-valuetext": "Indeterminate" }
+        ? { "aria-valuetext": t("stackedProgress.indeterminate") }
         : {
             "aria-valuenow": segment.value,
-            "aria-valuetext": `${label}: ${segment.value} of ${total}`,
+            "aria-valuetext": t("stackedProgress.valueText", {
+              label,
+              value: segment.value,
+              total,
+            }),
           };
 
       const visualClass = cn(
@@ -100,7 +106,7 @@ const StackedProgress = React.forwardRef<HTMLDivElement, StackedProgressProps>(
         <button
           key={key}
           type="button"
-          aria-label={`Select ${label}`}
+          aria-label={t("stackedProgress.select", { label })}
           onClick={() => onSelect(index)}
           className={cn(
             "min-w-0 cursor-pointer p-0 hover:opacity-80 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -136,7 +142,11 @@ const StackedProgress = React.forwardRef<HTMLDivElement, StackedProgressProps>(
         <Tooltip key={`tooltip-${key}`}>
           <TooltipTrigger asChild>{element}</TooltipTrigger>
           <TooltipContent>
-            <span>{segment.label ? `${segment.label}: ${segment.value}` : `${segment.value}`}</span>
+            <span>
+              {segment.label
+                ? t("stackedProgress.tooltip", { label: segment.label, value: segment.value })
+                : `${segment.value}`}
+            </span>
           </TooltipContent>
         </Tooltip>
       );
@@ -152,7 +162,7 @@ const StackedProgress = React.forwardRef<HTMLDivElement, StackedProgressProps>(
           <div role="group" aria-label={ariaLabel} className="bg-muted" style={trackStyle}>
             {total > 0 && segments.map(renderSegment)}
           </div>
-          <span className="sr-only">{`Total: ${total}`}</span>
+          <span className="sr-only">{t("stackedProgress.total", { total })}</span>
           {showLabels && (
             // The values are already announced by the progressbars; announcing them twice is noise.
             <div

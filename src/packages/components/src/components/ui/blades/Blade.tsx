@@ -4,6 +4,7 @@ import { ChevronLeft, RotateCw, X } from "lucide-react";
 import { buttonVariant } from "@/components/ui/button/variant";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/i18n/uiCommon";
 
 import { bladeHeaderVariant, bladeVariant, bladeWidthVariant } from "./variant";
 import { isBladeWidthHint, type ResolvedBlade } from "./types";
@@ -61,6 +62,7 @@ export const Blade = React.forwardRef<HTMLElement, BladeProps>(function Blade(
   },
   ref,
 ) {
+  const { t } = useTranslation("uiCommon");
   const headingId = `${id}-title`;
   const subtitleId = `${id}-subtitle`;
 
@@ -134,7 +136,7 @@ export const Blade = React.forwardRef<HTMLElement, BladeProps>(function Blade(
           {showCloseAffordance && collapsed && (
             <button
               type="button"
-              aria-label={parentTitle ? `Back to ${parentTitle}` : "Back"}
+              aria-label={parentTitle ? t("blade.backTo", { title: parentTitle }) : t("blade.back")}
               className={buttonVariant({ variant: "ghost", size: "icon" })}
               onClick={onRequestClose}
             >
@@ -172,7 +174,7 @@ export const Blade = React.forwardRef<HTMLElement, BladeProps>(function Blade(
           {onRefresh && (
             <button
               type="button"
-              aria-label={`Refresh ${title}`}
+              aria-label={t("blade.refresh", { title })}
               className={buttonVariant({ variant: "ghost", size: "icon" })}
               onClick={onRefresh}
             >
@@ -182,7 +184,7 @@ export const Blade = React.forwardRef<HTMLElement, BladeProps>(function Blade(
           {showCloseAffordance && !collapsed && (
             <button
               type="button"
-              aria-label={`Close ${title}`}
+              aria-label={t("blade.close", { title })}
               className={buttonVariant({ variant: "ghost", size: "icon" })}
               onClick={onRequestClose}
             >
