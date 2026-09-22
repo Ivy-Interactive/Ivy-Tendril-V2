@@ -1932,7 +1932,8 @@ export async function main(ctx: CommandContext): Promise<number> {
       const stamp = readStamp(paths, def.name);
       let state = 'always runs';
       if (def.key) {
-        const key = JSON.stringify(await def.key(s).catch((e: unknown) => ({ error: errorMessage(e) })));
+        // The same shape the run writes into the stamp (see below), or every step reads as stale.
+        const key = JSON.stringify({ v: STAMP_VERSION, key: await def.key(s).catch((e: unknown) => ({ error: errorMessage(e) })) });
         state = stamp && stamp.key === key && outputsPresent(def, s) ? `up to date (built ${stamp.completedAt})` : stamp ? 'stale' : 'never built';
       }
       process.stdout.write(`${selected.includes(def) ? '*' : ' '} ${def.name.padEnd(13)} ${state.padEnd(48)} ${def.title}${def.optional ? ' [opt-in]' : ''}\n`);
