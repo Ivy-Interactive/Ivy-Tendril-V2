@@ -49,4 +49,21 @@ describe("content-input.css theming and responsive variables", () => {
       /\.civ-split-btn-left:hover:not\(:disabled\)\s*\{[^}]*color:\s*var\(--primary-foreground\);/,
     );
   });
+
+  /**
+   * The mic button used to shrink from `--control-height` to `--control-height-sm` and drop its
+   * border on `data-active="true"`, reflowing `.civ-right-actions` by the size difference every time
+   * recording started or stopped. The active rule must carry no width/height and no zero-width
+   * border, only colour, so the border-box stays identical to the idle state's.
+   */
+  it("keeps the mic button's box constant between idle and active", () => {
+    const activeRuleMatch = css.match(/\.civ-mic-btn\[data-active="true"\]\s*\{([^}]*)\}/);
+    expect(activeRuleMatch).not.toBeNull();
+    const activeRule = activeRuleMatch![1];
+
+    expect(activeRule).not.toMatch(/\bwidth\s*:/);
+    expect(activeRule).not.toMatch(/\bheight\s*:/);
+    expect(activeRule).not.toMatch(/border\s*:\s*none/);
+    expect(activeRule).toMatch(/border\s*:\s*var\(--border-width\)\s+solid/);
+  });
 });

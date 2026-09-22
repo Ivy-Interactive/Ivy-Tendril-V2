@@ -200,11 +200,10 @@
   height: 16px;
 }
 
-/* Recording/processing shrinks the pill to a plain icon button. */
+/* Recording/processing keeps the button's own box and outline border, and shows the active state
+   through colour alone -- a differently sized or bordered box here would reflow `.civ-right-actions`. */
 .civ-mic-btn[data-active="true"] {
-  width: var(--control-height-sm);
-  height: var(--control-height-sm);
-  border: none;
+  border: var(--border-width) solid transparent;
   background: transparent;
 }
 
