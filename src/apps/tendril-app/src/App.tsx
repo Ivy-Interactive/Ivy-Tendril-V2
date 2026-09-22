@@ -422,9 +422,12 @@ export const App: React.FC = () => {
   // Global Keyboard Shortcuts. Each one registers with the components package's shortcut registry,
   // which owns the single window listener, debounces duplicate fires and — because the registry is
   // enumerable — is what KeyboardShortcutsHelp renders instead of a hardcoded list.
-  useShortcut("app:toggle-sidebar", "Ctrl+B", () => uiStore.toggleSidebar(), {
-    description: "Toggle sidebar collapse",
-  });
+  //
+  // Sidebar collapse is not registered here: TendrilShell owns that shortcut directly (its own
+  // "tendril-shell:toggle-sidebar" registration), because it is TendrilShell's local collapsed
+  // state - not uiStore's - that actually drives the rendered sidebar. A second "Ctrl+B" entry
+  // here duplicated the binding under a different id, which both fired on every press (#245) and
+  // showed up twice in KeyboardShortcutsHelp.
   useShortcut("app:goto-chat", "Ctrl+Shift+C", () => uiStore.setActiveNav("chat"), {
     description: "Switch to Chat",
   });
