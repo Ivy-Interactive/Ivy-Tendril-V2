@@ -26,7 +26,8 @@
 
   /*
    * The column divider: a hairline on each header cell's trailing edge, marking where to grab to
-   * resize.
+   * resize. It is unconditional, so a table with column resizing off still paints it; there it
+   * simply reads as a column separator.
    *
    * The resize handle is 6px wide and straddles the cell boundary (`-right-[3px] w-[6px]`), so it is
    * invisible until pointed at — a drag target nobody can find. This paints the line the handle
@@ -38,8 +39,8 @@
    * cell box and shift the label by a pixel at every column; and because the resizer's own `::after`
    * has to paint *over* this one, which a border cannot lose to (the handle carries `z-10`).
    *
-   * `inset-block` insets it top and bottom exactly as the handle's line is inset (`after:inset-y-1`
-   * = 4px), so the two are the same mark rather than two marks of different lengths. It stops short
+   * `top` and `bottom` inset it exactly as the handle's line is inset (`after:inset-y-1` = 4px), so
+   * the two are the same mark rather than two marks of different lengths. It stops short
    * of the header's own bottom hairline for the same reason.
    *
    * `:last-child` is excluded so the divider never doubles with the table's outer border on the
