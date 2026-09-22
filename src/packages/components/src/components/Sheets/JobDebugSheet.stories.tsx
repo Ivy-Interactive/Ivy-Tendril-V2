@@ -1,5 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { JobDebugSheet, type JobDebugDetail } from "./JobDebugSheet";
+import { SheetStoryHost } from "./SheetStoryHost";
 
 function job(overrides: Partial<JobDebugDetail> = {}): JobDebugDetail {
   return {
@@ -30,9 +31,16 @@ function job(overrides: Partial<JobDebugDetail> = {}): JobDebugDetail {
  * exists at each point in a job's life.
  */
 const meta: Meta<typeof JobDebugSheet> = {
-  title: "Dialogs/JobDebugSheet",
+  title: "Sheets/JobDebugSheet",
   component: JobDebugSheet,
   parameters: { layout: "padded" },
+  // Rendered in the panel `JobsView` opens it in, behind the same Debug action, so the width
+  // ladder and the scroll-under-a-fixed-header behaviour are the real ones.
+  render: (args) => (
+    <SheetStoryHost title="Job Debug" triggerLabel="Debug">
+      <JobDebugSheet {...args} />
+    </SheetStoryHost>
+  ),
 };
 
 export default meta;
