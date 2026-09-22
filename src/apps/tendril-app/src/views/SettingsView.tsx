@@ -421,10 +421,7 @@ const PromptwaresCard: React.FC<{
 
         <div className="flex flex-wrap items-end gap-2 pt-2">
           <div className="space-y-1">
-            <Label
-              htmlFor="promptware-new-name"
-              className="text-xs font-medium text-muted-foreground"
-            >
+            <Label htmlFor="promptware-new-name" className="text-xs font-medium text-foreground">
               Add Agent
             </Label>
             <Input
@@ -920,10 +917,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           </div>
         ) : (
           <div className="min-h-0 flex-1 overflow-auto py-4 pl-4">
-            <div className="space-y-10 pr-4">
-              {/* Sections draw no box of their own, as V1's draw none, so the gap between them is the
-                only thing separating one from the next - wider than the `space-y-6` that was only
-                ever spacing between two already-bordered boxes. */}
+            <div className="divide-y divide-border pr-4 [&>*]:py-10 [&>*:first-child]:pt-0 [&>*:last-child]:pb-0">
               {isAddingProject && (
                 <AddProjectView
                   existingNames={projectNames}
@@ -974,7 +968,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                     <div className="space-y-1">
                       <Label
                         htmlFor="plan-template-input"
-                        className="text-xs font-medium text-muted-foreground"
+                        className="text-xs font-medium text-foreground"
                       >
                         Plan Template
                       </Label>
@@ -1200,25 +1194,25 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                     <dl className="space-y-3 text-sm">
                       <div className="flex justify-between">
-                        <dt className="text-muted-foreground">Connection State:</dt>
+                        <dt className="text-foreground">Connection State:</dt>
                         <dd className="font-semibold text-foreground">
                           {serviceInfo?.state || "NotRunning"}
                         </dd>
                       </div>
                       <div className="flex justify-between">
-                        <dt className="text-muted-foreground">Daemon Host & Port:</dt>
+                        <dt className="text-foreground">Daemon Host & Port:</dt>
                         <dd className="font-mono text-xs text-muted-foreground">
                           {serviceInfo?.host || "127.0.0.1"}:{serviceInfo?.port || "N/A"}
                         </dd>
                       </div>
                       <div className="flex justify-between">
-                        <dt className="text-muted-foreground">Process PID:</dt>
+                        <dt className="text-foreground">Process PID:</dt>
                         <dd className="font-mono text-xs text-muted-foreground">
                           {serviceInfo?.pid || "N/A"}
                         </dd>
                       </div>
                       <div className="flex justify-between">
-                        <dt className="text-muted-foreground">TENDRIL_HOME:</dt>
+                        <dt className="text-foreground">TENDRIL_HOME:</dt>
                         <dd
                           className="max-w-50 truncate font-mono text-xs text-muted-foreground"
                           title={serviceInfo?.tendrilHome}
@@ -1227,13 +1221,13 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         </dd>
                       </div>
                       <div className="flex justify-between">
-                        <dt className="text-muted-foreground">Security / Secret:</dt>
+                        <dt className="text-foreground">Security / Secret:</dt>
                         <dd className="font-mono text-xs text-success">
                           Managed natively (hidden from webview storage)
                         </dd>
                       </div>
                       <div className="flex justify-between">
-                        <dt className="text-muted-foreground">Capabilities:</dt>
+                        <dt className="text-foreground">Capabilities:</dt>
                         <dd className="text-xs text-muted-foreground">
                           {serviceInfo?.capabilities?.join(", ") || "None reported"}
                         </dd>
