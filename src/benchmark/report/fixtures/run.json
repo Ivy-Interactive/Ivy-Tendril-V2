@@ -244,35 +244,48 @@
         "warmRuns": 10
       },
       "idle": {
-        "runs": 2,
-        "durationSec": 90
+        "runs": 5,
+        "settleSec": 120,
+        "durationSec": 45
       },
       "api": {
-        "seqWarmup": 25,
-        "seqSamples": 300,
+        "instances": 3,
+        "seqWarmup": 100,
+        "seqSamples": 100,
         "concurrency": [
           1,
           8,
           32
         ],
-        "concurrencyDurationSec": 8,
+        "concurrencyDurationSec": 5,
         "maxLatencySamples": 5000
       },
       "ui": {
-        "coldLoads": 8,
-        "navCycles": 8,
-        "pushSamples": 20,
-        "fsPushSamples": 10,
-        "navUnderLoadCycles": 8
+        "instances": 3,
+        "coldLoads": 9,
+        "navCycles": 6,
+        "pushSamples": 10,
+        "fsPushSamples": 5,
+        "navUnderLoadCycles": 6
       },
       "desktop": {
         "warmupRuns": 1,
-        "runs": 3,
-        "durationSec": 90
+        "runs": 5,
+        "durationSec": 60
       },
       "cli": {
         "warmup": 3,
         "runs": 20
+      },
+      "network": {
+        "coldLoads": 5,
+        "pushSamples": 10,
+        "idleWindows": 3,
+        "idleWindowSec": 60,
+        "sessions": 3,
+        "sessionPushes": 4,
+        "desktopIdleSec": 90,
+        "realHostSec": 45
       }
     }
   },

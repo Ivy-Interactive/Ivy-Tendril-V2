@@ -13,22 +13,28 @@
 // only the headline and the curated charts look for specific names (the ones in the spec), and each
 // of those silently drops out when its metric is absent rather than guessing. What they look for:
 //
-//   startup  scenarios first-start / warm-start; data_ready_ms, http_ready_ms, footprint_at_ready_mib
+//   startup  scenarios first-start / warm-start; usable_ms, http_ready_ms, footprint_at_ready_mib
 //   idle     footprint_mean_mib, cpu_percent_mean; series whose name or scenario contains "footprint"
-//   api      scenarios plans.list, plans.get, plans.update (or the literal request line); latency_ms
-//            with meta.responseBytes; load levels as "<scenario>@c<N>" (or meta.concurrency) with
-//            throughput_rps, server_peak_footprint_mib, server_cpu_s (+ meta.requests or
-//            meta.durationSec for the derived CPU per request)
-//   ui       cold-load (content_ready_ms and the other *_ms milestones), navigate:<view> and
-//            nav-under-load:<view> (nav_first_ms, nav_ms), push-rest / push-fs, *_footprint_mib
-//   desktop  footprint_end_mib with meta.byRole (numbers, arrays, or procstat Agg objects), *_ms
-//            launch milestones, footprint series
+//   api      scenarios plans.list, plans.get, plans.update; latency_ms with meta.responseBytes; load
+//            levels as "<scenario>@c<N>" (or meta.concurrency) with throughput_rps,
+//            server_peak_footprint_mib, server_cpu_s (+ meta.perInstance[].requests or meta.requests
+//            for the derived CPU per request)
+//   ui       cold-load (content_ready_ms, transfer_bytes and the other milestones), navigate:<view>
+//            and nav-under-load:<view> (nav_first_ms, nav_ms), push-rest / push-fs,
+//            memory-after-flows *_footprint_mib
+//   network  ui_* (UI to backend, the like-for-like leg) and net_* (architecture-internal sockets)
+//            per scenario; desktop-external ext_*; real-host-cold-load (meta.validation)
+//   desktop  footprint_end_mib with meta.byRole (numbers, arrays, or procstat Agg objects), launch and
+//            cold-launch milestones, footprint series
 //   cli      "plan list" wall_ms, peak_footprint_mib
 //   size     dataset null, 'bytes' (+ bytes_gzip9, bytes_brotli11), scenarios installer,
-//            installed-app, frontend/eager-js...; component breakdowns as "<parent>/<name>" or
-//            meta.parent (optional meta.group), or meta.components on the parent
+//            installed-app, installed-app-after-first-launch, frontend/eager-js...; component
+//            breakdowns as "<parent>/<name>" or meta.parent (optional meta.group), or meta.components
+//            on the parent
 //
-// Any metric may set meta.deterministic (compared exactly, like sizes).
+// Any metric may set meta.deterministic (compared exactly, like sizes), meta.contextOnly (shown, never
+// a verdict), Metric.censored (timed-out samples, ranked as values at their bound) and
+// Metric.instance (the replicate of each sample, for the hierarchical bootstrap).
 
 import fs from 'node:fs';
 import path from 'node:path';
@@ -50,7 +56,7 @@ import {
   type ProfileKnobs,
 } from '../lib/config.ts';
 import { latestCompleteRun, listRuns, readRunInfo, readSuiteResults, runDirFor, type AppId, type Metric, type RunInfo, type SeriesEntry, type SuiteResult } from '../lib/results.ts';
-import { SIGNIFICANCE_P, bootstrapMedianCI, fmtInt, mannWhitneyU, normalSf, ratioCI, seedFrom, summarize, type CI, type MwuResult, type Summary } from '../lib/stats.ts';
+import { MWU_EXACT_MAX_N, SIGNIFICANCE_P, bootstrapMedianCI, fmtInt, mannWhitneyU, normalSf, ratioCI, seedFrom, summarize, type CI, type MwuResult, type Summary } from '../lib/stats.ts';
 import {
   advantageChart,
   groupedBarChart,
@@ -86,6 +92,8 @@ const LARGE_N = 50;
 const WIDE_CI = 0.2;
 /** 1-minute load average at the start of a suite at or above which the suite is flagged. */
 const LOAD_FLAG = 2;
+/** Shown for context next to the others but never judged (a normalisation that favours one side). */
+const CONTEXT_METRICS: ReadonlySet<string> = new Set(['latency_ms_per_kb']);
 
 const SUITE_ORDER = ['size', 'cli', 'startup', 'idle', 'api', 'ui', 'network', 'desktop'];
 const APPS: readonly AppId[] = ['v1', 'v2'];
@@ -152,7 +160,9 @@ export async function main(ctx: CommandContext): Promise<number> {
 
   const t0 = performance.now();
   const model = buildModel(info, results, { fixtures, runDir });
-  const doc = render(model, { analysisFile, outDir, fixtures });
+  const insideRun = !fixtures && (path.resolve(outDir) === path.resolve(runDir) || path.resolve(outDir).startsWith(`${path.resolve(runDir)}${path.sep}`));
+  const resultsLink = insideRun ? `${path.relative(outDir, path.join(runDir, 'results')) || '.'}/` : `results/${info.runId}/`;
+  const doc = render(model, { analysisFile, outDir, fixtures, resultsLink });
 
   // Charts: write the new set, then remove SVGs a previous report left behind.
   const chartsDir = path.join(outDir, 'charts');
@@ -166,8 +176,10 @@ export async function main(ctx: CommandContext): Promise<number> {
     if (f.endsWith('.svg') && !written.has(f)) fs.rmSync(path.join(chartsDir, f));
   }
 
-  // Raw results next to the report (JSON only), copied byte for byte.
-  if (!fixtures) {
+  // Raw results next to the report (JSON only), copied byte for byte, unless the report is written
+  // inside the run directory itself (its results are already there; copying would nest them).
+  if (insideRun) log.info(`the report is inside the run directory; linking its results instead of copying them`);
+  if (!fixtures && !insideRun) {
     const dest = path.join(outDir, 'results', info.runId);
     fs.mkdirSync(path.join(dest, 'results'), { recursive: true });
     fs.copyFileSync(path.join(runDir, 'run.json'), path.join(dest, 'run.json'));
@@ -195,11 +207,26 @@ export async function main(ctx: CommandContext): Promise<number> {
 
 interface Side {
   m: Metric;
+  /** Summary of the observed samples plus the censored ones placed at their bounds. */
   s: Summary;
   ci: CI;
+  /** Observed (completed) samples. */
+  nObs: number;
+  /** Censored samples: timed out or never completed (see Metric.censored). */
+  nCens: number;
+  /** Lowest censored bound; a statistic at or above it is only a lower bound. */
+  censFrom: number | null;
+  /** Observed and censored values in one array (censored at their bounds), and their instances. */
+  values: number[];
+  groups: number[] | undefined;
 }
 
-type VerdictKind = 'better' | 'ns' | 'same' | 'one-sided' | 'no-data';
+/** The median is at or past a censored value: it is only known to be at least this. */
+function medianCensored(side: Side | null | undefined): boolean {
+  return !!side && side.censFrom !== null && side.s.median >= side.censFrom;
+}
+
+type VerdictKind = 'better' | 'ns' | 'same' | 'one-sided' | 'no-data' | 'context';
 /**
  * test: Mann-Whitney U can reach p < SIGNIFICANCE_P with these sample sizes; exact: deterministic
  * measurements (sizes); few: too few samples for any test to reach the threshold (n = 1, or for
@@ -218,6 +245,11 @@ interface Verdict {
   adv: number | null;
   advLo: number | null;
   advHi: number | null;
+  /**
+   * Set when a median is censored: 'atLeast' when only V1's is (V2's advantage is at least adv),
+   * 'atMost' when only V2's is, 'unknown' when both are.
+   */
+  bound: 'atLeast' | 'atMost' | 'unknown' | null;
 }
 
 interface Cmp {
@@ -271,18 +303,38 @@ function isDeterministic(m: Metric, suite: string): boolean {
 }
 
 function sideOf(m: Metric, seedKey: string): Side {
-  const xs = m.samples.filter((x) => Number.isFinite(x));
-  return { m, s: summarize(xs), ci: bootstrapMedianCI(xs, { iters: BOOT_ITERS, alpha: ALPHA, seed: seedFrom(seedKey) }) };
+  const obs = m.samples.filter((x) => Number.isFinite(x));
+  const cens = (m.censored ?? []).filter((x) => Number.isFinite(x));
+  const values = [...obs, ...cens];
+  // Instances for the hierarchical bootstrap: each observed sample's, and for a censored one the
+  // instance its reason names (ui) or a group of its own.
+  let groups: number[] | undefined;
+  if (Array.isArray(m.instance) && m.instance.length === m.samples.length && new Set(m.instance).size > 1) {
+    const inst = m.instance.filter((_, i) => Number.isFinite(m.samples[i]!));
+    const why = (Array.isArray(m.meta?.censoredWhy) ? m.meta.censoredWhy : []) as Array<{ instance?: number }>;
+    groups = [...inst, ...cens.map((_, k) => (typeof why[k]?.instance === 'number' ? why[k]!.instance! : -1 - k))];
+  }
+  return {
+    m,
+    s: summarize(values),
+    ci: bootstrapMedianCI(values, { iters: BOOT_ITERS, alpha: ALPHA, seed: seedFrom(seedKey), groups }),
+    nObs: obs.length,
+    nCens: cens.length,
+    censFrom: cens.length ? Math.min(...cens) : null,
+    values,
+    groups,
+  };
 }
 
 /**
  * The smallest two-sided p-value a Mann-Whitney U test can produce for these sample sizes (complete
- * separation). With 2 runs per app it is 0.33 and with 3 it is 0.10, so no difference could ever be
- * "significant" at 0.01 and the report must not call a real difference "not significant".
+ * separation, 2 / C(n1 + n2, n1) under the exact distribution). With 2 runs per app it is 0.33 and
+ * with 3 it is 0.10, so no difference could ever be "significant" at 0.01 and the report must not
+ * call a real difference "not significant".
  */
 export function minAchievableP(n1: number, n2: number): number {
   if (n1 < 1 || n2 < 1) return 1;
-  if (n1 <= 8 && n2 <= 8) {
+  if (n1 + n2 <= MWU_EXACT_MAX_N) {
     let comb = 1;
     for (let i = 1; i <= n1; i++) comb = (comb * (n2 + i)) / i;
     return Math.min(1, 2 / comb);
@@ -292,8 +344,12 @@ export function minAchievableP(n1: number, n2: number): number {
   return Math.min(1, 2 * normalSf(z));
 }
 
+function isContextOnly(m: Metric | null | undefined): boolean {
+  return !!m && (CONTEXT_METRICS.has(m.metric) || m.meta?.contextOnly === true);
+}
+
 function verdictOf(c: Omit<Cmp, 'verdict'>, deterministic: boolean): Verdict {
-  const none: Verdict = { kind: 'no-data', winner: null, basis: 'test', minN: 0, p: null, adv: null, advLo: null, advHi: null };
+  const none: Verdict = { kind: 'no-data', winner: null, basis: 'test', minN: 0, p: null, adv: null, advLo: null, advHi: null, bound: null };
   if (!c.v1 || !c.v2) return { ...none, kind: c.v1 || c.v2 ? 'one-sided' : 'no-data' };
   if (c.v1.s.n === 0 || c.v2.s.n === 0) return none;
   const a = c.v1.s.median;
@@ -304,9 +360,13 @@ function verdictOf(c: Omit<Cmp, 'verdict'>, deterministic: boolean): Verdict {
   if (a === b) adv = 1;
   else if (lowerBetter) adv = b === 0 ? Infinity : a / b;
   else adv = a === 0 ? Infinity : b / a;
+  const c1 = medianCensored(c.v1);
+  const c2 = medianCensored(c.v2);
+  const bound: Verdict['bound'] = c1 && c2 ? 'unknown' : c1 ? (lowerBetter ? 'atLeast' : 'atMost') : c2 ? (lowerBetter ? 'atMost' : 'atLeast') : null;
   let advLo: number | null = null;
   let advHi: number | null = null;
-  if (c.ratio && Number.isFinite(c.ratio.lo) && Number.isFinite(c.ratio.hi) && c.ratio.iters > 0 && hasCi(c.v1) && hasCi(c.v2)) {
+  // An interval of a factor whose median is itself a bound would look more precise than it is.
+  if (bound === null && c.ratio && Number.isFinite(c.ratio.lo) && Number.isFinite(c.ratio.hi) && c.ratio.iters > 0 && hasCi(c.v1) && hasCi(c.v2)) {
     if (lowerBetter) {
       advLo = c.ratio.hi > 0 ? 1 / c.ratio.hi : null;
       advHi = c.ratio.lo > 0 ? 1 / c.ratio.lo : null;
@@ -318,12 +378,14 @@ function verdictOf(c: Omit<Cmp, 'verdict'>, deterministic: boolean): Verdict {
   const winner: AppId | null = adv > 1 ? 'v2' : adv < 1 ? 'v1' : null;
   const rel = Number.isFinite(adv) && adv > 0 ? Math.abs(Math.log(adv)) : Infinity;
   const minN = Math.min(c.v1.s.n, c.v2.s.n);
-  const base = { minN, adv, advLo, advHi };
+  const base = { minN, adv, advLo, advHi, bound };
+  if (isContextOnly(c.v1.m) || isContextOnly(c.v2.m)) return { ...base, kind: 'context', winner: null, basis: 'test', p: c.mwu?.p ?? null };
   if (deterministic) {
     const same = a === b || rel < Math.log(1 + EXACT_SAME);
     return { ...base, kind: same ? 'same' : 'better', winner: same ? null : winner, basis: 'exact', p: null };
   }
-  const practicallySame = rel < Math.log(1 + PRACTICAL);
+  // With both medians censored the factor is unknown; the rank test may still separate them.
+  const practicallySame = bound === 'unknown' ? false : rel < Math.log(1 + PRACTICAL);
   if (minAchievableP(c.v1.s.n, c.v2.s.n) >= SIGNIFICANCE_P) {
     if (practicallySame) return { ...base, kind: 'same', winner: null, basis: 'few', p: null };
     if (minN === 1) return { ...base, kind: 'better', winner, basis: 'few', p: null };
@@ -334,7 +396,19 @@ function verdictOf(c: Omit<Cmp, 'verdict'>, deterministic: boolean): Verdict {
   }
   const p = c.mwu?.p ?? NaN;
   if (!(p < SIGNIFICANCE_P)) return { ...base, kind: 'ns', winner: null, basis: 'test', p: Number.isFinite(p) ? p : null };
-  return { ...base, kind: practicallySame ? 'same' : 'better', winner: practicallySame ? null : winner, basis: 'test', p };
+  // Significant with both medians censored: the rank test says which app got further, not by how much.
+  const w = bound === 'unknown' ? (c.mwu!.effect > 0.5 === lowerBetter ? 'v2' : 'v1') : winner;
+  return { ...base, kind: practicallySame ? 'same' : 'better', winner: practicallySame ? null : w, basis: 'test', p };
+}
+
+/** A decision on one sample per app: shown, but indicative only and left out of every tally. */
+function isIndicative(c: Cmp): boolean {
+  return c.verdict.basis === 'few' && c.verdict.minN === 1;
+}
+
+/** Counts towards win tallies (summary, findings): judged, and on more than one sample per app. */
+function counts(c: Cmp): boolean {
+  return c.verdict.kind !== 'context' && !isIndicative(c);
 }
 
 function buildModel(info: RunInfo, results: SuiteResult[], o: { fixtures: boolean; runDir: string }): Model {
@@ -370,9 +444,9 @@ function buildModel(info: RunInfo, results: SuiteResult[], o: { fixtures: boolea
       const m2 = pick('v2');
       const v1 = m1 ? sideOf(m1, `${id}|v1`) : null;
       const v2 = m2 ? sideOf(m2, `${id}|v2`) : null;
-      const fin = (m: Metric | null) => (m ? m.samples.filter((x) => Number.isFinite(x)) : []);
-      const ratio = v1 && v2 && v1.s.n && v2.s.n ? ratioCI(fin(m1), fin(m2), { iters: BOOT_ITERS, alpha: ALPHA, seed: seedFrom(`${id}|ratio`) }) : null;
-      const mwu = v1 && v2 && v1.s.n >= 2 && v2.s.n >= 2 ? mannWhitneyU(fin(m1), fin(m2)) : null;
+      // Censored samples take part as values at their bounds: a rank test only needs their order.
+      const ratio = v1 && v2 && v1.s.n && v2.s.n ? ratioCI(v1.values, v2.values, { iters: BOOT_ITERS, alpha: ALPHA, seed: seedFrom(`${id}|ratio`), groupsA: v1.groups, groupsB: v2.groups }) : null;
+      const mwu = v1 && v2 && v1.s.n >= 2 && v2.s.n >= 2 ? mannWhitneyU(v1.values, v2.values) : null;
       const failures: Record<AppId, number> = { v1: 0, v2: 0 };
       for (const f of r.failures) {
         if (f.scenario === first.scenario && (f.dataset ?? null) === (first.dataset ?? null) && (f.app === 'v1' || f.app === 'v2')) failures[f.app]++;
@@ -423,6 +497,18 @@ function withDerived(metrics: Metric[]): Metric[] {
   for (const m of metrics) {
     out.push(m);
     if (m.metric !== 'server_cpu_s') continue;
+    // One sample per instance, each with the requests its own window served.
+    const per = Array.isArray(m.meta?.perInstance) ? (m.meta.perInstance as Array<{ requests?: unknown }>).map((x) => (typeof x.requests === 'number' ? x.requests : NaN)) : null;
+    if (per && per.length === m.samples.length && per.every((x) => x > 0)) {
+      out.push({
+        ...m,
+        metric: 'server_cpu_ms_per_request',
+        unit: 'ms',
+        samples: m.samples.map((x, k) => (x * 1000) / per[k]!),
+        meta: { ...(m.meta ?? {}), derived: 'server_cpu_s x 1000 / requests served in the same window (per instance)', requestsPerSample: per },
+      });
+      continue;
+    }
     let requests = metaNumber(m, ['requests', 'okRequests', 'ok', 'completed']);
     if (requests === null) {
       const tp = metrics.find((x) => x.metric === 'throughput_rps' && x.scenario === m.scenario && x.app === m.app && x.dataset === m.dataset);
@@ -486,9 +572,12 @@ function sizeBreakdowns(r: SuiteResult | undefined): { children: Map<string, Chi
     add(parent, { app: m.app, name, group: typeof m.meta?.group === 'string' ? m.meta.group : null, bytes });
     childIds.add(`size|${m.scenario}|${m.dataset ?? '-'}|${m.metric}`);
   }
+  // meta.components is a fallback per app: V2's list must not be dropped because V1 described the
+  // same scenario with child metrics.
+  const hasChildren = (scenario: string, app: AppId) => (children.get(scenario) ?? []).some((k) => k.app === app);
   for (const m of byteMetrics) {
     const comps = m.meta?.components;
-    if (!comps || typeof comps !== 'object' || children.has(m.scenario)) continue;
+    if (!comps || typeof comps !== 'object' || hasChildren(m.scenario, m.app)) continue;
     const groups = (m.meta?.componentGroups ?? {}) as Record<string, unknown>;
     for (const [name, v] of Object.entries(comps as Record<string, unknown>)) {
       if (typeof v === 'number' && Number.isFinite(v)) add(m.scenario, { app: m.app, name, group: typeof groups[name] === 'string' ? (groups[name] as string) : null, bytes: v });
@@ -572,14 +661,29 @@ function withUnit(v: number, unit: string): string {
   return unit === 'percent' ? `${num(v, unit)}%` : `${num(v, unit)} ${u}`;
 }
 
-/** "median [lo, hi]" with one precision for all three; "median (min to max)" for 2 to 4 samples. */
+/**
+ * "median [lo, hi]" with one precision for all three; "median (min to max)" for 2 to 4 samples. A
+ * value at or past a censored sample is only a lower bound and reads ">= x".
+ */
 function ciText(side: Side, unit: string): string {
   const { ci, s } = side;
   if (s.n === 0) return 'n/a';
-  if (s.n === 1) return num(s.median, unit);
   const d = digits(s.median, unit);
-  if (!hasCi(side)) return `${num(s.median, unit, d)} (${num(s.min, unit, d)} to ${num(s.max, unit, d)})`;
-  return `${num(s.median, unit, d)} [${num(ci.lo, unit, d)}, ${num(ci.hi, unit, d)}]`;
+  const at = (v: number) => (side.censFrom !== null && v >= side.censFrom ? `>= ${num(v, unit, d)}` : num(v, unit, d));
+  if (s.n === 1) return at(s.median);
+  if (!hasCi(side)) return `${at(s.median)} (${num(s.min, unit, d)} to ${at(s.max)})`;
+  return `${at(s.median)} [${num(ci.lo, unit, d)}, ${at(ci.hi)}]`;
+}
+
+/** The median with its unit, as ">= x" when it is censored. */
+function medianText(side: Side, unit: string): string {
+  return `${medianCensored(side) ? '>= ' : ''}${withUnit(side.s.median, unit)}`;
+}
+
+/** "(3 of 10 timed out)" style note on how many samples of a side never completed. */
+function censNote(side: Side | null | undefined): string {
+  if (!side || !side.nCens) return '';
+  return side.nObs ? `${side.nCens} of ${side.s.n} timed out` : `all ${side.nCens} timed out`;
 }
 
 function fmtFactor(f: number): string {
@@ -596,23 +700,23 @@ const WORDS: Record<string, [string, string]> = {
   percent: ['lower', 'higher'],
 };
 
-/** "V2 3.2x faster" style, always from V2's point of view. */
+/** "V2 3.2x faster" style, always from V2's point of view ("at least" where a median is censored). */
 function diffWords(c: Cmp): string {
   if (!c.v1 || !c.v2) return c.v1 ? 'V1 only' : c.v2 ? 'V2 only' : 'n/a';
   const a = c.v1.s.median;
   const b = c.v2.s.median;
   if (!Number.isFinite(a) || !Number.isFinite(b)) return 'n/a';
+  if (c.verdict.bound === 'unknown') return 'both medians timed out';
   if (a === b) return 'identical';
   if (a === 0) return c.unit === 'bytes' ? 'V1 has none' : 'V1 = 0';
   if (b === 0) return c.unit === 'bytes' ? 'V2 has none' : 'V2 = 0';
   const r = b / a;
   if (c.verdict.kind === 'same') return 'about the same';
-  const lowerBetter = c.better === 'lower';
-  if (lowerBetter) {
-    const [good, bad] = /cpu/i.test(c.metric) ? WORDS.cpu_s! : WORDS[c.unit] ?? ['lower', 'higher'];
-    return r < 1 ? `V2 ${fmtFactor(1 / r)}x ${good}` : `V2 ${fmtFactor(r)}x ${bad}`;
-  }
-  return r > 1 ? `V2 ${fmtFactor(r)}x higher` : `V2 ${fmtFactor(1 / r)}x lower`;
+  const least = c.verdict.bound ? 'at least ' : '';
+  const [good, bad] = improvementWords(c);
+  const v2Better = c.better === 'lower' ? r < 1 : r > 1;
+  const f = r < 1 ? 1 / r : r;
+  return `V2 ${least}${fmtFactor(f)}x ${v2Better ? good : bad}`;
 }
 
 function improvementWords(c: Cmp): [string, string] {
@@ -623,17 +727,26 @@ function improvementWords(c: Cmp): [string, string] {
 /**
  * The "Improvement" column every comparison table carries: how many times better V2 is than V1,
  * worded from V2's side ("13x faster", "6.1x slower") so a regression reads as one without doing
- * arithmetic on a ratio, with the 95% interval of that factor where one exists.
+ * arithmetic on a ratio, with the 95% interval of that factor where one exists. It says when the
+ * factor is only a bound (a censored median), not significant, indicative (one sample) or not judged.
  */
 function improvementText(c: Cmp): string {
   if (!c.v1 || !c.v2) return c.v1 ? 'V1 only' : c.v2 ? 'V2 only' : 'n/a';
   const a = c.v1.s.median;
   const b = c.v2.s.median;
-  if (!Number.isFinite(a) || !Number.isFinite(b)) return 'n/a';
-  if (a === b) return '1x (identical)';
-  if (a === 0) return c.unit === 'bytes' ? 'V1 has none' : 'V1 = 0';
-  if (b === 0) return c.unit === 'bytes' ? 'V2 has none' : 'V2 = 0';
   const v = c.verdict;
+  if (!Number.isFinite(a) || !Number.isFinite(b)) return 'n/a';
+  if (v.bound === 'unknown') return `n/a (both timed out${v.kind === 'better' ? `; ${v.winner!.toUpperCase()} ranks better` : ''})`;
+  const tag = (t: string) => {
+    if (v.kind === 'context') return `${t} (context only, not judged)`;
+    if (v.kind === 'same') return `${t} (about the same)`;
+    if (v.kind === 'ns') return `${t} (${v.basis === 'few' ? 'unclear' : 'n.s.'})`;
+    if (isIndicative(c)) return `${t} (indicative, n=1)`;
+    return t;
+  };
+  if (a === b) return tag('1x (identical)');
+  if (a === 0) return tag(c.unit === 'bytes' ? 'V1 has none' : 'V1 = 0');
+  if (b === 0) return tag(c.unit === 'bytes' ? 'V2 has none' : 'V2 = 0');
   const adv = v.adv ?? (c.better === 'lower' ? a / b : b / a);
   const [good, bad] = improvementWords(c);
   const v2Better = adv >= 1;
@@ -644,20 +757,20 @@ function improvementText(c: Cmp): string {
     const hi = v2Better ? v.advHi : 1 / v.advLo;
     ci = ` [${fmtFactor(lo)}, ${fmtFactor(hi)}]`;
   }
-  const text = `${fmtFactor(factor)}x ${v2Better ? good : bad}${ci}`;
-  return v.kind === 'same' ? `${text} (about the same)` : text;
+  return tag(`${v.bound ? '>= ' : ''}${fmtFactor(factor)}x ${v2Better ? good : bad}${ci}`);
 }
 
-/** "; every run, n=3" / "; n=1" for comparisons decided without a test. */
+/** "; every run, n=3" / "; n=1, indicative" for comparisons decided without a test. */
 function fewNote(c: Cmp): string {
   const v = c.verdict;
   if (v.basis !== 'few') return '';
-  if (v.kind === 'better') return v.minN === 1 ? '; n=1' : `; every run, n=${v.minN}`;
+  if (v.kind === 'better') return v.minN === 1 ? '; n=1, indicative' : `; every run, n=${v.minN}`;
   return `; n=${v.minN}`;
 }
 
 function pText(c: Cmp): string {
   const v = c.verdict;
+  if (v.kind === 'context') return '-';
   if (v.basis === 'exact') return 'exact';
   if (v.basis === 'few') return `no test (n=${v.minN})`;
   if (v.p === null) return 'n/a';
@@ -670,7 +783,9 @@ function betterText(c: Cmp): string {
   switch (v.kind) {
     case 'better':
       if (v.basis !== 'few') return `**${name(v.winner!)}**`;
-      return v.minN === 1 ? `${name(v.winner!)} (n=1)` : `${name(v.winner!)} (every run)`;
+      return v.minN === 1 ? `${name(v.winner!)} (n=1, indicative)` : `${name(v.winner!)} (every run)`;
+    case 'context':
+      return 'context only';
     case 'same':
       return v.basis === 'exact' ? 'same' : 'within 5%';
     case 'ns':
@@ -752,6 +867,18 @@ function fmtPayload(b: number): string {
 const METRIC_LABELS: Record<string, string> = {
   http_ready_ms: 'HTTP ready',
   data_ready_ms: 'Data ready',
+  usable_ms: 'Usable (API and data ready)',
+  phase_bound_ms: 'V2 phase: port bound',
+  phase_watcher_registered_ms: 'V2 phase: file watches registered',
+  phase_plans_synced_ms: 'V2 phase: plans synced',
+  phase_recommendations_rebuilt_ms: 'V2 phase: recommendations rebuilt',
+  cpu_s: 'CPU time',
+  footprint_window_start_mib: 'Footprint when the idle window opens',
+  settling_cpu_s: 'CPU time while settling after start',
+  settling_peak_footprint_mib: 'Peak footprint while settling after start',
+  backend_ready_ms: 'Backend (daemon) ready',
+  cpu_s_to_15s: 'CPU time to +15 s',
+  rss_end_mib: 'RSS at end (context only)',
   footprint_at_ready_mib: 'Footprint at ready',
   peak_footprint_startup_mib: 'Peak footprint during startup',
   cpu_s_to_ready: 'CPU time to ready',
@@ -799,9 +926,9 @@ const METRIC_LABELS: Record<string, string> = {
 };
 
 /**
- * Network suite metrics: `net_*` is loopback socket traffic of the shipped architecture (V1
- * browser <-> server, V2 host <-> daemon), `ui_*` what the page exchanges with its backend (V2:
- * browser <-> IPC shim, which is in-process IPC in the real app).
+ * Network suite metrics: `ui_*` is what the page exchanges with its backend (the like-for-like leg;
+ * V2: browser <-> IPC shim, which is in-process IPC in the real app), `net_*` the architecture-internal
+ * loopback sockets (V1 browser <-> server, the same leg; V2 host <-> daemon, no assets or IPC).
  */
 function networkLabels(): Record<string, string> {
   const out: Record<string, string> = {};
@@ -821,7 +948,7 @@ function networkLabels(): Record<string, string> {
     ws_messages_per_min: 'WebSocket messages per minute',
   };
   for (const [k, v] of Object.entries(parts)) {
-    out[`net_${k}`] = `Loopback socket traffic: ${v}`;
+    out[`net_${k}`] = `Architecture-internal sockets: ${v}`;
     out[`ui_${k}`] = `UI to backend: ${v}`;
   }
   out.ext_bytes_in = 'External bytes received';
@@ -900,11 +1027,6 @@ function findAll(model: Model, suite: string, f: Find): Cmp[] {
   );
 }
 
-function findOne(model: Model, suite: string, f: Find): Cmp | null {
-  const all = findAll(model, suite, f);
-  return all.find((c) => c.v1 && c.v2) ?? all[0] ?? null;
-}
-
 /** Concurrency level encoded in a scenario ("plans.list@c8", "plans.list c=8", "plans.list x8") or its meta. */
 function concurrencyOf(c: Cmp): number | null {
   const meta = metaNumber(c.v1?.m ?? c.v2?.m, ['concurrency', 'c']);
@@ -932,6 +1054,8 @@ interface RenderOptions {
   analysisFile: string;
   outDir: string;
   fixtures: boolean;
+  /** Where this run's raw results are, relative to the report (results/<runId>/ when copied). */
+  resultsLink: string;
 }
 
 interface Doc {
@@ -1001,7 +1125,7 @@ function render(model: Model, o: RenderOptions): Doc {
 
   out.push('## Results');
   out.push('');
-  out.push(`Every table gives medians with a 95% bootstrap confidence interval in brackets. "Improvement (V2 vs V1)" says how many times better or worse V2 is than V1, from V2's side ("13x faster", "2.4x less", "6.1x slower"), computed from the medians, with the 95% bootstrap interval of that factor in brackets where the samples allow one. "p" is the two-sided Mann-Whitney U p-value, and "Better" names the app that is better with p < ${SIGNIFICANCE_P} and a difference of at least ${PRACTICAL * 100}% ("n.s." when not significant, "within 5%" when significant but smaller). With 2 to 4 samples, parentheses give the range of the samples instead of an interval. Where the sample is too small for any test to reach p < ${SIGNIFICANCE_P}, "p" says "no test" and "Better" says "n=1", "every run" or "unclear" (see [Statistics](#methodology)). Full distributions are in the [appendix](#appendix).`);
+  out.push(`Every table gives medians with a 95% bootstrap confidence interval in brackets (hierarchical over instances where a metric has several). "Improvement (V2 vs V1)" says how many times better or worse V2 is than V1, from V2's side ("13x faster", "2.4x less", "6.1x slower"), computed from the medians, with the 95% bootstrap interval of that factor in brackets where the samples allow one; it adds "(n.s.)" when the difference is not significant, "(unclear)" when too few samples could not separate the apps, "(indicative, n=1)" for a single sample per app (never counted as a win) and "(context only, not judged)" for normalisations shown for reference. "p" is the two-sided Mann-Whitney U p-value, and "Better" names the app that is better with p < ${SIGNIFICANCE_P} and a difference of at least ${PRACTICAL * 100}% ("n.s." when not significant, "within 5%" when significant but smaller). With 2 to 4 samples, parentheses give the range of the samples instead of an interval. Where the sample is too small for any test to reach p < ${SIGNIFICANCE_P}, "p" says "no test" and "Better" says "every run", "unclear" or "n=1, indicative" (see [Statistics](#methodology)). Samples that timed out count at their limit: ">=" marks a median or bound that includes them, "n" says how many, and an improvement factor built on one reads ">= Nx". Full distributions are in the [appendix](#appendix).`);
   out.push('');
   const missingSuites = (info.suitesRequested ?? []).filter((s) => !model.results.has(s));
   if (missingSuites.length) {
@@ -1034,7 +1158,7 @@ function render(model: Model, o: RenderOptions): Doc {
 
   out.push('## How to reproduce');
   out.push('');
-  out.push(...reproduceBlock(model));
+  out.push(...reproduceBlock(model, o.fixtures ? null : o.resultsLink));
   out.push('');
 
   out.push('## Appendix');
@@ -1098,9 +1222,10 @@ interface HeadlineSpec {
 }
 
 const HEADLINES: HeadlineSpec[] = [
-  { area: 'Responsiveness', label: 'Cold start to data ready', suite: 'startup', scenario: /first/i, metric: /^data_ready_ms$/, dataset: 'primary' },
-  { area: 'Responsiveness', label: 'Cold start to data ready', suite: 'startup', scenario: /first/i, metric: /^data_ready_ms$/, dataset: 'largest' },
-  { area: 'Responsiveness', label: 'Warm restart to data ready', suite: 'startup', scenario: /warm/i, metric: /^data_ready_ms$/, dataset: 'primary' },
+  // "Usable": both the API and the synced data are there (V1's data-ready log line can precede its HTTP).
+  { area: 'Responsiveness', label: 'Cold start to usable', suite: 'startup', scenario: /first/i, metric: /^usable_ms$/, dataset: 'primary' },
+  { area: 'Responsiveness', label: 'Cold start to usable', suite: 'startup', scenario: /first/i, metric: /^usable_ms$/, dataset: 'largest' },
+  { area: 'Responsiveness', label: 'Warm restart to usable', suite: 'startup', scenario: /warm/i, metric: /^usable_ms$/, dataset: 'primary' },
   { area: 'Responsiveness', label: 'API: list 50 plans', suite: 'api', scenario: /^(plans\.list|GET \/api\/plans\?limit=50)$/, metric: /^latency_ms$/, dataset: 'primary' },
   { area: 'Responsiveness', label: 'API: list 50 plans', suite: 'api', scenario: /^(plans\.list|GET \/api\/plans\?limit=50)$/, metric: /^latency_ms$/, dataset: 'largest' },
   { area: 'Responsiveness', label: 'API: get one plan', suite: 'api', scenario: /^(plans\.get|GET \/api\/plans\/\S+)$/, metric: /^latency_ms$/, dataset: 'primary' },
@@ -1109,21 +1234,27 @@ const HEADLINES: HeadlineSpec[] = [
   { area: 'Responsiveness', label: 'UI cold load to content', suite: 'ui', scenario: /cold/i, metric: /^content_ready_ms$/, dataset: 'primary' },
   { area: 'Responsiveness', label: 'UI navigation to Jobs, revisit', suite: 'ui', scenario: /^nav(?:igat\w*)?\W*jobs$/i, metric: /^nav_ms$/, dataset: 'primary' },
   { area: 'Responsiveness', label: 'Push: REST write to UI badge', suite: 'ui', scenario: /push.?rest/i, metric: /latency/, dataset: 'primary' },
-  { area: 'Responsiveness', label: 'CLI: plan list', suite: 'cli', scenario: /plan list/i, metric: /^wall_ms$/, dataset: 'primary' },
-  { area: 'Memory', label: 'Idle server footprint', suite: 'idle', metric: /^(footprint_mean|mean_footprint)_mib$/, dataset: 'primary' },
-  { area: 'Memory', label: 'Idle server footprint', suite: 'idle', metric: /^(footprint_mean|mean_footprint)_mib$/, dataset: 'largest' },
-  { area: 'Memory', label: 'Idle server CPU', suite: 'idle', metric: /^cpu_percent_mean$/, dataset: 'primary' },
-  { area: 'Memory', label: 'Server peak footprint, API load', suite: 'api', scenario: /plans\.list|GET \/api\/plans\?/, metric: /^server_peak_footprint_mib$/, dataset: 'primary', maxConcurrency: true },
-  { area: 'Memory', label: 'Page renderer footprint after UI flows', suite: 'ui', metric: /^renderer_footprint_mib$/, dataset: 'primary' },
+  { area: 'Responsiveness', label: 'Push: plan file edit to UI badge', suite: 'ui', scenario: /push.?fs/i, metric: /latency/, dataset: 'primary' },
+  { area: 'Responsiveness', label: 'CLI: plan list', suite: 'cli', scenario: /^plan list$/i, metric: /^wall_ms$/, dataset: 'primary' },
+  // The whole desktop process tree is the like-for-like memory number (V2: app + WebKit + daemon).
   { area: 'Memory', label: 'Desktop app, whole process tree', suite: 'desktop', metric: /^(tree_)?footprint_(end|final)_mib$/, dataset: 'primary' },
+  { area: 'Memory', label: 'Desktop app, whole process tree', suite: 'desktop', metric: /^(tree_)?footprint_(end|final)_mib$/, dataset: 'largest' },
+  { area: 'Memory', label: 'Idle headless backend (V1 web server incl. server-side UI vs V2 daemon only, host excluded)', suite: 'idle', metric: /^(footprint_mean|mean_footprint)_mib$/, dataset: 'primary' },
+  { area: 'Memory', label: 'Idle headless backend (V1 web server incl. server-side UI vs V2 daemon only, host excluded)', suite: 'idle', metric: /^(footprint_mean|mean_footprint)_mib$/, dataset: 'largest' },
+  { area: 'Memory', label: 'Idle headless backend CPU', suite: 'idle', metric: /^cpu_percent_mean$/, dataset: 'primary' },
+  { area: 'Memory', label: 'Server peak footprint, API load', suite: 'api', scenario: /plans\.list|GET \/api\/plans\?/, metric: /^server_peak_footprint_mib$/, dataset: 'primary', maxConcurrency: true },
+  { area: 'Memory', label: 'Page renderer footprint after UI flows', suite: 'ui', scenario: /^memory-after-flows$/, metric: /^renderer_footprint_mib$/, dataset: 'primary' },
   { area: 'Size', label: 'Installer download', suite: 'size', scenario: /^installer$/i, metric: /^bytes$/, dataset: null },
   { area: 'Size', label: 'Installed app', suite: 'size', scenario: /^installed[- ]app$/i, metric: /^bytes$/, dataset: null },
-  { area: 'Size', label: 'Eager frontend JS, brotli 11', suite: 'size', scenario: /eager.?js/i, metric: /^bytes_brotli11$/, dataset: null },
-  // Loopback socket bytes of the shipped architecture: V1 browser <-> server, V2 host <-> daemon.
-  { area: 'Network', label: 'Loopback bytes: UI cold load', suite: 'network', scenario: /^cold-load$/, metric: /^net_total_bytes$/, dataset: 'primary' },
-  { area: 'Network', label: 'Loopback bytes: one push, received', suite: 'network', scenario: /^push$/, metric: /^net_down_bytes$/, dataset: 'primary' },
-  { area: 'Network', label: 'Loopback bytes per minute: idle UI', suite: 'network', scenario: /^idle$/, metric: /^net_bytes_per_min$/, dataset: 'primary' },
-  { area: 'Network', label: 'Loopback bytes: scripted session', suite: 'network', scenario: /^session$/, metric: /^net_total_bytes$/, dataset: 'primary' },
+  { area: 'Size', label: 'Installed app after first launch (V2 copies its sidecars into its home)', suite: 'size', scenario: /^installed-app-after-first-launch$/i, metric: /^bytes$/, dataset: null },
+  { area: 'Size', label: 'Frontend bytes loaded to first content (UI cold load)', suite: 'ui', scenario: /^cold-load$/, metric: /^transfer_bytes$/, dataset: 'primary' },
+  { area: 'Size', label: 'Eager frontend JS, brotli 11 (V2 lazy landing chunks not included)', suite: 'size', scenario: /eager.?js/i, metric: /^bytes_brotli11$/, dataset: null },
+  // The like-for-like leg: what each UI exchanges with its backend (V2's is in-process IPC in the real app).
+  { area: 'Network', label: 'UI to backend: cold load, data', suite: 'network', scenario: /^cold-load$/, metric: /^ui_data_bytes$/, dataset: 'primary' },
+  { area: 'Network', label: 'UI to backend: cold load, assets', suite: 'network', scenario: /^cold-load$/, metric: /^ui_asset_bytes$/, dataset: 'primary' },
+  { area: 'Network', label: 'UI to backend: one push, received', suite: 'network', scenario: /^push$/, metric: /^ui_down_bytes$/, dataset: 'primary' },
+  { area: 'Network', label: 'UI to backend per minute: idle UI', suite: 'network', scenario: /^idle$/, metric: /^ui_bytes_per_min$/, dataset: 'primary' },
+  { area: 'Network', label: 'UI to backend: scripted session', suite: 'network', scenario: /^session$/, metric: /^ui_total_bytes$/, dataset: 'primary' },
 ];
 
 function headlineRows(model: Model): HeadlineRow[] {
@@ -1162,34 +1293,41 @@ function summaryBlock(model: Model, rows: HeadlineRow[]): string[] {
     out.push('No headline metric has results for both apps yet, so there is nothing to summarize. The per-suite sections below show whatever was measured.');
     return out;
   }
+  // One-sample rows are shown but never counted: a single run cannot carry a win.
+  const counted = rows.filter((r) => counts(r.c));
+  const indicative = rows.filter((r) => isIndicative(r.c));
   const isWin = (r: HeadlineRow, a: AppId) => r.c.verdict.kind === 'better' && r.c.verdict.winner === a;
   const isTie = (r: HeadlineRow) => r.c.verdict.kind === 'ns' || r.c.verdict.kind === 'same';
-  const v2 = rows.filter((r) => isWin(r, 'v2'));
-  const v1 = rows.filter((r) => isWin(r, 'v1'));
-  const tie = rows.filter(isTie);
-  const few = rows.filter((r) => r.c.verdict.basis === 'few');
+  const v2 = counted.filter((r) => isWin(r, 'v2'));
+  const v1 = counted.filter((r) => isWin(r, 'v1'));
+  const tie = counted.filter(isTie);
+  const few = counted.filter((r) => r.c.verdict.basis === 'few');
+  const censored = rows.filter((r) => (r.c.v1?.nCens ?? 0) + (r.c.v2?.nCens ?? 0) > 0);
   out.push(
-    `**Of ${rows.length} headline comparisons, V2 is better in ${v2.length}, V1 is better in ${v1.length}, and ${tie.length} show no clear difference.** ` +
+    `**Of ${counted.length} headline comparisons with more than one sample per app, V2 is better in ${v2.length}, V1 is better in ${v1.length}, and ${tie.length} show no clear difference.** ` +
       `"Better" means a two-sided Mann-Whitney U test at p < ${SIGNIFICANCE_P} and at least ${PRACTICAL * 100}% apart; sizes are exact.` +
-      (few.length
-        ? ` ${few.length} of them rest on too few runs for such a test (for example n=1 or 2 to 3 runs per app); those are decided by value and marked "every run" (every run of the better app beat every run of the other) or "n=1".`
-        : ''),
+      (few.length ? ` ${few.length} of them rest on too few runs for such a test (2 to 4 per app); those are decided by value and only counted as "every run" when every run of the better app beat every run of the other.` : '') +
+      (indicative.length ? ` ${indicative.length} more headline row(s) rest on a single sample per app and are shown as indicative only, not counted.` : '') +
+      (censored.length ? ` ${censored.length} row(s) include samples that timed out; those count as values at the time limit (a lower bound), never as missing.` : ''),
   );
   out.push('');
   const phrase = (r: HeadlineRow) => {
     const c = r.c;
-    return `${headlineLabel(r)}: ${withUnit(c.v1!.s.median, c.unit)} vs ${withUnit(c.v2!.s.median, c.unit)} (${diffWords(c)}${fewNote(c)})`;
+    return `${headlineLabel(r)}: ${medianText(c.v1!, c.unit)} vs ${medianText(c.v2!, c.unit)} (${diffWords(c)}${fewNote(c)})`;
   };
   for (const area of ['Responsiveness', 'Memory', 'Size', 'Network'] as const) {
-    const ar = rows.filter((r) => r.area === area);
-    if (!ar.length) continue;
+    const all = rows.filter((r) => r.area === area);
+    const ar = all.filter((r) => counts(r.c));
+    if (!all.length) continue;
     const wins2 = ar.filter((r) => isWin(r, 'v2')).sort((a, b) => (b.c.verdict.adv ?? 0) - (a.c.verdict.adv ?? 0));
     const wins1 = ar.filter((r) => isWin(r, 'v1'));
     const ties = ar.filter(isTie);
-    out.push(`- **${area}**: V2 better in ${wins2.length} of ${ar.length}, V1 better in ${wins1.length}.`);
+    const ind = all.filter((r) => isIndicative(r.c));
+    out.push(`- **${area}**: V2 better in ${wins2.length} of ${ar.length}, V1 better in ${wins1.length}${ind.length ? ` (plus ${ind.length} indicative, n=1)` : ''}.`);
     if (wins2.length) out.push(`  - Largest V2 advantages: ${wins2.slice(0, 3).map(phrase).join('; ')}.`);
     if (wins1.length) out.push(`  - V1 better: ${wins1.map(phrase).join('; ')}.`);
     if (ties.length) out.push(`  - No clear difference: ${ties.map(phrase).join('; ')}.`);
+    if (ind.length) out.push(`  - Indicative only (one sample per app): ${ind.map(phrase).join('; ')}.`);
   }
   const failures = [...model.results.values()].reduce((s, r) => s + r.failures.length, 0);
   const st = model.info.suiteStatus ?? {};
@@ -1219,8 +1357,8 @@ function headlineBlock(model: Model, rows: HeadlineRow[], addChart: (f: string, 
     t.push([
       r.area,
       mdEscape(headlineLabel(r)),
-      withUnit(c.v1!.s.median, c.unit),
-      withUnit(c.v2!.s.median, c.unit),
+      `${medianText(c.v1!, c.unit)}${censNote(c.v1) ? ` (${censNote(c.v1)})` : ''}`,
+      `${medianText(c.v2!, c.unit)}${censNote(c.v2) ? ` (${censNote(c.v2)})` : ''}`,
       improvementText(c),
       pText(c),
       betterText(c),
@@ -1243,14 +1381,14 @@ function headlineBlock(model: Model, rows: HeadlineRow[], addChart: (f: string, 
         lo: v.advLo ?? undefined,
         hi: v.advHi ?? undefined,
         winner: win,
-        untested: v.basis === 'few',
+        untested: v.basis === 'few' || v.bound !== null,
         valueText: adv === undefined ? diffWords(r.c) : adv >= 1 ? `V2 ${fmtFactor(adv)}x` : `V1 ${fmtFactor(1 / adv)}x`,
       });
     }
   }
   const svg = advantageChart({
     title: 'How much better is V2 than V1?',
-    subtitle: `Ratio of medians, oriented so that right of "equal" is always better for V2 (faster, smaller, less memory, more throughput). Filled: significant (p < ${SIGNIFICANCE_P}, at least ${PRACTICAL * 100}% apart) or an exact size. Open ring: decided by value on too few runs to test.`,
+    subtitle: `Ratio of medians, oriented so that right of "equal" is always better for V2 (faster, smaller, less memory, more throughput). Filled: significant (p < ${SIGNIFICANCE_P}, at least ${PRACTICAL * 100}% apart) or an exact size. Open ring: decided by value on too few runs to test, or a factor that is only a bound because samples timed out.`,
     rows: advRows,
     labels: { v1: 'V1', v2: 'V2' },
   });
@@ -1408,23 +1546,25 @@ function methodologyBlock(model: Model): string[] {
       ['desktop: datasets', k.desktopDatasets.join(', ')],
       ['cli: datasets', (k.cliDatasets ?? []).join(', ')],
       ['startup: first starts / warm restarts per dataset and app', `${k.startup.firstStartRuns} / ${k.startup.warmRuns}`],
-      ['idle: runs x duration', `${k.idle.runs} x ${k.idle.durationSec} s`],
-      ['api: sequential warmup / timed requests per scenario', `${k.api.seqWarmup} / ${k.api.seqSamples}`],
-      ['api: concurrency levels x duration', `[${k.api.concurrency.join(', ')}] x ${k.api.concurrencyDurationSec} s (latency samples capped at ${fmtInt(k.api.maxLatencySamples)})`],
-      ['ui: cold loads / navigation cycles / REST pushes / file pushes / cycles under load', `${k.ui.coldLoads} / ${k.ui.navCycles} / ${k.ui.pushSamples} / ${k.ui.fsPushSamples} / ${k.ui.navUnderLoadCycles}`],
+      ['idle: runs x (settling + measured window)', `${k.idle.runs} x (${k.idle.settleSec ?? 10} s + ${k.idle.durationSec} s)`],
+      ['api: independent server instances per dataset and app', String(k.api.instances ?? 1)],
+      ['api: sequential warmup / timed requests per scenario and instance', `${k.api.seqWarmup} / ${k.api.seqSamples}`],
+      ['api: concurrency levels x duration (once per instance)', `[${k.api.concurrency.join(', ')}] x ${k.api.concurrencyDurationSec} s (latency samples capped at ${fmtInt(k.api.maxLatencySamples)} per level)`],
+      ['ui: independent sessions per dataset and app', String(k.ui.instances ?? 1)],
+      ['ui: cold loads / navigation cycles / REST pushes / file pushes / cycles under load (per dataset and app, split across sessions)', `${k.ui.coldLoads} / ${k.ui.navCycles} / ${k.ui.pushSamples} / ${k.ui.fsPushSamples} / ${k.ui.navUnderLoadCycles}`],
       ['desktop: warmup + measured runs x duration', `${k.desktop.warmupRuns} + ${k.desktop.runs} x ${k.desktop.durationSec} s`],
       ['cli: warmup / measured runs', `${k.cli.warmup} / ${k.cli.runs}`],
     ];
     // Runs recorded before the network suite existed carry knobs without it.
     const nk = (k as Partial<ProfileKnobs>).network;
-    if (nk) rows.push(['network: cold loads / pushes / idle windows / sessions (pushes each) / desktop sampling', `${nk.coldLoads} / ${nk.pushSamples} / ${nk.idleWindows} x ${nk.idleWindowSec} s / ${nk.sessions} (${nk.sessionPushes}) / ${nk.desktopIdleSec} s`]);
+    if (nk) rows.push(['network: cold loads / pushes / idle windows / sessions (pushes each) / desktop sampling / real-host check', `${nk.coldLoads} / ${nk.pushSamples} / ${nk.idleWindows} x ${nk.idleWindowSec} s / ${nk.sessions} (${nk.sessionPushes}) / ${nk.desktopIdleSec} s / ${nk.realHostSec ?? 0} s`]);
     const ov = (info.options ?? {}) as Record<string, unknown>;
     if (Array.isArray(ov.datasetOverride) && ov.datasetOverride.length) rows.push(['dataset override (--dataset)', (ov.datasetOverride as string[]).join(', ')]);
     if (typeof ov.quietLoad === 'number' && ov.quietLoad > 0) rows.push(['quiesce before each suite', `until 1-min load < ${ov.quietLoad} (at most ${ov.quietTimeoutSec ?? '?'} s)`]);
     out.push(table(['Knob', 'Value'], ['l', 'l'], rows));
     out.push('');
   }
-  out.push('**Order.** Suites run one at a time: size, cli, startup, idle, api, ui, network, desktop. Repeated measurements of the two apps are interleaved in ABBA order (V1, V2, V2, V1, ...), so a linear drift in machine state (thermals, caches, background load) affects both equally.');
+  out.push("**Order and replicates.** Suites run one at a time: size, cli, startup, idle, api, ui, network, desktop. In cli, startup, idle and desktop every repeated measurement (a command, a start, an idle run, a launch) is its own replicate, and the two apps alternate in ABBA order (V1, V2, V2, V1, ...), so a linear drift in machine state (thermals, caches, background load) affects both equally. The api and ui suites take many samples from one running server or browser session, and those are not independent of each other; there each app gets several independent **instances** per dataset (a fresh home, server and, for ui, browser each), run in ABBA order across instances with the starting app alternating per dataset, and the **instance is the replicate**: intervals resample instances before samples. Within one instance an app's samples are taken back to back. The network suite runs one session per app and dataset, alternating the first app per dataset. The 1-minute load average is recorded per instance (api: `meta.perInstance`, ui: `meta.sessions`).");
   out.push('');
   out.push('**Memory.** Read with `proc_pid_rusage(RUSAGE_INFO_V4)` by a small native helper (identical to `footprint -p` for both apps).');
   out.push('- `footprint`: sum of `ri_phys_footprint` over the process set (dirty + compressed + swapped + IOKit-owned memory). This is the headline memory number: what Activity Monitor shows as "Memory" and what the kernel uses for jetsam limits, and it means the same thing for a .NET process, a Rust process, WebKit XPC services and Chromium helpers. Reported in MiB (2^20 bytes).');
@@ -1434,18 +1574,37 @@ function methodologyBlock(model: Model): string[] {
   out.push('');
   out.push(`**CPU** is user + system time from the same call, as CPU-seconds or as the mean percent of one core over a window. Idle wakeups are package idle plus interrupt wakeups per second.`);
   out.push('');
-  out.push(`**Latency** is measured from just before the request is issued to the last byte of the body, on a keep-alive connection, uncompressed (no \`Accept-Encoding\`). Readiness is polled every ${READY_POLL_MS} ms: HTTP ready is the first successful health response (V1 \`GET /api/ping\`, V2 \`GET /api/health\`); data ready is V1's \`Initial sync complete\` log line, and for V2 the same as HTTP ready (its health endpoint only answers after the initial sync). Throughput is a closed loop of \`c\` workers counting 2xx responses per second.`);
+  out.push(`**Latency** is measured from just before the request is issued to the last byte of the body, on a keep-alive connection, uncompressed (no \`Accept-Encoding\`), after a warmup past .NET's tiered-compilation threshold and at least 20 s after the server was spawned (past V1's one-off +15 s pricing fetch). Readiness is polled every ${READY_POLL_MS} ms: HTTP ready is the first successful health response (V1 \`GET /api/ping\`, V2 \`GET /api/health\`); data ready is V1's \`Initial sync complete\` log line, and for V2 the same as HTTP ready (its health endpoint only answers after the initial sync); **usable** is the later of the two, the moment both hold (V1's sync line can come before its HTTP). Throughput is a closed loop of \`c\` workers counting 2xx responses per second; \`latency_ms_per_kb\` divides latency by the response size and is shown for context only (a fixed per-request floor makes it favour the larger payload).`);
   out.push('');
-  out.push(`**UI** timings come from headless Chromium (Playwright). V1 serves its own web UI; V2's frontend runs against the real daemon through an IPC shim that executes the real Tauri command handlers (one extra loopback hop per command). Push latency is measured in the page with a MutationObserver on the plans badge, against the wall-clock time the write was issued.`);
+  out.push(`**UI** timings come from headless Chromium (Playwright). V1 serves its own web UI; V2's frontend runs against the real daemon through an IPC shim that executes the real Tauri command handlers, with the page's IPC carried over one loopback WebSocket (in the real app it is in-process). Times are taken inside the page by a MutationObserver and requestAnimationFrame watcher that checks at most once per frame on mutations plus a trailing check; every sample records how many checks ran and their cost. Push latency is measured in the page when the plans badge changes, against the wall-clock time the write was issued, corrected by the page-to-harness clock offset measured just before each write. Navigation under load offers both servers the same fixed open-loop request rate.`);
   out.push('');
   out.push(`**Sizes** are apparent bytes (\`lstat\` sizes of regular files, symlinks not followed), never \`du\`; reported in MB (10^6 bytes) with exact bytes in the appendix. Compressed sizes are per file (gzip level 9, brotli quality 11).`);
   out.push('');
-  out.push(`**Statistics.** Medians with ${fmtInt((1 - ALPHA) * 100)}% percentile-bootstrap intervals (${fmtInt(BOOT_ITERS)} resamples, seeded per metric, so the report is reproducible byte for byte). V2 vs V1 is the ratio of medians with a bootstrap interval that resamples both groups. A difference counts when a two-sided Mann-Whitney U test gives p < ${SIGNIFICANCE_P} (exact distribution for up to 8 samples per side without ties, otherwise the normal approximation with tie and continuity correction) **and** the medians differ by at least ${PRACTICAL * 100}%. Some metrics have too few samples for that test to ever reach p < ${SIGNIFICANCE_P} (one sample per app, or fewer than 5 runs per app: the smallest possible p is ${minAchievableP(2, 2).toFixed(2)} with 2 runs and ${minAchievableP(3, 3).toFixed(2)} with 3); they are decided by value and labelled "n=1", or "every run" when every run of the better app beat every run of the other (with 2 or more runs and no such separation the result is "unclear"). File sizes are exact (a difference of at least ${EXACT_SAME * 100}% counts). Repeated runs with a coefficient of variation above ${NOISY_CV}, and per-request samples whose median has a 95% interval wider than ${WIDE_CI * 100}% of it, are flagged as noisy.`);
+  const holm = holmSummary(model);
+  out.push(`**Statistics.** Medians with ${fmtInt((1 - ALPHA) * 100)}% percentile-bootstrap intervals (${fmtInt(BOOT_ITERS)} resamples, seeded per metric, so the report is reproducible byte for byte). Where a metric's samples come from several independent instances the bootstrap is hierarchical: each resample draws instances with replacement, then samples within them. V2 vs V1 is the ratio of medians with a bootstrap interval that resamples both groups the same way. A difference counts when a two-sided Mann-Whitney U test gives p < ${SIGNIFICANCE_P} **and** the medians differ by at least ${PRACTICAL * 100}%. The test runs on the pooled samples (with instances this treats samples of one instance as independent, so its p-values are optimistic; the hierarchical intervals are the honest measure of precision), with the exact permutation distribution up to ${MWU_EXACT_MAX_N} pooled samples (ties handled with midranks) and the normal approximation with tie and continuity correction above that. Some metrics have too few samples for that test to ever reach p < ${SIGNIFICANCE_P} (one sample per app, or fewer than 5 per app: the smallest possible p is ${minAchievableP(2, 2).toFixed(2)} with 2 and ${minAchievableP(3, 3).toFixed(2)} with 3); they are decided by value and labelled "every run" when every sample of the better app beat every sample of the other ("unclear" otherwise). Comparisons on a single sample per app are shown as **indicative** and left out of every tally. File sizes are exact (a difference of at least ${EXACT_SAME * 100}% counts). Repeated runs with a coefficient of variation above ${NOISY_CV}, and per-request samples whose median has a 95% interval wider than ${WIDE_CI * 100}% of it, are flagged as noisy.`);
   out.push('');
-  out.push(`**Timeouts** are results, not retries: startup ${fmtInt(TIMEOUTS.startupMs / 1000)} s, UI waits ${fmtInt(TIMEOUTS.uiWaitMs / 1000)} s, HTTP requests ${fmtInt(TIMEOUTS.httpRequestMs / 1000)} s, desktop launch ${fmtInt(TIMEOUTS.desktopLaunchMs / 1000)} s, CLI ${fmtInt(TIMEOUTS.cliRunMs / 1000)} s. A failed sample is recorded with its error and the remaining samples still run.`);
+  out.push(`**Multiple comparisons.** This report makes ${fmtInt(holm.tested)} tested comparisons at p < ${SIGNIFICANCE_P} each, so some "significant" results are expected by chance alone. With a Holm-Bonferroni correction over all of them (family-wise error ${SIGNIFICANCE_P}), ${fmtInt(holm.survive)} of the ${fmtInt(holm.significant)} significant differences remain significant${holm.lost.length ? ` (the others are listed in the findings)` : ''}. Verdicts in the tables are per comparison, uncorrected.`);
+  out.push('');
+  out.push(`**Timeouts are results.** A sample that did not complete within its limit (startup ${fmtInt(TIMEOUTS.startupMs / 1000)} s, UI waits ${fmtInt(TIMEOUTS.uiWaitMs / 1000)} s, a click the page never accepted within 30 s, a server that exited, a desktop window that never appeared, CLI ${fmtInt(TIMEOUTS.cliRunMs / 1000)} s) is kept as a **censored** value: it is at least the limit. Censored samples take part in the rank test and in the median as values at their limit; a median or interval bound that lands on one is shown as ">= x", the improvement factor then becomes a bound (">= 13x faster"), and tables say how many samples timed out. Other failed samples (a harness error, a stale view) are listed as failures and left out.`);
   out.push('');
   out.push(`**Isolation.** Every app process gets a per-run \`TENDRIL_HOME\` and an empty \`CLAUDE_CONFIG_DIR\`; these variables are removed from every child environment: ${SCRUBBED_ENV_VARS.map(code).join(' ')}. Ports are free loopback ports. Load is sampled every ${LOAD_SAMPLE_MS / 1000} s.`);
   return out;
+}
+
+/**
+ * Holm-Bonferroni over every comparison decided by a rank test: which significant differences
+ * survive a family-wise error rate of SIGNIFICANCE_P.
+ */
+function holmSummary(model: Model): { tested: number; significant: number; survive: number; lost: string[] } {
+  const tested = model.cmps.filter((c) => c.verdict.basis === 'test' && c.verdict.kind !== 'context' && c.verdict.p !== null).sort((a, b) => a.verdict.p! - b.verdict.p! || cmpStr(a.id, b.id));
+  const m = tested.length;
+  const pass = new Set<string>();
+  for (let i = 0; i < m; i++) {
+    if (tested[i]!.verdict.p! * (m - i) >= SIGNIFICANCE_P) break;
+    pass.add(tested[i]!.id);
+  }
+  const sig = tested.filter((c) => c.verdict.kind === 'better');
+  return { tested: m, significant: sig.length, survive: sig.filter((c) => pass.has(c.id)).length, lost: sig.filter((c) => !pass.has(c.id)).map((c) => c.id) };
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1461,18 +1620,25 @@ function suiteIntro(model: Model, suite: string): string {
     case 'startup':
       return `Server start from a freshly restored home ("first start") and restart on the already-synced home ("warm start")${k ? `, ${k.startup.firstStartRuns} and ${k.startup.warmRuns} runs per dataset and app` : ''}, interleaved. Readiness is polled every ${READY_POLL_MS} ms.`;
     case 'idle':
-      return `The server alone, no clients${k ? `, ${k.idle.runs} run(s) of ${k.idle.durationSec} s per dataset and app` : ''}, sampled every second after ready; means, CPU and wakeups are over the window after +10 s. Both apps rescan plans periodically, so windows are long enough to include rescans.`;
+      return `**The headless backend alone, no clients: V1's web server (which also renders its UI on the server) against V2's daemon only (the tendril-app host is not running here; the desktop suite measures both apps' whole process trees).**${k ? ` ${k.idle.runs} run(s) per dataset and app, sampled every second from ready: the first ${k.idle.settleSec ?? 10} s are the settling phase (both apps run one-off work after a start: V1's pricing fetch at +15 s and cost backfill at +60 s, V2's PR sync at +30 s and model enrichment), reported separately as \`settling\`; means, CPU and wakeups cover the ${k.idle.durationSec} s window after it.` : ''} Both apps rescan plans periodically, so the window includes rescans.`;
     case 'api':
-      return `One server per dataset and app. Sequential latency per scenario on one keep-alive connection${k ? ` (${k.api.seqWarmup} warmup + ${k.api.seqSamples} timed requests)` : ''}, then closed-loop load${k ? ` at c = ${k.api.concurrency.join(', ')} for ${k.api.concurrencyDurationSec} s each` : ''}. **Payloads differ**: V2's plan list returns full plan objects including the latest revision text, V1's a thin summary; response sizes are shown next to latency.`;
+      return `${k ? `${k.api.instances ?? 1} independent server instance(s)` : 'Independent server instances'} per dataset and app, one at a time, in ABBA order. Per instance: sequential latency per scenario on one keep-alive connection${k ? ` (${k.api.seqWarmup} warmup + ${k.api.seqSamples} timed requests)` : ''}, then closed-loop load${k ? ` at c = ${k.api.concurrency.join(', ')} for ${k.api.concurrencyDurationSec} s each` : ''}, so every load level has one repeat per instance. **Payloads differ**: V2's plan list returns full plan objects including the latest revision text, V1's a thin summary; response sizes are shown next to latency, and latency per KB is context only.`;
     case 'ui':
-      return `Headless Chromium, same flags and viewport for both. Cold load in a fresh browser context, navigation between views (first visit and revisits), push latency from a REST write and from a file edit to the UI, navigation under background API load, and memory after the flows. The V2 frontend runs through the IPC shim, so V2 page timings include one loopback hop per command and the shim's memory is not the Tauri host's.`;
+      return `Headless Chromium, same flags and viewport for both${k ? `, ${k.ui.instances ?? 1} independent session(s) per dataset and app` : ''}. Cold load in a fresh browser context, navigation between views (first visit and revisits), push latency from a REST write and from a file edit to the UI, navigation under a fixed background API load, and memory after the flows. The V2 frontend runs through the IPC shim, so V2 page timings include one loopback WebSocket message per command. **The server-side memory of V2 here is the daemon plus the shim, a stand-in for the tendril-app host, not the Tauri binary**; the real host is measured in the desktop suite.`;
     case 'network':
       return networkIntro(model);
     case 'desktop':
-      return `The real desktop apps, both rendering with WKWebView${k ? `, ${k.desktop.warmupRuns} discarded warmup + ${k.desktop.runs} measured launch(es) of ${k.desktop.durationSec} s per dataset` : ''}. The process set is the app, its WebKit processes (found by responsible pid) and, for V2, the daemon. Window sizes differ (V1 1800x1200, V2 1280x800).`;
+      return `The real desktop apps, both rendering with WKWebView${k ? `, ${k.desktop.warmupRuns} discarded warmup + ${k.desktop.runs} measured launch(es) of ${k.desktop.durationSec} s per dataset` : ''}. The process set is the app, its WebKit processes (found by responsible pid) and, for V2, the daemon. \`launch\` is timed from the launch command, when V2's daemon is already running; \`cold-launch\` is the same launches timed from the moment the backend was spawned (V1: the launch command, its server is in-process; V2: the daemon's spawn), which is the like-for-like start from nothing. Launch milestones are process events, not content: V1 shows its window only once its in-process server answers, Tauri shows V2's window before the page has loaded. ${windowSizeText(model)}`;
     default:
       return '';
   }
+}
+
+/** The window-size confound as the desktop suite observed it (points), or the known default sizes. */
+function windowSizeText(model: Model): string {
+  const note = model.results.get('desktop')?.notes.find((n) => n.startsWith('window sizes observed'));
+  if (note) return `Window sizes differ, as observed: ${note.replace(/^window sizes observed at the end of each measured run \(points; 2x pixels on a Retina display\): /, '').replace(/ Each app opens.*$/, '')}`;
+  return 'Window sizes differ: V1 opens at 900x628 points, V2 at 1280x800 points, so V1 has the smaller window (smaller WebKit backing stores).';
 }
 
 function suiteBlock(model: Model, suite: string, addChart: (f: string, svg: string, alt: string) => string): string[] {
@@ -1599,8 +1765,10 @@ function comparisonTable(set: Cmp[], o: { showScenario: boolean; scenarioHeader?
     if (multi) {
       const nf = (a: AppId) => {
         const side = c[a];
-        const f = c.failures[a];
-        return `${side ? side.s.n : 0}${f ? ` (+${f} failed)` : ''}`;
+        const cens = side?.nCens ?? 0;
+        // Censored samples are also listed as failures; only the rest are "failed" (left out).
+        const f = Math.max(0, c.failures[a] - cens);
+        return `${side ? side.s.n : 0}${cens ? ` (${cens} timed out)` : ''}${f ? ` (+${f} failed)` : ''}`;
       };
       row.push(`${nf('v1')} / ${nf('v2')}`);
     }
@@ -1629,7 +1797,7 @@ function comparisonTable(set: Cmp[], o: { showScenario: boolean; scenarioHeader?
 // Network section
 
 /** Leg prefixes of the network suite and their table-row labels (the prefix is in the heading). */
-const NET_LEG_PREFIX = /^(Loopback socket traffic|UI to backend): /;
+const NET_LEG_PREFIX = /^(Architecture-internal sockets|UI to backend): /;
 
 /** Network scenarios in the order a session goes through them (a dataset without pushes would otherwise list them last). */
 function netOrder(set: Cmp[]): Cmp[] {
@@ -1643,12 +1811,12 @@ function netOrder(set: Cmp[]): Cmp[] {
 function networkIntro(model: Model): string {
   const k = (model.knobs as Partial<ProfileKnobs> | null)?.network;
   return [
-    'How many bytes each architecture moves over sockets while its UI is used, counted on the wire by a byte-counting TCP proxy that follows HTTP/1.1 and WebSocket framing: application-layer bytes (HTTP heads and bodies, WebSocket frames, SSE streams), TCP/IP headers excluded. The two apps put their sockets in different places, so there are two legs:',
+    'How many bytes each app moves while its UI is used, counted on the wire by a byte-counting TCP proxy that follows HTTP/1.1 and WebSocket framing: application-layer bytes (HTTP heads and bodies, WebSocket frames, SSE streams), TCP/IP headers excluded. The two apps put their sockets in different places, so there are two legs:',
     '',
-    "- **Loopback socket traffic** (`net_*`, the headline numbers): everything that really crosses a socket in the shipped architecture. **V1**: the page and the V1 server, over loopback HTTP (assets and API) and SignalR WebSockets; the V1 desktop app's WKWebView talks to the same local server the same way. **V2**: the Tauri host and the daemon, over loopback REST, one WebSocket and one SSE change stream. The host is played by the IPC shim, which runs the real `tendril-app` command handlers and bridges; it reaches the daemon through the proxy via a shadow `TENDRIL_HOME` whose `.master` names the proxy's port (the daemon's own `.master` is left alone).",
-    "- **UI to backend** (`ui_*`): what the page exchanges with whatever serves it. For V1 it is the same leg as above. For V2 it is Chromium and the shim: IPC messages plus the frontend assets. **In the real V2 app none of this touches a socket**: Tauri IPC is in-process and the assets load from the app bundle. It is shown to compare how much data each UI moves, not as network traffic.",
+    "- **UI to backend** (`ui_*`, the like-for-like comparison and the headline numbers): what the page exchanges with whatever serves it, with assets (documents, scripts, styles, fonts, images) and data counted separately. **V1**: the page and the V1 server over loopback HTTP and SignalR WebSockets; the V1 desktop app's WKWebView talks to the same local server the same way. **V2**: Chromium and the IPC shim, IPC messages plus the frontend assets. **In the real V2 app none of this touches a socket**: Tauri IPC is in-process and the assets load from the app bundle. It compares how much data each UI moves, not network traffic.",
+    "- **Architecture-internal sockets** (`net_*`): what really crosses a loopback socket in each shipped architecture, which is not like for like. **V1**: the same leg as above (page and server, so it includes the assets). **V2**: only the Tauri host and the daemon, over loopback REST, one WebSocket and one SSE change stream (no assets, no IPC). The host is played by the IPC shim, which runs the real `tendril-app` command handlers and bridges; it reaches the daemon through the proxy via a shadow `TENDRIL_HOME` whose `.master` names the proxy's port (the daemon's own `.master` is left alone). A check against the real `Tendril.app` behind the same kind of proxy is at the end of this section.",
     '',
-    `Scenarios${k ? ` (${k.coldLoads} cold loads, ${k.pushSamples} pushes, ${k.idleWindows} idle window(s) of ${k.idleWindowSec} s and ${k.sessions} session(s) per dataset and app)` : ''}: \`cold-load\` (fresh browser context until the traffic settles after content), \`nav:<view>\` (first visit of each view in that context), \`push\` (a REST state change sent straight to the server, not through the proxy, and what the UI side then receives), \`idle\` (a settled page left alone, per minute) and \`session\` (load, every view and a few pushes, as one total). A window closes once no byte has moved on either leg for 1.5 s, so background traffic inside it (V2's 5 s job poll, SignalR keep-alives) is included; \`idle\` measures that background alone. Assets are what the browser requests as a document, script, style, font or image; data is everything else. Byte counts barely vary between runs, so most differences below are exact rather than statistical.`,
+    `Scenarios${k ? ` (${k.coldLoads} cold loads, ${k.pushSamples} pushes, ${k.idleWindows} idle window(s) of ${k.idleWindowSec} s and ${k.sessions} session(s) per dataset and app)` : ''}: \`cold-load\` (fresh browser context until the traffic settles after content), \`nav:<view>\` (first visit of each view in that context), \`push\` (a REST state change sent straight to the server, not through the proxy, and what the UI side then receives), \`idle\` (a settled page left alone, per minute) and \`session\` (load, every view and a few pushes, as one total). A window closes once no byte has moved on either leg for 1.5 s, so background traffic inside it (V2's 5 s job poll, SignalR keep-alives) is included; \`idle\` measures that background alone. Byte counts barely vary between runs, so most differences below are exact rather than statistical.`,
   ].join('\n');
 }
 
@@ -1672,25 +1840,25 @@ function networkTables(model: Model): string[] {
   const byScenario = (s: Cmp[]) => comparisonTable(s, { showScenario: true, valueUnit: 'KB' });
   const scen = /^(cold-load|nav:.*|push|session)$/;
 
-  block('Loopback socket traffic per scenario', '(KB = 1,000 bytes, both directions; lower is better):', [orNull(pick(['net_total_bytes'], scen, undefined), byScenario)]);
+  block('UI to backend per scenario', "(KB = 1,000 bytes, both directions; lower is better). V1: page and V1 server. V2: Chromium and the IPC shim, which in the real app is in-process IPC plus assets from the bundle, not a socket.", [orNull(pick(['ui_total_bytes'], scen, undefined), byScenario)]);
   if (prim) {
-    block(`What a cold load puts on the loopback (${dsLong(prim)}):`, 'bytes in KB.', [
-      orNull(pick(['net_asset_bytes', 'net_data_bytes', 'net_ws_bytes', 'net_down_bytes', 'net_up_bytes'], /^cold-load$/, prim), byMetric),
-      orNull(pick(['net_requests', 'net_ws_messages', 'net_connections'], /^cold-load$/, prim), byMetric),
+    block(`What a cold load exchanges between UI and backend (${dsLong(prim)}):`, 'bytes in KB, assets and data separately.', [
+      orNull(pick(['ui_asset_bytes', 'ui_data_bytes', 'ui_ws_bytes', 'ui_down_bytes', 'ui_up_bytes'], /^cold-load$/, prim), byMetric),
+      orNull(pick(['ui_requests', 'ui_ws_messages', 'ui_connections'], /^cold-load$/, prim), byMetric),
     ]);
-    block(`One push on the loopback (${dsLong(prim)}):`, 'The state change itself goes straight to the server; these are the bytes (in KB) it causes between the server side and the UI side until the badge has changed and traffic has settled.', [
-      orNull(pick(['net_down_bytes', 'net_up_bytes', 'net_total_bytes'], /^push$/, prim), byMetric),
-      orNull(pick(['net_requests', 'net_ws_messages', 'net_connections'], /^push$/, prim), byMetric),
+    block(`One push, UI to backend (${dsLong(prim)}):`, 'The state change itself goes straight to the server; these are the bytes (in KB) it causes on the UI side until the badge has changed and traffic has settled.', [
+      orNull(pick(['ui_down_bytes', 'ui_up_bytes', 'ui_total_bytes'], /^push$/, prim), byMetric),
+      orNull(pick(['ui_requests', 'ui_ws_messages'], /^push$/, prim), byMetric),
     ]);
   }
-  block('Idle UI:', 'a settled page left alone; KB per minute on the loopback, per dataset.', [
-    orNull(pick(['net_bytes_per_min'], /^idle$/, undefined), (s) => comparisonTable(s, { showScenario: false, valueUnit: 'KB' })),
-    prim ? orNull(pick(['net_requests_per_min', 'net_ws_messages_per_min'], /^idle$/, prim), byMetric) : null,
-  ]);
-  block('UI to backend per scenario', "(KB). V1: the same leg as above. V2: Chromium and the IPC shim, which in the real app is in-process IPC plus assets from the bundle, not a socket.", [
-    orNull(pick(['ui_total_bytes'], scen, undefined), byScenario),
-    prim ? orNull(pick(['ui_asset_bytes', 'ui_data_bytes'], /^cold-load$/, prim), byMetric) : null,
+  block('Idle UI, UI to backend:', 'a settled page left alone; KB per minute, per dataset.', [
     orNull(pick(['ui_bytes_per_min'], /^idle$/, undefined), (s) => comparisonTable(s, { showScenario: false, valueUnit: 'KB' })),
+    prim ? orNull(pick(['ui_requests_per_min', 'ui_ws_messages_per_min'], /^idle$/, prim), byMetric) : null,
+  ]);
+  block('Architecture-internal sockets per scenario', '(KB; not like for like: V1 is the page and its server, assets included; V2 is host and daemon only, no assets and no IPC).', [
+    orNull(pick(['net_total_bytes'], scen, undefined), byScenario),
+    prim ? orNull(pick(['net_asset_bytes', 'net_data_bytes', 'net_requests', 'net_connections'], /^cold-load$/, prim), byMetric) : null,
+    orNull(pick(['net_bytes_per_min'], /^idle$/, undefined), (s) => comparisonTable(s, { showScenario: false, valueUnit: 'KB' })),
   ]);
 
   if (prim) {
@@ -1700,14 +1868,14 @@ function networkTables(model: Model): string[] {
       ['push', 'total_bytes'],
       ['idle', 'bytes_per_min'],
     ] as const) {
-      for (const leg of ['net', 'ui'] as const) {
+      for (const leg of ['ui', 'net'] as const) {
         const c = cmps.find((x) => x.scenario === scenario && x.dataset === prim && x.metric === `${leg}_${suffix}`);
         for (const app of APPS) {
           const ps = (c?.[app]?.m.meta?.perSample as Array<Record<string, unknown>> | undefined)?.[0];
           if (!ps || ps.sameAs) continue;
           const routes = (ps.routes as Array<{ route: string; requests: number; up: number; down: number }> | undefined) ?? [];
           const top = routes.slice(0, 4).map((r) => `${code(r.route)} ${fmtPayload(r.up + r.down)}${r.requests ? ` (${r.requests} req)` : ''}`);
-          rows.push([code(scenario), leg === 'net' ? 'loopback' : 'UI to backend', app.toUpperCase(), top.join('; ') || 'nothing']);
+          rows.push([code(scenario), leg === 'net' ? 'internal sockets' : 'UI to backend', app.toUpperCase(), top.join('; ') || 'nothing']);
         }
       }
     }
@@ -1721,7 +1889,7 @@ function networkTables(model: Model): string[] {
 
   const ext = cmps.filter((c) => c.scenario === 'desktop-external');
   if (ext.length) {
-    out.push('**External traffic of the real desktop apps** (KB), sampled with `nettop` (non-loopback TCP only) from launch. A lower bound: `nettop` sees only sockets still open at a 1 s sample. Remote addresses are shown as resolved by reverse DNS where that works (CDN-fronted hosts usually do not).');
+    out.push('**External traffic of the real desktop apps** (KB): `nettop` (non-loopback TCP only) over every process from before the app (and V2\'s daemon) was spawned, filtered to the app\'s process tree afterwards. Both apps run their shipped background fetches. A lower bound: `nettop` sees only sockets still open at a 1 s sample. Remote addresses are shown as resolved by reverse DNS where that works (CDN-fronted hosts usually do not).');
     out.push('');
     for (const unit of ['bytes', 'count']) {
       const set = ext.filter((c) => c.unit === unit);
@@ -1733,6 +1901,30 @@ function networkTables(model: Model): string[] {
       if (!eps) continue;
       out.push(`- ${app.toUpperCase()}: ${eps.length ? eps.slice(0, 6).map((e) => `${code(e.name ?? e.remote)} from ${code(e.process.replace(/\.\d+$/, ''))}, ${fmtPayload(e.bytesIn)} in / ${fmtPayload(e.bytesOut)} out`).join('; ') : 'no external connection seen'}`);
     }
+    out.push('');
+  }
+
+  const real = cmps.find((c) => c.scenario === 'real-host-cold-load' && c.metric === 'net_total_bytes' && c.v2);
+  if (real) {
+    const m = real.v2!.m;
+    const ps = ((m.meta?.perSample as Array<Record<string, unknown>> | undefined) ?? [])[0] ?? {};
+    const req = cmps.find((c) => c.scenario === 'real-host-cold-load' && c.metric === 'net_requests')?.v2?.s.median;
+    const shim = (ps.shimColdLoadMedian ?? {}) as { bytes?: number | null; requests?: number | null };
+    const whole = (ps.wholeWindow ?? {}) as { sec?: number; bytes?: number; requests?: number };
+    const ratio = typeof shim.bytes === 'number' && shim.bytes > 0 ? real.v2!.s.median / shim.bytes : NaN;
+    out.push(`**Check of the IPC shim against the real V2 host** (${dsLong(real.dataset)}). The real \`Tendril.app\` ran with a shadow \`TENDRIL_HOME\` whose \`.master\` pointed at a counting proxy in front of its daemon; its host to daemon traffic from the launch until the first burst settled is compared with the shim's cold load (median of its samples) on the same dataset. The real host's window also contains its WebSocket and SSE bridge setup, which the shim does before its cold-load window.`);
+    out.push('');
+    out.push(
+      table(
+        ['Host', 'Bytes (both directions)', 'Requests', 'Real / shim'],
+        ['l', 'r', 'r', 'r'],
+        [
+          ['real `tendril-app`, launch to settled', fmtPayload(real.v2!.s.median), req !== undefined ? fmtInt(req) : '?', Number.isFinite(ratio) ? `${fmtFactor(ratio)}x` : 'n/a'],
+          ['IPC shim, cold load', typeof shim.bytes === 'number' ? fmtPayload(shim.bytes) : 'n/a', typeof shim.requests === 'number' ? fmtInt(shim.requests) : 'n/a', ''],
+          ...(typeof whole.bytes === 'number' ? [[`real \`tendril-app\`, first ${whole.sec ?? '?'} s`, fmtPayload(whole.bytes), fmtInt(whole.requests ?? 0), '']] : []),
+        ],
+      ),
+    );
     out.push('');
   }
   return out;
@@ -1813,13 +2005,14 @@ function barValue(side: Side | null, unit: string): { value: number; lo?: number
   const scale = unit === 'bytes' ? 1e6 : 1;
   const v = side.s.median / scale;
   const ci = hasCi(side);
-  return { value: v, lo: ci ? side.ci.lo / scale : undefined, hi: ci ? side.ci.hi / scale : undefined, label: withUnit(side.s.median, unit) };
+  return { value: v, lo: ci ? side.ci.lo / scale : undefined, hi: ci ? side.ci.hi / scale : undefined, label: medianText(side, unit) };
 }
 
 function missingText(c: Cmp | undefined, app: AppId): string | undefined {
   if (!c) return undefined;
-  if (c.failures[app]) return `failed (${c.failures[app]})`;
   const side = c[app];
+  if (side && side.nObs === 0 && side.nCens > 0) return `timed out (${side.nCens})`;
+  if (!side && c.failures[app]) return `failed (${c.failures[app]})`;
   if (side && side.s.n > 0 && side.s.median === 0) return c.unit === 'bytes' ? 'none' : '0';
   return undefined;
 }
@@ -1896,7 +2089,7 @@ function suiteCharts(model: Model, suite: string, addChart: (f: string, svg: str
   const prim = primaryDataset(model, suite);
   const large = largestDataset(model, suite);
   const cmps = model.bySuite.get(suite) ?? [];
-  const note = 'Bars are medians; whiskers are 95% bootstrap intervals.';
+  const note = 'Bars are medians; whiskers are 95% bootstrap intervals; ">=" marks a median that includes timed-out samples.';
 
   switch (suite) {
     case 'size': {
@@ -1983,11 +2176,12 @@ function suiteCharts(model: Model, suite: string, addChart: (f: string, svg: str
     case 'idle': {
       const r = model.results.get(suite)!;
       for (const d of [...new Set([prim, large])].filter((x): x is string => !!x)) {
-        const svg = seriesChart(model, r.series ?? [], d, /footprint/i, `Idle server footprint over time (${dsLong(d)})`, 'Physical footprint of the server process tree, sampled every second after ready.', 'seconds since ready', [{ x: 10, label: 'window starts' }]);
+        const from = model.knobs?.idle.settleSec ?? 10;
+        const svg = seriesChart(model, r.series ?? [], d, /footprint/i, `Idle headless backend footprint over time (${dsLong(d)})`, 'V1: web server (incl. server-side UI); V2: daemon only. Sampled every second after ready; the measured window opens after the settling phase.', 'seconds since ready', [{ x: from, label: 'window opens' }]);
         push(`idle-footprint-${d}.svg`, svg, `Idle footprint over time, ${d} dataset`);
       }
-      push('idle-scaling.svg', lineOverDatasets(model, suite, { metric: /^footprint_mean_mib$/ }, 'Mean idle footprint by dataset size', 'Mean over the window after +10 s; median of the runs.'), 'Mean idle footprint vs dataset size');
-      push('idle-cpu.svg', lineOverDatasets(model, suite, { metric: /^cpu_percent_mean$/ }, 'Mean idle CPU by dataset size', 'Percent of one core over the window after +10 s, including periodic rescans.'), 'Mean idle CPU vs dataset size');
+      push('idle-scaling.svg', lineOverDatasets(model, suite, { metric: /^footprint_mean_mib$/ }, 'Mean idle footprint by dataset size', 'V1 web server vs V2 daemon only; mean over the measured window; median of the runs.'), 'Mean idle footprint vs dataset size');
+      push('idle-cpu.svg', lineOverDatasets(model, suite, { metric: /^cpu_percent_mean$/ }, 'Mean idle CPU by dataset size', 'Percent of one core over the measured window, including periodic rescans.'), 'Mean idle CPU vs dataset size');
       break;
     }
     case 'api': {
@@ -2082,7 +2276,7 @@ function suiteCharts(model: Model, suite: string, addChart: (f: string, svg: str
             `ui-nav-under-load-${prim}.svg`,
             groupedBarChart({
               title: `Navigation under background API load (${dsLong(prim)})`,
-              subtitle: `Plan list at c=4 plus one plan update every 500 ms while navigating. ${note}`,
+              subtitle: `Plan list offered at the same fixed rate to both apps (open loop) plus one plan update every 500 ms while navigating. ${note}`,
               series: seriesDefs(model),
               groups: barsFor(model, load.map((c) => ({ label: `${c.scenario.replace(/^nav\w*[- ]under[- ]load\W*/i, '') || c.scenario}, ${lowerLabel(c.metric)}`, c }))),
               axisLabel: 'milliseconds',
@@ -2134,7 +2328,7 @@ function suiteCharts(model: Model, suite: string, addChart: (f: string, svg: str
       break;
     }
     case 'network': {
-      const legNote = 'V1: page and V1 server. V2: Tauri host (IPC shim running the real command handlers) and daemon.';
+      const legNote = 'Architecture-internal sockets, not like for like: V1 is the page and its server (assets included); V2 is the Tauri host (the IPC shim running the real command handlers) and the daemon, no assets or IPC.';
       if (prim) {
         const byScen = (metric: string, re: RegExp) => netOrder(cmps.filter((c) => c.dataset === prim && c.metric === metric && re.test(c.scenario)));
         const scen = byScen('net_total_bytes', /^(cold-load|nav:.*|push|session)$/);
@@ -2142,7 +2336,7 @@ function suiteCharts(model: Model, suite: string, addChart: (f: string, svg: str
           push(
             `network-scenarios-${prim}.svg`,
             groupedBarChart({
-              title: `Loopback socket traffic per scenario (${dsLong(prim)})`,
+              title: `Architecture-internal socket traffic per scenario (${dsLong(prim)})`,
               subtitle: `Bytes in both directions until the traffic settled. ${legNote} Log scale. ${note}`,
               series: seriesDefs(model),
               groups: barsFor(model, scen.map((c) => ({ label: c.scenario, c }))),
@@ -2150,7 +2344,7 @@ function suiteCharts(model: Model, suite: string, addChart: (f: string, svg: str
               format: fmtAxis('bytes'),
               scale: 'log',
             }),
-            'Loopback socket bytes per UI scenario, V1 vs V2, log scale',
+            'Architecture-internal socket bytes per UI scenario, V1 vs V2, log scale',
           );
         }
         const comp = ['net_asset_bytes', 'net_data_bytes', 'net_ws_bytes'].flatMap((m) => byScen(m, /^cold-load$/));
@@ -2158,15 +2352,15 @@ function suiteCharts(model: Model, suite: string, addChart: (f: string, svg: str
           push(
             `network-cold-load-${prim}.svg`,
             groupedBarChart({
-              title: `What a cold load puts on the loopback (${dsLong(prim)})`,
+              title: `What a cold load puts on the internal sockets (${dsLong(prim)})`,
               subtitle: `Assets: documents, scripts, styles, fonts, images. Data: everything else (API, IPC bridges, WebSocket, SSE); WebSocket bytes are part of data. ${legNote} Log scale.`,
               series: seriesDefs(model),
-              groups: barsFor(model, comp.map((c) => ({ label: metricLabel(c.metric).replace(/^Loopback socket traffic: /, ''), c }))),
+              groups: barsFor(model, comp.map((c) => ({ label: metricLabel(c.metric).replace(NET_LEG_PREFIX, ''), c }))),
               axisLabel: axisUnit('bytes'),
               format: fmtAxis('bytes'),
               scale: 'log',
             }),
-            'Cold load loopback bytes split into assets and data',
+            'Cold load internal socket bytes split into assets and data',
           );
         }
         const ui = byScen('ui_total_bytes', /^(cold-load|nav:.*|push|session)$/);
@@ -2175,7 +2369,7 @@ function suiteCharts(model: Model, suite: string, addChart: (f: string, svg: str
             `network-ui-leg-${prim}.svg`,
             groupedBarChart({
               title: `UI to backend per scenario (${dsLong(prim)})`,
-              subtitle: 'V1: page and V1 server (the same leg as the loopback chart). V2: page and IPC shim, which in the real app is in-process IPC plus bundled assets, not a socket. Log scale.',
+              subtitle: 'The like-for-like leg. V1: page and V1 server. V2: page and IPC shim, which in the real app is in-process IPC plus bundled assets, not a socket. Log scale.',
               series: seriesDefs(model),
               groups: barsFor(model, ui.map((c) => ({ label: c.scenario, c }))),
               axisLabel: axisUnit('bytes'),
@@ -2186,7 +2380,7 @@ function suiteCharts(model: Model, suite: string, addChart: (f: string, svg: str
           );
         }
       }
-      push('network-idle.svg', lineOverDatasets(model, suite, { scenario: /^idle$/, metric: /^net_bytes_per_min$/ }, 'Idle UI: loopback bytes per minute by dataset size', `A settled page left alone. ${legNote}`), 'Idle loopback bytes per minute vs dataset size');
+      push('network-idle.svg', lineOverDatasets(model, suite, { scenario: /^idle$/, metric: /^ui_bytes_per_min$/ }, 'Idle UI: UI to backend bytes per minute by dataset size', 'A settled page left alone. V1: page and server; V2: page and IPC shim (in-process in the real app).'), 'Idle UI to backend bytes per minute vs dataset size');
       break;
     }
     case 'desktop': {
@@ -2200,15 +2394,15 @@ function suiteCharts(model: Model, suite: string, addChart: (f: string, svg: str
       const svg = roleBreakdownChart(model, pick.length ? pick : roles, 'Desktop footprint by process role', 'Median over runs of each role at the end of the window, stacked; the label is their sum (the whole-tree median is in the table).');
       if (svg) push('desktop-roles.svg', svg, 'Desktop footprint by process role');
       if (prim) {
-        const launch = cmps.filter((c) => c.dataset === prim && c.unit === 'ms');
+        const launch = cmps.filter((c) => c.dataset === prim && c.unit === 'ms' && c.v1 && c.v2);
         if (launch.length) {
           push(
             `desktop-launch-${prim}.svg`,
             groupedBarChart({
               title: `Desktop launch milestones (${dsLong(prim)})`,
-              subtitle: `From the launch command. ${note}`,
+              subtitle: `launch: from the launch command (V2's daemon already running). cold-launch: from the backend's spawn (V2: the daemon). Process events, not content. ${note}`,
               series: seriesDefs(model),
-              groups: barsFor(model, launch.map((c) => ({ label: metricLabel(c.metric), c }))),
+              groups: barsFor(model, launch.map((c) => ({ label: `${metricLabel(c.metric)}, ${c.scenario}`, c }))),
               axisLabel: 'milliseconds',
               format: fmtAxis('ms'),
             }),
@@ -2403,8 +2597,9 @@ function findingsBlock(model: Model, headline: HeadlineRow[]): string[] {
     const suiteLevel = allFailures.filter((f) => f.scenario === '(suite)');
     const bySuite = new Map<string, number>();
     for (const f of allFailures) bySuite.set(f.suite, (bySuite.get(f.suite) ?? 0) + 1);
+    const cens = model.cmps.reduce((n, c) => n + (c.v1?.nCens ?? 0) + (c.v2?.nCens ?? 0), 0);
     items.push(
-      `**${allFailures.length} recorded failure(s)** (${timeouts.length} timeout(s)${suiteLevel.length ? `, ${suiteLevel.length} for a whole suite` : ''}): ${[...bySuite].map(([s, nn]) => `${s} ${nn}`).join(', ')}. Failed samples are excluded from the statistics and listed per suite and in [Appendix C](#c-failures); a timeout is itself a result (the app did not get there within the limit).`,
+      `**${allFailures.length} recorded failure(s)** (${timeouts.length} timeout(s)${suiteLevel.length ? `, ${suiteLevel.length} for a whole suite` : ''}): ${[...bySuite].map(([s, nn]) => `${s} ${nn}`).join(', ')}. A sample the app did not complete within its limit is a result: ${cens} such sample(s) are in the statistics as censored values at their limit (">=" in the tables). Other failed samples are left out; all are listed per suite and in [Appendix C](#c-failures).`,
     );
     for (const s of model.suites) {
       const r = model.results.get(s)!;
@@ -2447,7 +2642,7 @@ function findingsBlock(model: Model, headline: HeadlineRow[]): string[] {
   }
 
   // Where V1 is better (fairness: the report must show these as prominently as V2's wins).
-  const v1wins = model.cmps.filter((c) => c.verdict.kind === 'better' && c.verdict.winner === 'v1' && !model.childIds.has(c.id));
+  const v1wins = model.cmps.filter((c) => c.verdict.kind === 'better' && c.verdict.winner === 'v1' && !model.childIds.has(c.id) && counts(c));
   if (v1wins.length) {
     items.push(`**V1 is better in ${v1wins.length} comparison(s):**`);
     // Repeated wins of one metric (the same thing at several datasets or load levels) collapse into one line.
@@ -2466,7 +2661,7 @@ function findingsBlock(model: Model, headline: HeadlineRow[]): string[] {
       }
       const c = g[0]!;
       if (g.length < 3) {
-        for (const x of g) items.push(`  - ${x.suite} ${code(x.scenario)}${x.dataset ? ` on ${x.dataset}` : ''}, ${lowerLabel(x.metric)}: ${withUnit(x.v1!.s.median, x.unit)} vs ${withUnit(x.v2!.s.median, x.unit)} (${diffWords(x)}${fewNote(x)})`);
+        for (const x of g) items.push(`  - ${x.suite} ${code(x.scenario)}${x.dataset ? ` on ${x.dataset}` : ''}, ${lowerLabel(x.metric)}: ${medianText(x.v1!, x.unit)} vs ${medianText(x.v2!, x.unit)} (${diffWords(x)}${fewNote(x)})`);
         continue;
       }
       const facts = g.map((x) => x.verdict.adv ?? 1).filter((x) => Number.isFinite(x) && x > 0).map((x) => 1 / x);
@@ -2474,7 +2669,7 @@ function findingsBlock(model: Model, headline: HeadlineRow[]): string[] {
       const fixedWindow = c.metric === 'server_cpu_s' && model.cmps.some((x) => x.metric === 'server_cpu_ms_per_request')
         ? '; this is CPU over a fixed load window, which grows with the requests served, so compare the derived CPU per request in the API tables'
         : '';
-      items.push(`  - ${c.suite} ${code(baseScenario(c.scenario))}, ${lowerLabel(c.metric)}, ${g.length} cases (${where.slice(0, 6).join(', ')}${where.length > 6 ? ', ...' : ''}): V1 better by ${fmtFactor(Math.min(...facts))}x to ${fmtFactor(Math.max(...facts))}x${g.some((x) => x.verdict.basis === 'few') ? ' (some n=1)' : ''}${fixedWindow}`);
+      items.push(`  - ${c.suite} ${code(baseScenario(c.scenario))}, ${lowerLabel(c.metric)}, ${g.length} cases (${where.slice(0, 6).join(', ')}${where.length > 6 ? ', ...' : ''}): V1 better by ${fmtFactor(Math.min(...facts))}x to ${fmtFactor(Math.max(...facts))}x${g.some((x) => x.verdict.basis === 'few') ? ' (some decided by value on few runs)' : ''}${fixedWindow}`);
     }
   } else {
     items.push('**V1 is not better in any compared metric.**');
@@ -2483,6 +2678,19 @@ function findingsBlock(model: Model, headline: HeadlineRow[]): string[] {
   const nsCount = model.cmps.filter((c) => c.verdict.kind === 'ns').length;
   const sameCount = model.cmps.filter((c) => c.verdict.kind === 'same').length;
   if (nsCount || sameCount) items.push(`**${nsCount} comparison(s) are not significant** (p >= ${SIGNIFICANCE_P}) and **${sameCount} are within ${PRACTICAL * 100}%** (or identical sizes); they are marked "n.s." and "within 5%" in the tables.`);
+  const indicative = model.cmps.filter(isIndicative);
+  if (indicative.length) items.push(`**${indicative.length} comparison(s) rest on one sample per app** (for example a single load window or one memory reading per session); they are shown with "indicative, n=1" and never counted as a win for either app.`);
+  const context = model.cmps.filter((c) => c.verdict.kind === 'context');
+  if (context.length) items.push(`**${context.length} comparison(s) are context only** (${[...new Set(context.map((c) => c.metric))].map(code).join(', ')}): shown for reference, never judged.`);
+  const holm = holmSummary(model);
+  if (holm.lost.length) {
+    items.push(`**${holm.lost.length} of ${holm.significant} significant difference(s) do not survive a Holm-Bonferroni correction** over all ${holm.tested} tested comparisons:`);
+    for (const id of holm.lost.slice(0, 12)) {
+      const c = model.cmps.find((x) => x.id === id)!;
+      items.push(`  - ${c.suite} ${code(c.scenario)}${c.dataset ? ` on ${c.dataset}` : ''}, ${lowerLabel(c.metric)} (p ${pText(c)}, ${diffWords(c)})`);
+    }
+    if (holm.lost.length > 12) items.push(`  - ... ${holm.lost.length - 12} more`);
+  }
 
   // Winner flips across datasets.
   const flips: string[] = [];
@@ -2549,7 +2757,9 @@ function findingsBlock(model: Model, headline: HeadlineRow[]): string[] {
   }
 
   // One-sided metrics.
-  const oneSided = model.cmps.filter((c) => c.verdict.kind === 'one-sided' && !model.childIds.has(c.id));
+  // App-specific by design (V2 startup phases, V2's daemon readiness, the real-host check) is not a gap.
+  const bySide = (c: Cmp) => (c.v1 ?? c.v2)!.m.meta ?? {};
+  const oneSided = model.cmps.filter((c) => c.verdict.kind === 'one-sided' && !model.childIds.has(c.id) && bySide(c).v2Only !== true && bySide(c).validation !== true);
   if (oneSided.length) {
     items.push(`**${oneSided.length} metric(s) exist for only one app** (not compared): ${oneSided.slice(0, 10).map((c) => `${c.suite} ${code(c.scenario)} ${c.metric} (${c.v1 ? 'V1' : 'V2'})`).join(', ')}${oneSided.length > 10 ? ', ...' : ''}.`);
   }
@@ -2563,7 +2773,7 @@ function findingsBlock(model: Model, headline: HeadlineRow[]): string[] {
 
   // Headline rows resting on one run.
   const few = headline.filter((r) => r.c.verdict.basis === 'few');
-  if (few.length) items.push(`**${few.length} headline metric(s) rest on too few runs for a significance test**: ${few.map((r) => `${headlineLabel(r)} (n=${r.c.verdict.minN})`).join('; ')}. They are decided by value (and, with 2 or more runs, only when every run of one app beat every run of the other).`);
+  if (few.length) items.push(`**${few.length} headline metric(s) rest on too few samples for a significance test**: ${few.map((r) => `${headlineLabel(r)} (n=${r.c.verdict.minN})`).join('; ')}. With 2 to 4 samples per app they are decided by value, only when every sample of one app beat every sample of the other; with one sample they are indicative and not counted.`);
 
   for (const it of items) out.push(it.startsWith('  ') ? it : `- ${it}`);
   return out;
@@ -2613,10 +2823,16 @@ function threatsBlock(model: Model): string[] {
   const out: string[] = [];
   const env = model.info.env ?? {};
   const items: string[] = [];
-  items.push('**The V2 UI runs through an IPC shim, not the Tauri host.** The shim executes the real `tendril-app` command handlers but adds one loopback HTTP hop per command, and its memory is not `tendril-app` memory (the desktop suite measures the real app).');
-  items.push('**Blink is not WKWebView.** UI timings come from headless Chromium for both apps; the desktop apps render with WKWebView, where only process-level start and memory are measured.');
-  items.push('**Desktop windows differ in size** (V1 1800x1200, V2 1280x800), which changes WebKit layer and backing-store memory.');
-  items.push("**API payloads differ.** V2's plan list returns full plan objects including the latest revision text, V1's a thin summary; latency is shown next to response bytes, and neither app is asked to do the other's work.");
+  items.push('**The V2 UI runs through an IPC shim, not the Tauri host.** The shim executes the real `tendril-app` command handlers, but the page reaches it over one loopback WebSocket instead of in-process IPC, and its memory is not `tendril-app` memory (the desktop suite measures the real app; the ui suite\'s V2 server-side memory is daemon plus shim). The network suite checks the shim\'s host to daemon traffic against the real `Tendril.app` behind a proxy.');
+  items.push('**Blink is not WKWebView.** UI timings come from headless Chromium for both apps; the desktop apps render with WKWebView, where only process-level launch milestones and memory are measured.');
+  items.push("**Desktop launch milestones are process events, not content, and V2's backend starts first.** V2's daemon is started and healthy before its app is launched (the app reads `.master` once), so the `launch` scenario leaves V2's daemon startup out; the `cold-launch` scenario times the same launches from the backend's spawn and includes it. V1's window appears only after its in-process server answers, while Tauri shows V2's window before its page has loaded, so `window_visible_ms` is not comparable as \"ready\" and is not used for claims. No content milestone is measured in the desktop apps.");
+  items.push(`**Desktop windows differ in size.** ${windowSizeText(model)} Window size changes WebKit layer and backing-store memory.`);
+  items.push('**The idle and api suites compare different process sets.** The headless V1 server (`--web`) includes its server-side UI rendering; the V2 daemon alone does not include the `tendril-app` host that V2 needs to show a UI. The whole desktop process tree (app, WebKit, V2 daemon) is the like-for-like memory number and leads the memory headline.');
+  items.push("**Both apps run on their shipped defaults**, background work included: V1's model pricing warmup (+15 s, then every 6 h) and worktree cleanup, V2's model enrichment fetch at start and worktree reaper. Their network fetches add noise to CPU and to external traffic, and the idle window starts after a settling phase so one-off post-start work is reported separately. Telemetry, inbox polling and desktop notifications are off for both.");
+  items.push('**V1 desktop runs without TLS** (`IVY_TLS=0`), while the shipped V1 app serves its UI over TLS; this favours V1 slightly (no TLS handshake or encryption on the loopback).');
+  items.push("**Eager frontend JS undercounts V2's landing view.** V2's eager closure excludes the React.lazy chunks its landing view loads right after; the UI cold-load bytes transferred to first content (a headline row) include them and are the fairer size comparison.");
+  items.push("**API payloads differ.** V2's plan list returns full plan objects including the latest revision text, V1's a thin summary; latency is shown next to response bytes, latency per KB is context only, and neither app is asked to do the other's work.");
+  items.push("**Replicates.** In the api and ui suites the independent unit is the server or browser instance; intervals are hierarchical over instances, but the Mann-Whitney U test runs on pooled samples and its p-values are optimistic for small differences. Within one instance an app's samples are taken back to back, so a burst of background load can hit one app's instance and not the other's (the load is recorded per instance).");
   items.push('**Build provenance differs.** V1 is the signed v1.2.4 release (or a local publish of the same tag); V2 is built from source at the pinned commit with the default release profile. Neither is the other\'s shipping artifact type.');
   const bins = getAny(env, 'apps.v1.binaries');
   if (Array.isArray(bins)) {
@@ -2627,6 +2843,7 @@ function threatsBlock(model: Model): string[] {
     }
   }
   items.push('**Peak footprint of a process set is a sum of per-process peaks**, an upper bound on the simultaneous peak.');
+  items.push(`**Many comparisons.** ${holmSummary(model).tested} comparisons are tested at p < ${SIGNIFICANCE_P} each; see [Methodology](#methodology) for how many survive a Holm-Bonferroni correction.`);
   items.push('**V1 startup spawns short-lived child processes** (login shells, `which`, `sort`, ...); they are part of its process tree and are counted in startup CPU and memory.');
   items.push('**V2 starts from an empty working directory**, so it deploys stub promptwares (as a launchd-managed install would).');
   const loads = model.suites.map((s) => model.results.get(s)!.env?.loadSamples ?? []).flat();
@@ -2641,14 +2858,14 @@ function threatsBlock(model: Model): string[] {
     const bySuite = new Map<string, number>();
     for (const c of few) bySuite.set(c.suite, (bySuite.get(c.suite) ?? 0) + 1);
     items.push(
-      `**${few.length} comparison(s) have too few samples for a Mann-Whitney U test to ever reach p < ${SIGNIFICANCE_P}** (${[...bySuite].map(([s2, n2]) => `${s2} ${n2}`).join(', ')}): with 2 runs per app the smallest possible p is ${minAchievableP(2, 2).toFixed(2)}, with 3 it is ${minAchievableP(3, 3).toFixed(2)}, and at least 5 per app are needed. ` +
-        'These are decided by value and marked "n=1" or "every run"; more runs per app (the profile knobs) would make them testable.',
+      `**${few.length} comparison(s) have too few samples for a Mann-Whitney U test to ever reach p < ${SIGNIFICANCE_P}** (${[...bySuite].map(([s2, n2]) => `${s2} ${n2}`).join(', ')}): with 2 samples per app the smallest possible p is ${minAchievableP(2, 2).toFixed(2)}, with 3 it is ${minAchievableP(3, 3).toFixed(2)}, and at least 5 per app are needed. ` +
+        'These are decided by value and marked "every run" (or "indicative, n=1", which is never counted); more runs or instances per app (the profile knobs) would make them testable.',
     );
   }
   const dirty = [get(env, 'apps.v1.cloneDirty'), get(env, 'apps.v2.cloneDirty')].map((x) => Number(x ?? 0));
   if (dirty.some((d) => d > 0)) items.push(`**A clone under test had local modifications** (V1 ${dirty[0]}, V2 ${dirty[1]} file(s)).`);
   if (model.results.has('network')) {
-    items.push("**Network bytes: what is and is not a socket.** V2's loopback numbers come from the IPC shim standing in for the Tauri host (it runs the real command handlers and bridges, so its daemon traffic is the app's, but the UI driving it is Blink, not WKWebView). V2's UI-to-backend numbers are IPC and bundled assets that never touch a socket in the real app. Counts are application-layer bytes on loopback (no TCP/IP headers, no TLS), and a scenario window includes whatever background traffic ran during it. External traffic from `nettop` is a lower bound.");
+    items.push("**Network bytes: what is and is not a socket.** The like-for-like numbers are UI to backend; V2's are IPC and bundled assets that never touch a socket in the real app. The architecture-internal legs differ by design (V1: page and server, assets included; V2: host and daemon only), and V2's comes from the IPC shim standing in for the Tauri host (it runs the real command handlers and bridges; the real-host check at the end of the network section compares the two). Counts are application-layer bytes on loopback (no TCP/IP headers, no TLS), and a scenario window includes whatever background traffic ran during it. External traffic from `nettop` is a lower bound.");
   }
   items.push('**Warm WebKit caches for V1 desktop runs.** The user\'s real V1 WebKit data directory is never wiped, so V1 desktop runs may start with a warm cache.');
   for (const it of items) out.push(`- ${it}`);
@@ -2658,7 +2875,7 @@ function threatsBlock(model: Model): string[] {
 // ---------------------------------------------------------------------------------------------
 // Reproduce
 
-function reproduceBlock(model: Model): string[] {
+function reproduceBlock(model: Model, resultsLink: string | null): string[] {
   const { info } = model;
   const out: string[] = [];
   const bench = get(info.env, 'harness.benchSha');
@@ -2675,7 +2892,8 @@ function reproduceBlock(model: Model): string[] {
   out.push(`node src/benchmark/bin/tendril-bench.ts report --run <runId>`);
   out.push('```');
   out.push('');
-  out.push(`The \`run\` line${inv.length > 1 ? 's are' : ' is'} exactly what produced this run${inv.length > 1 ? ' (a resumed run has one line per invocation)' : ''}. The pins are V1 ${code(info.pins?.v1Ref ?? V1_REF)} (${code(String(info.pins?.v1Sha ?? V1_SHA))}) and V2 ${code(String(v2))}; \`setup\` clones and builds both into the workspace and records what it built in \`build-info.json\`. Raw results of this run are in ${model.fixtures ? '`src/benchmark/report/fixtures/`' : `[\`results/${info.runId}/\`](results/${info.runId}/)`}, and \`report --run\` regenerates this file byte for byte from them.`);
+  const link = resultsLink ?? `results/${info.runId}/`;
+  out.push(`The \`run\` line${inv.length > 1 ? 's are' : ' is'} exactly what produced this run${inv.length > 1 ? ' (a resumed run has one line per invocation)' : ''}. The pins are V1 ${code(info.pins?.v1Ref ?? V1_REF)} (${code(String(info.pins?.v1Sha ?? V1_SHA))}) and V2 ${code(String(v2))}; \`setup\` clones and builds both into the workspace and records what it built in \`build-info.json\`. Raw results of this run are in ${model.fixtures ? '`src/benchmark/report/fixtures/`' : `[\`${link}\`](${link})`}, and \`report --run\` regenerates this file byte for byte from them.`);
   return out;
 }
 
@@ -2686,7 +2904,7 @@ function appendixBlock(model: Model): string[] {
   const out: string[] = [];
   out.push('### A. Full statistics');
   out.push('');
-  out.push('Every metric, per app: sample count, distribution and coefficient of variation (CV = sd / mean). Values in the unit named in the metric column (sizes in MB).');
+  out.push('Every metric, per app: sample count (of which timed out: censored samples, counted at their limit), distribution and coefficient of variation (CV = sd / mean). Values in the unit named in the metric column (sizes in MB).');
   out.push('');
   for (const s of model.suites) {
     const cmps = model.bySuite.get(s) ?? [];
@@ -2706,6 +2924,7 @@ function appendixBlock(model: Model): string[] {
           `${c.metric}${unitText(u) ? ` (${unitText(u)})` : ''}`,
           a.toUpperCase(),
           String(x.n),
+          side.nCens ? String(side.nCens) : '',
           num(x.min, u),
           num(x.p5, u),
           num(x.p25, u),
@@ -2721,7 +2940,7 @@ function appendixBlock(model: Model): string[] {
         ]);
       }
     }
-    out.push(table(['Scenario', 'Dataset', 'Metric', 'App', 'n', 'min', 'p5', 'p25', 'median', 'p75', 'p90', 'p95', 'p99', 'max', 'mean', 'sd', 'CV'], ['l', 'l', 'l', 'l', 'r', 'r', 'r', 'r', 'r', 'r', 'r', 'r', 'r', 'r', 'r', 'r', 'r'], rows));
+    out.push(table(['Scenario', 'Dataset', 'Metric', 'App', 'n', 'timed out', 'min', 'p5', 'p25', 'median', 'p75', 'p90', 'p95', 'p99', 'max', 'mean', 'sd', 'CV'], ['l', 'l', 'l', 'l', 'r', 'r', 'r', 'r', 'r', 'r', 'r', 'r', 'r', 'r', 'r', 'r', 'r', 'r'], rows));
     out.push('');
     out.push('</details>');
     out.push('');
