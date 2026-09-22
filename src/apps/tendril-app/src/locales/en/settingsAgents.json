@@ -1,1 +1,142 @@
-{}
+{
+  "section": {
+    "title": "Coding Agent",
+    "hint": "Tendril connects to your configured AI coding agent or bundled open source engines like OpenCode.",
+    "unknownAgent": "Unknown coding agent '{{value}}'. Valid agents: {{agents}}"
+  },
+  "byo": {
+    "title": "Bring your own LLM",
+    "baseUrl": {
+      "label": "API Base URL"
+    },
+    "apiKey": {
+      "label": "API Key",
+      "hint": "Stored as ANTHROPIC_API_KEY and OPENAI_API_KEY on the {{agent}} agent, which is the environment every launch gets.",
+      "hint_ivy": "Stored as IVY_API_KEY, ANTHROPIC_API_KEY and OPENAI_API_KEY on the {{agent}} agent, which is the environment every launch gets."
+    },
+    "fetchModels": {
+      "label": "Fetch models",
+      "busy": "Fetching..."
+    },
+    "discovery": {
+      "found_one": "Found {{count}} model at this endpoint.",
+      "found_other": "Found {{count}} models at this endpoint.",
+      "customNames": "This endpoint serves no model list, so model names have to be entered by hand.",
+      "unreachable": "Could not reach the daemon to fetch models: {{error}}"
+    }
+  },
+  "profiles": {
+    "title": "Profile Models",
+    "hint": {
+      "custom": "Specify custom model names and effort level to use for each profile.",
+      "discovered": "Select models from your endpoint for each profile level.",
+      "default": "Workflow agents are configured to use different profiles depending on the complexity of the task. You can specify what model and effort level to use for each profile."
+    },
+    "customNames": "Custom model names",
+    "effortUnsupported": "This agent's CLI takes no effort argument, so effort is ignored.",
+    "tiers": {
+      "deep": "Deep",
+      "balanced": "Balanced",
+      "quick": "Quick"
+    },
+    "effort": "Effort",
+    "efforts": {
+      "default": "Default",
+      "low": "Low",
+      "medium": "Medium",
+      "high": "High",
+      "xhigh": "Extra High",
+      "max": "Max"
+    }
+  },
+  "environment": {
+    "title": "Extra Arguments & Environment",
+    "arguments": {
+      "label": "Extra Arguments",
+      "placeholder": "e.g. --verbose",
+      "hint": "Split on whitespace and appended to every launch of this agent."
+    },
+    "variables": {
+      "label": "Environment Variables",
+      "hint": "One KEY=value per line. Lines starting with # are ignored."
+    }
+  },
+  "help": {
+    "title": "Help",
+    "hint": "Getting {{agent}} working on this machine.",
+    "install": "1. Install",
+    "authenticate": "2. Authenticate",
+    "apiKey": "2. API key",
+    "or": "or",
+    "then": "Then, at the prompt: <code>{{command}}</code>",
+    "binary": "Tendril looks for <code>{{binary}}</code> on your PATH."
+  },
+  "actions": {
+    "test": "Test Agent",
+    "saving": "Saving..."
+  },
+  "save": {
+    "toastTitle": "Saved",
+    "toastMessage": "Coding agent settings saved",
+    "failed": "Failed to save: {{error}}"
+  },
+  "test": {
+    "title": "Coding Agent Test",
+    "defaultModel": "Default",
+    "columns": {
+      "test": "Test",
+      "result": "Result"
+    },
+    "status": {
+      "passed": "Passed",
+      "failed": "Failed",
+      "warning": "Warning",
+      "running": "Running",
+      "pending": "Pending"
+    },
+    "showRawOutput": "Show raw output",
+    "rawOutputTitle": "Raw Output",
+    "rows": {
+      "install": "Installation",
+      "auth": "Authentication",
+      "model": "Model: {{name}}",
+      "unexpectedError": "Unexpected error"
+    },
+    "install": {
+      "version": "v{{version}}",
+      "installed": "Installed",
+      "notInstalled": "Not installed"
+    },
+    "auth": {
+      "authenticated": "Authenticated",
+      "authenticatedWith": "Authenticated ({{provider}})",
+      "notAuthenticated": "Not authenticated",
+      "notAuthenticatedRun": "Not authenticated - run `{{command}}`",
+      "notAuthenticatedRunThen": "Not authenticated - run `{{command}}`, then `{{prompt}}`",
+      "notAuthenticatedCreateKey": "Not authenticated - create a key at {{url}}",
+      "inconclusive": "Check inconclusive"
+    },
+    "model": {
+      "notChecked": "Not checked",
+      "ok": "Ok",
+      "invalidModel": "Invalid model",
+      "authError": "Auth error",
+      "rateLimit": "Quota exhausted or rate limited"
+    },
+    "cancelled": "Cancelled",
+    "runFailed": "Test run failed"
+  },
+  "usage": {
+    "window": "{{window}} window",
+    "left": "{{percent}} left",
+    "ariaLabel": "{{window}} window, {{percent}} left",
+    "resetsIn": "resets in {{countdown}}",
+    "resetsIn_now": "resets in now",
+    "asOf": "as of {{relative}}",
+    "countdown": {
+      "now": "now",
+      "hoursMinutes": "{{hours}} {{minutes}}"
+    },
+    "justNow": "just now"
+  }
+}
