@@ -1,7 +1,8 @@
 import * as React from "react";
-import { Button, Callout, Input } from "@ivy-interactive/components/ui";
 import {
-  ShellSidebarSection,
+  PlanSearchDialog as PlanSearchDialogView,
+  MAX_PLAN_SEARCH_RESULTS,
+  PLAN_SEARCH_DEBOUNCE_MS,
   type ShellBadgeDto,
   type ShellSectionItemDto,
 } from "@ivy-interactive/components/tendril";
@@ -10,17 +11,6 @@ import { describeBridgeError, type PlanSummary } from "../../types/api";
 import { formatPlanId, normalizePlanState, parseProjects, planRowBadges } from "../PlansView";
 import { useLevelColors } from "../../components/LevelBadge";
 import type { LevelColors } from "../../utils/levelColor";
-import { DialogShell } from "@ivy-interactive/components/tendril";
-
-/** V1 `PlanSearchDialog.MaxResults`. */
-export const MAX_PLAN_SEARCH_RESULTS = 15;
-
-/**
- * How long the box sits still before the query goes out. V2 only: V1 searches the SQLite handle it
- * already holds, synchronously inside `Build()`, so it needs no debounce at all. Here every
- * keystroke would otherwise be an IPC round trip to the daemon.
- */
-export const PLAN_SEARCH_DEBOUNCE_MS = 150;
 
 /**
  * `ReviewApp.BuildRowBadges`' verification rule, which the Review arm below shares with
@@ -90,202 +80,50 @@ export const planSearchRow = (
   badges: planSearchRowBadges(plan, levelColors),
 });
 
+export { MAX_PLAN_SEARCH_RESULTS, PLAN_SEARCH_DEBOUNCE_MS };
+
 export interface PlanSearchDialogProps {
   isOpen: boolean;
   onClose: () => void;
-  /**
-   * A picked result. The caller routes it as a navigation - the same one a sidebar row click takes -
-   * rather than the dialog reaching into a view's state.
-   */
   onSelectPlan: (planId: string) => void;
-  /**
-   * The search itself. Defaults to `bridge.listPlans({ q })`, which is the daemon's
-   * `GET /api/plans?q=` over the `PlanSearch` FTS5 index. Injectable for tests.
-   */
+  /** The search. Defaults to `bridge.listPlans({ q })` over the daemon's `PlanSearch` FTS5 index. */
   search?: (query: string) => Promise<PlanSummary[]>;
 }
 
 /**
- * Full-text plan search, opened from the sidebar section's search icon (and its `Cmd/Ctrl+K`)
- * whenever the published list supplies no `onSearch` of its own - which is every plan list. Port of
- * V1 `AppShell/Dialogs/PlanSearchDialog.cs`.
+ * The connected half of `PlanSearchDialog`.
  *
- * **Why it has to exist.** The sidebar lists follow V1 and hold only a slice of the plans: Plans
- * lists Draft and Blocked, Review lists Review and Failed, Icebox lists Icebox. A `Completed`,
- * `Skipped`, `Creating`, `Updating` or `Executing` plan is in none of them, so without this dialog
- * it is reachable from nowhere in the UI. The search therefore **never sends a `status` filter**:
- * inheriting one would leave exactly the plans it exists for unreachable.
+ * The dialog renders rows; turning plans into rows is this side's job, because it needs the Plans
+ * list's badge builders and the configured level colours, neither of which the library can reach.
+ * Draft and Blocked results carry the Plans list's level badge, so the dialog needs the same
+ * colours the sidebar row it is imitating uses.
  *
- * V1's decisions kept:
- *
- * - It searches the plan database's full text, not the plan list the shell happens to be holding:
- *   `?q=` is served by `get_plans_limited`, which is the `PlanSearch` FTS5 index ranked by bm25,
- *   with a bare plan number promoted to the top slot as an exact id lookup and a `LIKE` fallback
- *   over Title/content/Id/Project/SourceUrl/InitialPrompt for the fragments FTS5 cannot match. That
- *   is `PlanDatabaseService.SearchPlans` including its sanitiser and its fallback, so the ranking
- *   and the matched columns are the backend's and are not re-decided here.
- * - At most {@link MAX_PLAN_SEARCH_RESULTS} rows (V1's `.Take(15)`), applied client side because
- *   the bridge's `PlanQuery` carries no `limit`.
- * - Rows render through the very `ShellSidebarSection` the sidebar uses, with the per-list badge
- *   builders ({@link planSearchRowBadges}), so a plan looks identical here and there.
- * - An empty box shows the box alone - no rows, no message, no request.
- * - A query with nothing behind it reads "No plans found.".
- * - Escape closes, the box has focus on open, and rows are buttons reached by Tab. No arrow-key or
- *   Enter-to-pick palette behaviour: V1 has none, and the section's rows are already the sidebar's
- *   own keyboard contract.
- *
- * Changed, and why:
- *
- * - **A pick opens the plan whatever its status.** V1's `ResolveTarget` maps the status back to the
- *   app that owns it and returns null for `Completed`, `Skipped` and the three in-flight states, so
- *   in V1 picking one of those closes the dialog and goes nowhere - the states the dialog exists for
- *   are the ones it cannot open. V2 has one plan page per plan (`plan-<id>`), so every result is
- *   navigable and the resolve step is gone.
- * - Debounced ({@link PLAN_SEARCH_DEBOUNCE_MS}) and asynchronous, because the query is IPC here and
- *   a synchronous DB read in V1. In-flight requests are sequenced so a slow early keystroke cannot
- *   overwrite a later result, and "No plans found." is withheld until a request has actually
- *   answered.
- * - A failed query is reported. V1 cannot fail (in-process SQLite); a rejected bridge call that
- *   rendered as "No plans found." would read as "this plan does not exist".
+ * No `status` filter is sent, deliberately: inheriting one would leave exactly the plans this
+ * dialog exists for unreachable.
  */
 export function PlanSearchDialog({ isOpen, onClose, onSelectPlan, search }: PlanSearchDialogProps) {
-  const [query, setQuery] = React.useState("");
-  const [results, setResults] = React.useState<PlanSummary[]>([]);
-  const [isSearching, setIsSearching] = React.useState(false);
-  /** Whether the results on screen belong to the query in the box. Gates "No plans found.". */
-  const [hasAnswer, setHasAnswer] = React.useState(false);
-  const [error, setError] = React.useState<string | null>(null);
-  const inputRef = React.useRef<HTMLInputElement>(null);
-  const requestSeq = React.useRef(0);
+  const levelColors = useLevelColors();
 
-  const runSearch = React.useMemo(
-    () =>
-      search ??
-      // No `status`, deliberately: see the class comment. `q` alone is what reaches every state.
-      ((text: string) => bridge.listPlans({ q: text })),
+  const fetchPlans = React.useMemo(
+    () => search ?? ((text: string) => bridge.listPlans({ q: text })),
     [search],
   );
 
-  // V1 rebuilds its results from a fresh `UseState("")` every time the dialog is constructed, so a
-  // reopen starts empty.
-  React.useEffect(() => {
-    if (!isOpen) return;
-    setQuery("");
-    setResults([]);
-    setIsSearching(false);
-    setHasAnswer(false);
-    setError(null);
-    requestSeq.current += 1;
-  }, [isOpen]);
-
-  const trimmed = query.trim();
-
-  React.useEffect(() => {
-    if (!isOpen) return;
-    // V1: `string.IsNullOrWhiteSpace(query.Value) ? [] : database.SearchPlans(...)`. An empty box
-    // never queries.
-    if (trimmed === "") {
-      requestSeq.current += 1;
-      setResults([]);
-      setIsSearching(false);
-      setHasAnswer(false);
-      setError(null);
-      return;
-    }
-
-    setIsSearching(true);
-    const seq = ++requestSeq.current;
-    const timer = setTimeout(() => {
-      runSearch(trimmed)
-        .then((plans) => {
-          if (seq !== requestSeq.current) return;
-          setResults(plans.slice(0, MAX_PLAN_SEARCH_RESULTS));
-          setError(null);
-          setHasAnswer(true);
-          setIsSearching(false);
-        })
-        .catch((err: unknown) => {
-          if (seq !== requestSeq.current) return;
-          setResults([]);
-          setError(describeBridgeError(err));
-          setHasAnswer(true);
-          setIsSearching(false);
-        });
-    }, PLAN_SEARCH_DEBOUNCE_MS);
-
-    return () => clearTimeout(timer);
-  }, [isOpen, trimmed, runSearch]);
-
-  /* Draft and Blocked results carry the Plans list's level badge, so the dialog needs the same
-     configured colours the sidebar row it is imitating uses. */
-  const levelColors = useLevelColors();
-  const items = results.map((plan) => planSearchRow(plan, levelColors));
-
-  const handlePick = (planId: string) => {
-    // V1: `dialogOpen.Set(false)` first, then the navigation.
-    onClose();
-    onSelectPlan(planId);
-  };
+  const searchRows = React.useCallback(
+    async (query: string): Promise<ShellSectionItemDto[]> => {
+      const plans = await fetchPlans(query);
+      return plans.map((plan) => planSearchRow(plan, levelColors));
+    },
+    [fetchPlans, levelColors],
+  );
 
   return (
-    <DialogShell
+    <PlanSearchDialogView
       isOpen={isOpen}
       onClose={onClose}
-      // V1's `new DialogHeader("Search Plans")` and `.Width(Size.Px(560))`.
-      title="Search Plans"
-      width="px560"
-      testId="plan-search-dialog"
-      initialFocusRef={inputRef}
-      footer={
-        <Button variant="outline" onClick={onClose} data-testid="dialog-close">
-          Close
-        </Button>
-      }
-    >
-      {/* V1's `query.ToSearchInput().Placeholder("Search plans").Width(Size.Full())`. */}
-      <Input
-        ref={inputRef}
-        type="search"
-        aria-label="Search plans"
-        data-testid="plan-search-input"
-        value={query}
-        onChange={(event) => setQuery(event.target.value)}
-        placeholder="Search plans"
-      />
-
-      {trimmed !== "" && (
-        <div className="mt-2">
-          {error !== null ? (
-            <Callout.Error data-testid="plan-search-error">{error}</Callout.Error>
-          ) : items.length > 0 ? (
-            /* The sidebar's own list widget, as V1 renders results: `.Items(items)
-               .Collapsible(false).OnSelectItem(...)`. `Collapsible(false)` keeps the rail's
-               narrow-chip form out of a dialog, and no `title`/`searchable` means no header and no
-               second `Cmd+K` listener over the shell's. */
-            <ShellSidebarSection
-              id="plan-search-results"
-              items={items}
-              collapsible={false}
-              events={["OnSelectItem"]}
-              eventHandler={(evt: string, _id: string, args?: unknown[]) => {
-                if (evt !== "OnSelectItem") return;
-                const planId = args?.[0];
-                if (typeof planId === "string" && planId.length > 0) handlePick(planId);
-              }}
-            />
-          ) : isSearching || !hasAnswer ? (
-            /* V2 only: the query is still out, so V1's "No plans found." would be premature. */
-            <p className="text-sm text-muted-foreground" data-testid="plan-search-pending">
-              Searching…
-            </p>
-          ) : (
-            /* V1: `body |= Text.Muted("No plans found.")`. */
-            <p className="text-sm text-muted-foreground" data-testid="plan-search-empty">
-              No plans found.
-            </p>
-          )}
-        </div>
-      )}
-    </DialogShell>
+      onSelectPlan={onSelectPlan}
+      search={searchRows}
+      describeError={describeBridgeError}
+    />
   );
 }

@@ -12,11 +12,12 @@ import { ivyColorVar } from "@/lib/ivy-color";
  * between its straight separator lines and stay square, while the icon overload lives in gap-spaced
  * menus and keeps its rounding.
  *
- * Three V2 sidebars had reimplemented this markup independently: the Shell's own module, the Settings
- * nested sidebar (`Apps/Settings/SettingsApp.cs`) and `InboxView`'s category rail. They had already
- * drifted - only the two app-side copies carried V1's project-colour marker - so this is the union of
- * the three, and the three are now thin delegations to it. It lives outside `Shell/` because two of
- * its consumers are app views, not shell chrome.
+ * Two V2 sidebars had reimplemented this markup independently - the Settings nested sidebar
+ * (`Apps/Settings/SettingsApp.cs`) and `InboxView`'s category rail - and had already drifted, so this
+ * is the union of the two, and both are now thin delegations to it. The Shell's own primary sidebar
+ * renders its own `.tsh-nav-item`/`.tsh-rail-item`/`.tsh-section-item` markup rather than this
+ * component; `Shell/SidebarListRow.tsx` only re-exports it so `Shell/index.ts` keeps working. It
+ * lives outside `Shell/` because its two real consumers are app views, not shell chrome.
  */
 
 /** A lucide icon, or anything else taking the same two props. */
@@ -25,7 +26,7 @@ export type SidebarListRowIcon = React.ComponentType<{
   "aria-hidden"?: boolean;
 }>;
 
-const ROW_BASE = "flex w-full items-center gap-2 py-1.5 text-left text-xs transition-colors";
+const ROW_BASE = "flex w-full items-center gap-2 py-1.5 text-left text-sm transition-colors";
 
 /**
  * What makes a row read as a control. Applied only on the branches that render a `<button>`, never
@@ -47,7 +48,7 @@ const ROW_INTERACTIVE =
   "cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50";
 
 const ROW_SELECTED = "bg-secondary text-secondary-foreground";
-const ROW_IDLE = "text-muted-foreground";
+const ROW_IDLE = "text-foreground";
 
 /**
  * The hover fill is `bg-secondary/60`, where it used to be `bg-accent`. `--accent` is `#f8f8f8` on a
@@ -59,12 +60,14 @@ const ROW_IDLE = "text-muted-foreground";
  *
  * Gated on `interactive`, so the handler-less sub-item does not light up under a pointer it will not
  * respond to -- a false affordance is the same bug as a missing one. It was previously ungated and
- * got away with it only because `bg-accent` was invisible. The `disabled:hover:*` pair is the same
- * rule for the other inert case: `SidebarListRow` takes a `disabled` prop, and a disabled row that
- * still fills on hover would contradict the `not-allowed` cursor it shows at the same moment.
+ * got away with it only because `bg-accent` was invisible. `disabled:hover:bg-transparent` is the
+ * same rule for the other inert case: `SidebarListRow` takes a `disabled` prop, and a disabled row
+ * that still fills on hover would contradict the `not-allowed` cursor it shows at the same moment.
+ * `disabled:text-muted-foreground` is unconditional rather than hover-gated, since a disabled row
+ * reads as unavailable whether or not the pointer happens to be over it.
  */
 const ROW_HOVER =
-  "hover:bg-secondary/60 hover:text-foreground disabled:hover:bg-transparent disabled:hover:text-muted-foreground";
+  "hover:bg-secondary/60 disabled:hover:bg-transparent disabled:text-muted-foreground";
 
 /**
  * Horizontal padding is per variant so a sub-item's 1rem indent never has to beat `px-2`.

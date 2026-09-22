@@ -97,6 +97,21 @@ describe("the plan chat is the chat view, embedded", () => {
   });
 
   /**
+   * The embedded composer's md (28px) buttons sat low against the 32px textarea under `items-end`;
+   * this is the same row as the standalone page's, so it centers here too.
+   */
+  it("vertically centers the composer's input row", async () => {
+    render(<PlanChatPanel plan={plan()} />);
+
+    await screen.findByTestId("embedded-chat-view");
+    const textarea = screen.getByLabelText("Chat prompt");
+    const inputRow = textarea.closest("[data-multiline]");
+    expect(inputRow).not.toBeNull();
+    expect(inputRow).toHaveAttribute("data-multiline", "false");
+    expect(inputRow?.className).toContain("items-center");
+  });
+
+  /**
    * V1 hangs nothing off an assistant turn. `AssistantTurn.tsx` closes with a `chat-turn-meta` line
    * carrying duration, tokens and cost, and that is the whole of it - no copy button, no "create
    * plan from this message". V2 grew both, and they read as an extra row of chrome under every

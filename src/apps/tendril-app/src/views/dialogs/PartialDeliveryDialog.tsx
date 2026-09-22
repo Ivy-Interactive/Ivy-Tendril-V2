@@ -1,7 +1,7 @@
 import * as React from "react";
+import { PartialDeliveryDialog as PartialDeliveryDialogView } from "@ivy-interactive/components/tendril";
 import { describeBridgeError, type PlanDetail, type PlanSummary } from "../../types/api";
 import { plansStore } from "../../state/plansStore";
-import { ConfirmDialog } from "@ivy-interactive/components/tendril";
 
 export interface PartialDeliveryDialogProps {
   isOpen: boolean;
@@ -12,18 +12,15 @@ export interface PartialDeliveryDialogProps {
 }
 
 /**
- * Completes the plan while accepting that some verifications failed.
+ * The connected half of `PartialDeliveryDialog`.
  *
- * The fourth argument of `updatePlanField` is `allowFailedVerifications`, which
- * the completion guard turns into `partial_delivery = true`. Without it the same
- * request is refused with a 409 listing the failures — which is exactly what this
- * dialog exists to acknowledge, by name, before sending the flag.
+ * The fourth argument of `updatePlanField` is `allowFailedVerifications`, which the completion
+ * guard turns into `partial_delivery = true`. `transitionPlanOptimistic` carries that flag through
+ * and patches the row to Completed the moment the daemon agrees, so the plan leaves the Review
+ * queue, the sidebar list and the nav badge at once. Calling `bridge.updatePlanField` directly left
+ * the store believing the plan was still in Review until a list read said otherwise.
  *
- * `transitionPlanOptimistic` carries that flag through and patches the row to Completed the moment
- * the daemon agrees, so the plan leaves the Review queue, the sidebar list and the nav badge at
- * once. Calling `bridge.updatePlanField` directly left the store believing the plan was still in
- * Review until a list read said otherwise — the "does not get removed instantly" complaint, on the
- * Complete path.
+ * Filtering the failures is this side's job: the view is handed names, not the plan's DTO.
  */
 export function PartialDeliveryDialog({
   isOpen,
@@ -41,7 +38,7 @@ export function PartialDeliveryDialog({
     }
   }, [isOpen]);
 
-  const failing = (plan.verifications || []).filter((v) => v.status === "Fail");
+  const failing = (plan.verifications || []).filter((v) => v.status === "Fail").map((v) => v.name);
 
   const handleAccept = async () => {
     setIsBusy(true);
@@ -58,34 +55,14 @@ export function PartialDeliveryDialog({
   };
 
   return (
-    <ConfirmDialog
+    <PartialDeliveryDialogView
       isOpen={isOpen}
       onClose={onClose}
-      // V1 names the dialog after what blocked completion rather than after the override, and treats
-      // the override as destructive: it stamps a plan as shipped incomplete, and duplicate detection
-      // reads that stamp afterwards.
-      title="Verification Failed"
-      testId="partial-delivery-dialog"
-      confirmLabel="Complete as Partial Delivery"
-      confirmVariant="destructive"
+      planId={plan.id}
+      failedVerifications={failing}
       onConfirm={handleAccept}
       isBusy={isBusy}
       error={error}
-      body={
-        <>
-          <p>
-            The plan is recorded as <span className="text-foreground">Completed</span> and flagged
-            as a partial delivery, despite these failing verifications:
-          </p>
-          <ul className="space-y-1" data-testid="failing-verifications">
-            {failing.map((verification) => (
-              <li key={verification.name} className="text-warning">
-                {verification.name}
-              </li>
-            ))}
-          </ul>
-        </>
-      }
     />
   );
 }

@@ -7,8 +7,6 @@ import {
   type DashboardMonthValueDto,
   type DashboardTrendDto,
 } from "@ivy-interactive/components/tendril";
-import { BladeContainer, IconButton } from "@ivy-interactive/components/ui";
-import { X } from "lucide-react";
 import type { DashboardActivity, PlanSummary, Job, RecentMergedPr } from "../types/api";
 import { firstStringArg } from "../utils/eventArgs";
 import { useDashboardAnalytics } from "../hooks/useDashboardAnalytics";
@@ -23,6 +21,7 @@ import { rollingAverage, toDayNumber, toIsoDate, todayDayNumber } from "../utils
    the same widget: V1 computes them once in `TendrilProcessStatusService` for exactly that reason. */
 import { ACTIVE_JOB_STATUSES, computeProcessStatus } from "../utils/processStatus";
 import { buildKpiBlade, isKpiBreakdownId } from "./KpiBreakdown";
+import { DashboardKpiSheet } from "./DashboardKpiSheet";
 
 interface DashboardViewProps {
   plans: PlanSummary[];
@@ -269,17 +268,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           agentCosts: analytics.agentCosts,
         });
 
-  // Escape closes the drill-down: the container leaves it alone at depth 1 because the root blade
-  // is not closable, so the host owns dismissal.
-  React.useEffect(() => {
-    if (blade == null) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setSelectedKpi(null);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [blade]);
-
   // Active Jobs lists the unfinished jobs only, capped (`DashboardApp.BuildActiveJobs`). A finished
   // job in a card headed "Active Jobs" is the one thing this card must never show.
   //
@@ -362,40 +350,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         }}
       />
 
-      {blade && (
-        <div
-          className="fixed inset-0 z-50 flex justify-end bg-black/40"
-          data-testid="kpi-breakdown"
-          role="presentation"
-          onClick={(event) => {
-            // Only the backdrop itself dismisses; a click inside a blade must not.
-            if (event.target === event.currentTarget) setSelectedKpi(null);
-          }}
-        >
-          <div className="h-full w-full max-w-[72rem] shadow-2xl">
-            {/* The selected KPI is the stack's root, so a breakdown row can push a further blade
-                (agent → that agent's plans) without the dashboard itself becoming a blade. */}
-            <BladeContainer
-              root={{
-                ...blade,
-                // The descriptor's own width hint is what it gets when something pushes it deeper in
-                // a stack; as the root of this overlay it fills the panel instead.
-                width: "flex",
-                headerAction: (
-                  <IconButton
-                    label="Close breakdown"
-                    size="md"
-                    tone="muted"
-                    onClick={() => setSelectedKpi(null)}
-                  >
-                    <X className="size-4" />
-                  </IconButton>
-                ),
-              }}
-            />
-          </div>
-        </div>
-      )}
+      <DashboardKpiSheet blade={blade} onClose={() => setSelectedKpi(null)} />
     </div>
   );
 };

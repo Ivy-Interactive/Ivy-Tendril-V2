@@ -236,23 +236,23 @@ export const ServiceSettingsView: React.FC<ServiceSettingsViewProps> = ({
         {/* Service Details */}
         <dl className="mt-6 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 text-xs">
           <div className="rounded-box border border-border bg-background/60 p-3">
-            <dt className="text-muted-foreground/70">Ownership</dt>
+            <dt className="text-foreground">Ownership</dt>
             <dd className="mt-1 font-semibold text-foreground">
               {serviceInfo?.ownership || "External / Standalone"}
             </dd>
           </div>
           <div className="rounded-box border border-border bg-background/60 p-3">
-            <dt className="text-muted-foreground/70">Endpoint</dt>
+            <dt className="text-foreground">Endpoint</dt>
             <dd className="mt-1 font-mono text-muted-foreground">
               {serviceInfo?.host || "127.0.0.1"}:{serviceInfo?.port || "N/A"}
             </dd>
           </div>
           <div className="rounded-box border border-border bg-background/60 p-3">
-            <dt className="text-muted-foreground/70">Process PID</dt>
+            <dt className="text-foreground">Process PID</dt>
             <dd className="mt-1 font-mono text-muted-foreground">{serviceInfo?.pid || "N/A"}</dd>
           </div>
           <div className="rounded-box border border-border bg-background/60 p-3">
-            <dt className="text-muted-foreground/70">Crash Count</dt>
+            <dt className="text-foreground">Crash Count</dt>
             <dd className="mt-1 font-semibold text-foreground">{serviceInfo?.crashCount ?? 0}</dd>
           </div>
         </dl>

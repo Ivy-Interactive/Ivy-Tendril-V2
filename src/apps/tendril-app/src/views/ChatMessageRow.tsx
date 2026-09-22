@@ -1,6 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { ChatBubble, ChatBubbleMessage } from "@ivy-interactive/components/renderers";
 import {
+  AnswersSummaryCard,
+  parseAnswersSummary,
   PlanMarkdown,
   QuestionsDraftContext,
   QuestionsSubmitContext,
@@ -245,6 +247,16 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
   );
   const turnSegments = useMemo(() => buildTurnSegments(parsedTurn, content), [parsedTurn, content]);
 
+  /**
+   * A submission of a questions block, recognised by the shape `buildAnswersSummary` emits. The
+   * daemon stores a user turn as its prompt text alone, so there is no field to tag one with; the
+   * markdown the agent receives is unchanged, and only its presentation here differs.
+   */
+  const submittedAnswers = useMemo(
+    () => (isUser ? parseAnswersSummary(content) : undefined),
+    [isUser, content],
+  );
+
   const systemEvent = useMemo(
     () => (isSystem ? formatSystemEvent(currentMessage.content) : null),
     [isSystem, currentMessage.content],
@@ -320,6 +332,20 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
           )}
         </span>
       </div>
+    );
+  }
+
+  if (submittedAnswers && attachments.length === 0) {
+    return (
+      <ChatBubble variant="sent" layout="default">
+        <div
+          data-message-id={message.id}
+          className="flex min-w-0 max-w-[80%] flex-col items-end"
+          title={message.timestamp}
+        >
+          <AnswersSummaryCard answers={submittedAnswers} />
+        </div>
+      </ChatBubble>
     );
   }
 

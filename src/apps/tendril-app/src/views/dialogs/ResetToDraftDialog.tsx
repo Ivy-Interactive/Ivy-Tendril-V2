@@ -1,7 +1,7 @@
 import * as React from "react";
+import { ResetToDraftDialog as ResetToDraftDialogView } from "@ivy-interactive/components/tendril";
 import { describeBridgeError, type PlanDetail, type PlanSummary } from "../../types/api";
 import { plansStore } from "../../state/plansStore";
-import { ConfirmDialog } from "@ivy-interactive/components/tendril";
 
 export interface ResetToDraftDialogProps {
   isOpen: boolean;
@@ -12,12 +12,7 @@ export interface ResetToDraftDialogProps {
 }
 
 /**
- * Sends the plan back to Draft and removes its worktrees, so it can be executed
- * again from a clean slate.
- *
- * State change and cleanup happen in one request, so the UI cannot leave a
- * half-reset plan behind. A Completed or Skipped plan — or one a job still holds
- * — is refused with a 409, whose message this dialog renders in place.
+ * The connected half of `ResetToDraftDialog`.
  *
  * The write goes through `plansStore`, as `DeletePlanDialog`'s four answers do, so the row is back
  * at Draft in `state.plans` the moment the daemon agrees: that is what takes the plan out of the
@@ -51,24 +46,13 @@ export function ResetToDraftDialog({ isOpen, onClose, plan, onReset }: ResetToDr
   };
 
   return (
-    <ConfirmDialog
+    <ResetToDraftDialogView
       isOpen={isOpen}
       onClose={onClose}
-      // `DialogHeader($"Reset Plan #{id} to Draft")`, and V1's Warning (not destructive) confirm.
-      title={`Reset Plan #${plan.id} to Draft`}
-      testId="reset-to-draft-dialog"
-      confirmLabel="Reset to Draft"
-      confirmVariant="warning"
+      planId={plan.id}
       onConfirm={handleReset}
       isBusy={isBusy}
       error={error}
-      body={
-        <p>
-          The plan returns to <span className="text-foreground">Draft</span> and its worktrees are
-          removed, discarding any uncommitted work inside them. Commits already pushed are not
-          affected.
-        </p>
-      }
     />
   );
 }

@@ -261,6 +261,7 @@ describe("Package Exports", () => {
       expect(tendril.TendrilQuestions).toBeDefined();
       expect(tendril.QuestionsForm).toBeDefined();
       expect(tendril.ChatQuestionsBlock).toBeDefined();
+      expect(tendril.AnswersSummaryCard).toBeDefined();
       expect(tendril.DescriptionMarkdown).toBeDefined();
       expect(tendril.buildAnswersSummary).toBeDefined();
       expect(tendril.canSubmitAnswers).toBeDefined();
@@ -268,6 +269,7 @@ describe("Package Exports", () => {
       expect(tendril.documentOtherOpen).toBeDefined();
       expect(tendril.entryTitle).toBeDefined();
       expect(tendril.hasEntries).toBeDefined();
+      expect(tendril.parseAnswersSummary).toBeDefined();
       expect(tendril.submitNote).toBeDefined();
       expect(tendril.unansweredRequired).toBeDefined();
     });

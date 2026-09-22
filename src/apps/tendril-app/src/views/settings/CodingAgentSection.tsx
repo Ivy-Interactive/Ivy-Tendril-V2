@@ -153,7 +153,7 @@ const HelpStep: React.FC<{ title: string; step: HintStep; testId: string }> = ({
   testId,
 }) => (
   <div className="space-y-2" data-testid={testId}>
-    <p className="text-xs font-medium text-muted-foreground">{title}</p>
+    <p className="text-xs font-medium text-foreground">{title}</p>
     <p className="text-xs text-foreground">{step.summary}</p>
     {step.commands.map((route, index) => (
       <div key={route.command} className="space-y-1">
@@ -705,7 +705,7 @@ export const CodingAgentSection: React.FC<{
                 />
               )}
               <div className="space-y-1">
-                <Label htmlFor="byo-api-key" className="text-xs font-medium text-muted-foreground">
+                <Label htmlFor="byo-api-key" className="text-xs font-medium text-foreground">
                   API Key
                 </Label>
                 <div className="flex items-start gap-2">
@@ -875,10 +875,7 @@ export const CodingAgentSection: React.FC<{
         <SubSection title="Extra Arguments &amp; Environment" testId="agent-environment-block">
           <div className="space-y-3">
             <div className="space-y-1">
-              <Label
-                htmlFor="agent-arguments"
-                className="text-xs font-medium text-muted-foreground"
-              >
+              <Label htmlFor="agent-arguments" className="text-xs font-medium text-foreground">
                 Extra Arguments
               </Label>
               <Input

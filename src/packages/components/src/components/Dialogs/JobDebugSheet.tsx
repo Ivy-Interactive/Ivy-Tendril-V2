@@ -1,8 +1,47 @@
 import React, { useState } from "react";
 import { ClipboardCopy } from "lucide-react";
-import { copyToClipboard } from "@ivy-interactive/components";
-import { Button, HeaderLayout } from "@ivy-interactive/components/ui";
-import type { JobDetail } from "../types/api";
+import { copyToClipboard } from "../../lib/clipboard";
+import { Button } from "../ui/button";
+import { HeaderLayout } from "../ui/panel-layout";
+/**
+ * A job as this sheet renders it.
+ *
+ * Declared here rather than imported from the app's `JobDebugDetail`, on the rule `PlanGitView` states:
+ * the component that renders a shape owns its declaration and cannot import from the app. Every
+ * field is optional except the four a job always has, because the sheet renders each row only when
+ * it is present - which is what makes it useful at every point in a job's life.
+ */
+export interface JobDebugDetail {
+  id: string;
+  type: string;
+  status: string;
+  project: string;
+  planId?: string;
+  planTitle?: string;
+  statusMessage?: string;
+  startedAt?: string;
+  completedAt?: string;
+  lastOutputAt?: string;
+  durationSeconds?: number;
+  /** The agent process, while one is alive. V1's `ProcessId` / `Detached`. */
+  processId?: number;
+  detached?: boolean;
+  tokens?: number;
+  cost?: number;
+  model?: string;
+  agent?: string;
+  permissionDenials?: string[];
+  args?: string;
+  workingDirectory?: string;
+  reportedFailureReason?: string;
+  provider?: string;
+  cliCommand?: string;
+  planFolder?: string;
+  jobLogPath?: string;
+  jobPromptPath?: string;
+  jobRawLogPath?: string;
+  jobEventwirePath?: string;
+}
 
 /**
  * V1's Job Debug sheet (`Apps/Views/Sheets/JobDebugSheet.cs`), which the Jobs table's **Debug** row
@@ -59,7 +98,7 @@ function formatUniversalTime(value: string | undefined): string {
  * only when the file exists, so a path here is one that can be opened. V1 groups them last for a
  * readable paste; so does this.
  */
-export function buildJobDebugFields(job: JobDetail): JobDebugField[] {
+export function buildJobDebugFields(job: JobDebugDetail): JobDebugField[] {
   const tokens = job.tokens;
   const fields: JobDebugField[] = [
     { label: "Job Id", value: job.id },
@@ -124,7 +163,7 @@ export function formatJobDebugDetails(fields: readonly JobDebugField[]): string 
 }
 
 export interface JobDebugSheetProps {
-  job: JobDetail;
+  job: JobDebugDetail;
 }
 
 /**

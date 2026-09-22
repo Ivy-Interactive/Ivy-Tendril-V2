@@ -4,7 +4,8 @@ import "@testing-library/jest-dom";
 import { TendrilQuestions } from "./TendrilQuestions";
 import { QuestionsForm } from "./QuestionsForm";
 import { parseQuestions } from "../PlanMarkdown/questionsSchema";
-import { buildAnswersSummary, unansweredRequired } from "./answers";
+import { buildAnswersSummary, parseAnswersSummary, unansweredRequired } from "./answers";
+import { AnswersSummaryCard } from "./AnswersSummaryCard";
 
 const yaml = (...lines: string[]) => lines.join("\n");
 
@@ -315,5 +316,96 @@ describe("QuestionsForm", () => {
     expect(onAnswer).toHaveBeenCalledWith("proceed", ["review"]);
 
     getSelectionSpy.mockRestore();
+  });
+});
+
+describe("parseAnswersSummary", () => {
+  it("round-trips a summary of values, a skip and a question left to the agent", () => {
+    const questions = [
+      ...questionsOf(withOther),
+      ...questionsOf(multiSelect),
+      ...questionsOf(freeText),
+    ];
+    const summary = buildAnswersSummary(questions, { checks: ["lint", "test"] });
+
+    expect(parseAnswersSummary(summary)).toEqual([
+      { label: "Which environment?", value: "", skipped: false, noPreference: true },
+      {
+        label: "Which checks should run?",
+        value: "Lint, Test",
+        skipped: false,
+        noPreference: false,
+      },
+      { label: "Anything else?", value: "", skipped: true, noPreference: false },
+    ]);
+  });
+
+  it("keeps a free-text answer containing a comma as one decision, not two", () => {
+    const questions = questionsOf(freeText);
+    const summary = buildAnswersSummary(questions, { notes: ["Yes, but only on Tuesdays"] });
+
+    expect(parseAnswersSummary(summary)).toEqual([
+      {
+        label: "Anything else?",
+        value: "Yes, but only on Tuesdays",
+        skipped: false,
+        noPreference: false,
+      },
+    ]);
+  });
+
+  it("round-trips a typed answer that is not one of the options", () => {
+    const questions = questionsOf(withOther);
+    const summary = buildAnswersSummary(questions, { env: ["a bare-metal box"] });
+
+    expect(parseAnswersSummary(summary)).toEqual([
+      {
+        label: "Which environment?",
+        value: "a bare-metal box",
+        skipped: false,
+        noPreference: false,
+      },
+    ]);
+  });
+
+  it("refuses a summary whose own bold markers make a line ambiguous, so it stays raw text", () => {
+    expect(parseAnswersSummary("Answers:\n- **Ship **now**?**: yes")).toBeUndefined();
+    expect(parseAnswersSummary("Answers:\n- **Which one**: a **b**: c")).toBeUndefined();
+  });
+
+  it("rejects prose that is not a summary, including a message that merely uses bold", () => {
+    expect(parseAnswersSummary("Please use **bold** here")).toBeUndefined();
+    expect(parseAnswersSummary("Answers:")).toBeUndefined();
+    expect(parseAnswersSummary("Answers:\n- no label here")).toBeUndefined();
+    expect(parseAnswersSummary("Answers to your question:\n- **A**: b")).toBeUndefined();
+  });
+});
+
+describe("AnswersSummaryCard", () => {
+  it("renders each label with its value and marks skips and deferrals as muted text", () => {
+    const questions = [
+      ...questionsOf(withOther),
+      ...questionsOf(multiSelect),
+      ...questionsOf(freeText),
+    ];
+    const answers = parseAnswersSummary(buildAnswersSummary(questions, { checks: ["lint"] }));
+    const { container } = render(<AnswersSummaryCard answers={answers ?? []} />);
+
+    expect(screen.getByText("Which checks should run?")).toBeInTheDocument();
+    const chips = container.querySelectorAll(".tq-answer-value");
+    expect(Array.from(chips).map((chip) => chip.textContent)).toEqual(["Lint"]);
+    expect(screen.getByText("Not answered (agent decided)")).toBeInTheDocument();
+    expect(screen.getByText("Not answered (not required)")).toBeInTheDocument();
+  });
+
+  it("shows a multi-select answer as the one decision it was", () => {
+    const questions = questionsOf(multiSelect);
+    const answers = parseAnswersSummary(
+      buildAnswersSummary(questions, { checks: ["lint", "build"] }),
+    );
+    const { container } = render(<AnswersSummaryCard answers={answers ?? []} />);
+
+    const chips = container.querySelectorAll(".tq-answer-value");
+    expect(Array.from(chips).map((chip) => chip.textContent)).toEqual(["Lint, Build"]);
   });
 });

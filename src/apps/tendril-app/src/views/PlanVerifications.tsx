@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { Button } from "@ivy-interactive/components/ui";
+import { Badge, Button } from "@ivy-interactive/components/ui";
 import { bridge } from "../api/bridge";
 import { plansStore } from "../state/plansStore";
 import {
@@ -9,7 +9,7 @@ import {
   type VerificationReport,
   type VerificationStatus,
 } from "../types/api";
-import { TERMINAL_VERIFICATION_CLASS } from "../utils/verificationStatus";
+import { VERIFICATION_BADGE_VARIANT } from "../utils/verificationStatus";
 import { ErrorBanner } from "../components/ErrorBanner";
 
 interface PlanVerificationsProps {
@@ -226,12 +226,12 @@ export const PlanVerifications: React.FC<PlanVerificationsProps> = ({
                 </label>
                 {/* Only terminal outcomes get a badge; Pending and Skipped are conveyed by the box. */}
                 {terminal && (
-                  <span
+                  <Badge
                     data-testid={`verification-status-${v.name}`}
-                    className={`rounded border px-2 py-0.5 text-xs font-medium ${TERMINAL_VERIFICATION_CLASS[terminal]}`}
+                    variant={VERIFICATION_BADGE_VARIANT[terminal]}
                   >
                     {terminal}
-                  </span>
+                  </Badge>
                 )}
                 {report?.date && (
                   <span className="text-xs text-muted-foreground/70">{report.date}</span>
