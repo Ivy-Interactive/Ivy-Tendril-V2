@@ -1,1 +1,252 @@
-{}
+{
+  "header": {
+    "greeting": {
+      "morning": "Good Morning!",
+      "afternoon": "Good Afternoon!",
+      "evening": "Good Evening!"
+    },
+    "headline": "What Are We Producing Today?"
+  },
+  "kpis": {
+    "featuresShipped": {
+      "label": "Features Shipped",
+      "hint_one": "last {{count}} day",
+      "hint_other": "last {{count}} days"
+    },
+    "costPerFeature": {
+      "label": "Avg Cost / Feature",
+      "noValue": "n/a",
+      "hint_one": "{{spend}} over {{count}} feature",
+      "hint_other": "{{spend}} over {{count}} features",
+      "hintNoFeatures_one": "no features shipped in {{count}} day",
+      "hintNoFeatures_other": "no features shipped in {{count}} days",
+      "hintNoSpend_one": "no priced spend in {{count}} day",
+      "hintNoSpend_other": "no priced spend in {{count}} days"
+    },
+    "forecastMonth": {
+      "label": "Forecast This Month",
+      "range": "{{lower}} – {{upper}}",
+      "hint": "{{calendarDays}}d calendar to {{activityDays}}d activity basis",
+      "hintNoSpend": "no spend recorded to project from"
+    },
+    "avgCostPlan": {
+      "label": "Avg Cost / Plan",
+      "hint": "vs {{cost}} prior week",
+      "hintNoPrior": "no priced plans in the prior week"
+    },
+    "tokensConsumed": {
+      "label": "Tokens Consumed",
+      "hint_one": "last {{count}} day",
+      "hint_other": "last {{count}} days",
+      "hintSubsidized": "{{percent}} subsidized"
+    }
+  },
+  "fallbackKpis": {
+    "featuresShipped": {
+      "label": "Features shipped",
+      "hint": "merged PRs and solved issues, last 30 days"
+    },
+    "costPerFeature": {
+      "label": "Avg cost per Feature",
+      "value": "n/a",
+      "hint": "No cost data available"
+    },
+    "forecastMonth": {
+      "label": "Forecast This Month",
+      "hint": "No cost data in the last 30 days"
+    },
+    "avgCostPlan": {
+      "label": "Avg Cost/Plan",
+      "hint": "No cost data available"
+    }
+  },
+  "format": {
+    "currencyCompact": {
+      "thousand": "${{value}}k",
+      "million": "${{value}}M",
+      "billion": "${{value}}B",
+      "trillion": "${{value}}T"
+    },
+    "tokensCompact": {
+      "thousand": "{{value}}k",
+      "million": "{{value}}M"
+    }
+  },
+  "kpiSheet": {
+    "title": "KPI breakdown"
+  },
+  "breakdown": {
+    "titles": {
+      "featuresShipped": "Features Shipped",
+      "costPerFeature": "Avg Cost Per Feature",
+      "forecastMonth": "Forecast This Month",
+      "avgCostPlan": "Avg Cost/Plan"
+    },
+    "empty": {
+      "title": "No Data"
+    },
+    "details": {
+      "metric": "Metric",
+      "formula": "Formula"
+    },
+    "delta": {
+      "notAvailable": "N/A"
+    },
+    "agents": {
+      "title": "Spend by Coding Agent",
+      "empty": "No agent-attributed spend in this window.",
+      "columns": {
+        "agent": "Coding Agent",
+        "cost": "Spend",
+        "costShare": "Spend Share",
+        "tokens": "Tokens",
+        "tokenShare": "Token Share",
+        "planCount": "Plans"
+      },
+      "shareNotAvailable": "N/A",
+      "unknownAgent": "Unknown",
+      "partialAttribution": {
+        "title": "Partial Attribution",
+        "body": "Rows predating agent capture appear as {{agent}} and cannot be attributed to a specific agent.",
+        "bodyWithShare": "Rows predating agent capture appear as {{agent}} and cannot be attributed to a specific agent. That is {{share}} of the spend in this window.",
+        "bodyUninformative": "Rows predating agent capture appear as {{agent}} and cannot be attributed to a specific agent. That is {{share}} of the spend in this window, so the split below it carries no information."
+      }
+    },
+    "featuresShipped": {
+      "subtitle": "Merged PRs and solved issues behind the count",
+      "note": {
+        "title": "Output Metric",
+        "body_one": "Features Shipped counts merged PRs and solved issues without a PR over the last {{count}} day. A plan with three PRs counts three features; an issue-only plan counts one.",
+        "body_other": "Features Shipped counts merged PRs and solved issues without a PR over the last {{count}} days. A plan with three PRs counts three features; an issue-only plan counts one."
+      },
+      "metric": "Features Shipped",
+      "formula_one": "Merged PRs + solved issues, last {{count}} day",
+      "formula_other": "Merged PRs + solved issues, last {{count}} days",
+      "last_one": "Last {{count}} Day",
+      "last_other": "Last {{count}} Days",
+      "prior_one": "Prior {{count}} Day",
+      "prior_other": "Prior {{count}} Days",
+      "periodDelta": "{{days}}-Day Period Delta",
+      "byDay": {
+        "title_one": "Features by Day (Last {{count}} Day)",
+        "title_other": "Features by Day (Last {{count}} Days)",
+        "empty": "No features shipped in the {{days}}-day window.",
+        "columns": {
+          "date": "Date",
+          "count": "Features"
+        }
+      },
+      "mergedPrs": {
+        "title": "Recent Merged Pull Requests",
+        "empty": "No merged pull requests recorded yet.",
+        "columns": {
+          "plan": "Plan",
+          "title": "Title",
+          "repo": "Repo",
+          "merged": "Merged",
+          "prUrl": "PR URL"
+        },
+        "open": "open"
+      }
+    },
+    "costPerFeature": {
+      "subtitle": "The two figures the quotient is taken from",
+      "note": {
+        "title": "Unit Cost",
+        "body": "Avg Cost per Feature divides {{days}}-day spend by {{days}}-day features shipped, so the card shows the exact quotient of the two cards beside it."
+      },
+      "metric": "Avg Cost per Feature",
+      "formula": "{{days}}-day spend / {{days}}-day features shipped",
+      "lastSpend_one": "Last {{count}} Day (Spend)",
+      "lastSpend_other": "Last {{count}} Days (Spend)",
+      "lastFeatures_one": "Last {{count}} Day (Features)",
+      "lastFeatures_other": "Last {{count}} Days (Features)",
+      "lastCostPerFeature_one": "Last {{count}} Day (Cost/Feature)",
+      "lastCostPerFeature_other": "Last {{count}} Days (Cost/Feature)",
+      "priorSpend_one": "Prior {{count}} Day (Spend)",
+      "priorSpend_other": "Prior {{count}} Days (Spend)",
+      "priorFeatures_one": "Prior {{count}} Day (Features)",
+      "priorFeatures_other": "Prior {{count}} Days (Features)",
+      "priorCostPerFeature_one": "Prior {{count}} Day (Cost/Feature)",
+      "priorCostPerFeature_other": "Prior {{count}} Days (Cost/Feature)",
+      "noValue": "n/a",
+      "periodDelta": "{{days}}-Day Period Delta"
+    },
+    "forecastMonth": {
+      "subtitle": "Both projection bases, and the days behind them",
+      "empty": "No activity on record.",
+      "note": {
+        "title": "Usage & Subsidized Analysis",
+        "bodySubsidized_one": "Forecast This Month projects month-end spend using daily activity over the last {{count}} day. {{percent}} of tokens in this window were subsidized via subscription ({{subsidizedValue}} equivalent value) with {{apiCharges}} in direct API charges.",
+        "bodySubsidized_other": "Forecast This Month projects month-end spend using daily activity over the last {{count}} days. {{percent}} of tokens in this window were subsidized via subscription ({{subsidizedValue}} equivalent value) with {{apiCharges}} in direct API charges.",
+        "body_one": "Forecast This Month projects month-end spend using daily activity over the last {{count}} day. Direct API projections estimate billed out-of-pocket spend, while total projections reflect overall token market value.",
+        "body_other": "Forecast This Month projects month-end spend using daily activity over the last {{count}} days. Direct API projections estimate billed out-of-pocket spend, while total projections reflect overall token market value."
+      },
+      "metric": "Forecast This Month",
+      "apiCalendar": "Direct API Forecast (Calendar Basis)",
+      "apiActivity": "Direct API Forecast (Activity Basis)",
+      "totalCalendar": "Total Forecast (Calendar Basis)",
+      "totalActivity": "Total Forecast (Activity Basis)",
+      "subsidizedTokenShare": "Subsidized Token Share",
+      "subsidizedTokenShareValue": "{{percent}} of tokens",
+      "subsidizedValueShare": "Subsidized Value Share",
+      "subsidizedValueShareValue": "{{percent}} of value",
+      "mtdApiSpend": "Month-to-Date Direct API Spend",
+      "mtdSubsidizedValue": "Month-to-Date Subsidized Value",
+      "mtdUnattributedSpend": "Month-to-Date Unattributed Spend",
+      "mtdTotalMarketValue": "Month-to-Date Total Market Value",
+      "calendarDays": "Calendar Days in Window",
+      "activeDays": "Active Days with Spend",
+      "daysRemaining": "Days Remaining",
+      "daysInMonth": "Days in Month",
+      "dayCount_one": "{{count}} day",
+      "dayCount_other": "{{count}} days",
+      "daily": {
+        "title_one": "Daily Spend (Last {{count}} Day)",
+        "title_other": "Daily Spend (Last {{count}} Days)",
+        "empty": "No daily spend records found in the {{days}}-day window.",
+        "columns": {
+          "date": "Date",
+          "cost": "Total Spend",
+          "apiCost": "API Spend",
+          "subsidizedCost": "Subsidized Spend",
+          "tokens": "Total Tokens",
+          "subsidizedShare": "Subsidized %"
+        },
+        "incompleteSplit": {
+          "title": "Incomplete Split",
+          "body": "{{amount}} of the spend in this window carries no cost source, so it is in Total Spend but in neither the API nor the Subsidized column. The two columns therefore under-report and must not be read as a complete split."
+        }
+      }
+    },
+    "avgCostPlan": {
+      "subtitle": "Recent plans; a dash means the rows were never priced",
+      "note": {
+        "title": "7-Day Rolling Average",
+        "body_one": "Average Cost per Plan calculates the mean execution and agent spend for plans created in the last {{count}} day that reached {{states}} state. Unpriced plans (e.g. subscription runs where cost is null) are excluded from the divisor so they do not artificially deflate the average.",
+        "body_other": "Average Cost per Plan calculates the mean execution and agent spend for plans created in the last {{count}} days that reached {{states}} state. Unpriced plans (e.g. subscription runs where cost is null) are excluded from the divisor so they do not artificially deflate the average."
+      },
+      "metric": "Average Cost per Plan",
+      "window": "Window",
+      "windowValue_one": "{{count}} day (plans created in last {{count}} day)",
+      "windowValue_other": "{{count}} days (plans created in last {{count}} days)",
+      "statesIncluded": "Plan States Included",
+      "currentAverage": "Current {{days}}-Day Average",
+      "priorAverage": "Prior {{days}}-Day Average (Days 8-14)",
+      "periodDelta": "{{days}}-Day Period Delta",
+      "plans": {
+        "title_one": "Plans in Rolling Window (Last {{count}} Day)",
+        "title_other": "Plans in Rolling Window (Last {{count}} Days)",
+        "empty": "No plans created in the {{days}}-day rolling window.",
+        "columns": {
+          "plan": "Plan",
+          "title": "Title",
+          "state": "State",
+          "created": "Created",
+          "tokens": "Tokens",
+          "cost": "Total Cost"
+        }
+      }
+    }
+  }
+}

@@ -7,6 +7,9 @@ import {
   type DashboardMonthValueDto,
   type DashboardTrendDto,
 } from "@ivy-interactive/components/tendril";
+import { formatDate, useFormatters, type Formatters } from "@ivy-interactive/components/i18n";
+import { useTranslation, type TFunction } from "../i18n";
+import { useEnumLabels } from "../i18n/enumLabels";
 import type { DashboardActivity, PlanSummary, Job, RecentMergedPr } from "../types/api";
 import { firstStringArg } from "../utils/eventArgs";
 import { useDashboardAnalytics } from "../hooks/useDashboardAnalytics";
@@ -47,36 +50,27 @@ const TREND_DAILY_WINDOW_DAYS = 28;
 /** Weeks the Pull Requests card's Week tab plots, from `DashboardApp.BuildWeeklyPullRequests`. */
 const PR_WEEKS_SHOWN = 6;
 
-/** "1st", "2nd", "3rd", "4th"... as `DashboardApp.Ordinal` writes them. */
-const ordinal = (day: number): string => {
-  const suffix =
-    day === 11 || day === 12 || day === 13
-      ? "th"
-      : day % 10 === 1
-        ? "st"
-        : day % 10 === 2
-          ? "nd"
-          : day % 10 === 3
-            ? "rd"
-            : "th";
-  return `${day}${suffix}`;
-};
-
-/** "Monday, 15th September", the header's date line (`DashboardApp.Build`). */
-const formatDateText = (now: Date): string =>
-  `${now.toLocaleDateString("en-US", { weekday: "long" })}, ${ordinal(now.getDate())} ` +
-  now.toLocaleDateString("en-US", { month: "long" });
+/**
+ * The header's date line (`DashboardApp.Build`): weekday, day and month, in the current language's
+ * own order - "Monday, September 15" in English, "Montag, 15. September" in German.
+ *
+ * V1 writes "Monday, 15th September", composed by hand with an English ordinal suffix
+ * (`DashboardApp.Ordinal`). No `Intl` option produces English ordinals, and a hand-built
+ * `weekday, ordinal month` cannot be reordered for any other language, so this is `Intl`'s form.
+ */
+const formatDateText = (now: Date, format: Formatters): string =>
+  format.date(now, { weekday: "long", day: "numeric", month: "long" });
 
 /**
  * `DashboardApp.BuildGreeting`, minus the name. V1 personalises it from `Environment.UserName`;
  * a browser has no such thing, so this takes the same method's no-name branch rather than
  * inventing an identity for whoever is looking at the page.
  */
-const buildGreeting = (now: Date): string => {
+const buildGreeting = (now: Date, t: TFunction<"dashboard">): string => {
   const hour = now.getHours();
-  const word =
-    hour >= 5 && hour < 12 ? "Morning" : hour >= 12 && hour < 17 ? "Afternoon" : "Evening";
-  return `Good ${word}!`;
+  if (hour >= 5 && hour < 12) return t("header.greeting.morning");
+  if (hour >= 12 && hour < 17) return t("header.greeting.afternoon");
+  return t("header.greeting.evening");
 };
 
 /**
@@ -160,7 +154,8 @@ export function buildWeeklyPullRequests(
 
     const startDate = new Date(toIsoDate(weekStart) + "T00:00:00Z");
     return {
-      label: `${startDate.toLocaleDateString("en-US", { month: "short", timeZone: "UTC" })} ${startDate.getUTCDate()}`,
+      // "Sep 14" in English: the week's start, in the current language's short month-and-day form.
+      label: formatDate(startDate, { month: "short", day: "numeric", timeZone: "UTC" }),
       value,
       year: startDate.getUTCFullYear(),
       month: startDate.getUTCMonth() + 1,
@@ -189,16 +184,30 @@ const KPI_IDS = ["featuresShipped", "costPerFeature", "forecastMonth", "avgCostP
  * read `activity == null` — which is equally true of a fetch still in flight — and that conflation is
  * where the flash of dashes and "n/a" on every visit to the Dashboard came from. A figure nobody has
  * fetched yet is not an unknown figure; it gets a skeleton.
+ *
+ * Built per render rather than once, so its wording follows the language.
  */
-const FALLBACK_KPIS: DashboardKpiDto[] = [
+const fallbackKpis = (t: TFunction<"dashboard">): DashboardKpiDto[] => [
   {
-    label: "Features shipped",
+    label: t("fallbackKpis.featuresShipped.label"),
     value: NO_VALUE,
-    hint: "merged PRs and solved issues, last 30 days",
+    hint: t("fallbackKpis.featuresShipped.hint"),
   },
-  { label: "Avg cost per Feature", value: "n/a", hint: "No cost data available" },
-  { label: "Forecast This Month", value: NO_VALUE, hint: "No cost data in the last 30 days" },
-  { label: "Avg Cost/Plan", value: NO_VALUE, hint: "No cost data available" },
+  {
+    label: t("fallbackKpis.costPerFeature.label"),
+    value: t("fallbackKpis.costPerFeature.value"),
+    hint: t("fallbackKpis.costPerFeature.hint"),
+  },
+  {
+    label: t("fallbackKpis.forecastMonth.label"),
+    value: NO_VALUE,
+    hint: t("fallbackKpis.forecastMonth.hint"),
+  },
+  {
+    label: t("fallbackKpis.avgCostPlan.label"),
+    value: NO_VALUE,
+    hint: t("fallbackKpis.avgCostPlan.hint"),
+  },
 ];
 
 export const DashboardView: React.FC<DashboardViewProps> = ({
@@ -208,6 +217,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   onNavigate,
   onNewPlan,
 }) => {
+  const { t } = useTranslation("dashboard");
+  const format = useFormatters();
+  const enumLabels = useEnumLabels();
   const analytics = useDashboardAnalytics();
   const [selectedKpi, setSelectedKpi] = React.useState<string | null>(null);
 
@@ -239,7 +251,7 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
    *  - pending: nothing to state yet, so the cards, the trend and the two side charts render
    *    skeletons and the operator sees the dashboard's shape rather than a row of dashes;
    *  - settled with data: the real figures;
-   *  - settled without data: {@link FALLBACK_KPIS}, V1's honest "we looked and there is nothing".
+   *  - settled without data: {@link fallbackKpis}, V1's honest "we looked and there is nothing".
    *
    * A *refresh* is none of these: `useDashboardAnalytics` keeps the last snapshot across a poll, a
    * failed poll and a remount, so `activity` stays non-null and the numbers on screen never blink.
@@ -255,18 +267,22 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         }).filter((kpi) => kpi.id != null && KPI_IDS.includes(kpi.id))
       : analyticsPending
         ? []
-        : FALLBACK_KPIS;
+        : fallbackKpis(t);
 
   const blade =
     selectedKpi == null
       ? null
-      : buildKpiBlade(selectedKpi, {
-          activity,
-          shippedFeatures: analytics.shippedFeatures,
-          mergedPrs: analytics.mergedPrs,
-          planCosts: analytics.planCosts,
-          agentCosts: analytics.agentCosts,
-        });
+      : buildKpiBlade(
+          selectedKpi,
+          {
+            activity,
+            shippedFeatures: analytics.shippedFeatures,
+            mergedPrs: analytics.mergedPrs,
+            planCosts: analytics.planCosts,
+            agentCosts: analytics.agentCosts,
+          },
+          t,
+        );
 
   // Active Jobs lists the unfinished jobs only, capped (`DashboardApp.BuildActiveJobs`). A finished
   // job in a card headed "Active Jobs" is the one thing this card must never show.
@@ -274,11 +290,12 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
   // The title follows `JobsApp.GetPromptDisplay`'s order as far as V2's DTO reaches: the plan title
   // first, then the promptware type. The project is *not* a title — every job in a single-project
   // install would read the same — and neither is the literal "Task Execution", which is wrong for
-  // every job that is not an ExecutePlan.
+  // every job that is not an ExecutePlan. The type is shown by its label; `status` below is the
+  // widget's styling key, not text.
   const dashboardJobs: DashboardJobDto[] = activeJobs.slice(0, ACTIVE_JOBS_SHOWN).map((j) => ({
     id: j.id,
     planId: j.planId || "",
-    title: j.planTitle || j.type || j.project,
+    title: j.planTitle || (j.type && enumLabels.jobType(j.type)) || j.project,
     status: j.status.toLowerCase(),
   }));
 
@@ -291,9 +308,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
     <div className="flex min-h-0 flex-1 flex-col" data-testid="dashboard-view">
       <TendrilDashboard
         id="tendril-dashboard"
-        dateText={formatDateText(now)}
-        greeting={buildGreeting(now)}
-        headline="What Are We Producing Today?"
+        dateText={formatDateText(now, format)}
+        greeting={buildGreeting(now, t)}
+        headline={t("header.headline")}
         draftCount={draftCount}
         inProgressCount={activeJobs.length}
         reviewCount={reviewCount}
