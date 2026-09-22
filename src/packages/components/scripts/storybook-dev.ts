@@ -91,7 +91,9 @@ try {
   const require = createRequire(import.meta.url);
   try {
     const pkgPath = require.resolve("storybook/package.json");
-    const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { bin?: string | Record<string, string> };
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
+      bin?: string | Record<string, string>;
+    };
     const binRel = typeof pkg.bin === "string" ? pkg.bin : pkg.bin?.storybook;
     if (binRel) {
       const resolved = path.resolve(path.dirname(pkgPath), binRel);
@@ -131,6 +133,38 @@ process.stdout.write(
     : "Storybook will start on an ephemeral port - watch for the URL in the banner below.\n",
 );
 
-// `process.execPath` rather than a shell keeps argument quoting correct on Windows.
-const child = spawn(process.execPath, args, { stdio: "inherit" });
-child.on("exit", (code, signal) => process.exit(code ?? (signal ? 1 : 0)));
+/** Windows reports a hard native crash (STATUS_ACCESS_VIOLATION) as this exit status. */
+const ACCESS_VIOLATION = 3_221_225_477;
+/** A crash this late is a real fault worth surfacing, not the startup race. */
+const STARTUP_WINDOW_MS = 120_000;
+const MAX_RESTARTS = 2;
+
+/**
+ * Runs Storybook, restarting it if it dies at startup with a native crash.
+ *
+ * Storybook 8.6 on Vite+ 0.3.2 did this on roughly 40% of starts here (7 in 17): the process
+ * vanished right after "Starting preview.." with an empty stderr and nothing but
+ * `Exit status 3221225477` from pnpm, which is 0xC0000005. A `process.dlopen` trace put it in the
+ * window where the Rust addons behind Vite+ load into a process Storybook has already made busy.
+ * Storybook 10.6 on Vite+ 0.3.3 builds the preview in under a second and did not reproduce it in
+ * 20 starts, so this is a guard rather than a workaround - but a silent exit status is a bad thing
+ * to hand somebody, so name it and retry instead of dying quietly.
+ */
+function run(restarts: number): void {
+  const startedAt = Date.now();
+  // `process.execPath` rather than a shell keeps argument quoting correct on Windows.
+  const child = spawn(process.execPath, args, { stdio: "inherit" });
+  child.on("exit", (code, signal) => {
+    const crashedStarting = code === ACCESS_VIOLATION && Date.now() - startedAt < STARTUP_WINDOW_MS;
+    if (crashedStarting && restarts < MAX_RESTARTS) {
+      process.stderr.write(
+        `Storybook died while starting with a Windows access violation (0xC0000005) - restarting (${restarts + 1}/${MAX_RESTARTS}).\n`,
+      );
+      run(restarts + 1);
+      return;
+    }
+    process.exit(code ?? (signal ? 1 : 0));
+  });
+}
+
+run(0);
