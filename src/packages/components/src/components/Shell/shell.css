@@ -551,6 +551,7 @@
 .tsh-agent-actions {
   display: flex;
   align-items: center;
+  gap: 6px;
   flex-shrink: 0;
   color: var(--foreground);
 }
@@ -736,14 +737,19 @@
   align-items: stretch;
 }
 
+/* height, not min-height: this button's only content is a 16px icon, well under --row-height, so
+   min-height would size it correctly on its own - the mismatch is with its expanded sibling
+   below, whose "Search" label (line-height ~21px) pushes past --row-height and grows past a
+   min-height there. A fixed height on both, matching .tsh-agent's row, clips that label instead
+   of growing around it, so the two variants land on the same resolved height (#246). */
 .tsh-rail-search {
   display: flex;
   align-items: center;
   justify-content: flex-start;
   flex-shrink: 0;
   width: 100%;
-  min-height: var(--row-height);
-  padding: 6px var(--tsh-row-pad-x);
+  height: var(--row-height);
+  padding: 10px var(--tsh-row-pad-x);
   border: none;
   background: transparent;
   border-radius: var(--radius-lg);
@@ -932,12 +938,15 @@
   padding: 0;
 }
 
+/* height, not min-height: see .tsh-rail-search above - this row's own label content is what
+   grows past --row-height under a min-height, so a fixed height (matching .tsh-agent's row) is
+   what keeps this variant and the collapsed rail one at the same resolved height (#246). */
 .tsh-section-search-button {
   display: flex;
   align-items: center;
   justify-content: space-between;
   width: 100%;
-  min-height: var(--row-height);
+  height: var(--row-height);
   padding: 10px var(--tsh-row-pad-x);
   border: none;
   border-radius: var(--radius-lg);
@@ -1016,7 +1025,7 @@
 .tsh-section-item-top {
   display: flex;
   align-items: flex-start;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 8px;
   width: 100%;
 }
@@ -1103,8 +1112,12 @@
   display: flex;
 }
 
+/* flex: 0 1 auto (not 1 1 auto/`flex: 1`) so the title never grows past its own text: it only
+   shrinks under min-width: 0, which is what lets the ellipsis kick in. Growing was what pushed the
+   pin away from the name - with any slack in the row, a growing title (or an auto margin on the
+   pin) both claim that slack, so the pin lands at the row's edge instead of beside the name. */
 .tsh-section-item-title {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   font-size: var(--text-xs);
   font-weight: var(--font-weight-medium);
@@ -1117,6 +1130,7 @@
 
 .tsh-section-item-tag {
   flex-shrink: 0;
+  margin-left: auto;
   font-size: var(--text-xs);
   font-weight: var(--font-weight-medium);
   line-height: 16px;
@@ -1139,17 +1153,6 @@
 .tsh-section-item:hover .tsh-section-item-pin,
 .tsh-section-item[data-selected="true"] .tsh-section-item-pin {
   opacity: var(--opacity-soft);
-}
-
-.tsh-section-group-label {
-  padding: 8px 12px 4px;
-  font-size: var(--text-2xs);
-  font-weight: var(--font-weight-semibold);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--foreground);
-  opacity: var(--opacity-dim);
-  user-select: none;
 }
 
 .tsh-section-empty {
