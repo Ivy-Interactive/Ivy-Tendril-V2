@@ -34,7 +34,11 @@ const mockSession: ChatSession = {
   messages: [],
 };
 
-function emit(payload: { type: DragDropEvent["type"]; paths?: string[] }) {
+function emit(payload: {
+  type: DragDropEvent["type"];
+  paths?: string[];
+  position?: { x: number; y: number };
+}) {
   act(() => {
     dragHandler?.({ payload: payload as unknown as DragDropEvent });
   });
@@ -157,6 +161,34 @@ describe("ChatView native webview drag-drop", () => {
     expect(chatStore.getState().activeSession?.messages.at(-1)).toMatchObject({
       role: "user",
       attachments: [{ name: "notes.md", path: "/Users/me/notes.md" }],
+    });
+  });
+
+  it("ignores a drop with coordinates outside the chat area", async () => {
+    await renderChatView();
+    const main = screen.getByRole("main");
+    vi.spyOn(main, "getBoundingClientRect").mockReturnValue({
+      left: 200,
+      top: 0,
+      right: 600,
+      bottom: 800,
+      width: 400,
+      height: 800,
+      x: 200,
+      y: 0,
+      toJSON: () => {},
+    });
+
+    // Drop at (50, 50) which is to the left of the chat area (e.g. on the plan document)
+    emit({ type: "drop", paths: ["/Users/me/outside.md"], position: { x: 50, y: 50 } as never });
+
+    expect(screen.queryByText("outside.md")).not.toBeInTheDocument();
+
+    // Drop at (300, 300) which is inside the chat area
+    emit({ type: "drop", paths: ["/Users/me/inside.md"], position: { x: 300, y: 300 } as never });
+
+    await waitFor(() => {
+      expect(screen.getByText("inside.md")).toBeInTheDocument();
     });
   });
 

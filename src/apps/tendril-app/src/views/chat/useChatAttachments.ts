@@ -18,14 +18,17 @@ import type { ChatAttachment } from "../../types/chat";
  */
 const isAbsolutePath = (path: string): boolean => /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(path);
 
-/** What the conversation has to tell this hook: whose session a copy is staged under, and whether
- * this instance may register the webview-wide drop listener. */
 export interface ChatAttachmentsOptions {
   activeSessionId: string | undefined;
-  embedded: boolean;
+  embedded?: boolean;
+  targetRef?: React.RefObject<HTMLElement | null>;
 }
 
-export function useChatAttachments({ activeSessionId, embedded }: ChatAttachmentsOptions) {
+export function useChatAttachments({
+  activeSessionId,
+  embedded: _embedded = false,
+  targetRef,
+}: ChatAttachmentsOptions) {
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -120,11 +123,12 @@ export function useChatAttachments({ activeSessionId, embedded }: ChatAttachment
     void stageAttachments(incoming.map((a) => a.path).filter(isAbsolutePath));
   };
 
-  // Webview-wide, not subtree-wide: see the table above. An embedded panel registers nothing.
+  // Scoped via targetRef so drops within the chat area are accepted while drops outside are ignored.
   const nativeDropActive = useWebviewFileDrop({
     onPaths: addAttachmentPaths,
     onDragStateChange: setIsDraggingOver,
-    enabled: !embedded,
+    targetRef,
+    enabled: true,
   });
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
