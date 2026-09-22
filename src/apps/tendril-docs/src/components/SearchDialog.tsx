@@ -9,6 +9,8 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@ivy-interactive/components/ui";
+import { DEFAULT_LOCALE, isSiteLocale, localizePath } from "../config/locales.config";
+import { getTranslations } from "../config/translations";
 import type { DocPage } from "../lib/page";
 import type { DocsSearchIndex, SearchHit } from "../lib/search";
 import { navigate } from "../lib/router";
@@ -17,6 +19,8 @@ interface SearchDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   pages: Iterable<DocPage>;
+  placeholder?: string;
+  locale?: string;
 }
 
 /**
@@ -25,7 +29,13 @@ interface SearchDialogProps {
  * The index — and MiniSearch itself — arrive through a dynamic import on first open, so a reader who
  * never searches never downloads it.
  */
-export function SearchDialog({ open, onOpenChange, pages }: SearchDialogProps) {
+export function SearchDialog({
+  open,
+  onOpenChange,
+  pages,
+  placeholder,
+  locale,
+}: SearchDialogProps) {
   const [query, setQuery] = useState("");
   const [index, setIndex] = useState<DocsSearchIndex | null>(null);
   const [loading, setLoading] = useState(false);
@@ -47,16 +57,14 @@ export function SearchDialog({ open, onOpenChange, pages }: SearchDialogProps) {
   }, [open, onOpenChange]);
 
   useEffect(() => {
-    if (!open || index || loadingRef.current) return;
+    if (!open || index !== null || loadingRef.current) return;
     loadingRef.current = true;
     setLoading(true);
-    void import("../lib/search")
+    import("../lib/search")
       .then(({ buildSearchIndex }) => {
         setIndex(buildSearchIndex(pagesRef.current));
       })
       .catch((error: unknown) => {
-        // Let the next open try again — a chunk that failed to fetch usually succeeds on a retry.
-        loadingRef.current = false;
         console.error("[tendril-docs] Failed to load the search index.", error);
       })
       .finally(() => {
@@ -72,10 +80,17 @@ export function SearchDialog({ open, onOpenChange, pages }: SearchDialogProps) {
     else grouped.set(hit.section, [hit]);
   }
 
+  const t = getTranslations(locale);
+  const effectivePlaceholder = placeholder ?? t.searchPlaceholder;
+
   const select = (route: string) => {
     onOpenChange(false);
     setQuery("");
-    navigate(route);
+    const targetRoute =
+      locale && locale !== DEFAULT_LOCALE && isSiteLocale(locale)
+        ? localizePath(route, locale)
+        : route;
+    navigate(targetRoute);
   };
 
   return (
@@ -95,11 +110,7 @@ export function SearchDialog({ open, onOpenChange, pages }: SearchDialogProps) {
       <DialogDescription className="sr-only">
         Type a few words to search every page. Use the arrow keys to choose a result.
       </DialogDescription>
-      <CommandInput
-        placeholder="Search the documentation…"
-        value={query}
-        onValueChange={setQuery}
-      />
+      <CommandInput placeholder={effectivePlaceholder} value={query} onValueChange={setQuery} />
       <CommandList>
         {query.trim().length === 0 ? (
           <CommandEmpty>Type to search every page.</CommandEmpty>

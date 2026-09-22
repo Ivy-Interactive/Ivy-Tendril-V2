@@ -5,14 +5,8 @@ import path from "node:path";
 import { emitRouteShells } from "./src/plugins/emit-route-shells";
 import { emitAgenticAssets } from "./src/plugins/emit-agentic-assets";
 
-// Every docs URL is prefixed, matching ROUTE_BASE in src/lib/slug.ts and the links the repo README
-// already publishes (https://tendril.ivy.app/docs/gettingstarted/introduction).
-// On GitHub Pages project sites, BASE can be overridden via VITE_BASE_PATH / BASE_PATH (e.g. /Ivy-Tendril-V2/docs/).
-const rawBase = process.env.VITE_BASE_PATH || process.env.BASE_PATH || "/docs/";
-const BASE = (rawBase.startsWith("/") ? rawBase : `/${rawBase}`).replace(/\/+$/, "") + "/";
-
 export default defineConfig({
-  base: BASE,
+  base: "/",
   fmt: {
     ignorePatterns: ["dist/**", "node_modules/**"],
   },
@@ -37,8 +31,8 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    emitRouteShells({ contentDir: path.resolve(__dirname, "./content"), base: BASE }),
-    emitAgenticAssets({ contentDir: path.resolve(__dirname, "./content"), base: BASE }),
+    emitRouteShells({ contentDir: path.resolve(__dirname, "./content"), base: "/" }),
+    emitAgenticAssets({ contentDir: path.resolve(__dirname, "./content"), base: "/" }),
   ],
   resolve: {
     dedupe: ["react", "react-dom"],

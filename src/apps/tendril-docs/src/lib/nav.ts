@@ -8,6 +8,7 @@
  */
 import { parsePage, type DocPage } from "./page";
 import { SECTION_INDEX, orderOf, routeForPath, segmentsOf, titleFromName } from "./slug";
+import { DEFAULT_LOCALE, isSiteLocale, localizePath } from "../config/locales.config";
 
 export interface NavPage {
   title: string;
@@ -158,4 +159,22 @@ export function flattenNavContentPaths(sections: NavSection[]): string[] {
   };
   for (const section of sections) walk(section);
   return paths;
+}
+
+/**
+ * Returns a localized copy of the navigation tree for the specified locale.
+ * English (default) routes remain unprefixed (`/docs/...`), whereas others
+ * are prefixed (`/{locale}/docs/...`).
+ */
+export function localizeNavTree(sections: NavSection[], locale: string): NavSection[] {
+  if (locale === DEFAULT_LOCALE || !isSiteLocale(locale)) return sections;
+  return sections.map((section) => ({
+    ...section,
+    route: localizePath(section.route, locale),
+    pages: section.pages.map((page) => ({
+      ...page,
+      route: localizePath(page.route, locale),
+    })),
+    sections: localizeNavTree(section.sections, locale),
+  }));
 }

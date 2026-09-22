@@ -59,6 +59,7 @@ export function rewriteDocLink(
   href: string,
   fromContentPath: string,
   resolveAsset?: (contentPath: string) => string | undefined,
+  locale?: string,
 ): RewrittenLink {
   const trimmed = href.trim();
   if (trimmed.length === 0) return { href, kind: "unresolved" };
@@ -71,7 +72,7 @@ export function rewriteDocLink(
 
   if (/\.md$/i.test(path)) {
     return {
-      href: `${routeForPath(resolveContentPath(fromContentPath, path))}${hash}`,
+      href: `${routeForPath(resolveContentPath(fromContentPath, path), locale)}${hash}`,
       kind: "route",
     };
   }
@@ -97,9 +98,10 @@ export function rewriteDocLinks(
   body: string,
   fromContentPath: string,
   resolveAsset?: (contentPath: string) => string | undefined,
+  locale?: string,
 ): string {
   const rewriteTarget = (target: string) =>
-    rewriteDocLink(target, fromContentPath, resolveAsset).href;
+    rewriteDocLink(target, fromContentPath, resolveAsset, locale).href;
 
   const out: string[] = [];
   forEachLine(body, (line, _index, inFence) => {

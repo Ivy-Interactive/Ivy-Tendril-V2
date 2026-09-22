@@ -8,7 +8,7 @@
  */
 import { buildNavTree, flattenNavRoutes, type NavSection } from "./lib/nav";
 import { parsePages, type DocPage } from "./lib/page";
-import { normalizeRoute, ROUTE_BASE } from "./lib/slug";
+import { normalizeRoute, ROUTE_BASE, splitLocale } from "./lib/slug";
 
 const CONTENT_PREFIX = "../content/";
 
@@ -70,18 +70,23 @@ const pagesByRoute = new Map<string, DocPage>(
   [...pages.values()].map((page) => [page.route, page]),
 );
 
-/** Looks a page up by route, tolerating a trailing slash, a query string or a fragment. */
+/** Looks a page up by route, tolerating a trailing slash, a query string, a fragment, or a locale prefix. */
 export function pageForRoute(route: string): DocPage | undefined {
   const normalized = normalizeRoute(route);
   const direct = pagesByRoute.get(normalized);
   if (direct) return direct;
 
+  // Split locale prefix if present (e.g. /de/docs/concepts/plans -> { locale: 'de', path: '/docs/concepts/plans' })
+  const { path: cleanPath } = splitLocale(normalized);
+  const normalizedClean = normalizeRoute(cleanPath);
+  const localizedDirect = pagesByRoute.get(normalizedClean);
+  if (localizedDirect) return localizedDirect;
+
   // Resilient fallback: if route is accessed without ROUTE_BASE prefix (or with domain root)
-  if (!normalized.startsWith(ROUTE_BASE)) {
-    const withoutLeading = normalized.replace(/^\/+/, "");
-    const stripped = withoutLeading
-      .replace(/^docs\/?/, "")
-      .replace(/^ivy-tendril-v2\/?(docs\/?)?/i, "");
+  const candidateBase = normalizedClean.startsWith(ROUTE_BASE) ? normalizedClean : normalized;
+  if (!candidateBase.startsWith(ROUTE_BASE)) {
+    const withoutLeading = candidateBase.replace(/^\/+/, "");
+    const stripped = withoutLeading.replace(/^docs\/?/, "");
     const candidate = `${ROUTE_BASE}/${stripped}`;
     const fallback = pagesByRoute.get(normalizeRoute(candidate));
     if (fallback) return fallback;
