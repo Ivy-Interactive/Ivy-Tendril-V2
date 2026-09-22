@@ -21,7 +21,7 @@ import { rollingAverage, toDayNumber, toIsoDate, todayDayNumber } from "../utils
    the same widget: V1 computes them once in `TendrilProcessStatusService` for exactly that reason. */
 import { ACTIVE_JOB_STATUSES, computeProcessStatus } from "../utils/processStatus";
 import { buildKpiBlade, isKpiBreakdownId } from "./KpiBreakdown";
-import { DashboardKpiSheet } from "@ivy-interactive/components/dialogs";
+import { DashboardKpiSheet } from "./DashboardKpiSheet";
 
 interface DashboardViewProps {
   plans: PlanSummary[];

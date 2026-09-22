@@ -15,4 +15,3 @@ export {
   type JobDebugDetail,
   type JobDebugField,
 } from "./JobDebugSheet";
-export { DashboardKpiSheet, type DashboardKpiSheetProps } from "./DashboardKpiSheet";
