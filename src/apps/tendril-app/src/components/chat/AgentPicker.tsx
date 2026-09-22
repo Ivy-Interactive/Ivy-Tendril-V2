@@ -317,7 +317,7 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
           aria-expanded={open}
           aria-label={`Agent: ${label}`}
           onClick={toggleMenu}
-          className="inline-flex h-7.5 max-w-46 items-center gap-2 rounded-selector border-0 bg-transparent p-1.5 text-sm text-foreground opacity-60 transition-[opacity,background-color] hover:bg-secondary/60 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[open=true]:bg-secondary data-[open=true]:opacity-100"
+          className="inline-flex h-7.5 max-w-46 items-center gap-2 rounded-selector border-0 bg-transparent p-1.5 text-sm text-foreground opacity-60 transition-[background-color] hover:bg-secondary/60 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[open=true]:bg-secondary data-[open=true]:opacity-100"
         >
           <BrandIcon name={agentBrandIcon(selectedAgentId)} size={16} className="shrink-0" />
           {!compact && <span className="truncate whitespace-nowrap">{label}</span>}

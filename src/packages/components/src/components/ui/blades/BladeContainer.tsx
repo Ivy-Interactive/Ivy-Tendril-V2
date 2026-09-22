@@ -236,8 +236,8 @@ export const BladeContainer = React.forwardRef<BladeContainerHandle, BladeContai
                 scrolled through. `min-w-full` is what stops it collapsing *below* the container: a
                 `width: "flex"` blade is `flex-1`, and inside a bare max-content row that resolves to
                 the blade's own max-content width, so the row — and the blade — came out narrower or
-                wider than the pane rather than equal to it. A blade that wants to be wider than the
-                pane still is, and still scrolls. */}
+                wider than the pane rather than equal to it. A stack of fixed-width blades wider than
+                the pane still is, and still scrolls. */}
             <div
               ref={rowRef}
               className={cn("flex h-full", isCollapsed ? "w-full" : "w-max min-w-full")}
