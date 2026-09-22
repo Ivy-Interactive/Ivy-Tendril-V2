@@ -11,6 +11,7 @@ import {
 import { bridge } from "../api/bridge";
 import { describeBridgeError, type PlanArtifactContent } from "../types/api";
 import { useAttachmentPreview } from "../hooks/useAttachmentPreview";
+import { useTranslation } from "../i18n";
 
 export interface ArtifactFileSheetProps {
   /** The plan whose `Artifacts/` folder holds the file. */
@@ -167,12 +168,13 @@ export interface ArtifactThumbnailProps {
  * enabled and the CSP's `img-src` allows only `'self'` and `data:`, so its URLs never loaded.
  */
 export const ArtifactThumbnail: React.FC<ArtifactThumbnailProps> = ({ path, onOpen }) => {
+  const { t } = useTranslation("plans");
   const { url, failed } = useAttachmentPreview(path, true);
   const fileName = artifactFileName(path);
   return (
     <button
       type="button"
-      aria-label={`Open ${fileName}`}
+      aria-label={t("artifactSheet.thumbnail.openLabel", { fileName })}
       onClick={onOpen}
       className="relative flex aspect-video w-full cursor-pointer items-center justify-center overflow-hidden rounded bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
@@ -183,9 +185,11 @@ export const ArtifactThumbnail: React.FC<ArtifactThumbnailProps> = ({ path, onOp
           className="h-full w-full object-contain transition-transform duration-200 group-hover:scale-105"
         />
       ) : failed ? (
-        <span className="text-xs text-muted-foreground">No preview</span>
+        <span className="text-xs text-muted-foreground">
+          {t("artifactSheet.thumbnail.noPreview")}
+        </span>
       ) : (
-        <Spinner size="md" aria-label={`Loading ${fileName}`} />
+        <Spinner size="md" aria-label={t("artifactSheet.thumbnail.loadingLabel", { fileName })} />
       )}
     </button>
   );
@@ -221,6 +225,7 @@ export const ArtifactFileSheet: React.FC<ArtifactFileSheetProps> = ({
   onOpenArtifact,
   wireframeBaseUrl,
 }) => {
+  const { t } = useTranslation("plans");
   const kind = path ? artifactPreviewKind(path) : null;
   const image = useAttachmentPreview(path ?? "", kind === "image");
   const [read, setRead] = useState<TextRead | null>(null);
@@ -279,14 +284,14 @@ export const ArtifactFileSheet: React.FC<ArtifactFileSheetProps> = ({
     if (target && onOpenArtifact) onOpenArtifact(target);
   };
 
-  const fileName = path ? artifactFileName(path) : "Artifact";
+  const fileName = path ? artifactFileName(path) : t("artifactSheet.fallbackTitle");
 
   const noPreview = (reason: string) => (
-    <Callout.Info data-testid="artifact-sheet-no-preview" title="No preview">
+    <Callout.Info data-testid="artifact-sheet-no-preview" title={t("artifactSheet.noPreviewTitle")}>
       <p>{reason}</p>
       <Button type="button" variant="outline" size="sm" className="mt-3" onClick={reveal}>
         <FolderOpen className="size-3.5" aria-hidden="true" />
-        Show in folder
+        {t("artifactSheet.showInFolder")}
       </Button>
     </Callout.Info>
   );
@@ -296,7 +301,7 @@ export const ArtifactFileSheet: React.FC<ArtifactFileSheetProps> = ({
       data-testid="artifact-sheet-loading"
       className="flex h-32 items-center justify-center text-muted-foreground"
     >
-      <Spinner size="lg" aria-label={`Loading ${fileName}`} />
+      <Spinner size="lg" aria-label={t("artifactSheet.loadingLabel", { fileName })} />
     </div>
   );
 
@@ -305,8 +310,8 @@ export const ArtifactFileSheet: React.FC<ArtifactFileSheetProps> = ({
     body = image.failed ? (
       noPreview(
         image.error
-          ? `Tendril could not load this image: ${image.error}`
-          : "Tendril could not load this image.",
+          ? t("artifactSheet.imageFailedWithError", { error: image.error })
+          : t("artifactSheet.imageFailed"),
       )
     ) : image.url ? (
       <img
@@ -325,11 +330,11 @@ export const ArtifactFileSheet: React.FC<ArtifactFileSheetProps> = ({
       body = <Callout.Error data-testid="artifact-sheet-error">{text.error}</Callout.Error>;
     else if (text.content.kind === "binary")
       body = noPreview(
-        `${fileName} is not a text file (${formatBytes(text.content.size)}), so it has no preview here.`,
+        t("artifactSheet.binary", { fileName, size: formatBytes(text.content.size) }),
       );
     else if (text.content.kind === "tooLarge")
       body = noPreview(
-        `${fileName} is ${formatBytes(text.content.size)}, too large to preview here.`,
+        t("artifactSheet.tooLarge", { fileName, size: formatBytes(text.content.size) }),
       );
     else {
       const rich = text.content.size <= ARTIFACT_RICH_PREVIEW_LIMIT_BYTES;
@@ -354,8 +359,11 @@ export const ArtifactFileSheet: React.FC<ArtifactFileSheetProps> = ({
                 className="text-xs text-muted-foreground"
                 data-testid="artifact-sheet-plain-notice"
               >
-                Shown as plain text: at {formatBytes(text.content.size)}, {fileName} is too large to{" "}
-                {kind === "markdown" ? "render as markdown" : "highlight"}.
+                {t("artifactSheet.plainNotice", {
+                  size: formatBytes(text.content.size),
+                  fileName,
+                  context: kind === "markdown" ? "markdown" : undefined,
+                })}
               </p>
             )}
             {/* `WrapLines()` for prose and logs, which have no columns to preserve; code keeps its
@@ -387,7 +395,7 @@ export const ArtifactFileSheet: React.FC<ArtifactFileSheetProps> = ({
         path && (
           <>
             <IconButton
-              label="Copy path"
+              label={t("artifactSheet.copyPath")}
               size="md"
               tone="muted"
               data-testid="artifact-sheet-copy-path"
@@ -396,7 +404,7 @@ export const ArtifactFileSheet: React.FC<ArtifactFileSheetProps> = ({
               <Copy className="size-4" aria-hidden="true" />
             </IconButton>
             <IconButton
-              label="Show in folder"
+              label={t("artifactSheet.revealLabel")}
               size="md"
               tone="muted"
               data-testid="artifact-sheet-reveal"

@@ -10,6 +10,8 @@ import { describeBridgeError, type PlanSummary } from "../../types/api";
 import { formatPlanId, normalizePlanState, parseProjects, planRowBadges } from "../PlansView";
 import { useLevelColors } from "../../components/LevelBadge";
 import type { LevelColors } from "../../utils/levelColor";
+import { i18n, useTranslation } from "../../i18n";
+import { planStateLabel } from "../../i18n/enumLabels";
 
 /**
  * `ReviewApp.BuildRowBadges`' verification rule, which the Review arm below shares with
@@ -39,6 +41,8 @@ const isVerified = (plan: PlanSummary): boolean =>
  * V1 passes the raw `plan.Project` to one `ShellBadgeDto.Project` in three of the four arms; V2
  * parses the comma-separated field in all of them (`ProjectHelper.ParseProjects`, which V1 itself
  * applies in the Draft arm), so a two-project plan reads the same in every arm.
+ *
+ * Labels are translated when the badges are built; the arms still switch on the raw state.
  */
 export const planSearchRowBadges = (
   plan: PlanSummary,
@@ -55,16 +59,19 @@ export const planSearchRowBadges = (
   if (state === "Review" || state === "Failed") {
     badges.push(
       isVerified(plan)
-        ? { label: "Verified", kind: "success" }
-        : { label: "Unverified", kind: "warning" },
+        ? { label: i18n.t("plans:searchBadges.verified"), kind: "success" }
+        : { label: i18n.t("plans:searchBadges.unverified"), kind: "warning" },
     );
     // V1's Review arm shows the state through the row glyph; V2's review list adds it as a badge so
     // a failed execution and a clean one do not read identically. Same here.
-    if (state !== "Review") badges.push({ label: state, kind: "warning" });
+    if (state !== "Review") badges.push({ label: planStateLabel(state), kind: "warning" });
     return badges;
   }
 
-  badges.push({ label: state, kind: state === "Completed" ? "success" : "neutral" });
+  badges.push({
+    label: planStateLabel(state),
+    kind: state === "Completed" ? "success" : "neutral",
+  });
   return badges;
 };
 
@@ -102,6 +109,9 @@ export interface PlanSearchDialogProps {
  */
 export function PlanSearchDialog({ isOpen, onClose, onSelectPlan, search }: PlanSearchDialogProps) {
   const levelColors = useLevelColors();
+  // The rows' badge labels are translated as they are built, so the search re-runs its rows when the
+  // language - and with it `t` - changes.
+  const { t } = useTranslation("plans");
 
   const fetchPlans = React.useMemo(
     () => search ?? ((text: string) => bridge.listPlans({ q: text })),
@@ -113,7 +123,7 @@ export function PlanSearchDialog({ isOpen, onClose, onSelectPlan, search }: Plan
       const plans = await fetchPlans(query);
       return plans.map((plan) => planSearchRow(plan, levelColors));
     },
-    [fetchPlans, levelColors],
+    [fetchPlans, levelColors, t],
   );
 
   return (

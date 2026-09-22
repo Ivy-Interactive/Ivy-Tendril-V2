@@ -6,6 +6,8 @@ import type { VerificationReport, VerificationStatus } from "../types/api";
 import { describeBridgeError } from "../types/api";
 import { VERIFICATION_BADGE_VARIANT } from "../utils/verificationStatus";
 import { ErrorBanner } from "./ErrorBanner";
+import { useTranslation } from "../i18n";
+import { verificationStatusLabel } from "../views/PlanVerifications";
 
 export interface VerificationReportSheetProps {
   /** The plan id whose verification report is being inspected. */
@@ -33,6 +35,7 @@ export const VerificationReportSheet: React.FC<VerificationReportSheetProps> = (
   onClose,
   wireframeBaseUrl,
 }) => {
+  const { t } = useTranslation("plans");
   const [report, setReport] = useState<VerificationReport | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,8 +80,12 @@ export const VerificationReportSheet: React.FC<VerificationReportSheetProps> = (
       open={verificationName !== null}
       onClose={onClose}
       data-testid="verification-report-sheet"
-      title={verificationName ?? "Verification Report"}
-      description={`Verification report details for ${verificationName ?? "plan"}`}
+      title={verificationName ?? t("reportSheet.title")}
+      description={
+        verificationName === null
+          ? t("reportSheet.descriptionFallback")
+          : t("reportSheet.description", { name: verificationName })
+      }
       hideDescription
       titleAccessory={
         outcome && (
@@ -86,7 +93,7 @@ export const VerificationReportSheet: React.FC<VerificationReportSheetProps> = (
             variant={VERIFICATION_BADGE_VARIANT[outcome]}
             data-testid="verification-sheet-status"
           >
-            {outcome}
+            {verificationStatusLabel(t, outcome)}
           </Badge>
         )
       }
@@ -101,7 +108,7 @@ export const VerificationReportSheet: React.FC<VerificationReportSheetProps> = (
           className="flex h-32 items-center justify-center text-sm text-muted-foreground"
           data-testid="verification-sheet-loading"
         >
-          Loading verification report…
+          {t("reportSheet.loading")}
         </div>
       )}
 
@@ -109,7 +116,7 @@ export const VerificationReportSheet: React.FC<VerificationReportSheetProps> = (
         <div className="space-y-2" data-testid="verification-sheet-error">
           <ErrorBanner>{error}</ErrorBanner>
           <p className="text-xs text-muted-foreground">
-            No verification report file found for &quot;{verificationName}&quot;.
+            {t("reportSheet.notFound", { name: verificationName })}
           </p>
         </div>
       )}
@@ -128,7 +135,7 @@ export const VerificationReportSheet: React.FC<VerificationReportSheetProps> = (
 
       {!loading && !error && !report && verificationName && (
         <p className="text-sm text-muted-foreground" data-testid="verification-sheet-empty">
-          No report available for {verificationName}.
+          {t("reportSheet.empty", { name: verificationName })}
         </p>
       )}
     </SheetPanel>

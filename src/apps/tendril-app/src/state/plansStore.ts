@@ -1,4 +1,5 @@
 import { bridge } from "../api/bridge";
+import { i18n } from "../i18n";
 import { isQueuedState } from "../utils/planQueues";
 import type {
   PlanDetail,
@@ -464,7 +465,11 @@ class PlansStore {
       // 4. Rollback on failure
       this.state.plans = previousPlans;
       this.state.selectedPlan = previousDetail;
-      this.state.error = `Rollback: Failed to update ${field}: ${err instanceof Error ? err.message : String(err)}`;
+      // `field` is the plan.yaml key, an identifier; only the sentence around it is translated.
+      this.state.error = i18n.t("plans:store.rollbackField", {
+        field,
+        error: err instanceof Error ? err.message : String(err),
+      });
       this.notify();
       throw err;
     }
@@ -502,7 +507,9 @@ class PlansStore {
     } catch (err) {
       this.state.plans = previousPlans;
       this.state.selectedPlan = previousDetail;
-      this.state.error = `Rollback verification update: ${err instanceof Error ? err.message : String(err)}`;
+      this.state.error = i18n.t("plans:store.rollbackVerification", {
+        error: err instanceof Error ? err.message : String(err),
+      });
       this.notify();
       throw err;
     }
