@@ -2,9 +2,9 @@ import * as React from "react";
 import { RefreshCw } from "lucide-react";
 import { Button } from "../ui/button";
 import { Callout } from "../ui/callout";
+import { NativeSelect } from "../ui/native-select";
 import { Switch } from "../ui/switch";
 import { DialogShell, DialogShortcutHint } from "./DialogShell";
-import { SELECT_FIELD_CLASS } from "./selectField";
 
 export interface AutoAcceptSettingsDialogProps {
   isOpen: boolean;
@@ -188,20 +188,19 @@ export function AutoAcceptSettingsDialog({
         >
           Check Interval
         </label>
-        <select
+        <NativeSelect
           id="auto-accept-check-interval"
           aria-label="Check Interval"
           value={interval}
           disabled={isLoading}
           onChange={(event) => setInterval(Number(event.target.value))}
-          className={SELECT_FIELD_CLASS}
         >
           {INTERVAL_OPTIONS.map((minutes) => (
             <option key={minutes} value={minutes}>
               {minutes} minutes
             </option>
           ))}
-        </select>
+        </NativeSelect>
       </div>
 
       <div className="mt-4 flex items-center gap-3">

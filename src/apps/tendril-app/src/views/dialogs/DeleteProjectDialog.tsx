@@ -1,9 +1,9 @@
 import * as React from "react";
-import { DeleteProjectDialog as DeleteProjectDialogView } from "@ivy-interactive/components/tendril";
+import { DeleteProjectDialog as DeleteProjectDialogView } from "@ivy-interactive/components/dialogs";
 import { bridge } from "../../api/bridge";
 import { describeBridgeError } from "../../types/api";
 
-export { confirmsProjectName } from "@ivy-interactive/components/tendril";
+export { confirmsProjectName } from "@ivy-interactive/components/dialogs";
 
 export interface DeleteProjectDialogProps {
   isOpen: boolean;

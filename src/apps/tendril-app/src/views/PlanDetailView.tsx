@@ -43,12 +43,12 @@ import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog
 import { CreateIssueDialog } from "./dialogs/CreateIssueDialog";
 import { CreatePrDialog } from "./dialogs/CreatePrDialog";
 import { DeletePlanDialog } from "./dialogs/DeletePlanDialog";
-import { DirtyRepoDialog } from "@ivy-interactive/components/tendril";
+import { DirtyRepoDialog } from "@ivy-interactive/components/dialogs";
 import { PartialDeliveryDialog } from "./dialogs/PartialDeliveryDialog";
-import { PendingAnnotationsDialog } from "@ivy-interactive/components/tendril";
+import { PendingAnnotationsDialog } from "@ivy-interactive/components/dialogs";
 import { ResetToDraftDialog } from "./dialogs/ResetToDraftDialog";
 import { SuggestChangesDialog } from "./dialogs/SuggestChangesDialog";
-import { UnansweredQuestionsDialog } from "@ivy-interactive/components/tendril";
+import { UnansweredQuestionsDialog } from "@ivy-interactive/components/dialogs";
 import { UpdatePlanDialog } from "./dialogs/UpdatePlanDialog";
 import { useWireframeBaseUrl } from "../api/proxyOrigin";
 import {

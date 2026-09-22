@@ -20,6 +20,7 @@ import { refractor, type Syntax } from "refractor/core";
 import { prismTheme } from "@/lib/prismTheme";
 import { getInitials } from "../PlanMarkdown/annotationUtils";
 import { Tooltip } from "../ui/TuiTooltip";
+import { NativeSelect } from "../ui/native-select";
 
 export type LanguageModule = { default: Syntax } | Syntax;
 export type CustomLanguageLoader = () => Promise<LanguageModule>;
@@ -1009,9 +1010,11 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
       {showFileDropdown && (
         <div className="sticky top-0 z-20 flex items-center gap-2 px-3 py-1.5 bg-muted border-b border-border font-sans">
           <span className="text-xs text-muted-foreground shrink-0">{fileMeta.length} files</span>
-          <select
+          <NativeSelect
             aria-label="Jump to file"
-            className="flex-1 min-w-0 text-xs px-2 py-1 rounded bg-background text-foreground border border-border font-sans"
+            density="Small"
+            className="font-sans"
+            wrapperClassName="flex-1 min-w-0"
             defaultValue=""
             onChange={(e) => {
               if (e.target.value) scrollToFile(e.target.value);
@@ -1025,7 +1028,7 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
                 {meta.label}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
       )}
       {files.map((file, fileIndex) => {

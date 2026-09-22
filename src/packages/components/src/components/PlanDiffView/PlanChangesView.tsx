@@ -8,6 +8,7 @@ import {
   type IvyEventHandler,
 } from "./PlanDiffView";
 import { getWidth, getHeight } from "@/lib/styles";
+import { NativeSelect } from "../ui/native-select";
 import "./plan-diff.css";
 
 export interface ChangedFile {
@@ -274,9 +275,10 @@ export const PlanChangesView: React.FC<PlanChangesViewProps> = ({
           <span className="text-xs text-muted-foreground shrink-0">
             {orderedFiles.length} files
           </span>
-          <select
+          <NativeSelect
             aria-label="Jump to file"
-            className="flex-1 min-w-0 text-xs px-2 py-1 rounded bg-background text-foreground border border-border"
+            density="Small"
+            wrapperClassName="flex-1 min-w-0"
             value={selectedPath ?? ""}
             onChange={(e) => {
               if (e.target.value) selectFile(e.target.value);
@@ -290,7 +292,7 @@ export const PlanChangesView: React.FC<PlanChangesViewProps> = ({
                 {file.filePath}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </div>
       )}
       <div className="ivy-changes-diffs">

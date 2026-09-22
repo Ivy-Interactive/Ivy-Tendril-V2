@@ -52,6 +52,8 @@ export * from "./components/ui/resizable";
 export * from "./components/ui/scroll-area";
 export * from "./components/ui/select.tsx";
 export * as SelectVariants from "./components/ui/select/index";
+export * from "./components/ui/native-select.tsx";
+export * from "./components/ui/native-select/variant";
 export * from "./components/ui/separator";
 export * from "./components/ui/sheet";
 export * from "./components/ui/sidebar";

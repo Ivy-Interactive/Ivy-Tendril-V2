@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { AutoAcceptSettingsDialog } from "../AutoAcceptSettingsDialog";
-import { DirtyRepoDialog } from "@ivy-interactive/components/tendril";
-import { NoProjectsDialog } from "@ivy-interactive/components/tendril";
-import { PendingAnnotationsDialog } from "@ivy-interactive/components/tendril";
+import { DirtyRepoDialog } from "@ivy-interactive/components/dialogs";
+import { NoProjectsDialog } from "@ivy-interactive/components/dialogs";
+import { PendingAnnotationsDialog } from "@ivy-interactive/components/dialogs";
 import { ShareTunnelDialog, type ShareTunnelApi } from "../ShareTunnelDialog";
 import { bridge } from "../../../api/bridge";
 import type { RepoStatus, TendrilConfig } from "../../../types/api";

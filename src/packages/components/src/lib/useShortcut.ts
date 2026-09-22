@@ -16,6 +16,11 @@ export function useShortcut(
     disabled?: boolean;
     skipInInputs?: boolean;
     elementRef?: RefObject<HTMLElement | null>;
+    /**
+     * False opts out of the registry's 300ms duplicate-fire debounce (default true). A toggle is
+     * not idempotent, so two genuine presses inside 300ms must flip it twice: pass false for those.
+     */
+    debounce?: boolean;
   },
 ): void {
   const handlerRef = useRef(handler);
@@ -25,6 +30,7 @@ export function useShortcut(
   const disabled = options.disabled ?? false;
   const skipInInputs = options.skipInInputs ?? true;
   const elementRef = options.elementRef;
+  const debounce = options.debounce ?? true;
 
   useEffect(() => {
     if (!shortcutKey || disabled) return;
@@ -43,10 +49,11 @@ export function useShortcut(
       },
       skipInInputs,
       displayKey: shortcutKey,
+      debounce,
     });
 
     return () => {
       unregisterShortcut(id);
     };
-  }, [id, shortcutKey, description, disabled, skipInInputs, elementRef]);
+  }, [id, shortcutKey, description, disabled, skipInInputs, elementRef, debounce]);
 }

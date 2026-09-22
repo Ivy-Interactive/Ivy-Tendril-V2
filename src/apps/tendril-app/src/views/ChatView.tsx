@@ -19,7 +19,7 @@ import {
   CHAT_VIRTUALIZATION_MIN_MESSAGES,
   estimateChatMessageHeight,
 } from "../hooks/useChatMessageWindow";
-import { ConfirmDialog } from "@ivy-interactive/components/tendril";
+import { ConfirmDialog } from "@ivy-interactive/components/dialogs";
 import { ChatMessageRow } from "./ChatMessageRow";
 import { ChatHeader, JobsMenu } from "./ChatHeader";
 import { AgentPicker } from "../components/chat/AgentPicker";
@@ -373,9 +373,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
     scrollContainerRef,
     anchorRef,
     spacerRef,
-    autoScrollEnabled,
     isAtBottom,
-    toggleAutoScroll,
     scrollToTail,
     resetToTail,
     pinMessage,
@@ -807,8 +805,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
               key={activeSessionId ?? "none"}
               title={activeSession ? displayTitle(activeSession) : "No Active Chat"}
               editable={Boolean(activeSession)}
-              autoScrollEnabled={autoScrollEnabled}
-              onToggleAutoScroll={toggleAutoScroll}
               jobs={spawnedJobs}
               onOpenPlan={onOpenPlan}
               onReviewJobs={handleReviewJobs}

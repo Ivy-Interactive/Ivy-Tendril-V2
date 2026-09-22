@@ -12,7 +12,7 @@ import { ShellSectionItems, sectionItemIcons } from "./ShellSectionItems.tsx";
 import { ShellTooltip } from "./ShellTooltip.tsx";
 import { IconButton } from "../ui/IconButton";
 import { TuiBadge as Badge } from "../ui/TuiBadge";
-import { TuiKbd as Kbd } from "../ui/TuiKbd";
+import { TuiKbd } from "../ui/TuiKbd";
 import "./shell.css";
 
 const SEARCH_SHORTCUT_KEY = "K";
@@ -172,7 +172,7 @@ export const ShellSidebarSection: React.FC<ShellSidebarSectionProps> = ({
                   <Search size={16} />
                   <span className="tsh-section-search-button-label">Search</span>
                 </span>
-                <Kbd
+                <TuiKbd
                   keys={[modKeyLabel(), SEARCH_SHORTCUT_KEY]}
                   variant="bare"
                   className="tsh-kbd"
