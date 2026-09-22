@@ -118,28 +118,52 @@ pub(super) fn classify_outcome(
 /// appears. An accusation has to know who spoke; a retraction only has to be true.
 pub fn find_abandoned_background_tasks(lines: &[String]) -> Vec<String> {
     let start_re = regex::Regex::new(
-        r"(?i)(?:was moved to the background|running in background with ID:?)\s*(?:\(?ID:?\s*)?(?<id>[a-z0-9_-]+)\)?"
+        r"(?i)(?:was moved to the background|running in background with ID:?|Tool is running as a background task with task id:?)\s*(?:\(?ID:?\s*)?(?<id>[a-zA-Z0-9_/-]+)\)?"
     ).unwrap();
 
+    let manage_task_running_re = regex::Regex::new(
+        r"(?i)Task:\s*(?<id>[a-zA-Z0-9_/-]+)(?:[\s\r\n]|\\r|\\n)+Status:\s*RUNNING",
+    )
+    .unwrap();
+
     let complete_re = regex::Regex::new(
-        r"(?i)(?:task|background task)\s*(?:with\s+ID:?\s*|ID:?\s*)?(?<id>[a-z0-9_-]+)\s*(?:has\s+)?(?:completed|finished|terminated|exited|killed|stopped)"
+        r"(?i)(?:task|background task)\s*(?:with\s+ID:?\s*|ID:?\s*)?(?<id>[a-zA-Z0-9_/-]+)\s*(?:has\s+)?(?:completed|finished|terminated|exited|killed|stopped|done)"
     ).unwrap();
 
     let complete_re2 = regex::Regex::new(
-        r"(?i)(?:completed|finished|terminated|exited|killed|stopped)\s*(?:background\s+)?task\s*(?:with\s+ID:?\s*|ID:?\s*)?(?<id>[a-z0-9_-]+)"
+        r"(?i)(?:completed|finished|terminated|exited|killed|stopped|done)\s*(?:background\s+)?task\s*(?:with\s+ID:?\s*|ID:?\s*)?(?<id>[a-zA-Z0-9_/-]+)"
     ).unwrap();
 
     let complete_re3 = regex::Regex::new(
-        r#"(?i)(?:"task_id"|"taskId")\s*:\s*"(?<id>[a-z0-9_-]+)".*?"(?:completed|finished|stopped|terminated)""#
+        r#"(?i)(?:"task_id"|"taskId")\s*:\s*"(?<id>[a-zA-Z0-9_/-]+)".*?"(?:completed|finished|stopped|terminated|done)""#
     ).unwrap();
+
+    let complete_re4 = regex::Regex::new(
+        r"(?i)Task:\s*(?<id>[a-zA-Z0-9_/-]+)(?:[\s\r\n]|\\r|\\n)+Status:\s*(?:DONE|COMPLETED|FINISHED)"
+    ).unwrap();
+
+    let complete_re5 =
+        regex::Regex::new(r#"(?i)Task\s*id\s*"(?<id>[a-zA-Z0-9_/-]+)"\s*finished"#).unwrap();
+
+    let terminating_re =
+        regex::Regex::new(r"(?i)terminating\s+(?<count>\d+)\s+background\s+task\(s\)\s+on\s+exit")
+            .unwrap();
 
     let mut started = std::collections::HashSet::new();
     let mut completed = std::collections::HashSet::new();
+    let mut terminated_count: usize = 0;
 
     for line in lines {
         // An agent's own turn is one text block, not one line, so every match in it counts.
         if let Some(text) = authored_text(line) {
             for caps in start_re.captures_iter(&text) {
+                if let Some(id) = caps.name("id") {
+                    started.insert(id.as_str().to_string());
+                }
+            }
+        }
+        if line.contains("manage_task") {
+            if let Some(caps) = manage_task_running_re.captures(line) {
                 if let Some(id) = caps.name("id") {
                     started.insert(id.as_str().to_string());
                 }
@@ -160,6 +184,24 @@ pub fn find_abandoned_background_tasks(lines: &[String]) -> Vec<String> {
                 completed.insert(id.as_str().to_string());
             }
         }
+        if let Some(caps) = complete_re4.captures(line) {
+            if let Some(id) = caps.name("id") {
+                completed.insert(id.as_str().to_string());
+            }
+        }
+        if let Some(caps) = complete_re5.captures(line) {
+            if let Some(id) = caps.name("id") {
+                completed.insert(id.as_str().to_string());
+            }
+        }
+        if let Some(caps) = terminating_re.captures(line) {
+            if let Some(c) = caps
+                .name("count")
+                .and_then(|m| m.as_str().parse::<usize>().ok())
+            {
+                terminated_count = terminated_count.max(c);
+            }
+        }
     }
 
     let mut abandoned: Vec<String> = started
@@ -167,6 +209,15 @@ pub fn find_abandoned_background_tasks(lines: &[String]) -> Vec<String> {
         .filter(|id| !completed.contains(id))
         .collect();
     abandoned.sort();
+
+    if abandoned.is_empty() && terminated_count > 0 {
+        abandoned.push(if terminated_count == 1 {
+            "1 background task terminated on exit".to_string()
+        } else {
+            format!("{} background tasks terminated on exit", terminated_count)
+        });
+    }
+
     abandoned
 }
 

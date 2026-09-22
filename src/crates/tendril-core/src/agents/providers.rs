@@ -303,14 +303,23 @@ pub fn apply_security_settings(config: &mut AgentLaunchConfig, security: &AgentS
 // Antigravity (agy)
 // ---------------------------------------------------------------------------
 
-/// Antigravity's built-in tools enforce a stricter JSON schema than the model expects, so without
-/// this notice it routinely fails common calls: `find_by_name` treats `Pattern` as required even
-/// when searching by `Extensions`, and `grep_search`'s `Includes` must be a JSON array rather than
-/// the comma-separated string a model naturally reaches for. Prepended to every prompt in
-/// [`build_antigravity_spec`] so the guidance survives regardless of caller-supplied prompt files.
+/// Antigravity's built-in tools enforce a stricter JSON schema and execution semantics than the
+/// model expects:
+/// - `find_by_name` treats `Pattern` as required even when searching by `Extensions`.
+/// - `grep_search`'s `Includes` must be a JSON array rather than a comma-separated string.
+/// - `run_command` defaults to moving commands into the background after a couple seconds unless
+///   `WaitMsBeforeAsync: 10000` is passed.
+/// - In non-interactive batch mode (`--print`), ending the turn while background tasks are active
+///   causes `agy` to terminate them after 5 seconds and exit early. The model must be instructed
+///   to pass `WaitMsBeforeAsync: 10000` and poll `manage_task` until completion instead of waiting passively.
+///
+/// Prepended to every prompt in [`build_antigravity_spec`] so the guidance survives regardless of
+/// caller-supplied prompt files.
 pub const ANTIGRAVITY_TOOL_SCHEMA_GUARDRAILS: &str = "Tool usage notes:\n\
 - `find_by_name` requires a `Pattern` argument; always pass one (e.g. \"*.cs\").\n\
-- `grep_search`'s `Includes` argument must be a JSON array of strings (e.g. [\"*.cs\"]), never a comma-separated string.";
+- `grep_search`'s `Includes` argument must be a JSON array of strings (e.g. [\"*.cs\"]), never a comma-separated string.\n\
+- `run_command`: Always set `WaitMsBeforeAsync: 10000` to allow commands sufficient time to run synchronously.\n\
+- Non-interactive batch execution: You are running non-interactively via `--print`. If a command runs as a background task, you will NOT receive any user messages or wake-ups to resume your turn. NEVER end your turn or wait passively while a background task is running. If a command runs in the background (or returns a task ID), you MUST actively poll `manage_task` with `Action: \"status\"` and `TaskId` repeatedly until its `Status` is `DONE` (or `ERROR`) before taking any other action or concluding.";
 
 fn build_antigravity_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
     let mut args = Vec::new();
