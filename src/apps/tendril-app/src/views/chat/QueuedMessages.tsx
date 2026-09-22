@@ -3,6 +3,7 @@ import { ArrowRight, Check, ChevronDown, Paperclip, Pencil, Trash2, X } from "lu
 import { IconButton, Input } from "@ivy-interactive/components/ui";
 import type { ChatStore } from "../../state/chatStore";
 import type { ChatQueuedItem } from "../../types/chat";
+import { useTranslation } from "../../i18n";
 
 /**
  * The queue drawer above the composer: the prompts parked behind the turn in flight, and the
@@ -13,6 +14,7 @@ export const ChatQueuedMessages: React.FC<{
   queuedItems: ChatQueuedItem[];
   store: ChatStore;
 }> = ({ queuedItems, store }) => {
+  const { t } = useTranslation("chat");
   // V1 opens the queue panel: a prompt that will be sent for you is worth reading without a click.
   const [isQueueExpanded, setIsQueueExpanded] = useState(true);
   const [editingQueuedId, setEditingQueuedId] = useState<string | null>(null);
@@ -58,17 +60,15 @@ export const ChatQueuedMessages: React.FC<{
         <div className="rounded-box border border-border bg-muted/60 p-2.5">
           <div className="flex items-center justify-between gap-2">
             <div className="flex min-w-0 items-center gap-2">
-              <span className="font-medium text-foreground">Queued Messages</span>
+              <span className="font-medium text-foreground">{t("queue.title")}</span>
               <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-background px-1.5 text-xs text-foreground">
                 {queuedItems.length}
               </span>
-              <span className="truncate text-xs text-muted-foreground">
-                Sends after agent finishes working
-              </span>
+              <span className="truncate text-xs text-muted-foreground">{t("queue.hint")}</span>
             </div>
             <IconButton
               data-testid="chat-queue-collapse"
-              label={isQueueExpanded ? "Collapse queued messages" : "Expand queued messages"}
+              label={isQueueExpanded ? t("queue.collapse") : t("queue.expand")}
               size="sm"
               tone="muted"
               aria-expanded={isQueueExpanded}
@@ -92,7 +92,7 @@ export const ChatQueuedMessages: React.FC<{
                     <>
                       <Input
                         data-testid="queued-item-input"
-                        aria-label="Edit queued prompt"
+                        aria-label={t("queue.editInputLabel")}
                         value={editingQueuedText}
                         ref={(node) => {
                           // Focus once per edit: re-focusing on every keystroke would fight
@@ -118,7 +118,7 @@ export const ChatQueuedMessages: React.FC<{
                       />
                       <IconButton
                         data-testid="queued-item-save"
-                        label="Save queued prompt"
+                        label={t("queue.save")}
                         size="sm"
                         tone="muted"
                         onClick={() => void handleSaveEditQueued(item.id)}
@@ -127,7 +127,7 @@ export const ChatQueuedMessages: React.FC<{
                       </IconButton>
                       <IconButton
                         data-testid="queued-item-cancel"
-                        label="Cancel edit"
+                        label={t("queue.cancelEdit")}
                         size="sm"
                         variant="danger"
                         tone="muted"
@@ -142,7 +142,7 @@ export const ChatQueuedMessages: React.FC<{
                         <span className="truncate text-foreground">
                           {item.prompt ||
                             (item.attachments && item.attachments.length > 0
-                              ? `${item.attachments.length} attachment${item.attachments.length > 1 ? "s" : ""}`
+                              ? t("queue.attachments", { count: item.attachments.length })
                               : "")}
                         </span>
                         {item.attachments && item.attachments.length > 0 && (
@@ -155,7 +155,7 @@ export const ChatQueuedMessages: React.FC<{
                       <div className="flex shrink-0 items-center gap-1.5">
                         <IconButton
                           data-testid="queued-item-send-now"
-                          label="Send now"
+                          label={t("queue.sendNow")}
                           size="sm"
                           tone="muted"
                           onClick={() => void handleSendQueuedNow(item)}
@@ -164,7 +164,7 @@ export const ChatQueuedMessages: React.FC<{
                         </IconButton>
                         <IconButton
                           data-testid="queued-item-edit"
-                          label="Edit queued prompt"
+                          label={t("queue.edit")}
                           size="sm"
                           tone="muted"
                           onClick={() => handleStartEditQueued(item.id, item.prompt)}
@@ -172,7 +172,7 @@ export const ChatQueuedMessages: React.FC<{
                           <Pencil className="size-3.5" />
                         </IconButton>
                         <IconButton
-                          label="Remove from queue"
+                          label={t("queue.remove")}
                           size="sm"
                           variant="danger"
                           tone="muted"
