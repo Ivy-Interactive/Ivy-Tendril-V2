@@ -156,10 +156,22 @@ export function getReviewActionTooltip(
   allocatedPorts?: Record<string, number> | null,
   reason?: string,
 ): string {
+  const cond = action.condition?.trim();
+
   if (conditionMet === false) {
-    const cond = action.condition?.trim();
     return cond
-      ? `Disabled: Condition not met (${action.condition})`
+      ? `Disabled: Condition not met (${cond})`
+      : "Disabled: Condition not met";
+  }
+
+  if (conditionMet === "unknown") {
+    if (reason) {
+      return cond
+        ? `Disabled: Condition could not be evaluated (${cond}): ${reason}`
+        : `Disabled: Condition could not be evaluated: ${reason}`;
+    }
+    return cond
+      ? `Disabled: Condition not met (${cond})`
       : "Disabled: Condition not met";
   }
 
@@ -170,13 +182,7 @@ export function getReviewActionTooltip(
       : "";
 
   const cmd = action.command?.trim();
-  const run = cmd ? `Run: ${action.command}${portsStr}` : `Run ${action.name}${portsStr}`;
-  // The reviewer is told the gate was skipped rather than silently given a button V1 might have
-  // disabled. The command itself is the check of last resort: it fails visibly in the terminal.
-  if (conditionMet !== "unknown") return run;
-  return reason
-    ? `${run}. Condition could not be evaluated: ${reason}`
-    : `${run}. Condition not evaluated here: ${action.condition?.trim()}`;
+  return cmd ? `Run: ${action.command}${portsStr}` : `Run ${action.name}${portsStr}`;
 }
 
 export interface ReviewActionsBarViewProps {
@@ -237,14 +243,6 @@ function presentAction(
       busy: false,
     };
   }
-  if (verdict.state === false) {
-    return {
-      disabled: true,
-      tooltip: getReviewActionTooltip(action, false),
-      dimmed: true,
-      busy: false,
-    };
-  }
   if (options.executing) {
     return { disabled: true, tooltip: `Starting ${action.name}…`, dimmed: false, busy: true };
   }
@@ -259,9 +257,17 @@ function presentAction(
       busy: true,
     };
   }
+  if (verdict.state === false || verdict.state === "unknown") {
+    return {
+      disabled: true,
+      tooltip: getReviewActionTooltip(action, verdict.state, options.allocatedPorts, verdict.reason),
+      dimmed: true,
+      busy: false,
+    };
+  }
   return {
     disabled: false,
-    tooltip: getReviewActionTooltip(action, verdict.state, options.allocatedPorts, verdict.reason),
+    tooltip: getReviewActionTooltip(action, true, options.allocatedPorts),
     dimmed: false,
     busy: false,
   };
