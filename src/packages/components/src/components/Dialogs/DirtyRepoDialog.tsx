@@ -1,5 +1,6 @@
 import * as React from "react";
 import { Button } from "../ui/button";
+import { useTranslation } from "@/i18n/uiDialogs";
 import { DialogShell, DialogShortcutHint } from "./DialogShell";
 /**
  * A repository with uncommitted work, as this dialog renders it.
@@ -24,7 +25,10 @@ export interface DirtyRepoDialogProps {
   onClose: () => void;
   dirtyRepos: DirtyRepo[];
   onProceed: () => void;
-  /** V1's `proceedLabel`: the dialog is reused by every dispatch it guards. */
+  /**
+   * V1's `proceedLabel`: the dialog is reused by every dispatch it guards. Omitted, the button reads
+   * "Execute Anyway", translated.
+   */
   proceedLabel?: string;
 }
 
@@ -50,18 +54,17 @@ export function DirtyRepoDialog({
   onClose,
   dirtyRepos,
   onProceed,
-  proceedLabel = "Execute Anyway",
+  proceedLabel,
 }: DirtyRepoDialogProps) {
+  const { t } = useTranslation("uiDialogs");
   const cancelRef = React.useRef<HTMLButtonElement>(null);
 
   return (
     <DialogShell
       isOpen={isOpen}
       onClose={onClose}
-      title="Local Changes Detected"
-      description={`⚠ ${dirtyRepos.length} ${
-        dirtyRepos.length === 1 ? "repository has" : "repositories have"
-      } uncommitted changes. They will not be included in the worktree the agent works in.`}
+      title={t("dirtyRepo.title")}
+      description={t("dirtyRepo.description", { count: dirtyRepos.length })}
       testId="dirty-repo-dialog"
       initialFocusRef={cancelRef}
       // The last of the three execute guards to get the chord, and it is the odd one out that made
@@ -75,10 +78,10 @@ export function DirtyRepoDialog({
       footer={
         <>
           <Button ref={cancelRef} variant="outline" onClick={onClose} data-testid="dialog-cancel">
-            Cancel
+            {t("actions.cancel")}
           </Button>
           <Button onClick={onProceed} data-testid="guard-proceed">
-            {proceedLabel}
+            {proceedLabel ?? t("dirtyRepo.proceed")}
             <DialogShortcutHint shortcut="Ctrl+Enter" />
           </Button>
         </>
@@ -99,7 +102,7 @@ export function DirtyRepoDialog({
               <div className="text-sm font-semibold text-foreground">{name}</div>
               <div className="font-mono text-xs text-muted-foreground">{repo.path}</div>
               <div className="mt-2 text-xs text-foreground">
-                {total} uncommitted {total === 1 ? "change" : "changes"}
+                {t("dirtyRepo.changeCount", { count: total })}
               </div>
               <ul className="mt-1 space-y-0.5 font-mono text-xs text-muted-foreground">
                 {shown.map((change) => (
@@ -107,7 +110,9 @@ export function DirtyRepoDialog({
                 ))}
               </ul>
               {hidden > 0 && (
-                <div className="mt-1 text-xs text-muted-foreground">+{hidden} more</div>
+                <div className="mt-1 text-xs text-muted-foreground">
+                  {t("dirtyRepo.moreChanges", { count: hidden })}
+                </div>
               )}
             </li>
           );

@@ -4,6 +4,7 @@ import { Button } from "../ui/button";
 import { Callout } from "../ui/callout";
 import { NativeSelect } from "../ui/native-select";
 import { Switch } from "../ui/switch";
+import { useTranslation } from "@/i18n/uiDialogs";
 import { DialogShell, DialogShortcutHint } from "./DialogShell";
 
 export interface AutoAcceptSettingsDialogProps {
@@ -31,6 +32,11 @@ const INTERVAL_OPTIONS = [5, 10, 15, 30, 60] as const;
 /** What `Inbox.CheckIntervalMinutes` defaults to when the config has never carried one. */
 const DEFAULT_INTERVAL = 15;
 
+/** A manual check's outcome, kept as data so its sentence follows the language at render time. */
+type CheckSummary =
+  | { alreadyRunning: true }
+  | { alreadyRunning: false; imported: number; skipped: number };
+
 /**
  * Port of `Apps/Inbox/Dialogs/AutoAcceptSettingsDialog`.
  *
@@ -54,12 +60,13 @@ export function AutoAcceptSettingsDialog({
   runCheck,
   describeError = (err) => (err instanceof Error ? err.message : String(err)),
 }: AutoAcceptSettingsDialogProps) {
+  const { t } = useTranslation("uiDialogs");
   const [autoAccept, setAutoAccept] = React.useState(false);
   const [interval, setInterval] = React.useState<number>(DEFAULT_INTERVAL);
   const [isLoading, setIsLoading] = React.useState(false);
   const [isSaving, setIsSaving] = React.useState(false);
   const [isChecking, setIsChecking] = React.useState(false);
-  const [checkSummary, setCheckSummary] = React.useState<string | null>(null);
+  const [checkSummary, setCheckSummary] = React.useState<CheckSummary | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const switchRef = React.useRef<HTMLButtonElement>(null);
 
@@ -99,8 +106,8 @@ export function AutoAcceptSettingsDialog({
       // already running both leave the list unchanged, and only one of them is worth waiting for.
       setCheckSummary(
         report.outcome === "AlreadyRunning"
-          ? "A check is already running."
-          : `Imported ${report.imported.length}, skipped ${report.skipped}.`,
+          ? { alreadyRunning: true }
+          : { alreadyRunning: false, imported: report.imported.length, skipped: report.skipped },
       );
       onChecked?.();
     } catch (err) {
@@ -134,7 +141,7 @@ export function AutoAcceptSettingsDialog({
     <DialogShell
       isOpen={isOpen}
       onClose={onClose}
-      title="Auto-Accept Settings"
+      title={t("autoAcceptSettings.title")}
       testId="auto-accept-settings-dialog"
       initialFocusRef={switchRef}
       // The dialog's one mutation, so it is the primary the chord names. `Check Now` in the body is
@@ -150,22 +157,20 @@ export function AutoAcceptSettingsDialog({
             data-testid="dialog-cancel"
             disabled={isSaving}
           >
-            Cancel
+            {t("actions.cancel")}
           </Button>
           <Button
             onClick={() => void handleSave()}
             data-testid="dialog-confirm"
             disabled={isSaving || isLoading}
           >
-            {isSaving ? "Saving…" : "Save"}
+            {isSaving ? t("autoAcceptSettings.saving") : t("autoAcceptSettings.save")}
             {saveArmed && <DialogShortcutHint shortcut="Ctrl+Enter" />}
           </Button>
         </>
       }
     >
-      <p className="text-xs text-muted-foreground">
-        Automatically import newly assigned GitHub issues into Tendril plans at regular intervals.
-      </p>
+      <p className="text-xs text-muted-foreground">{t("autoAcceptSettings.intro")}</p>
 
       <div className="mt-4 flex items-center gap-3">
         <Switch
@@ -174,10 +179,10 @@ export function AutoAcceptSettingsDialog({
           checked={autoAccept}
           onCheckedChange={setAutoAccept}
           disabled={isLoading}
-          aria-label="Auto-Accept Assigned Issues"
+          aria-label={t("autoAcceptSettings.autoAcceptLabel")}
         />
         <label htmlFor="auto-accept-assigned-issues" className="text-sm text-foreground">
-          Auto-Accept Assigned Issues
+          {t("autoAcceptSettings.autoAcceptLabel")}
         </label>
       </div>
 
@@ -186,18 +191,18 @@ export function AutoAcceptSettingsDialog({
           htmlFor="auto-accept-check-interval"
           className="mb-1 block text-xs text-muted-foreground"
         >
-          Check Interval
+          {t("autoAcceptSettings.intervalLabel")}
         </label>
         <NativeSelect
           id="auto-accept-check-interval"
-          aria-label="Check Interval"
+          aria-label={t("autoAcceptSettings.intervalLabel")}
           value={interval}
           disabled={isLoading}
           onChange={(event) => setInterval(Number(event.target.value))}
         >
           {INTERVAL_OPTIONS.map((minutes) => (
             <option key={minutes} value={minutes}>
-              {minutes} minutes
+              {t("autoAcceptSettings.intervalOption", { count: minutes })}
             </option>
           ))}
         </NativeSelect>
@@ -212,13 +217,18 @@ export function AutoAcceptSettingsDialog({
           disabled={isChecking}
         >
           <RefreshCw className={isChecking ? "animate-spin" : undefined} aria-hidden="true" />
-          {isChecking ? "Checking…" : "Check Now"}
+          {isChecking ? t("autoAcceptSettings.checking") : t("autoAcceptSettings.checkNow")}
         </Button>
       </div>
 
       {checkSummary !== null && (
         <Callout.Success className="mt-3" data-testid="auto-accept-check-summary">
-          {checkSummary}
+          {checkSummary.alreadyRunning
+            ? t("autoAcceptSettings.checkAlreadyRunning")
+            : t("autoAcceptSettings.checkSummary", {
+                imported: checkSummary.imported,
+                skipped: checkSummary.skipped,
+              })}
         </Callout.Success>
       )}
 
