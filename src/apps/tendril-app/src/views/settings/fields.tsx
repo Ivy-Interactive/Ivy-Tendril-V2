@@ -62,7 +62,7 @@ export const SettingsSection: React.FC<{
 }> = ({ title, hint, testId, action, unbounded, children }) => (
   <section className={unbounded ? undefined : SETTINGS_CONTAINER} data-testid={testId}>
     <div className="flex items-start justify-between gap-3">
-      <div>
+      <div className="space-y-1.5">
         <h2 className="text-base font-semibold text-foreground">{title}</h2>
         {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       </div>
@@ -90,7 +90,7 @@ export const SubSection: React.FC<{
 }> = ({ title, hint, count, action, testId, children }) => (
   <section className="space-y-2" data-testid={testId}>
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <div>
+      <div className="space-y-1.5">
         <h3 className="text-sm font-semibold text-foreground">
           {title}
           {count !== undefined && (

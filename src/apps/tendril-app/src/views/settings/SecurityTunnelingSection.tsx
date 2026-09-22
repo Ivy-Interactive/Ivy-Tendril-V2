@@ -190,7 +190,7 @@ const CloudflaredInstallBlock: React.FC<{ api: TunnelApi }> = ({ api }) => {
 
   return (
     <section className="space-y-3" data-testid="cloudflared-install">
-      <div>
+      <div className="space-y-1.5">
         <h3 className="text-sm font-semibold text-foreground">cloudflared</h3>
         <p className="text-xs text-muted-foreground">
           Both tunnels below run Cloudflare&apos;s <code>cloudflared</code>. It is not installed on
@@ -370,7 +370,7 @@ const SessionProtectionBlock: React.FC<{ api: TunnelApi }> = ({ api }) => {
 
   return (
     <section className="space-y-3" data-testid="session-protection">
-      <div>
+      <div className="space-y-1.5">
         <h3 className="text-sm font-semibold text-foreground">Session Protection</h3>
         <p className="text-xs text-muted-foreground">
           Require a password to access the Tendril interface.
@@ -659,7 +659,7 @@ const TunnelBlock: React.FC<{ api: TunnelApi; kind: BlockKind }> = ({ api, kind 
 
   return (
     <section className="space-y-3" data-testid={copy.testId}>
-      <div>
+      <div className="space-y-1.5">
         <h3 className="text-sm font-semibold text-foreground">{copy.heading}</h3>
         <p className="text-xs text-muted-foreground">{copy.blurb}</p>
       </div>
