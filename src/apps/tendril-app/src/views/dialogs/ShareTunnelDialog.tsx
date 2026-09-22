@@ -1,5 +1,12 @@
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { ShareTunnelDialog as ShareTunnelDialogView, shareUrlForPlan, SHARE_POLL_INTERVAL_MS, type ShareTunnelApi, type ShareTunnelSnapshot, type ShareTunnelStatus } from "@ivy-interactive/components/dialogs";
+import {
+  ShareTunnelDialog as ShareTunnelDialogView,
+  shareUrlForPlan,
+  SHARE_POLL_INTERVAL_MS,
+  type ShareTunnelApi,
+  type ShareTunnelSnapshot,
+  type ShareTunnelStatus,
+} from "@ivy-interactive/components/dialogs";
 import { notificationsStore } from "../../state/notificationsStore";
 import { describeBridgeError, bridgeErrorCode } from "../../types/api";
 import { tunnelApi } from "../../api/tunnelApi";

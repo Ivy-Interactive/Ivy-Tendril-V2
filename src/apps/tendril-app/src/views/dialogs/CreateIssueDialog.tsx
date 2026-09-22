@@ -1,5 +1,9 @@
 import * as React from "react";
-import { CreateIssueDialog as CreateIssueDialogView, type CreateIssueSubject, type CreateIssueSubmit } from "@ivy-interactive/components/dialogs";
+import {
+  CreateIssueDialog as CreateIssueDialogView,
+  type CreateIssueSubject,
+  type CreateIssueSubmit,
+} from "@ivy-interactive/components/dialogs";
 import { PlanActionsController } from "../../controllers/planActions";
 import {
   describeBridgeError,
