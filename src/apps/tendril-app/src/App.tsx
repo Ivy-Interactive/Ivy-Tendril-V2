@@ -52,13 +52,13 @@ const KeyboardShortcutsHelp = React.lazy(() =>
 );
 
 const NoProjectsDialog = React.lazy(() =>
-  import("@ivy-interactive/components/tendril").then((m) => ({ default: m.NoProjectsDialog })),
+  import("@ivy-interactive/components/dialogs").then((m) => ({ default: m.NoProjectsDialog })),
 );
 
 // Same reasoning, by module rather than the barrel: the two job sweeps are the only confirms the
 // shell itself owns, and both are rare.
 const ConfirmDialog = React.lazy(() =>
-  import("@ivy-interactive/components/tendril").then((m) => ({ default: m.ConfirmDialog })),
+  import("@ivy-interactive/components/dialogs").then((m) => ({ default: m.ConfirmDialog })),
 );
 
 // V1's `showPlanSearchDialog` (`AppShell/Dialogs/PlanSearchDialog.cs`), the shell's own plan search.
@@ -422,9 +422,12 @@ export const App: React.FC = () => {
   // Global Keyboard Shortcuts. Each one registers with the components package's shortcut registry,
   // which owns the single window listener, debounces duplicate fires and — because the registry is
   // enumerable — is what KeyboardShortcutsHelp renders instead of a hardcoded list.
-  useShortcut("app:toggle-sidebar", "Ctrl+B", () => uiStore.toggleSidebar(), {
-    description: "Toggle sidebar collapse",
-  });
+  //
+  // Sidebar collapse is not registered here: TendrilShell owns that shortcut directly (its own
+  // "tendril-shell:toggle-sidebar" registration), because it is TendrilShell's local collapsed
+  // state - not uiStore's - that actually drives the rendered sidebar. A second "Ctrl+B" entry
+  // here duplicated the binding under a different id, which both fired on every press (#245) and
+  // showed up twice in KeyboardShortcutsHelp.
   useShortcut("app:goto-chat", "Ctrl+Shift+C", () => uiStore.setActiveNav("chat"), {
     description: "Switch to Chat",
   });
@@ -1074,6 +1077,7 @@ export const App: React.FC = () => {
             // V1's `ReviewAppArgs.PlanId`: the address names the plan to triage, and the page falls
             // back to the newest one in the queue when it names none.
             selectedPlanId={uiState.pageArgs.planId ?? null}
+            initialTab={uiState.pageArgs.tab ?? undefined}
             onSelectPlan={handleSelectPlan}
             onOpenReviewAction={handleOpenReviewAction}
             // Stay on the queue rather than opening the job's log: Create PR and Suggest Changes take

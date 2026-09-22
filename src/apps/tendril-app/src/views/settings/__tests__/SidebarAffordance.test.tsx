@@ -62,4 +62,12 @@ describe("Settings sidebar affordance", () => {
     render(element);
     expect(screen.getByRole("tab").className).toContain("focus-visible:ring-2");
   });
+
+  /** An idle row reads at the same size and contrast as a selected one, not smaller and grayed out. */
+  it.each(rows)("gives the idle %s readable text", (_name, element) => {
+    render(element);
+    const className = screen.getByRole("tab").className;
+    expect(className).toContain("text-sm");
+    expect(className).toContain("text-foreground");
+  });
 });

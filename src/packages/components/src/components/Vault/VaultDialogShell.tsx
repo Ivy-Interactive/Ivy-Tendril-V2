@@ -77,7 +77,7 @@ export const VaultDialogShell: React.FC<VaultDialogShellProps> = ({
         )}
       </DialogHeader>
 
-      <div className="flex-1 space-y-4 overflow-y-auto px-4 pb-2 text-sm text-foreground">
+      <div className="flex-1 space-y-4 overflow-y-auto px-6 pb-2 text-sm text-foreground">
         {children}
         {error && <Callout.Error data-testid={`${testId}-error`}>{error}</Callout.Error>}
       </div>

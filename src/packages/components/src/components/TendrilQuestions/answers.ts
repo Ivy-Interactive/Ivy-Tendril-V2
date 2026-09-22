@@ -88,3 +88,50 @@ export function buildAnswersSummary(questions: PlanQuestion[], answers: AnswerMa
   }
   return lines.join("\n");
 }
+
+const SKIPPED_MARKER = "*(skipped)*";
+const NO_PREFERENCE_MARKER = "*(no preference, your call)*";
+
+/** One question's outcome as read back out of a submitted summary. */
+export interface ParsedAnswer {
+  label: string;
+  /**
+   * Everything the question settled on, as the one string the summary records. A multi-select
+   * reads "Lint, Test", which is what was decided; splitting it would turn a typed answer like
+   * "Yes, but only on Tuesdays" into two decisions that were never made.
+   */
+  value: string;
+  skipped: boolean;
+  noPreference: boolean;
+}
+
+/**
+ * Reads a summary `buildAnswersSummary` produced back into its pairs, so a submission that reached
+ * the conversation as markdown can be presented as the structured answers it records. Returns
+ * undefined for anything that is not such a summary, which is what tells a plain user message apart
+ * from an answers submission; a line whose own bold markers would make the split ambiguous is
+ * refused outright, so the whole message falls back to raw text rather than being misread.
+ */
+export function parseAnswersSummary(content: string): ParsedAnswer[] | undefined {
+  const lines = content.trim().split("\n");
+  if (lines.shift()?.trim() !== "Answers:") return undefined;
+  if (lines.length === 0) return undefined;
+
+  const parsed: ParsedAnswer[] = [];
+  for (const line of lines) {
+    const match = /^- \*\*(.+?)\*\*: (.*)$/.exec(line.trim());
+    if (!match) return undefined;
+    const [, label, rest] = match;
+    if (label.includes("**") || rest.includes("**: ")) return undefined;
+    if (rest === SKIPPED_MARKER) {
+      parsed.push({ label, value: "", skipped: true, noPreference: false });
+    } else if (rest === NO_PREFERENCE_MARKER) {
+      parsed.push({ label, value: "", skipped: false, noPreference: true });
+    } else {
+      const value = rest.trim();
+      if (value.length === 0) return undefined;
+      parsed.push({ label, value, skipped: false, noPreference: false });
+    }
+  }
+  return parsed;
+}

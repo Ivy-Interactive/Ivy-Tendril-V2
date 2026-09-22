@@ -319,3 +319,39 @@ describe("a turn's markdown renderer", () => {
     expect(pre?.style.maxWidth).toBe("100%");
   });
 });
+
+describe("a submitted answers turn", () => {
+  beforeEach(() => {
+    chatStore.resetForTesting();
+  });
+
+  const summary = [
+    "Answers:",
+    "- **How should we proceed?**: Open a PR",
+    "- **Which checks should run?**: Lint, Test",
+    "- **Which environment?**: *(no preference, your call)*",
+    "- **Anything else?**: *(skipped)*",
+  ].join("\n");
+
+  it("presents the answers as a card rather than as the markdown that travels to the agent", () => {
+    render(<ChatMessageRow message={message({ role: "user", content: summary })} />);
+
+    const card = screen.getByTestId("answers-summary-card");
+    expect(card).toBeInTheDocument();
+    expect(screen.getByText("How should we proceed?")).toBeInTheDocument();
+    expect(screen.getByText("Open a PR")).toBeInTheDocument();
+    expect(screen.getByText("Lint, Test")).toBeInTheDocument();
+    expect(screen.getByText("Not answered (not required)")).toBeInTheDocument();
+    expect(screen.getByText("Not answered (agent decided)")).toBeInTheDocument();
+    expect(card.textContent).not.toContain("**");
+    expect(card.querySelector(".bg-primary")).toBeNull();
+  });
+
+  it("keeps a plain user message that merely uses bold as raw text in its bubble", () => {
+    const content = "Please make the **title** bold";
+    render(<ChatMessageRow message={message({ role: "user", content })} />);
+
+    expect(screen.queryByTestId("answers-summary-card")).not.toBeInTheDocument();
+    expect(screen.getByText(content)).toBeInTheDocument();
+  });
+});

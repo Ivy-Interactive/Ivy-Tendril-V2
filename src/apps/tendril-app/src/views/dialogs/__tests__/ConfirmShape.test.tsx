@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import * as React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { ConfirmDialog } from "@ivy-interactive/components/tendril";
+import { ConfirmDialog } from "@ivy-interactive/components/dialogs";
 import { DeletePlanDialog } from "../DeletePlanDialog";
 import { planDetail } from "../../../../tests/fixtures/plan.fixture";
 
@@ -300,9 +300,9 @@ describe("the Ctrl/Cmd+Enter chord is advertised on the confirm", () => {
   });
 
   /**
-   * The reason `TuiKbd` is the primitive here and `ShortcutKeys`/`Kbd` is not: the cap decorates the
-   * button without joining its name, so point 3's "the label is the verb" survives and every
-   * `getByRole("button", { name })` in the suite keeps resolving.
+   * The reason the cap is `aria-hidden`: it decorates the button without joining its name, so
+   * point 3's "the label is the verb" survives and every `getByRole("button", { name })` in the
+   * suite keeps resolving.
    */
   it("keeps the cap out of the button's accessible name", () => {
     render(<Harness />);

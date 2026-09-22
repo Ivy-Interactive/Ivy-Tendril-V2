@@ -3,6 +3,7 @@ import { Check } from "lucide-react";
 import {
   Input,
   Label,
+  NativeSelect,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -43,13 +44,14 @@ export const SETTINGS_CONTAINER = "min-w-0 max-w-170";
  * Diagnostics and Newsletter ran the full width of the pane while everything around them stopped at
  * the same column.
  *
- * It draws no box, because V1 draws none: every one of its setup views returns a bare
- * `Layout.Vertical()` whose first two children are that heading pair, and the only `new Card(...)`
- * anywhere in `Apps/Settings` is the agent tile in `CodingAgentSetupView` - a card because it is a
- * selectable thing, not because it is a section. This used to render
+ * It draws no box or rule of its own, because V1 draws none: every one of its setup views returns a
+ * bare `Layout.Vertical()` whose first two children are that heading pair, and the only
+ * `new Card(...)` anywhere in `Apps/Settings` is the agent tile in `CodingAgentSetupView` - a card
+ * because it is a selectable thing, not because it is a section. This used to render
  * `rounded-box border border-border bg-card/60 p-6` plus a rule under the header, which boxed every
- * section inside the pane that already frames them and made the screen read as a stack of widgets
- * rather than one settings page.
+ * section inside the pane that already frames them. The rule between sections now on screen is the
+ * container's, not this component's: `SettingsView`'s `divide-y` draws it between whichever sections
+ * render together, not this component drawing one under its own header.
  */
 export const SettingsSection: React.FC<{
   title: string;
@@ -62,7 +64,7 @@ export const SettingsSection: React.FC<{
 }> = ({ title, hint, testId, action, unbounded, children }) => (
   <section className={unbounded ? undefined : SETTINGS_CONTAINER} data-testid={testId}>
     <div className="flex items-start justify-between gap-3">
-      <div>
+      <div className="space-y-1.5">
         <h2 className="text-base font-semibold text-foreground">{title}</h2>
         {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       </div>
@@ -90,7 +92,7 @@ export const SubSection: React.FC<{
 }> = ({ title, hint, count, action, testId, children }) => (
   <section className="space-y-2" data-testid={testId}>
     <div className="flex flex-wrap items-center justify-between gap-2">
-      <div>
+      <div className="space-y-1.5">
         <h3 className="text-sm font-semibold text-foreground">
           {title}
           {count !== undefined && (
@@ -121,7 +123,7 @@ export const NumberField: React.FC<{
   onChange: (value: number) => void;
 }> = ({ id, label, value, min, max, suffix, hint, onChange }) => (
   <div className="space-y-1">
-    <Label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+    <Label htmlFor={id} className="text-xs font-medium text-foreground">
       {label}
     </Label>
     <div className="relative">
@@ -158,7 +160,7 @@ export const TextField: React.FC<{
   onChange: (value: string) => void;
 }> = ({ id, label, value, placeholder, hint, error, disabled, onChange }) => (
   <div className="space-y-1">
-    <Label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+    <Label htmlFor={id} className="text-xs font-medium text-foreground">
       {label}
     </Label>
     <Input
@@ -188,7 +190,7 @@ export const SelectField: React.FC<{
   onChange: (value: string) => void;
 }> = ({ id, label, value, options, hint, disabled, onChange }) => (
   <div className="space-y-1">
-    <Label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+    <Label htmlFor={id} className="text-xs font-medium text-foreground">
       {label}
     </Label>
     <Select value={value} onValueChange={onChange} disabled={disabled}>
@@ -227,16 +229,15 @@ export const NativeSelectField: React.FC<{
   onChange: (value: string) => void;
 }> = ({ id, label, value, options, hint, disabled, onChange }) => (
   <div className="space-y-1">
-    <Label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+    <Label htmlFor={id} className="text-xs font-medium text-foreground">
       {label}
     </Label>
-    <select
+    <NativeSelect
       id={id}
       aria-label={label}
       value={value}
       disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
-      className="h-9 w-full rounded-field border border-input bg-background px-2 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-ring"
     >
       {!options.some((option) => option.value === value) && (
         <option value={value}>{value || "Default"}</option>
@@ -246,7 +247,7 @@ export const NativeSelectField: React.FC<{
           {option.label}
         </option>
       ))}
-    </select>
+    </NativeSelect>
     {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
   </div>
 );
@@ -262,7 +263,7 @@ export const LinesField: React.FC<{
   onChange: (value: string) => void;
 }> = ({ id, label, value, hint, placeholder, rows = "short", onChange }) => (
   <div className="space-y-1">
-    <Label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+    <Label htmlFor={id} className="text-xs font-medium text-foreground">
       {label}
     </Label>
     <Textarea
@@ -319,7 +320,7 @@ export const ColorSwatchGrid: React.FC<{
             title={name}
             data-color={name}
             onClick={() => onSelect(name)}
-            className={`flex size-6 items-center justify-center rounded-full border-2 transition-all hover:z-10 hover:scale-110 ${
+            className={`flex size-6 items-center justify-center rounded-full border-2 transition-all enabled:hover:ring-1 enabled:hover:ring-border ${
               isSelected ? "border-foreground ring-2 ring-foreground/30" : "border-transparent"
             } ${disabled ? "cursor-not-allowed opacity-50" : "cursor-pointer"}`}
             style={{ backgroundColor: ivyColorVar(name) }}
@@ -369,7 +370,7 @@ export const ColorSwatchField: React.FC<{
 
   return (
     <div className="space-y-1">
-      <Label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+      <Label htmlFor={id} className="text-xs font-medium text-foreground">
         {label}
       </Label>
       <div className="flex items-center gap-2">

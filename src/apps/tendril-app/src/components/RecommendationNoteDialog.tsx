@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from "react";
 import { Button } from "@ivy-interactive/components/ui";
-import { DialogShell } from "@ivy-interactive/components/tendril";
+import { DialogShell } from "@ivy-interactive/components/dialogs";
 
 export interface RecommendationNoteDialogProps {
   isOpen: boolean;

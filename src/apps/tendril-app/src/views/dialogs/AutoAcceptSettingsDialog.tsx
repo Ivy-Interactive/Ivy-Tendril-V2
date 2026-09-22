@@ -1,4 +1,4 @@
-import { AutoAcceptSettingsDialog as AutoAcceptSettingsDialogView } from "@ivy-interactive/components/tendril";
+import { AutoAcceptSettingsDialog as AutoAcceptSettingsDialogView } from "@ivy-interactive/components/dialogs";
 import { bridge } from "../../api/bridge";
 import { describeBridgeError } from "../../types/api";
 

@@ -336,29 +336,6 @@ questions:
     expect(attachmentChip.closest("div")).toHaveAttribute("title", "/var/log/system.log");
   });
 
-  it("renders the auto-scroll lock with initial state ON and toggles state on click", async () => {
-    vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
-    vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
-    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
-
-    render(<ChatView />);
-
-    // The header is keyed on the session, so it remounts once the session list arrives; wait for
-    // that before holding on to the control.
-    await waitFor(() => {
-      expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
-    });
-
-    const toggle = () => screen.getByTestId("chat-autoscroll-toggle");
-    expect(toggle()).toHaveTextContent("Auto-scroll: ON");
-
-    fireEvent.click(toggle());
-    expect(toggle()).toHaveTextContent("Auto-scroll: OFF");
-
-    fireEvent.click(toggle());
-    expect(toggle()).toHaveTextContent("Auto-scroll: ON");
-  });
-
   it("renders bottom anchor element with data-testid chat-scroll-anchor", async () => {
     vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
     vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
@@ -370,7 +347,7 @@ questions:
     expect(anchor).toBeInTheDocument();
   });
 
-  it("calls scrollIntoView on anchor when stream delta arrives and autoScrollEnabled is true", async () => {
+  it("calls scrollIntoView on anchor when stream delta arrives while locked to the tail", async () => {
     vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
     vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
     vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
@@ -479,35 +456,6 @@ questions:
 
       expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: "smooth" });
     }
-  });
-
-  it("does not call scrollIntoView on stream deltas when autoScrollEnabled is toggled OFF", async () => {
-    vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
-    vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
-    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
-
-    render(<ChatView />);
-
-    await waitFor(() => {
-      expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
-    });
-
-    const toggle = () => screen.getByTestId("chat-autoscroll-toggle");
-    fireEvent.click(toggle());
-    expect(toggle()).toHaveTextContent("Auto-scroll: OFF");
-
-    scrollIntoViewMock.mockClear();
-
-    act(() => {
-      chatStore.handleChatEvent({
-        type: "chat.stream_delta",
-        sessionId: "session-10",
-        messageId: "msg-asst-1",
-        delta: " Delta while OFF",
-      });
-    });
-
-    expect(scrollIntoViewMock).not.toHaveBeenCalled();
   });
 
   it("re-locks and scrolls to tail when sending a new message", async () => {
@@ -654,6 +602,55 @@ questions:
     expect(screen.getByPlaceholderText(/Ask Tendril anything/i)).toHaveValue(
       "Look at my draft plans across all projects and recommend which two to execute next, with reasons.",
     );
+  });
+
+  /**
+   * A suggestion chip pastes multi-line text into the composer, and the row has to grow with it —
+   * `applyComposerText` schedules the resize itself now, so every caller that writes through it
+   * (this chip, dictation, the review-jobs draft) gets it for free.
+   */
+  it("resizes the composer's textarea when a suggestion prompt is clicked", async () => {
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([]);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+    render(<ChatView />);
+
+    await waitFor(() => {
+      expect(screen.getByText("What Are We Producing Today?")).toBeInTheDocument();
+    });
+
+    const textarea = screen.getByPlaceholderText(/Ask Tendril anything/i) as HTMLTextAreaElement;
+    Object.defineProperty(textarea, "scrollHeight", { value: 96, configurable: true });
+    expect(textarea.style.height).not.toBe("96px");
+
+    const chip = screen.getByText("What should I work on next?");
+    fireEvent.click(chip);
+
+    await waitFor(() => {
+      expect(textarea.style.height).toBe("96px");
+    });
+  });
+
+  /**
+   * `items-end` bottom-aligned the textarea and the toolbar; the embedded composer's smaller buttons
+   * sat low against the taller textarea. The row centers its children instead, in both single-line
+   * and wrapped multiline layout.
+   */
+  it("vertically centers the composer's input row", async () => {
+    vi.spyOn(chatApi, "listSessions").mockResolvedValue([]);
+    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+
+    render(<ChatView />);
+
+    await waitFor(() => {
+      expect(screen.getByText("What Are We Producing Today?")).toBeInTheDocument();
+    });
+
+    const textarea = screen.getByLabelText("Chat prompt");
+    const inputRow = textarea.closest("[data-multiline]");
+    expect(inputRow).not.toBeNull();
+    expect(inputRow).toHaveAttribute("data-multiline", "false");
+    expect(inputRow?.className).toContain("items-center");
   });
 
   /**

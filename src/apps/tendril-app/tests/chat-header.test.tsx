@@ -27,8 +27,6 @@ const systemMessage = (id: string, content: string): ChatMessage => ({
 
 const headerProps = {
   title: "Planning",
-  autoScrollEnabled: true,
-  onToggleAutoScroll: () => {},
 };
 
 describe("job status predicates", () => {
@@ -209,22 +207,6 @@ describe("ChatHeader", () => {
       () => expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
       POPOVER_TIMEOUT,
     );
-  });
-
-  it("reports the auto-scroll lock state", () => {
-    const onToggleAutoScroll = vi.fn();
-    render(
-      <ChatHeader
-        {...headerProps}
-        autoScrollEnabled={false}
-        onToggleAutoScroll={onToggleAutoScroll}
-      />,
-    );
-
-    const toggle = screen.getByTestId("chat-autoscroll-toggle");
-    expect(toggle).toHaveTextContent("Auto-scroll: OFF");
-    fireEvent.click(toggle);
-    expect(onToggleAutoScroll).toHaveBeenCalledTimes(1);
   });
 });
 

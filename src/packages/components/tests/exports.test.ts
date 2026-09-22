@@ -94,6 +94,7 @@ describe("Package Exports", () => {
       expect(ui.Toggle).toBeDefined();
       expect(ui.Label).toBeDefined();
       expect(ui.Select).toBeDefined();
+      expect(ui.NativeSelect).toBeDefined();
       expect(ui.DataTable).toBeDefined();
       expect(ui.DataTablePagination).toBeDefined();
     });
@@ -103,6 +104,7 @@ describe("Package Exports", () => {
       expect(ui.ExpandableVariants).toBeDefined();
       expect(ui.InputVariants).toBeDefined();
       expect(ui.SelectVariants).toBeDefined();
+      expect(ui.nativeSelectVariant).toBeDefined();
       expect(ui.TableVariants).toBeDefined();
     });
 
@@ -132,7 +134,6 @@ describe("Package Exports", () => {
       expect(renderers.Icon).toBeDefined();
       expect(renderers.InvalidIcon).toBeDefined();
       expect(renderers.IvyLogo).toBeDefined();
-      expect(renderers.Kbd).toBeDefined();
       expect(renderers.Loading).toBeDefined();
       expect(renderers.LoadingScreen).toBeDefined();
       expect(renderers.LogoLoading).toBeDefined();
@@ -249,6 +250,7 @@ describe("Package Exports", () => {
       expect(tendril.TendrilQuestions).toBeDefined();
       expect(tendril.QuestionsForm).toBeDefined();
       expect(tendril.ChatQuestionsBlock).toBeDefined();
+      expect(tendril.AnswersSummaryCard).toBeDefined();
       expect(tendril.DescriptionMarkdown).toBeDefined();
       expect(tendril.buildAnswersSummary).toBeDefined();
       expect(tendril.canSubmitAnswers).toBeDefined();
@@ -256,6 +258,7 @@ describe("Package Exports", () => {
       expect(tendril.documentOtherOpen).toBeDefined();
       expect(tendril.entryTitle).toBeDefined();
       expect(tendril.hasEntries).toBeDefined();
+      expect(tendril.parseAnswersSummary).toBeDefined();
       expect(tendril.submitNote).toBeDefined();
       expect(tendril.unansweredRequired).toBeDefined();
     });

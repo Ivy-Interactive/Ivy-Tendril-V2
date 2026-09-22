@@ -19,6 +19,7 @@ import {
   type StartJobResponse,
 } from "../types/api";
 import { bridge } from "../api/bridge";
+import { plansStore } from "../state/plansStore";
 import { PlanChatPanel } from "../components/chat/PlanChatPanel";
 import { extractPlanQuestions, patchQuestionsMarkdown } from "../utils/questionMarkdown";
 import { PlanActionsController } from "../controllers/planActions";
@@ -43,12 +44,12 @@ import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog
 import { CreateIssueDialog } from "./dialogs/CreateIssueDialog";
 import { CreatePrDialog } from "./dialogs/CreatePrDialog";
 import { DeletePlanDialog } from "./dialogs/DeletePlanDialog";
-import { DirtyRepoDialog } from "@ivy-interactive/components/tendril";
+import { DirtyRepoDialog } from "@ivy-interactive/components/dialogs";
 import { PartialDeliveryDialog } from "./dialogs/PartialDeliveryDialog";
-import { PendingAnnotationsDialog } from "@ivy-interactive/components/tendril";
+import { PendingAnnotationsDialog } from "@ivy-interactive/components/dialogs";
 import { ResetToDraftDialog } from "./dialogs/ResetToDraftDialog";
 import { SuggestChangesDialog } from "./dialogs/SuggestChangesDialog";
-import { UnansweredQuestionsDialog } from "@ivy-interactive/components/tendril";
+import { UnansweredQuestionsDialog } from "@ivy-interactive/components/dialogs";
 import { UpdatePlanDialog } from "./dialogs/UpdatePlanDialog";
 import { useWireframeBaseUrl } from "../api/proxyOrigin";
 import {
@@ -933,6 +934,28 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       return;
     }
     switch (tag) {
+      case "CompletePlan":
+        void (async () => {
+          setActionError(null);
+          setPendingAction("complete");
+          try {
+            const resp = await PlanActionsController.completePlan(effectivePlan);
+            if (resp) {
+              onJobStarted?.(resp);
+              onPlanChanged?.(effectivePlan.id);
+            } else {
+              await plansStore.transitionPlanOptimistic(effectivePlan.id, "Completed", true);
+              onPlanChanged?.(effectivePlan.id);
+            }
+          } catch (err) {
+            setActionError(
+              `Could not complete plan ${formatPlanId(effectivePlan.id)}: ${describeBridgeError(err)}`,
+            );
+          } finally {
+            setPendingAction(null);
+          }
+        })();
+        return;
       case "UpdatePlan":
         setActiveDialog("update");
         return;
@@ -1068,26 +1091,13 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
            * does not have. So the banner the page already had lives here, above the tab strip, which
            * is where the slot renders.
            */
-          Toolbar: [
-            ...(isPlanInFlight
-              ? [
-                  <span
-                    key="in-flight"
-                    data-testid="plan-in-flight-notice"
-                    className="rounded-box border border-info/40 bg-info/10 px-3 py-1.5 text-xs font-medium text-info"
-                  >
-                    A job is running on this plan.
-                  </span>,
-                ]
-              : []),
-            ...(actionError
-              ? [
-                  <ErrorBanner key="error" data-testid="plan-action-error" className="flex-1">
-                    {actionError}
-                  </ErrorBanner>,
-                ]
-              : []),
-          ],
+          Toolbar: actionError
+            ? [
+                <ErrorBanner key="error" data-testid="plan-action-error" className="flex-1">
+                  {actionError}
+                </ErrorBanner>,
+              ]
+            : [],
           /**
            * `new VerificationsPanelView(selectedPlan, planService, config, chatExecution)` — the
            * corner dropdown, not a tab. This is also the first consumer the shared

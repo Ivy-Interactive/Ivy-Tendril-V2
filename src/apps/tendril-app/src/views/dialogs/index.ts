@@ -33,7 +33,7 @@ export {
   type NoProjectsDialogProps,
   type PendingAnnotationsDialogProps,
   type UnansweredQuestionsDialogProps,
-} from "@ivy-interactive/components/tendril";
+} from "@ivy-interactive/components/dialogs";
 
 export { DeletePlanDialog } from "./DeletePlanDialog";
 export { RemoveProjectDialog } from "./RemoveProjectDialog";

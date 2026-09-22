@@ -200,11 +200,10 @@
   height: 16px;
 }
 
-/* Recording/processing shrinks the pill to a plain icon button. */
+/* Recording/processing keeps the button's own box and outline border, and shows the active state
+   through colour alone -- a differently sized or bordered box here would reflow `.civ-right-actions`. */
 .civ-mic-btn[data-active="true"] {
-  width: var(--control-height-sm);
-  height: var(--control-height-sm);
-  border: none;
+  border: var(--border-width) solid transparent;
   background: transparent;
 }
 
@@ -234,7 +233,6 @@
   justify-content: center;
   cursor: pointer;
   transition:
-    transform var(--duration-moderate),
     background-color var(--duration-moderate),
     color var(--duration-moderate),
     opacity var(--duration-moderate);
@@ -242,7 +240,6 @@
 }
 
 .civ-submit-btn:hover:not(:disabled) {
-  transform: scale(1.05);
   background: var(--accent);
   color: var(--accent-foreground);
 }
@@ -250,7 +247,6 @@
 .civ-submit-btn:disabled {
   opacity: var(--opacity-disabled);
   cursor: not-allowed;
-  transform: none;
 }
 
 .civ-submit-btn svg {
@@ -279,7 +275,6 @@
   background: var(--primary);
   color: var(--primary-foreground);
   opacity: var(--opacity-hover);
-  transform: none;
 }
 
 .civ-submit-text {
@@ -363,7 +358,6 @@
 
 .civ-split-btn-left:hover:not(:disabled) {
   color: var(--primary-foreground);
-  transform: none;
   opacity: 1;
 }
 

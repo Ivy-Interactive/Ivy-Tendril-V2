@@ -61,7 +61,7 @@ export interface DialogShellProps {
  *
  * Three decisions worth keeping:
  *
- * - **`TuiKbd`, not `ShortcutKeys`/`Kbd`.** `TuiKbd` is `aria-hidden` (`TuiKbd.tsx`: "a button
+ * - **`TuiKbd`, and `aria-hidden`.** `TuiKbd` is `aria-hidden` (`TuiKbd.tsx`: "a button
  *   labelled 'Execute Plan' carrying an `X` hint announces itself as 'Execute Plan X'"), so the cap
  *   decorates the button without joining its accessible name — which is what lets every existing
  *   `getByRole("button", { name })` in the suite keep working, and what keeps `ConfirmDialog`'s

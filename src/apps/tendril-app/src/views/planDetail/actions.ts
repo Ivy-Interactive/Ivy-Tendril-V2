@@ -181,13 +181,19 @@ export function buildPlanActions({
   }
 
   // The Review page's own set. V1 keeps these in `ReviewActions`, on the same workspace.
-  if (!isPlanInFlight && effectivePlan.state === "Review") {
+  if (!isPlanInFlight && (effectivePlan.state === "Review" || effectivePlan.state === "Failed")) {
     primaryAction = {
       tag: "CreatePr",
       label: "Create PR",
       icon: "GitPullRequest",
       disabled: !canPr.allowed || pendingAction !== null,
     };
+    secondaryActions.push({
+      tag: "CompletePlan",
+      label: "Complete Plan",
+      icon: "CircleCheck",
+      disabled: pendingAction !== null,
+    });
     secondaryActions.push({
       tag: "RetryPlan",
       label: "Retry Plan",
@@ -198,7 +204,7 @@ export function buildPlanActions({
       secondaryActions.push({
         tag: "AcceptPartialDelivery",
         label: "Accept Partial Delivery",
-        icon: "CircleCheck",
+        icon: "TriangleAlert",
       });
   }
 

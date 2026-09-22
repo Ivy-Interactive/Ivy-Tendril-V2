@@ -57,7 +57,7 @@ type DialogHeaderProps = React.HTMLAttributes<HTMLDivElement> & {
 const DialogHeader = ({ className, children, hideCloseButton, ...props }: DialogHeaderProps) => (
   <div
     className={cn(
-      "sticky top-0 z-10 bg-background p-4 flex-shrink-0 flex items-center justify-between",
+      "sticky top-0 z-10 bg-background p-6 pb-4 flex-shrink-0 flex items-center justify-between",
       className,
     )}
     {...props}

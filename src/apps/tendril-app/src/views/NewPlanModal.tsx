@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { ContentInput } from "@ivy-interactive/components/tendril";
-import { IconButton } from "@ivy-interactive/components/ui";
+import { IconButton, NativeSelect } from "@ivy-interactive/components/ui";
 import { X } from "lucide-react";
 import type { ProjectSummary, StartJobResponse } from "../types/api";
 import { jobsStore } from "../state/jobsStore";
@@ -225,19 +225,18 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
               ))}
             </div>
           ) : (
-            <select
+            <NativeSelect
               id="project-select"
               aria-label="Target Project"
               value={selectedProject}
               onChange={(e) => handleProjectChange(e.target.value)}
-              className="w-full rounded-field border border-border bg-background px-3 py-2 text-sm text-foreground focus:border-ring focus:outline-none"
             >
               {options.map((o) => (
                 <option key={o.value} value={o.value}>
                   {o.label}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           )}
 
           <ContentInput

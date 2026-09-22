@@ -6,7 +6,7 @@ import {
   type ShareTunnelApi,
   type ShareTunnelSnapshot,
   type ShareTunnelStatus,
-} from "@ivy-interactive/components/tendril";
+} from "@ivy-interactive/components/dialogs";
 import { notificationsStore } from "../../state/notificationsStore";
 import { describeBridgeError, bridgeErrorCode } from "../../types/api";
 import { tunnelApi } from "../../api/tunnelApi";

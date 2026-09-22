@@ -47,20 +47,6 @@ export interface SuggestChangesDialogProps {
 }
 
 /**
- * Port of `AppPreview.JobsToWaitFor`: everything unfinished on this plan, not only the retries. Two
- * agents rewriting one worktree at the same time is how a branch ends up with half of each. Ids that
- * have finished by the time the job is built are harmless — the service counts only the ones it
- * still holds, so a stale id makes the new job start rather than wedge.
- */
-
-/**
- * Port of `AppPreview.CanRequestChanges`. Review is where a plan sits while it is being looked at,
- * and where a finished RetryPlan puts it back. The second case is allowed on purpose: the moment a
- * retry starts the plan moves to Executing, and a reviewer who keeps walking the app and finds three
- * more things should be able to queue them rather than be locked out until the agent finishes.
- */
-
-/**
  * Port of the private `groupByPage` in `utils/appComments`, which is not exported. Keeps both the
  * pages and the comments within them in the order they arrived, and groups on plain equality — the
  * viewer guarantees one canonical string per page.
@@ -121,9 +107,6 @@ export function SuggestChangesDialog({
   const inlineCount = inlineCommentCount ?? 0;
   const fromApp = appComments !== undefined && appComments.length > 0;
   const waitForCount = fromApp ? (inFlightCount ?? 0) : 0;
-  // V1 re-reads plan and jobs at the click as well as on render, because the dialog may have been
-  // open a while. Here both arrive as props from live state, so the value read at the click is
-  // already the current one and the guard needs no second read.
 
   React.useEffect(() => {
     if (isOpen) {
@@ -139,6 +122,9 @@ export function SuggestChangesDialog({
   const typed = changeRequest.trim();
   const canSubmit = fromApp ? !isBusy : !isBusy && (typed !== "" || inlineCount > 0);
 
+  // V1 re-reads plan and jobs at the click as well as on render, because the dialog may have been
+  // open a while. Here both arrive as props from live state, so the value read at the click is
+  // already the current one and the guard needs no second read.
   const handleSubmit = () => {
     if (!canSubmit) return;
     // The caller's formatted request when it has one, otherwise assembled here: either way it is

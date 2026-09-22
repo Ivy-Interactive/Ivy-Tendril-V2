@@ -98,7 +98,7 @@ const JobOutput = React.lazy(() =>
  * and has no business in the table's own chunk.
  */
 const JobDebug = React.lazy(() =>
-  import("@ivy-interactive/components/tendril").then((m) => ({ default: m.JobDebugSheet })),
+  import("@ivy-interactive/components/dialogs").then((m) => ({ default: m.JobDebugSheet })),
 );
 
 /** V1's Cost & Tokens sheet, opened by the Cost and Tokens cells. Lazy for the same reason. */
@@ -731,9 +731,9 @@ export const JobsView: React.FC<JobsViewProps> = ({
             className="min-h-0 flex-1"
             showDivider={false}
             scrollContent={false}
-            contentClassName="flex h-full min-h-0 flex-col p-4"
+            contentClassName="flex h-full min-h-0 flex-col"
             header={
-              <SheetHeader className="pr-8">
+              <SheetHeader className="pl-2 pr-8">
                 <SheetTitle>{openJobTitle}</SheetTitle>
               </SheetHeader>
             }

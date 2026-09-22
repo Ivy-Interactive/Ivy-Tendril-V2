@@ -19,7 +19,7 @@ import {
   CHAT_VIRTUALIZATION_MIN_MESSAGES,
   estimateChatMessageHeight,
 } from "../hooks/useChatMessageWindow";
-import { ConfirmDialog } from "@ivy-interactive/components/tendril";
+import { ConfirmDialog } from "@ivy-interactive/components/dialogs";
 import { ChatMessageRow } from "./ChatMessageRow";
 import { ChatHeader, JobsMenu } from "./ChatHeader";
 import { AgentPicker } from "../components/chat/AgentPicker";
@@ -273,8 +273,12 @@ export const ChatView: React.FC<ChatViewProps> = ({
       composerTextRef.current = text;
       setInputPrompt(text);
       store.setComposerDraft(composerSessionRef.current, text);
+      // The field's height is styled from its content, and the content arrives after this render.
+      if (typeof requestAnimationFrame !== "undefined") {
+        requestAnimationFrame(adjustTextareaHeight);
+      }
     },
-    [store],
+    [store, adjustTextareaHeight],
   );
 
   /**
@@ -369,9 +373,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
     scrollContainerRef,
     anchorRef,
     spacerRef,
-    autoScrollEnabled,
     isAtBottom,
-    toggleAutoScroll,
     scrollToTail,
     resetToTail,
     pinMessage,
@@ -499,7 +501,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
   const handleComposerChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     applyComposerText(e.target.value);
-    adjustTextareaHeight();
   };
 
   /**
@@ -539,7 +540,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
         const previous = composerTextRef.current;
         applyComposerText(previous ? `${previous} ${trimmed}` : trimmed);
         requestComposerFocus();
-        requestAnimationFrame(adjustTextareaHeight);
       },
       onError: (message: string) => setVoiceError(message),
     });
@@ -805,8 +805,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
               key={activeSessionId ?? "none"}
               title={activeSession ? displayTitle(activeSession) : "No Active Chat"}
               editable={Boolean(activeSession)}
-              autoScrollEnabled={autoScrollEnabled}
-              onToggleAutoScroll={toggleAutoScroll}
               jobs={spawnedJobs}
               onOpenPlan={onOpenPlan}
               onReviewJobs={handleReviewJobs}
@@ -1018,7 +1016,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 <div
                   ref={inputRowRef}
                   data-multiline={multiline}
-                  className={`flex min-h-8 items-end gap-3 ${multiline ? "flex-wrap" : ""}`}
+                  className={`flex min-h-8 items-center gap-3 ${multiline ? "flex-wrap" : ""}`}
                 >
                   <input
                     ref={fileInputRef}

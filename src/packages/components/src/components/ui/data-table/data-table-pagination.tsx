@@ -3,6 +3,7 @@ import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight } from "lucide-r
 
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { NativeSelect } from "@/components/ui/native-select";
 import { densityToIconButtonSize } from "@/components/ui/density-scale";
 import { useDensity } from "@/contexts/density-context";
 import { Densities } from "@/types/density";
@@ -24,12 +25,6 @@ export interface DataTablePaginationProps extends React.HTMLAttributes<HTMLEleme
 }
 
 const DEFAULT_PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
-
-const selectDensity: Record<Densities, string> = {
-  [Densities.Small]: "h-7 px-1 text-xs",
-  [Densities.Medium]: "h-9 px-2 text-sm",
-  [Densities.Large]: "h-11 px-3 text-base",
-};
 
 /**
  * The page navigator, rendered below the `<table>`. Boundary controls stay in the DOM disabled so
@@ -131,15 +126,15 @@ const DataTablePagination = React.forwardRef<HTMLElement, DataTablePaginationPro
             {/*
               Deliberately a native <select> rather than the Radix `Select` primitive: Radix needs
               `hasPointerCapture`/`scrollIntoView` polyfills that tests/setup.ts does not install,
-              and a native select is keyboard- and screen-reader-operable with no extra work. The
-              token classes below mirror `SelectTrigger` so it still looks at home.
+              and a native select is keyboard- and screen-reader-operable with no extra work.
+              `NativeSelect` is the shared styling for exactly that case, so this reads as one
+              control set with every other native select in the product.
             */}
-            <select
+            <NativeSelect
               id={pageSizeId}
-              className={cn(
-                "box-border cursor-pointer rounded-field border border-input bg-transparent shadow-sm focus:outline-none focus:ring-1 focus:ring-ring disabled:cursor-not-allowed disabled:opacity-50 dark:border-input",
-                selectDensity[density],
-              )}
+              density={density}
+              wrapperClassName="w-auto"
+              className="w-auto"
               value={pageSize}
               onChange={(event) => onPageSizeChange(Number(event.target.value))}
             >
@@ -148,7 +143,7 @@ const DataTablePagination = React.forwardRef<HTMLElement, DataTablePaginationPro
                   {option}
                 </option>
               ))}
-            </select>
+            </NativeSelect>
           </label>
         </div>
       </nav>

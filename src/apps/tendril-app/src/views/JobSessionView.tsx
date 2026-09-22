@@ -353,7 +353,7 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
           gap where the line used to be — a removal that reads as a hole rather than as tightening. */}
       <div
         className={`flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between ${
-          isSheet ? "" : "border-b border-border pb-4"
+          isSheet ? "px-4 pt-4" : "border-b border-border pb-4"
         }`}
       >
         <div className="min-w-0">
@@ -479,19 +479,25 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
         </div>
       </div>
 
-      {stopError && <Callout.Error data-testid="job-cancel-error">{stopError}</Callout.Error>}
+      {stopError && (
+        <div className={isSheet ? "px-4" : ""}>
+          <Callout.Error data-testid="job-cancel-error">{stopError}</Callout.Error>
+        </div>
+      )}
 
       {/* `OutputSheet.cs`: `Callout.Info(job.StatusMessage, $"Job {job.Status}")` - the job's own
           account of where it is, which for a failure is the promptware's reported reason. Without
           this a failed job is a red badge and a raw stream. */}
       {explainsItself && message && (
-        <Callout
-          variant={isFailure ? "error" : "info"}
-          title={`Job ${currentJob.status}`}
-          data-testid="job-failure-reason"
-        >
-          <p className="whitespace-pre-wrap">{message}</p>
-        </Callout>
+        <div className={isSheet ? "px-4" : ""}>
+          <Callout
+            variant={isFailure ? "error" : "info"}
+            title={`Job ${currentJob.status}`}
+            data-testid="job-failure-reason"
+          >
+            <p className="whitespace-pre-wrap">{message}</p>
+          </Callout>
+        </div>
       )}
 
       {/* Output. `OutputSheet.cs` decides between three things: a viewer following a live stream, a
@@ -505,7 +511,7 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
           against, the shell sized to its content, and the metrics footer pinned to the bottom of a box
           that stopped short of the sheet. 414.72px of reserved space (`--spacing` is 0.27rem here, not
           Tailwind's 0.25) sat under it whenever the log was shorter than the floor. */}
-      <div className="min-h-0 flex-1 overflow-hidden">
+      <div className={`min-h-0 flex-1 overflow-hidden ${isSheet ? "pl-3" : ""}`}>
         {eventLines.length > 0 ? (
           <AgentViewer
             id={viewerId}
@@ -543,7 +549,7 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
             eventHandler={noop}
           />
         ) : explainsItself && message ? null : ( // a contradiction. // available." directly under "Waiting for a job slot to become available", which reads as // text is only reached when there is nothing to say. Rendering both put "No output // `OutputSheet.cs:26-49` **returns** its callout for a job with no output; the fallback
-          <p className="text-sm text-muted-foreground" data-testid="job-no-output">
+          <p className={`text-sm text-muted-foreground ${isSheet ? "px-4" : ""}`} data-testid="job-no-output">
             No output available.
           </p>
         )}

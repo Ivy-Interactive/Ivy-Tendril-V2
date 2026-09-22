@@ -6,6 +6,17 @@ import { ShellSidebarSection } from "../Shell";
 import type { ShellSectionItemDto } from "../Shell";
 import { DialogShell } from "./DialogShell";
 
+/**
+ * Fallback error text.
+ *
+ * Module scope, not a default parameter: a default arrow is a new function on every render, and
+ * this one sits in the debounce effect's dep array - so a consumer that omits `describeError`
+ * would tear the effect down and re-arm the timer on every render, and a parent re-rendering
+ * faster than the debounce would never issue a search at all.
+ */
+const describeErrorFallback = (err: unknown): string =>
+  err instanceof Error ? err.message : String(err);
+
 /** V1 `PlanSearchDialog.MaxResults`. */
 export const MAX_PLAN_SEARCH_RESULTS = 15;
 
@@ -13,7 +24,7 @@ export const MAX_PLAN_SEARCH_RESULTS = 15;
  * How long the box sits still before the query goes out. V2 only: V1 searches the SQLite handle it
  * already holds, synchronously inside `Build()`, so it needs no debounce at all.
  */
-export const PLAN_SEARCH_DEBOUNCE_MS = 200;
+export const PLAN_SEARCH_DEBOUNCE_MS = 150;
 
 export interface PlanSearchDialogProps {
   isOpen: boolean;
@@ -63,7 +74,7 @@ export function PlanSearchDialog({
   onClose,
   onSelectPlan,
   search,
-  describeError = (err) => (err instanceof Error ? err.message : String(err)),
+  describeError = describeErrorFallback,
 }: PlanSearchDialogProps) {
   const [query, setQuery] = React.useState("");
   const [items, setItems] = React.useState<ShellSectionItemDto[]>([]);

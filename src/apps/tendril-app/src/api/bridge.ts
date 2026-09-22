@@ -25,6 +25,8 @@ import type {
   JobDetail,
   ModelCatalogStatus,
   OnboardingStatus,
+  PlanArtifacts,
+  PlanChangesData,
   PlanDetail,
   PlanGitData,
   PlanQuery,
@@ -381,6 +383,34 @@ const tauriClient = {
    */
   async getPlanGit(this: void, id: string): Promise<PlanGitData> {
     return invoke<PlanGitData>("cmd_get_plan_git", { id });
+  },
+
+  async getPlanChanges(this: void, id: string): Promise<PlanChangesData> {
+    return invokeOrFetch<PlanChangesData>(
+      "cmd_get_plan_changes",
+      { id },
+      `/api/plans/${encodeURIComponent(id)}/changes`,
+    );
+  },
+
+  async getPlanSummary(this: void, id: string): Promise<string | null> {
+    const res = await invokeOrFetch<{ summary: string | null } | string | null>(
+      "cmd_get_plan_summary",
+      { id },
+      `/api/plans/${encodeURIComponent(id)}/summary`,
+    );
+    if (res && typeof res === "object" && "summary" in res) {
+      return res.summary;
+    }
+    return (res as string | null) ?? null;
+  },
+
+  async getPlanArtifacts(this: void, id: string): Promise<PlanArtifacts> {
+    return invokeOrFetch<PlanArtifacts>(
+      "cmd_get_plan_artifacts",
+      { id },
+      `/api/plans/${encodeURIComponent(id)}/artifacts`,
+    );
   },
 
   async getRevision(this: void, id: string, number?: number): Promise<string> {

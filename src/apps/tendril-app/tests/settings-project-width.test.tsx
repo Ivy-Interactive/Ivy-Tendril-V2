@@ -279,3 +279,21 @@ describe("settings blocks are separated by spacing, not rules", () => {
     sections.forEach((section) => expect(section.className).not.toMatch(/\bborder-t\b/));
   });
 });
+
+/**
+ * The top-level sections rail (everything that is not the project or config-editor screen) draws its
+ * own divider between whichever sections render together, on the container rather than on any one
+ * section - so a bare `space-y-10` cannot silently replace it and drop the rule again.
+ */
+describe("top-level settings sections are separated by a divider", () => {
+  it("carries divide-y and equal padding above and below each divider on its container", async () => {
+    await renderSection("advanced");
+
+    const card = screen.getByTestId("advanced-settings-card");
+    const container = card.parentElement;
+    expect(container, "the sections container must be the card's direct parent").not.toBeNull();
+    expect(container!.className).toMatch(/\bdivide-y\b/);
+    expect(container!.className).toMatch(/\bdivide-border\b/);
+    expect(container!.className).toMatch(/\[&>\*\]:py-10/);
+  });
+});

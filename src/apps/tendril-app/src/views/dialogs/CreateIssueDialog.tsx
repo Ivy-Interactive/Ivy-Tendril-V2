@@ -3,7 +3,7 @@ import {
   CreateIssueDialog as CreateIssueDialogView,
   type CreateIssueSubject,
   type CreateIssueSubmit,
-} from "@ivy-interactive/components/tendril";
+} from "@ivy-interactive/components/dialogs";
 import { PlanActionsController } from "../../controllers/planActions";
 import {
   describeBridgeError,

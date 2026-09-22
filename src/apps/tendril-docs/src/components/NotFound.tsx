@@ -1,3 +1,4 @@
+import { TuiKbd } from "@ivy-interactive/components/ui";
 import { getTranslations } from "../config/translations";
 import { navigate } from "../lib/router";
 import { splitLocale } from "../lib/slug";
@@ -22,7 +23,7 @@ export function NotFound({ route, homeRoute, locale }: NotFoundProps) {
       </p>
       <p className="text-base leading-relaxed">
         {t.pageNotFoundUseSidebar}{" "}
-        <kbd className="rounded border border-border px-1 font-mono">⌘K</kbd>{" "}
+        <TuiKbd keys="⌘K" variant="outline" />{" "}
         {t.pageNotFoundToSearch}{" "}
         <a
           href={homeRoute}
