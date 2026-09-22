@@ -297,6 +297,105 @@ describe("chat message presentation parity", () => {
     });
   });
 
+  /**
+   * #258: the run's own account of itself, under the turn that spent it. The figures were already
+   * folded out of `rawStream` for `AgentViewer`; chat simply never showed them.
+   */
+  describe("a turn's cost and output time", () => {
+    const completed = [
+      JSON.stringify({
+        kind: "text",
+        text: "Done.",
+        delta: false,
+        timestamp: "2026-09-14T10:00:00Z",
+      }),
+      JSON.stringify({
+        kind: "result",
+        is_success: true,
+        duration_ms: 12000,
+        timestamp: "2026-09-14T10:00:12Z",
+        usage: { input_tokens: 100, output_tokens: 50, cost_usd: 0.1234, cost_source: "reported" },
+      }),
+    ].join("\n");
+
+    it("renders the footer with what the run cost and how long it took", () => {
+      render(<ChatMessageRow message={message({ rawStream: completed, content: "Done." })} />);
+
+      expect(screen.getByTestId("agent-metrics-footer")).toBeInTheDocument();
+      expect(screen.getByTestId("agent-metrics-cost")).toHaveTextContent("$0.1234");
+      expect(screen.getByTestId("agent-metrics-elapsed")).toHaveTextContent("12s");
+      // Billed, not priced from a list: no "~".
+      expect(screen.getByTestId("agent-metrics-cost")).toHaveAttribute("data-estimated", "false");
+    });
+
+    it("renders no footer for a user message", () => {
+      render(
+        <ChatMessageRow
+          message={message({ id: "u1", role: "user", content: "hi", rawStream: undefined })}
+        />,
+      );
+
+      expect(screen.queryByTestId("agent-metrics-footer")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("chat-turn-metrics")).not.toBeInTheDocument();
+    });
+
+    it("renders no footer for an assistant turn with no stream", () => {
+      render(<ChatMessageRow message={message({ rawStream: undefined })} />);
+
+      expect(screen.queryByTestId("chat-turn-metrics")).not.toBeInTheDocument();
+    });
+
+    it("renders nothing when the stream carries no figures worth a line", () => {
+      render(
+        <ChatMessageRow
+          message={message({ rawStream: JSON.stringify({ kind: "session_init" }) })}
+        />,
+      );
+
+      expect(screen.queryByTestId("agent-metrics-footer")).not.toBeInTheDocument();
+    });
+
+    /**
+     * A turn that was interrupted, crashed, or was cut off by a daemon restart never reports a
+     * `result`. Keying completion off that wire left it ticking forever; only the session's live
+     * turn is unfinished, so an abandoned one freezes at the span its own events covered.
+     */
+    it("freezes the clock on an abandoned turn that never reported a result", () => {
+      const abandoned = [
+        JSON.stringify({
+          kind: "text",
+          text: "Starting.",
+          delta: false,
+          timestamp: "2026-09-14T10:00:00Z",
+        }),
+        JSON.stringify({
+          kind: "text",
+          text: "More.",
+          delta: true,
+          timestamp: "2026-09-14T10:00:05Z",
+        }),
+      ].join("\n");
+
+      render(<ChatMessageRow message={message({ rawStream: abandoned })} />);
+
+      // Measured from the first event to the last, not ticking on against the wall clock.
+      expect(screen.getByTestId("agent-metrics-elapsed")).toHaveTextContent("5s");
+    });
+
+    it("keeps the clock running on the turn the session is generating", () => {
+      const live = JSON.stringify({
+        kind: "text",
+        text: "Working.",
+        delta: false,
+        timestamp: "2026-09-14T10:00:00Z",
+      });
+
+      render(<ChatMessageRow message={message({ rawStream: live })} isLiveTurn />);
+
+      expect(screen.getByTestId("agent-metrics-elapsed")).toBeInTheDocument();
+    });
+  });
+
   describe("a user message reloaded from disk", () => {
     it("splits the [Attached Files] block back into chips", () => {
       render(

@@ -347,8 +347,11 @@ describe("the plan chat's live tool-call stream", () => {
         "BashList files in working directory \u2192 total 448",
     );
     expect(
-      [...activity.querySelectorAll("[data-testid='chat-turn-text'],[data-testid='chat-turn-tool']")]
-        .map((node) => node.getAttribute("data-testid")),
+      [
+        ...activity.querySelectorAll(
+          "[data-testid='chat-turn-text'],[data-testid='chat-turn-tool']",
+        ),
+      ].map((node) => node.getAttribute("data-testid")),
     ).toEqual(["chat-turn-text", "chat-turn-tool"]);
   });
 

@@ -20,6 +20,7 @@ import { formatSystemEvent } from "../utils/systemEvents";
 import { resolveJobState, type JobDisplayState } from "../utils/jobStatus";
 import type { LightboxImage } from "../components/chat/ImageLightbox";
 import { TurnActivity, buildTurnSegments, parseTurnStream } from "../components/chat/TurnActivity";
+import { TurnMetrics } from "../components/chat/TurnMetrics";
 
 export interface ChatMessageRowProps {
   message: ChatMessage;
@@ -41,6 +42,12 @@ export interface ChatMessageRowProps {
    */
   jobs?: Job[];
   threadMessages?: ChatMessage[];
+  /**
+   * Whether this message is the turn the session is generating right now. Only that one is still
+   * running: it is what keeps the metrics footer's elapsed clock ticking, and what stops every
+   * finished turn - including one abandoned without a `result` wire - from ticking forever.
+   */
+  isLiveTurn?: boolean;
 }
 
 /**
@@ -160,6 +167,7 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
   wireframeBaseUrl,
   jobs = [],
   threadMessages = [],
+  isLiveTurn = false,
 }) {
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
@@ -227,10 +235,10 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
     [message.id, wireframeBaseUrl],
   );
 
-  /* One parse per stream, shared by the body's segments and anything else that reads the turn's
-     events. A turn appends a line per event and re-parses its whole stream each time, so parsing
-     once here rather than in each consumer keeps that cost to a single pass. Keyed on `rawStream`
-     alone, so an arriving `content` delta re-reconciles without re-parsing. */
+  /* One parse per stream, shared by the body's segments and the metrics footer. A turn appends a
+     line per event and re-parses its whole stream each time, so parsing once here rather than in
+     each consumer halves that cost. Keyed on `rawStream` alone, so an arriving `content` delta
+     re-reconciles without re-parsing. */
   const parsedTurn = useMemo(
     () => (isUser ? null : parseTurnStream(currentMessage.rawStream)),
     [isUser, currentMessage.rawStream],
@@ -357,6 +365,7 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
                   <span>Submitting answer...</span>
                 </div>
               )}
+              {parsedTurn && <TurnMetrics metrics={parsedTurn.metrics} isLiveTurn={isLiveTurn} />}
             </div>
           )}
 
