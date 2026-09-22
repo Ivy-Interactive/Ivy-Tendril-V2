@@ -8,6 +8,7 @@ import {
   type ViewerEvent,
 } from "../utils/appComments";
 import { detectAppUrl } from "../utils/detectAppUrl";
+import { useTranslation } from "../i18n";
 import {
   describeBridgeError,
   type Job,
@@ -87,7 +88,9 @@ const URL_DETECT_INTERVAL_MS = 500;
  * stopping the process.
  */
 export function ReviewActionView({ target, plan, jobs = [], onJobStarted }: ReviewActionViewProps) {
+  const { t } = useTranslation("review");
   const [appUrl, setAppUrl] = React.useState<string | null>(null);
+  // A viewport id the viewer matches, not a label.
   const [device, setDevice] = React.useState("Desktop");
   const [comments, setComments] = React.useState<AppComment[]>([]);
   /** `PtyHandle.Closed`: the process is gone, so the terminal stops taking keystrokes. */
@@ -342,7 +345,7 @@ export function ReviewActionView({ target, plan, jobs = [], onJobStarted }: Revi
                     icon: "MessageSquare",
                     // Only once there is something to send: an Update button with nothing behind it
                     // invites a change request made of nothing.
-                    label: `Send ${comments.length} comment${comments.length === 1 ? "" : "s"} to the agent as a change request`,
+                    label: t("actionView.sendComments", { count: comments.length }),
                     badge: String(comments.length),
                     primary: true,
                   },
@@ -367,7 +370,7 @@ export function ReviewActionView({ target, plan, jobs = [], onJobStarted }: Revi
           className="h-full"
           closed={closed}
           loading
-          loadingText={`Starting ${target.actionName}…`}
+          loadingText={t("actionView.starting", { name: target.actionName })}
           onInput={(data) => void runRef.current?.sendInput(data)}
           onResize={(rows, cols) => void runRef.current?.resize(rows, cols)}
         />
