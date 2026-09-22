@@ -3,6 +3,8 @@ import { ArrowDown, ArrowUp, ChevronsUpDown, GripVertical } from "lucide-react";
 
 import { cn } from "@/lib/utils";
 import { TableHead, type TableHeadProps } from "@/components/ui/table";
+import { tableHeadGripOffsetVariant } from "@/components/ui/table/table-variant";
+import { useTableScale } from "@/components/ui/table/useTableSize";
 import { DataTableColumnResizer } from "./data-table-column-resizer";
 import type { DataTableColumn, DataTableSortDirection } from "./types";
 import { ariaSortValue, nextSortDirection } from "./utils";
@@ -88,6 +90,9 @@ function DataTableColumnHeaderInner<TRow>(
   ref: React.ForwardedRef<HTMLTableCellElement>,
 ) {
   const label = column.header ?? column.name;
+  /* The grip is positioned against this cell's own horizontal padding, which is keyed by density —
+     the same source `TableHead` resolves its `px-*` from, so the two cannot drift. */
+  const density = useTableScale();
 
   /*
    * The column's label, as an *accessible description* for the grip and the resize handle rather
@@ -107,13 +112,20 @@ function DataTableColumnHeaderInner<TRow>(
    */
   const labelId = `${React.useId()}-label`;
 
+  /* The active direction is always drawn — it is state, and a sort nobody can see is a table sorted
+     for no reason. The neutral "this column sorts" chevron is an *affordance*, so it stays hidden
+     until the header is hovered or the sort button focused: one per column, always painted, is a row
+     of arrows competing with the labels. */
   const indicator =
     direction === "Ascending" ? (
       <ArrowUp aria-hidden="true" className="size-3.5 shrink-0" />
     ) : direction === "Descending" ? (
       <ArrowDown aria-hidden="true" className="size-3.5 shrink-0" />
     ) : (
-      <ChevronsUpDown aria-hidden="true" className="size-3.5 shrink-0 text-muted-foreground/60" />
+      <ChevronsUpDown
+        aria-hidden="true"
+        className="size-3.5 shrink-0 text-muted-foreground/60 opacity-0 transition-opacity group-hover/th:opacity-100 group-focus-visible/sort:opacity-100"
+      />
     );
 
   /* A live resize override wins over the declared `column.width`, which becomes the *starting*
@@ -154,6 +166,17 @@ function DataTableColumnHeaderInner<TRow>(
         className={cn(
           "inline-flex shrink-0 cursor-grab items-center rounded-field text-muted-foreground/50",
           "opacity-0 transition-opacity focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring",
+          // Out of flow, in the cell's left padding. Hidden it must take *no* width, or every header
+          // label sits indented by the grip plus the flex gap while the body cells below it do not —
+          // measured at 19.4px of misalignment before this, which reads as the header being a
+          // different column from its own rows. `absolute` keeps the reveal from shifting the label
+          // sideways on hover, which a width-animated slot would.
+          //
+          // The offset and the box are the header's own `px-*` at this density (see
+          // `tableHeadGripOffsetVariant`), so the icon lands in the gutter at all three rather than
+          // overhanging the previous column at Small and sitting well inside the label at Large.
+          "absolute top-1/2 -translate-y-1/2 justify-center",
+          tableHeadGripOffsetVariant({ density }),
           // Revealed on hovering the header rather than always painted: one of these per column is a
           // row of grips competing with the labels for attention. Focus and an active drag both
           // pin it visible, so the keyboard path is never invisible to the person using it.
@@ -161,7 +184,7 @@ function DataTableColumnHeaderInner<TRow>(
           dragging && "cursor-grabbing opacity-100",
         )}
       >
-        <GripVertical aria-hidden="true" className="size-3.5" />
+        <GripVertical aria-hidden="true" className="size-full" />
       </button>
     ) : null;
 
@@ -176,22 +199,26 @@ function DataTableColumnHeaderInner<TRow>(
       onMouseEnter={reorderable ? onReorderOver : undefined}
       className={cn(
         dataTableCellAlignVariant({ align: column.align ?? "Left" }),
-        // The resizer is absolutely positioned against this cell.
-        (resizable || reorderable) && "group/th relative",
+        // `group/th` unconditionally: the quiet affordances below — the sort chevron as well as the
+        // grip — are revealed by hovering the header, which is true of a header cell that is neither
+        // resizable nor reorderable. `relative` is the containing block for both the resizer and the
+        // out-of-flow grip.
+        "group/th",
+        (resizable || reorderable) && "relative",
         dragging && "opacity-50",
-        dropTarget && !dragging && "bg-muted",
+        dropTarget && !dragging && "bg-secondary",
         className,
       )}
       {...props}
     >
-      <div className="flex min-w-0 items-center gap-1">
+      <div className="relative flex min-w-0 items-center gap-1">
         {grip}
         {sortable ? (
           <button
             type="button"
             aria-label={sortActionLabel(label, direction)}
             onClick={() => onToggleSort?.(column.name)}
-            className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-field font-medium transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            className="group/sort inline-flex min-w-0 max-w-full items-center gap-1 rounded-field font-medium transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
           >
             <span id={labelId} className="truncate">
               {label}

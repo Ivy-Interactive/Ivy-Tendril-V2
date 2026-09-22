@@ -319,8 +319,13 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
         accessor: (row) => `${row.owner}/${row.repo}`,
         // `owner/repo` and a `tendril/00610-...` branch are both longer than any column that fits on
         // screen, so the truncated cells carry the full value as a tooltip.
+        // A repository slug is an identifier, so it takes the same restrained monospace as the branch
+        // below and the ids in the Jobs table.
         cell: (_value, row) => (
-          <span title={`${row.owner}/${row.repo}`}>
+          <span
+            className="font-mono text-xs text-muted-foreground"
+            title={`${row.owner}/${row.repo}`}
+          >
             {row.owner}/{row.repo}
           </span>
         ),
@@ -331,7 +336,7 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
         width: "13%",
         accessor: (row) => row.branch ?? "",
         cell: (_value, row) => (
-          <span className="font-mono text-xs" title={row.branch ?? ""}>
+          <span className="font-mono text-xs text-muted-foreground" title={row.branch ?? ""}>
             {row.branch ?? ""}
           </span>
         ),

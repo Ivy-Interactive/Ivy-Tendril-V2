@@ -145,10 +145,11 @@ impl TurnOutcome {
 /// none when it did not.
 ///
 /// It is deliberately **not** an inventory of what the turn did. The eventwire stream carries a
-/// `tool_call` / `tool_result` pair per tool, which `TurnActivity` renders as cards above this text and
-/// which `tendril chat send` prints as it happens — so a prose summary of the same calls is a second,
-/// longer disclosure of something the reader can already see, and it pushed the one line that mattered
-/// (the failure reason) off the bottom of a wall of `run_command` entries.
+/// `tool_call` / `tool_result` pair per tool, which `TurnActivity` renders as cards interleaved with
+/// this text in the order the stream produced them, and which `tendril chat send` prints as it
+/// happens — so a prose summary of the same calls is a second, longer disclosure of something the
+/// reader can already see, and it pushed the one line that mattered (the failure reason) off the
+/// bottom of a wall of `run_command` entries.
 pub(super) fn compose_turn_content(
     text: &str,
     raw_lines: &[String],
