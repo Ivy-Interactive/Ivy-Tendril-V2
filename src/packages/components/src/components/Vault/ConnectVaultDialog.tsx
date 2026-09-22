@@ -1,7 +1,9 @@
 import React from "react";
+import { i18n, useTranslation } from "@/i18n/uiVault";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../ui/select";
+import { githubAccountTypeLabel } from "./CreateVaultDialog";
 import { VaultDialogShell } from "./VaultDialogShell";
 import type { DiscoveredVaultRepo } from "./types";
 
@@ -24,8 +26,11 @@ export interface ConnectVaultDialogProps {
 
 /** `acme/Tendril-Vault (Organization, private)` — enough to tell two similarly named repos apart. */
 export function formatDiscoveredRepo(repo: DiscoveredVaultRepo): string {
-  const privacy = repo.isPrivate ? ", private" : "";
-  return `${repo.fullName} (${repo.accountType}${privacy})`;
+  return i18n.t("uiVault:connectDialog.repoOption", {
+    fullName: repo.fullName,
+    accountType: githubAccountTypeLabel(repo.accountType),
+    context: repo.isPrivate ? "private" : undefined,
+  });
 }
 
 export const ConnectVaultDialog: React.FC<ConnectVaultDialogProps> = ({
@@ -37,6 +42,7 @@ export const ConnectVaultDialog: React.FC<ConnectVaultDialogProps> = ({
   error,
   isBusy = false,
 }) => {
+  const { t } = useTranslation("uiVault");
   const [repoUrl, setRepoUrl] = React.useState("");
   const [displayName, setDisplayName] = React.useState("");
   const [selected, setSelected] = React.useState("");
@@ -63,11 +69,11 @@ export const ConnectVaultDialog: React.FC<ConnectVaultDialogProps> = ({
     <VaultDialogShell
       open={open}
       onClose={onClose}
-      title="Connect Existing Team Vault"
-      description="Connect an existing Tendril Vault repository to synchronize projects, skills, and configuration with your team."
+      title={t("connectDialog.title")}
+      description={t("connectDialog.description")}
       testId="connect-vault-dialog"
       error={error}
-      submitLabel="Connect Vault"
+      submitLabel={t("connectDialog.submit")}
       submitDisabled={submitDisabled}
       onSubmit={() => {
         if (submitDisabled) return;
@@ -76,16 +82,19 @@ export const ConnectVaultDialog: React.FC<ConnectVaultDialogProps> = ({
     >
       {isDiscovering && (
         <p className="text-xs text-muted-foreground" data-testid="connect-vault-discovering">
-          🔍 Searching your GitHub account and organizations for existing vaults...
+          {t("connectDialog.discovering")}
         </p>
       )}
 
       {!isDiscovering && discovered.length > 0 && (
         <div className="space-y-1.5">
-          <Label htmlFor="connect-vault-detected">Detected GitHub Vaults</Label>
+          <Label htmlFor="connect-vault-detected">{t("connectDialog.detected.label")}</Label>
           <Select value={selected} onValueChange={handleSelect}>
-            <SelectTrigger id="connect-vault-detected" aria-label="Detected GitHub Vaults">
-              <SelectValue placeholder="Select Repository" />
+            <SelectTrigger
+              id="connect-vault-detected"
+              aria-label={t("connectDialog.detected.label")}
+            >
+              <SelectValue placeholder={t("connectDialog.detected.placeholder")} />
             </SelectTrigger>
             <SelectContent>
               {discovered.map((repo) => (
@@ -99,7 +108,7 @@ export const ConnectVaultDialog: React.FC<ConnectVaultDialogProps> = ({
       )}
 
       <div className="space-y-1.5">
-        <Label htmlFor="connect-vault-url">Git Repository URL</Label>
+        <Label htmlFor="connect-vault-url">{t("connectDialog.url.label")}</Label>
         <Input
           id="connect-vault-url"
           value={repoUrl}
@@ -109,11 +118,11 @@ export const ConnectVaultDialog: React.FC<ConnectVaultDialogProps> = ({
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="connect-vault-name">Display Name (Optional)</Label>
+        <Label htmlFor="connect-vault-name">{t("connectDialog.displayName.label")}</Label>
         <Input
           id="connect-vault-name"
           value={displayName}
-          placeholder="e.g. Core Team Vault (optional)"
+          placeholder={t("connectDialog.displayName.placeholder")}
           onChange={(event) => setDisplayName(event.target.value)}
         />
       </div>

@@ -1,5 +1,6 @@
 import React from "react";
 import { ChevronDown, GitPullRequest } from "lucide-react";
+import { useTranslation } from "@/i18n/uiVault";
 import { Badge } from "../ui/badge";
 import { Callout } from "../ui/callout";
 import { Checkbox } from "../ui/checkbox";
@@ -49,41 +50,12 @@ type AssetCategory = keyof typeof EMPTY_ASSETS;
 /** Keyed by project name, so one PR can publish several projects with different asset subsets. */
 type SelectionMap = Record<string, string[]>;
 
-const CATEGORY_LABELS: Record<AssetCategory, string> = {
-  skills: "Skills",
-  mcpServers: "MCP Servers",
-  memories: "Project Memories",
-  reviewActions: "Review Actions",
-  verifications: "Verifications",
-};
-
-const CATEGORY_EMPTY_TEXT: Record<AssetCategory, string> = {
-  skills: "No custom skills configured for this project.",
-  mcpServers: "No MCP servers configured for this project.",
-  memories: "No memory markdown files found for this project.",
-  reviewActions: "No review actions configured for this project.",
-  verifications: "No verifications configured for this project.",
-};
-
-/** The kind badge each asset row carries, from `PushAssetItemRow`'s `badge` argument. */
-const CATEGORY_ITEM_BADGES: Record<AssetCategory, string> = {
-  skills: "Skill",
-  mcpServers: "MCP",
-  memories: "Memory",
-  reviewActions: "Action",
-  verifications: "Verification",
-};
-
-/** The short word the header summary counts each category in, from `PushProjectHeaderBadge`. */
-const CATEGORY_SUMMARY_WORDS: Record<AssetCategory, string> = {
-  skills: "skills",
-  mcpServers: "MCPs",
-  memories: "mems",
-  reviewActions: "actions",
-  verifications: "verifs",
-};
-
-const CATEGORIES = Object.keys(CATEGORY_LABELS) as AssetCategory[];
+/*
+ * Each category's label and row badge (`PushAssetItemRow`'s `badge` argument) are the
+ * `assetCategories` keys, its empty text `pushDialog.empty.<category>`, and the short word the header
+ * summary counts it in (`PushProjectHeaderBadge`) `pushDialog.summary.<category>`.
+ */
+const CATEGORIES = Object.keys(EMPTY_ASSETS) as AssetCategory[];
 
 function assetsFor(
   assets: ProjectAssets[],
@@ -116,6 +88,7 @@ export const PushToVaultDialog: React.FC<PushToVaultDialogProps> = ({
   prUrl,
   isBusy = false,
 }) => {
+  const { t } = useTranslation("uiVault");
   const [selectedProjects, setSelectedProjects] = React.useState<string[]>(() =>
     defaultProject ? [defaultProject] : [...availableProjects],
   );
@@ -160,11 +133,12 @@ export const PushToVaultDialog: React.FC<PushToVaultDialogProps> = ({
     const projectAssets = assetsFor(assets, project);
     const parts = CATEGORIES.filter((category) => projectAssets[category].length > 0).map(
       (category) =>
-        `${(selections[category][project] ?? []).length}/${projectAssets[category].length} ${
-          CATEGORY_SUMMARY_WORDS[category]
-        }`,
+        t(`pushDialog.summary.${category}`, {
+          selected: (selections[category][project] ?? []).length,
+          count: projectAssets[category].length,
+        }),
     );
-    return parts.length > 0 ? parts.join(" • ") : "0 assets";
+    return parts.length > 0 ? parts.join(" • ") : t("pushDialog.summary.none");
   };
 
   const submitDisabled = isBusy || selectedProjects.length === 0;
@@ -173,10 +147,10 @@ export const PushToVaultDialog: React.FC<PushToVaultDialogProps> = ({
     <VaultDialogShell
       open={open}
       onClose={onClose}
-      title={`Add Project to ${vaultDisplayName} (Create PR)`}
+      title={t("pushDialog.title", { vault: vaultDisplayName })}
       testId="push-vault-dialog"
       error={error}
-      submitLabel="Publish & Open PR"
+      submitLabel={t("pushDialog.submit")}
       submitIcon={<GitPullRequest className="mr-1.5 size-3.5" aria-hidden="true" />}
       submitDisabled={submitDisabled}
       onSubmit={() => {
@@ -197,11 +171,10 @@ export const PushToVaultDialog: React.FC<PushToVaultDialogProps> = ({
       }}
     >
       <section className="space-y-2">
-        <p className="text-xs font-semibold text-foreground">Projects &amp; Assets to Publish</p>
+        <p className="text-xs font-semibold text-foreground">{t("pushDialog.projects.heading")}</p>
         {availableProjects.length === 0 ? (
           <Callout.Info data-testid="push-vault-no-projects">
-            All local projects are already tracked by a vault. Create a new local project first to
-            add it here.
+            {t("pushDialog.projects.none")}
           </Callout.Info>
         ) : (
           /* Every local project is listed, ticked or not, so the assets of one you have not chosen
@@ -234,7 +207,7 @@ export const PushToVaultDialog: React.FC<PushToVaultDialogProps> = ({
                   <Badge variant="secondary">{assetSummary(project)}</Badge>
                   <CollapsibleTrigger
                     className="group ml-auto rounded-selector p-1 text-muted-foreground transition-colors hover:bg-secondary/60 hover:text-foreground"
-                    aria-label={`Assets for ${project}`}
+                    aria-label={t("pushDialog.projects.assetsAriaLabel", { project })}
                   >
                     <ChevronDown
                       className="size-3 shrink-0 transition-transform duration-200 group-data-[state=open]:rotate-180"
@@ -246,13 +219,13 @@ export const PushToVaultDialog: React.FC<PushToVaultDialogProps> = ({
                   {CATEGORIES.map((category) => (
                     <AssetChecklist
                       key={category}
-                      label={CATEGORY_LABELS[category]}
+                      label={t(`assetCategories.${category}.label`)}
                       category={category}
                       scope={project}
                       items={projectAssets[category]}
                       selected={selections[category][project] ?? []}
-                      emptyText={CATEGORY_EMPTY_TEXT[category]}
-                      itemBadge={CATEGORY_ITEM_BADGES[category]}
+                      emptyText={t(`pushDialog.empty.${category}`)}
+                      itemBadge={t(`assetCategories.${category}.badge`)}
                       onChange={(next) => setCategory(category, project, next)}
                     />
                   ))}
@@ -270,7 +243,7 @@ export const PushToVaultDialog: React.FC<PushToVaultDialogProps> = ({
                         }))
                       }
                     />
-                    Include Security &amp; Permissions Policies
+                    {t("pushDialog.permissions")}
                   </label>
                 </CollapsibleContent>
               </Collapsible>
@@ -280,9 +253,9 @@ export const PushToVaultDialog: React.FC<PushToVaultDialogProps> = ({
       </section>
 
       <section className="space-y-3">
-        <p className="text-xs font-semibold text-foreground">Release Details</p>
+        <p className="text-xs font-semibold text-foreground">{t("pushDialog.release.heading")}</p>
         <div className="space-y-1.5">
-          <Label htmlFor="push-vault-version">Version Tag (UTC Timestamp)</Label>
+          <Label htmlFor="push-vault-version">{t("pushDialog.release.version.label")}</Label>
           <Input
             id="push-vault-version"
             value={version}
@@ -290,20 +263,20 @@ export const PushToVaultDialog: React.FC<PushToVaultDialogProps> = ({
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="push-vault-changelog">Changelog / Release Notes</Label>
+          <Label htmlFor="push-vault-changelog">{t("pushDialog.release.changelog.label")}</Label>
           <Textarea
             id="push-vault-changelog"
             value={changelog}
-            placeholder="Summary of updates, new skills, MCP servers, or security policy changes..."
+            placeholder={t("pushDialog.release.changelog.placeholder")}
             onChange={(event) => setChangelog(event.target.value)}
           />
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="push-vault-reviewers">Request PR Reviewers</Label>
+          <Label htmlFor="push-vault-reviewers">{t("pushDialog.release.reviewers.label")}</Label>
           <Input
             id="push-vault-reviewers"
             value={reviewers}
-            placeholder="e.g. alice, bob (comma-separated GitHub usernames)"
+            placeholder={t("pushDialog.release.reviewers.placeholder")}
             onChange={(event) => setReviewers(event.target.value)}
           />
         </div>
@@ -312,7 +285,7 @@ export const PushToVaultDialog: React.FC<PushToVaultDialogProps> = ({
       {/* The dialog stays open on success so the PR link lands here, the way `createdPrUrl` does. */}
       {prUrl && (
         <Callout.Success data-testid="push-vault-pr-url">
-          Pull request opened successfully: {prUrl}
+          {t("pushDialog.prOpened", { url: prUrl })}
         </Callout.Success>
       )}
     </VaultDialogShell>

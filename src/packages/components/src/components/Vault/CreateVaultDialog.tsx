@@ -1,4 +1,5 @@
 import React from "react";
+import { i18n, useTranslation } from "@/i18n/uiVault";
 import { Input } from "../ui/input";
 import { Label } from "../ui/label";
 import { Checkbox } from "../ui/checkbox";
@@ -22,9 +23,27 @@ export interface CreateVaultDialogProps {
   isBusy?: boolean;
 }
 
+/** The labels of the account types GitHub reports; a type it adds later is shown as it comes. */
+const ACCOUNT_TYPE_KEYS = new Map<string, Parameters<typeof i18n.t>[0]>([
+  ["User", "uiVault:githubAccountTypes.user"],
+  ["Organization", "uiVault:githubAccountTypes.organization"],
+]);
+
+/**
+ * `User` / `Organization`, in the current language. The raw type is what GitHub sends; only the
+ * label shown for it is translated.
+ */
+export function githubAccountTypeLabel(type: string): string {
+  const key = ACCOUNT_TYPE_KEYS.get(type);
+  return key ? i18n.t(key) : type;
+}
+
 /** `octocat (User)` — the login is what the API needs, the type is what disambiguates it. */
 export function formatAccountOption(account: GitHubAccountOption): string {
-  return `${account.login} (${account.type})`;
+  return i18n.t("uiVault:createDialog.accountOption", {
+    login: account.login,
+    type: githubAccountTypeLabel(account.type),
+  });
 }
 
 export const CreateVaultDialog: React.FC<CreateVaultDialogProps> = ({
@@ -35,6 +54,8 @@ export const CreateVaultDialog: React.FC<CreateVaultDialogProps> = ({
   error,
   isBusy = false,
 }) => {
+  const { t } = useTranslation("uiVault");
+  /* The default repository name, not copy: it is what the repo is created as on GitHub. */
   const [name, setName] = React.useState("Tendril-Vault");
   const [owner, setOwner] = React.useState("");
   const [isPrivate, setIsPrivate] = React.useState(true);
@@ -51,11 +72,11 @@ export const CreateVaultDialog: React.FC<CreateVaultDialogProps> = ({
     <VaultDialogShell
       open={open}
       onClose={onClose}
-      title="Create Team Vault on GitHub"
-      description="Create a private GitHub repository to share Tendril project configs, custom skills, and MCP servers with your team."
+      title={t("createDialog.title")}
+      description={t("createDialog.description")}
       testId="create-vault-dialog"
       error={error}
-      submitLabel="Create Vault"
+      submitLabel={t("createDialog.submit")}
       submitDisabled={submitDisabled}
       onSubmit={() => {
         if (submitDisabled) return;
@@ -68,7 +89,7 @@ export const CreateVaultDialog: React.FC<CreateVaultDialogProps> = ({
       }}
     >
       <div className="space-y-1.5">
-        <Label htmlFor="create-vault-name">Repository Name</Label>
+        <Label htmlFor="create-vault-name">{t("createDialog.name.label")}</Label>
         <Input
           id="create-vault-name"
           value={name}
@@ -78,11 +99,11 @@ export const CreateVaultDialog: React.FC<CreateVaultDialogProps> = ({
       </div>
 
       <div className="space-y-1.5">
-        <Label htmlFor="create-vault-owner">Owner / Organization</Label>
+        <Label htmlFor="create-vault-owner">{t("createDialog.owner.label")}</Label>
         {accounts.length > 0 ? (
           <Select value={owner} onValueChange={setOwner}>
-            <SelectTrigger id="create-vault-owner" aria-label="Owner / Organization">
-              <SelectValue placeholder="Select owner" />
+            <SelectTrigger id="create-vault-owner" aria-label={t("createDialog.owner.label")}>
+              <SelectValue placeholder={t("createDialog.owner.placeholder")} />
             </SelectTrigger>
             <SelectContent>
               {accounts.map((account) => (
@@ -97,7 +118,7 @@ export const CreateVaultDialog: React.FC<CreateVaultDialogProps> = ({
           <Input
             id="create-vault-owner"
             value={owner}
-            placeholder="e.g. username or organization"
+            placeholder={t("createDialog.owner.inputPlaceholder")}
             onChange={(event) => setOwner(event.target.value)}
           />
         )}
@@ -114,7 +135,7 @@ export const CreateVaultDialog: React.FC<CreateVaultDialogProps> = ({
           checked={isPrivate}
           onCheckedChange={(checked) => setIsPrivate(checked === true)}
         />
-        Private Repository
+        {t("createDialog.private")}
       </label>
     </VaultDialogShell>
   );
