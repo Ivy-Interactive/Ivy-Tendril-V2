@@ -86,12 +86,36 @@ impl Fixture {
         )
     }
 
+    /// Writes one of the fake binaries above and waits until the kernel will really exec it.
+    ///
+    /// The wait is not paranoia. `O_CLOEXEC` closes this file's descriptor at *exec*, not at
+    /// *fork*, so a sibling test thread that forks between our write and our spawn hands the new
+    /// child an inherited writable descriptor on this very file. Until that child reaches its own
+    /// exec, Linux refuses ours with `ETXTBSY` — and cargo runs all fourteen tests in this binary
+    /// on parallel threads, so the fork and the write really are concurrent. The failure then
+    /// surfaced as a `TunnelError::Spawn` instead of the message a test was asserting on, which is
+    /// why it read as "the error text is wrong" rather than "exec lost a race". macOS does not
+    /// enforce this, so it only ever failed on CI's ubuntu runner, and only sometimes: measured at
+    /// about 18 spawns in 4200.
+    ///
+    /// Staging under a temporary name and renaming into place does *not* fix it — measured at 350
+    /// in 4200, fifty times worse, because the rename widens the window instead of closing it.
+    /// Waiting for the descriptor to drain is what works, and costs nothing once it has.
     fn script(&self, name: &str, body: &str) -> PathBuf {
         use std::os::unix::fs::PermissionsExt;
         let path = self.home.join(name);
-        std::fs::write(&path, body).expect("write fake binary");
+        // `wait_until_executable` probes by actually running this script, so every fake answers
+        // the probe flag before it does anything else. Without this, probing `fake_cloudflared`
+        // would leave its `sleep 600 &` grandchild behind — in the one file whose whole point is
+        // that nothing is left behind.
+        let (shebang, rest) = body
+            .split_once('\n')
+            .expect("a fake binary starts with a shebang line");
+        let guarded = format!("{shebang}\ncase \"$1\" in {PROBE_FLAG}) exit 0 ;; esac\n{rest}");
+        std::fs::write(&path, guarded).expect("write fake binary");
         std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755))
             .expect("chmod fake binary");
+        wait_until_executable(&path);
         path
     }
 
@@ -185,6 +209,43 @@ fn grandchild_pid(logs: &[String]) -> u32 {
         .find_map(|line| line.strip_prefix("GRANDCHILD "))
         .and_then(|pid| pid.trim().parse().ok())
         .expect("the fake binary announced its grandchild")
+}
+
+/// Argument that tells a fake binary it is only being checked for exec-ability, not run.
+const PROBE_FLAG: &str = "--tendril-exec-probe";
+
+/// Blocks until `path` can actually be exec'd, or gives up after a bounded wait.
+///
+/// See [`Fixture::script`] for why a freshly written executable can transiently refuse to start.
+/// Spawning it is the only honest test: the condition lives in the kernel's view of open
+/// descriptors, so there is nothing on disk to poll, and the probe makes exactly the syscall the
+/// code under test is about to make. [`PROBE_FLAG`] keeps the fake from doing its real work.
+fn wait_until_executable(path: &std::path::Path) {
+    use std::process::{Command, Stdio};
+
+    // Generous: the window is microseconds in practice, and a test that waits a moment is much
+    // cheaper than a CI run that fails one time in fifty.
+    for _ in 0..200 {
+        match Command::new(path)
+            .arg(PROBE_FLAG)
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+        {
+            Ok(mut child) => {
+                let _ = child.wait();
+                return;
+            }
+            // `ETXTBSY`, the race this exists for. Anything else — a missing file, a bad
+            // interpreter — is a real problem, and the caller's own spawn reports it far better
+            // than a retry loop here could.
+            Err(e) if e.raw_os_error() == Some(26) => {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            Err(_) => return,
+        }
+    }
 }
 
 #[tokio::test]
