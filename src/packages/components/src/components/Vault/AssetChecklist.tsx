@@ -1,5 +1,6 @@
 import React from "react";
 import { ChevronDown } from "lucide-react";
+import { useTranslation } from "@/i18n/uiVault";
 import { Badge } from "../ui/badge";
 import { Button } from "../ui/button/button";
 import { Checkbox } from "../ui/checkbox";
@@ -40,7 +41,9 @@ export const AssetChecklist: React.FC<AssetChecklistProps> = ({
   scope,
   itemBadge,
 }) => {
-  const suffix = scope ? ` for ${scope}` : "";
+  const { t } = useTranslation("uiVault");
+  /* A scoped checklist names its scope in its labels, so two projects' controls stay apart. */
+  const labelOptions = { label, scope, context: scope ? "scoped" : undefined };
   const slug = scope ? `${scope}-${category}` : category;
   const selectedSet = new Set(selected);
 
@@ -73,18 +76,18 @@ export const AssetChecklist: React.FC<AssetChecklistProps> = ({
                 <Button
                   variant="ghost"
                   size="sm"
-                  aria-label={`Select all ${label}${suffix}`}
+                  aria-label={t("assetChecklist.selectAllAriaLabel", labelOptions)}
                   onClick={() => onChange([...items])}
                 >
-                  Select All
+                  {t("assetChecklist.selectAll")}
                 </Button>
                 <Button
                   variant="ghost"
                   size="sm"
-                  aria-label={`Deselect all ${label}${suffix}`}
+                  aria-label={t("assetChecklist.deselectAllAriaLabel", labelOptions)}
                   onClick={() => onChange([])}
                 >
-                  Deselect All
+                  {t("assetChecklist.deselectAll")}
                 </Button>
               </div>
             )}

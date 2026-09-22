@@ -1,5 +1,6 @@
 import React from "react";
 import { GitPullRequest } from "lucide-react";
+import { useTranslation } from "@/i18n/uiVault";
 import { Callout } from "../ui/callout";
 import { VaultDialogShell } from "./VaultDialogShell";
 
@@ -23,26 +24,23 @@ export const ConfirmVaultDeleteDialog: React.FC<ConfirmVaultDeleteDialogProps> =
   onConfirm,
   error,
   isBusy = false,
-}) => (
-  <VaultDialogShell
-    open={open}
-    onClose={onClose}
-    title={`Delete '${projectName}' from Vault?`}
-    testId="confirm-vault-delete-dialog"
-    error={error}
-    submitLabel="Create Deletion PR"
-    submitVariant="destructive"
-    submitIcon={<GitPullRequest className="mr-1.5 size-3.5" aria-hidden="true" />}
-    submitDisabled={isBusy}
-    onSubmit={onConfirm}
-  >
-    <Callout.Error>
-      This will remove project &apos;{projectName}&apos; and all its associated manifests, skills,
-      MCP configs, and memories from the vault repository.
-    </Callout.Error>
-    <p className="text-xs text-muted-foreground">
-      A new branch and pull request will be opened against the vault repository to perform this
-      deletion.
-    </p>
-  </VaultDialogShell>
-);
+}) => {
+  const { t } = useTranslation("uiVault");
+  return (
+    <VaultDialogShell
+      open={open}
+      onClose={onClose}
+      title={t("confirmDelete.title", { projectName })}
+      testId="confirm-vault-delete-dialog"
+      error={error}
+      submitLabel={t("confirmDelete.submit")}
+      submitVariant="destructive"
+      submitIcon={<GitPullRequest className="mr-1.5 size-3.5" aria-hidden="true" />}
+      submitDisabled={isBusy}
+      onSubmit={onConfirm}
+    >
+      <Callout.Error>{t("confirmDelete.warning", { projectName })}</Callout.Error>
+      <p className="text-xs text-muted-foreground">{t("confirmDelete.note")}</p>
+    </VaultDialogShell>
+  );
+};
