@@ -3,6 +3,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { bridge } from "../../api/bridge";
 import { useWebviewFileDrop } from "../../hooks/useWebviewFileDrop";
 import type { ChatAttachment } from "../../types/chat";
+import { i18n } from "../../i18n";
 
 /**
  * Everything the composer does with a file: the chips, the staging copies, and the four drag
@@ -138,7 +139,8 @@ export function useChatAttachments({ activeSessionId, embedded }: ChatAttachment
     try {
       const selected = await open({
         multiple: true,
-        title: "Select Files to Attach",
+        // Read when the picker opens, so it is in the language current then.
+        title: i18n.t("chat:attachments.pickerTitle"),
       });
       if (selected === null) {
         return;

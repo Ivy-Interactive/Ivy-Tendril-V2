@@ -3,6 +3,7 @@ import { IconButton, type IconButtonSize } from "@ivy-interactive/components/ui"
 import { MessageCircle, MessageSquarePlus, Terminal } from "lucide-react";
 import { useChatMode } from "../../state/chatLauncher";
 import type { ChatMode } from "../../state/appearance";
+import { useTranslation } from "../../i18n";
 
 /**
  * "New chat", plus a same-size button that picks the other mode directly.
@@ -45,14 +46,15 @@ export const NewChatModeButtons: React.FC<NewChatModeButtonsProps> = ({
   tooltipSide = "top",
   className = "",
 }) => {
+  const { t } = useTranslation("chat");
   const mode = useChatMode();
   const override = otherMode(mode);
 
   return (
     <span className={`flex items-center ${className}`.trim()}>
       <IconButton
-        label="New chat"
-        tooltip={mode === "terminal" ? "New chat (terminal)" : "New chat"}
+        label={t("newChatButtons.label")}
+        tooltip={t("newChatButtons.tooltip", { context: mode })}
         size={size}
         tooltipSide={tooltipSide}
         data-testid="new-chat-default"
@@ -62,7 +64,7 @@ export const NewChatModeButtons: React.FC<NewChatModeButtonsProps> = ({
         <MessageSquarePlus className="size-4" aria-hidden="true" />
       </IconButton>
       <IconButton
-        label={override === "terminal" ? "New terminal chat" : "New chat UI session"}
+        label={t("newChatButtons.override", { context: override })}
         size={size}
         tooltipSide={tooltipSide}
         data-testid="new-chat-override"

@@ -10,9 +10,11 @@ import {
 } from "../state/agentTerminalRuns";
 import { NewChatModeButtons } from "../components/chat/NewChatModeButtons";
 import { chatStore } from "../state/chatStore";
+import { NEW_CHAT_TITLE } from "../state/chatLauncher";
 import { describeBridgeError } from "../types/api";
 import type { ChatMode } from "../state/appearance";
 import type { ChatSession } from "../types/chat";
+import { useTranslation } from "../i18n";
 
 export interface AgentTerminalViewProps {
   /** The chat session this pane belongs to. Also what authorises the spawn, daemon-side. */
@@ -54,6 +56,7 @@ export const AgentTerminalView: React.FC<AgentTerminalViewProps> = ({
   prompt,
   onNewSession,
 }) => {
+  const { t } = useTranslation("chat");
   const [session, setSession] = React.useState<ChatSession | null>(null);
   const [closed, setClosed] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -175,7 +178,15 @@ export const AgentTerminalView: React.FC<AgentTerminalViewProps> = ({
     };
   }, [sessionId, prompt, write]);
 
-  const title = session?.title?.trim() || "Agent";
+  // A terminal session is stored under the English `NEW_CHAT_TITLE` until it is named, as every new
+  // chat is; that stored marker is shown under its translated label, never as it is stored.
+  const storedTitle = session?.title?.trim();
+  const title = !storedTitle
+    ? t("terminal.untitled")
+    : storedTitle === NEW_CHAT_TITLE
+      ? t("terminal.newChat")
+      : storedTitle;
+  const agentId = session?.agentId?.trim();
 
   return (
     <HeaderLayout
@@ -213,7 +224,9 @@ export const AgentTerminalView: React.FC<AgentTerminalViewProps> = ({
           className="h-full"
           closed={closed}
           loading
-          loadingText={`Starting ${session?.agentId?.trim() || "agent"}…`}
+          loadingText={
+            agentId ? t("terminal.starting", { agent: agentId }) : t("terminal.startingUnknown")
+          }
           onInput={(data) => {
             const run = runRef.current;
             if (run) {

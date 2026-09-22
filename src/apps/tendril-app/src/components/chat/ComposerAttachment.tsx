@@ -3,6 +3,7 @@ import { IconButton } from "@ivy-interactive/components/ui";
 import { Paperclip, X } from "lucide-react";
 import { isImageAttachment, useAttachmentPreview } from "../../hooks/useAttachmentPreview";
 import type { ChatAttachment } from "../../types/chat";
+import { useTranslation } from "../../i18n";
 
 /**
  * An attached file as it looks in the composer, before the turn goes out.
@@ -36,6 +37,7 @@ export const ComposerAttachment: React.FC<ComposerAttachmentProps> = ({
   isStaging = false,
   onRemove,
 }) => {
+  const { t } = useTranslation("chat");
   const isImage = isImageAttachment(attachment);
   const { url } = useAttachmentPreview(attachment.path, isImage && !isStaging);
 
@@ -45,7 +47,7 @@ export const ComposerAttachment: React.FC<ComposerAttachmentProps> = ({
      same "Remove file" and there is no way to tell which is which. */
   const remove = (
     <IconButton
-      label={`Remove ${attachment.name}`}
+      label={t("composerAttachment.remove", { name: attachment.name })}
       size="xs"
       variant="danger"
       tone="muted"
