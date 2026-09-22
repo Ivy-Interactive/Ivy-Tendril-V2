@@ -1344,10 +1344,13 @@ describe("Jobs output sheet layout", () => {
     const content = sheet.querySelector('[data-slot="header-layout-header"]')?.nextElementSibling
       ?.firstElementChild;
     expect(content).toHaveClass("flex", "h-full", "min-h-0", "flex-col");
-    // …and the view and the output box carry it down to the viewer.
+    expect(content?.className).not.toContain("p-4");
+    expect(content?.className).not.toContain("pr-");
+    // …and the view and the output box carry it down to the viewer without inset from the right.
     expect(view).toHaveClass("h-full", "min-h-0");
     const output = view.lastElementChild;
-    expect(output).toHaveClass("min-h-0", "flex-1", "overflow-hidden");
+    expect(output).toHaveClass("min-h-0", "flex-1", "overflow-hidden", "pl-3");
+    expect(output?.className).not.toContain("pr-");
     expect(output?.className).not.toContain("min-h-96");
   });
 

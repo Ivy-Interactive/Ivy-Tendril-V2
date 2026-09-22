@@ -19,6 +19,7 @@ import {
   type StartJobResponse,
 } from "../types/api";
 import { bridge } from "../api/bridge";
+import { plansStore } from "../state/plansStore";
 import { PlanChatPanel } from "../components/chat/PlanChatPanel";
 import { extractPlanQuestions, patchQuestionsMarkdown } from "../utils/questionMarkdown";
 import { PlanActionsController } from "../controllers/planActions";
@@ -933,6 +934,28 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       return;
     }
     switch (tag) {
+      case "CompletePlan":
+        void (async () => {
+          setActionError(null);
+          setPendingAction("complete");
+          try {
+            const resp = await PlanActionsController.completePlan(effectivePlan);
+            if (resp) {
+              onJobStarted?.(resp);
+              onPlanChanged?.(effectivePlan.id);
+            } else {
+              await plansStore.transitionPlanOptimistic(effectivePlan.id, "Completed", true);
+              onPlanChanged?.(effectivePlan.id);
+            }
+          } catch (err) {
+            setActionError(
+              `Could not complete plan ${formatPlanId(effectivePlan.id)}: ${describeBridgeError(err)}`,
+            );
+          } finally {
+            setPendingAction(null);
+          }
+        })();
+        return;
       case "UpdatePlan":
         setActiveDialog("update");
         return;

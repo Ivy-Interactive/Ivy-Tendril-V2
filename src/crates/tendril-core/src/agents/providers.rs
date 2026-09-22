@@ -318,8 +318,8 @@ pub fn apply_security_settings(config: &mut AgentLaunchConfig, security: &AgentS
 pub const ANTIGRAVITY_TOOL_SCHEMA_GUARDRAILS: &str = "Tool usage notes:\n\
 - `find_by_name` requires a `Pattern` argument; always pass one (e.g. \"*.cs\").\n\
 - `grep_search`'s `Includes` argument must be a JSON array of strings (e.g. [\"*.cs\"]), never a comma-separated string.\n\
-- `run_command`: Always set `WaitMsBeforeAsync: 10000` to allow commands sufficient time to run synchronously.\n\
-- Non-interactive batch execution: You are running non-interactively via `--print`. If a command runs as a background task, you will NOT receive any user messages or wake-ups to resume your turn. NEVER end your turn or wait passively while a background task is running. If a command runs in the background (or returns a task ID), you MUST actively poll `manage_task` with `Action: \"status\"` and `TaskId` repeatedly until its `Status` is `DONE` (or `ERROR`) before taking any other action or concluding.";
+- `run_command`: You MUST ALWAYS set `WaitMsBeforeAsync: 10000` on EVERY `run_command` invocation so commands run synchronously.\n\
+- Non-interactive batch execution: You are running non-interactively via `--print` in a single continuous turn. There are NO subsequent turns and NO reactive wake-ups. If a command runs as a background task (or returns a task ID), or if you see a message asking you to wait and end your turn: NEVER end your turn or output text saying you are waiting! Doing so terminates the CLI and kills your tasks immediately. Instead, you MUST actively poll `manage_task` with `Action: \"status\"` and `TaskId` repeatedly until its `Status` is `DONE` (or `ERROR`) before taking any other action or concluding. Complete all implementation, tests, and verifications before ending.";
 
 fn build_antigravity_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
     let mut args = Vec::new();
@@ -383,7 +383,10 @@ fn build_antigravity_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
     } else {
         config.prompt.clone()
     };
-    let final_prompt = format!("{}\n\n{}", ANTIGRAVITY_TOOL_SCHEMA_GUARDRAILS, base_prompt);
+    let final_prompt = format!(
+        "{}\n\n{}\n\n---\n\n{}",
+        ANTIGRAVITY_TOOL_SCHEMA_GUARDRAILS, base_prompt, ANTIGRAVITY_TOOL_SCHEMA_GUARDRAILS
+    );
 
     // Always write to a fresh temp file rather than trusting `config.prompt_file_path` as-is, so
     // the guardrails above are present even when the caller already supplied its own prompt file.

@@ -1077,6 +1077,7 @@ export const App: React.FC = () => {
             // V1's `ReviewAppArgs.PlanId`: the address names the plan to triage, and the page falls
             // back to the newest one in the queue when it names none.
             selectedPlanId={uiState.pageArgs.planId ?? null}
+            initialTab={uiState.pageArgs.tab ?? undefined}
             onSelectPlan={handleSelectPlan}
             onOpenReviewAction={handleOpenReviewAction}
             // Stay on the queue rather than opening the job's log: Create PR and Suggest Changes take

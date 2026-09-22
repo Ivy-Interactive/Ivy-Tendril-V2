@@ -1,5 +1,11 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { openPath } from "@tauri-apps/plugin-opener";
+import { convertFileSrc, isTauri } from "@tauri-apps/api/core";
+import { copyToClipboard } from "@ivy-interactive/components";
 import {
+  PlanChangesView,
+  PlanGitView,
+  PlanMarkdown,
   PlanWorkspace,
   useShortcut,
   type PlanActionDto,
@@ -11,7 +17,10 @@ import {
   describeBridgeError,
   type DraftComment,
   type Job,
+  type PlanArtifacts,
+  type PlanChangesData,
   type PlanDetail,
+  type PlanGitData,
   type PlanSummary,
   type PlanVerification,
   type RecommendationItem,
@@ -20,6 +29,7 @@ import {
   type StartJobResponse,
 } from "../types/api";
 import { bridge } from "../api/bridge";
+import { useWireframeBaseUrl } from "../api/proxyOrigin";
 import { PlanActionsController } from "../controllers/planActions";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { NoContentView } from "../components/NoContentView";
@@ -40,6 +50,8 @@ import { DeletePlanDialog } from "./dialogs/DeletePlanDialog";
 import { PartialDeliveryDialog } from "./dialogs/PartialDeliveryDialog";
 import { ResetToDraftDialog } from "./dialogs/ResetToDraftDialog";
 import { SuggestChangesDialog } from "./dialogs/SuggestChangesDialog";
+import { DetailRow, ExecutionFailedCallout, planLinkLabel } from "./planDetail/helpers";
+import { PlanPullRequests } from "./PlanPullRequests";
 
 /** The triage dialogs this view owns, at most one open at a time. */
 type TriageDialog = "createPr" | "suggestChanges" | "delete" | "reset" | "partialDelivery";
@@ -107,8 +119,21 @@ export const buildReviewSidebarList = (
   },
 });
 
-/** `ContentView`'s `RecommendationsTab`. */
+/** The 7 review tabs matching Tendril v1 ReviewApp. */
+const SUMMARY_TAB = "summary";
+const PLAN_TAB = "plan";
+const DETAILS_TAB = "details";
+const GIT_TAB = "git";
+const CHANGES_TAB = "changes";
+const ARTIFACTS_TAB = "artifacts";
 const RECOMMENDATIONS_TAB = "recommendations";
+
+const FALLBACK_SUMMARY_MARKDOWN = `# Summary
+
+> [!NOTE]
+> No summary is found for this plan. Please check the verifications for more information.
+>
+> \`Reset to Draft\` or \`Request Changes\` to retry the plan.`;
 
 /**
  * `ContentView.BuildRecommendationChangeRequest`, verbatim in shape: a numbered heading per
@@ -152,6 +177,8 @@ interface ReviewViewProps {
    * last selected", which is what leaves the default selection to {@link resolvePlanSelection}.
    */
   selectedPlanId?: string | null;
+  /** The tab to select initially or on deep-link. Defaults to "summary". */
+  initialTab?: string;
   onSelectPlan: (planId: string) => void;
   /** A job a triage dialog started, so the shell can open its session tab. */
   onJobStarted?: (response: StartJobResponse) => void;
@@ -177,6 +204,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   plans,
   jobs,
   selectedPlanId: addressedPlanId = null,
+  initialTab,
   onSelectPlan,
   onJobStarted,
   onPlanChanged,
@@ -402,6 +430,112 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     };
   }, [selectedId]);
 
+  const [selectedTab, setSelectedTab] = useState<string>(initialTab ?? SUMMARY_TAB);
+  const [summaryContent, setSummaryContent] = useState<string | null>(null);
+  const [summaryLoading, setSummaryLoading] = useState<boolean>(false);
+  const [gitData, setGitData] = useState<PlanGitData | null>(null);
+  const [gitError, setGitError] = useState<string | null>(null);
+  const [changesData, setChangesData] = useState<PlanChangesData | null>(null);
+  const [changesLoading, setChangesLoading] = useState<boolean>(false);
+  const [artifacts, setArtifacts] = useState<PlanArtifacts | null>(null);
+
+  const wireframeBaseUrl = useWireframeBaseUrl(selectedPlan?.id);
+
+  useEffect(() => {
+    setSelectedTab(initialTab ?? SUMMARY_TAB);
+    setSummaryContent(null);
+    setGitData(null);
+    setGitError(null);
+    setChangesData(null);
+    setArtifacts(null);
+    if (!selectedId) return;
+
+    let cancelled = false;
+
+    setSummaryLoading(true);
+    bridge
+      .getPlanSummary(selectedId)
+      .then((res) => {
+        if (!cancelled) setSummaryContent(res);
+      })
+      .catch(() => {
+        if (!cancelled) setSummaryContent(null);
+      })
+      .finally(() => {
+        if (!cancelled) setSummaryLoading(false);
+      });
+
+    bridge
+      .getPlanGit(selectedId)
+      .then((res) => {
+        if (!cancelled) setGitData(res);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setGitData(null);
+          setGitError(describeBridgeError(err));
+        }
+      });
+
+    setChangesLoading(true);
+    bridge
+      .getPlanChanges(selectedId)
+      .then((res) => {
+        if (!cancelled) setChangesData(res);
+      })
+      .catch(() => {
+        if (!cancelled) setChangesData(null);
+      })
+      .finally(() => {
+        if (!cancelled) setChangesLoading(false);
+      });
+
+    bridge
+      .getPlanArtifacts(selectedId)
+      .then((res) => {
+        if (!cancelled) setArtifacts(res);
+      })
+      .catch(() => {
+        if (!cancelled) setArtifacts(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, initialTab]);
+
+  const handleChangesEvent = useCallback(
+    async (evt: string, _widgetId: string, args: unknown[]) => {
+      if (!selectedId) return;
+      if (evt === "OnAddComment" || evt === "OnUpdateComment") {
+        const comment = args?.[0] as DraftComment | undefined;
+        if (comment) {
+          try {
+            const updated = await bridge.upsertDiffComment(selectedId, comment);
+            setDraftComments(updated.filter((c) => !c.isResolved));
+          } catch {
+            // Best effort
+          }
+        }
+      } else if (evt === "OnDeleteComment") {
+        const comment = args?.[0] as DraftComment | undefined;
+        if (comment?.filePath && comment?.changeKey) {
+          try {
+            const updated = await bridge.deleteDiffComment(
+              selectedId,
+              comment.filePath,
+              comment.changeKey,
+            );
+            setDraftComments(updated.filter((c) => !c.isResolved));
+          } catch {
+            // Best effort
+          }
+        }
+      }
+    },
+    [selectedId],
+  );
+
   /**
    * `PlanReaderService.GetCompletionBlockReason`, whose text V1 shows in two places: the "No Changes
    * Needed" callout above the content, and the primary action, which becomes Delete Plan rather than
@@ -584,13 +718,15 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     setActionError(null);
     setPendingAction("complete");
     try {
-      // Through the store, not `bridge` directly: the plan has to leave the queue on the click that
-      // completed it, and the store is what takes it out of `plans` without waiting for a refetch —
-      // which is also what empties the row out of the shell's sidebar list and its nav badge. The
-      // store applies nothing until the daemon agrees, so a refusal still lands in the banner below
-      // with the plan where it was.
-      await plansStore.transitionPlanOptimistic(selectedPlan.id, "Completed");
-      handlePlanLeftReview(selectedPlan.id);
+      const planToComplete = planDetail ?? selectedPlan;
+      const resp = await PlanActionsController.completePlan(planToComplete);
+      if (resp) {
+        onJobStarted?.(resp);
+        onPlanChanged?.(selectedPlan.id);
+      } else {
+        await plansStore.transitionPlanOptimistic(selectedPlan.id, "Completed", true);
+        handlePlanLeftReview(selectedPlan.id);
+      }
     } catch (err) {
       setActionError(
         `Could not complete plan ${formatPlanId(selectedPlan.id)}: ${describeBridgeError(err)}`,
@@ -824,6 +960,9 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   /** One `OnAction` event serves the icon actions, the menu and the buttons: tags are unique. */
   const handleWorkspaceAction = (tag: string) => {
     switch (tag) {
+      case "CompletePlan":
+        void completePlan();
+        return;
       case "RequestChanges":
         setActiveDialog("suggestChanges");
         return;
@@ -844,6 +983,61 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
         return;
     }
   };
+
+  const pendingRecs = recommendations.filter((r) => !r.state || r.state === "Pending");
+
+  const gitItemCount = useMemo(() => {
+    if (!gitData) return 0;
+    const worktreesCount = gitData.worktrees?.length ?? 0;
+    const commitsCount = planDetail?.commits?.length ?? 0;
+    const prsCount = planDetail?.prs?.length ?? 0;
+    return worktreesCount + commitsCount + prsCount;
+  }, [gitData, planDetail?.commits, planDetail?.prs]);
+
+  const changesCount = changesData?.files?.length ?? 0;
+  const totalArtifacts =
+    (artifacts?.screenshots?.length ?? 0) + (artifacts?.other?.length ?? 0);
+
+  const tabs = useMemo<PlanTabDto[]>(() => {
+    const list: PlanTabDto[] = [
+      { id: SUMMARY_TAB, label: "Summary" },
+      { id: PLAN_TAB, label: "Plan" },
+      { id: DETAILS_TAB, label: "Details" },
+      {
+        id: GIT_TAB,
+        label: "Git",
+        badge: gitItemCount > 0 ? String(gitItemCount) : undefined,
+      },
+    ];
+
+    if (changesCount > 0 || selectedTab === CHANGES_TAB) {
+      list.push({
+        id: CHANGES_TAB,
+        label: "Changes",
+        badge: changesCount > 0 ? String(changesCount) : undefined,
+      });
+    }
+
+    if (totalArtifacts > 0 || selectedTab === ARTIFACTS_TAB) {
+      list.push({
+        id: ARTIFACTS_TAB,
+        label: "Artifacts",
+        badge: totalArtifacts > 0 ? String(totalArtifacts) : undefined,
+      });
+    }
+
+    list.push({
+      id: RECOMMENDATIONS_TAB,
+      label: "Recommendations",
+      badge: pendingRecs.length > 0 ? String(pendingRecs.length) : undefined,
+    });
+
+    return list;
+  }, [gitItemCount, changesCount, totalArtifacts, pendingRecs.length, selectedTab]);
+
+  const activeTab = tabs.some((t) => t.id === selectedTab)
+    ? selectedTab
+    : (tabs[0]?.id ?? SUMMARY_TAB);
 
   if (reviewPlans.length === 0) {
     return (
@@ -875,16 +1069,6 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   }
 
   const verifications = selectedPlan?.verifications ?? [];
-  const pendingRecs = recommendations.filter((r) => !r.state || r.state === "Pending");
-
-  const recommendationTabs: PlanTabDto[] = [
-    {
-      id: RECOMMENDATIONS_TAB,
-      label: "Recommendations",
-      // `ContentView`: the tab is badged with how many are still pending.
-      badge: pendingRecs.length > 0 ? String(pendingRecs.length) : undefined,
-    },
-  ];
 
   return (
     <div className="h-full min-h-0" data-testid="review-view">
@@ -911,10 +1095,15 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
           menuItems={workspaceMenu}
           secondary={secondaryActions}
           primary={primaryAction}
-          tabs={recommendationTabs}
-          selectedTab={RECOMMENDATIONS_TAB}
+          tabs={tabs}
+          selectedTab={activeTab}
           events={["OnAction", "OnTabSelect"]}
           eventHandler={(evt: string, _id: string, args?: unknown[]) => {
+            if (evt === "OnTabSelect") {
+              const tabId = args?.[0];
+              if (typeof tabId === "string") setSelectedTab(tabId);
+              return;
+            }
             if (evt !== "OnAction") return;
             const tag = args?.[0];
             if (typeof tag === "string") handleWorkspaceAction(tag);
@@ -1022,90 +1211,413 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
               />,
             ],
             Content: [
-              /* `RecommendationsTabView`: the pending rows are selectable and Implement acts on the
-                 selection; V1 lists only the pending ones, and this page keeps the decided rows
-                 visible because the accept/decline triage happens here, and a decision that vanishes
-                 the row it was made on gives the operator nothing to check it by. */
-              /* Capped at the same reading measure `Review/ContentView.Cap()` gives this tab —
-                 `Width(Size.Full().Max(Size.Units(200)))`, 50rem — so a recommendation card does not
-                 run the full width of a wide window while the plan document beside it stops at the
-                 measure. V1's Summary and Plan tabs are the ones *not* wrapped, because PlanMarkdown
-                 caps itself; Recommendations is wrapped. */
-              <div
-                key="recommendations"
-                className="w-full max-w-[var(--content-measure)] space-y-3 p-4"
-              >
-                {recsError && (
-                  <ErrorBanner data-testid="recommendations-error">{recsError}</ErrorBanner>
-                )}
-
-                {/* `Text.Muted("Loading...")` while the plan's content query is in flight. */}
-                {loadedRecsFor !== selectedId && !recsError && (
-                  <p className="text-sm text-muted-foreground">Loading...</p>
-                )}
-
-                {loadedRecsFor === selectedId && !recsError && recommendations.length === 0 && (
-                  <p data-testid="no-recommendations" className="text-sm text-muted-foreground">
-                    No recommendations.
-                  </p>
-                )}
-
-                {pendingRecs.length > 0 && (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      data-testid="implement-recommendations"
-                      disabled={pendingAction !== null}
-                      onClick={() => void implementSelectedRecommendations()}
-                      className="h-8"
-                    >
-                      {pendingAction === "implementRecs" ? "Starting…" : "Implement"}
-                      {selectedRecTitles.size > 0 && (
-                        <span className="rounded-full bg-muted px-1.5 text-xs tabular-nums">
-                          {selectedRecTitles.size}
-                        </span>
-                      )}
-                    </Button>
-                    <span className="text-xs text-muted-foreground">
-                      Accepts the ticked recommendations and retries the plan with them as the
-                      change request.
-                    </span>
+              activeTab === SUMMARY_TAB && (
+                <div
+                  key="summary"
+                  data-testid="review-tab-summary"
+                  className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+                >
+                  <div className="w-full max-w-[var(--content-measure)] px-8 py-6">
+                    {summaryLoading && !summaryContent ? (
+                      <p className="text-sm text-muted-foreground">Loading summary…</p>
+                    ) : (
+                      <PlanMarkdown
+                        id="review-summary-markdown"
+                        content={summaryContent || FALLBACK_SUMMARY_MARKDOWN}
+                        article
+                        dangerouslyAllowLocalFiles
+                      />
+                    )}
                   </div>
-                )}
+                </div>
+              ),
 
-                {recommendations.length > 0 && (
-                  <div className="space-y-2">
-                    {recommendations.map((rec) => {
-                      const isPending = !rec.state || rec.state === "Pending";
-                      return (
-                        <div key={rec.title} className="flex items-start gap-2">
-                          {/* `RecommendationRowView`'s checkbox, which only a pending row carries. */}
-                          {isPending && (
-                            <input
-                              type="checkbox"
-                              aria-label={`Select ${rec.title}`}
-                              checked={selectedRecTitles.has(rec.title)}
-                              onChange={() => toggleRecSelection(rec.title)}
-                              className="mt-4 size-4 shrink-0 accent-primary"
-                            />
+              activeTab === PLAN_TAB && (
+                <div
+                  key="plan"
+                  data-testid="review-tab-plan"
+                  className="flex min-h-0 flex-1 flex-col overflow-y-auto"
+                >
+                  <div className="w-full max-w-[var(--content-measure)] px-8 py-6">
+                    {selectedPlan.state === "Failed" && planDetail && (
+                      <ExecutionFailedCallout plan={planDetail} jobs={jobs ?? []} />
+                    )}
+                    <PlanMarkdown
+                      id="review-plan-markdown"
+                      content={planDetail?.latestRevisionContent || "# No plan specification available."}
+                      wireframeBaseUrl={wireframeBaseUrl}
+                      article
+                      dangerouslyAllowLocalFiles
+                    />
+                  </div>
+                </div>
+              ),
+
+              activeTab === DETAILS_TAB && (
+                <div
+                  key="details"
+                  data-testid="review-tab-details"
+                  className="min-h-0 flex-1 overflow-y-auto"
+                >
+                  <div className="w-full max-w-[var(--content-measure)] space-y-4 px-8 py-6">
+                    <dl>
+                      <DetailRow label="Plan ID">
+                        <button
+                          type="button"
+                          onClick={() => void copyToClipboard(selectedPlan.id)}
+                          title="Copy to clipboard"
+                          className="font-mono hover:underline"
+                        >
+                          {selectedPlan.id}
+                        </button>
+                      </DetailRow>
+                      <DetailRow label="Folder" empty={!planDetail?.folderPath}>
+                        <button
+                          type="button"
+                          onClick={() => void copyToClipboard(planDetail?.folderPath ?? "")}
+                          title="Copy to clipboard"
+                          className="break-all font-mono hover:underline"
+                        >
+                          {planDetail?.folderPath}
+                        </button>
+                      </DetailRow>
+                      <DetailRow label="Initial Prompt" empty={!planDetail?.initialPrompt}>
+                        <span className="whitespace-pre-wrap">{planDetail?.initialPrompt}</span>
+                      </DetailRow>
+                      <DetailRow label="Revision" empty={!planDetail?.revisionCount}>
+                        {planDetail?.revisionCount}
+                      </DetailRow>
+                      <DetailRow label="Profile" empty={!planDetail?.executionProfile}>
+                        {planDetail?.executionProfile}
+                      </DetailRow>
+                      <DetailRow
+                        label="Related Plans"
+                        empty={!planDetail?.relatedPlans || planDetail.relatedPlans.length === 0}
+                      >
+                        {(planDetail?.relatedPlans ?? []).map(planLinkLabel).join(", ")}
+                      </DetailRow>
+                      <DetailRow
+                        label="Depends On"
+                        empty={!planDetail?.dependsOn || planDetail.dependsOn.length === 0}
+                      >
+                        {(planDetail?.dependsOn ?? []).map(planLinkLabel).join(", ")}
+                      </DetailRow>
+                      <DetailRow label="Issue" empty={!planDetail?.sourceUrl}>
+                        <a
+                          href={planDetail?.sourceUrl}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="break-all text-primary hover:underline"
+                        >
+                          {planDetail?.sourceUrl}
+                        </a>
+                      </DetailRow>
+                      <DetailRow label="Created" empty={!planDetail?.created}>
+                        {(planDetail?.created ?? "").slice(0, 10)}
+                      </DetailRow>
+                      <DetailRow label="Level" empty={!planDetail?.level}>
+                        {planDetail?.level}
+                      </DetailRow>
+                      <DetailRow label="Project" empty={!selectedPlan.project}>
+                        {selectedPlan.project}
+                      </DetailRow>
+                      <DetailRow label="State">{selectedPlan.state}</DetailRow>
+                    </dl>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                          Repositories
+                        </h4>
+                        <ul className="mt-2 space-y-1 font-mono text-sm text-muted-foreground">
+                          {planDetail?.repos && planDetail.repos.length > 0 ? (
+                            planDetail.repos.map((r, i) => <li key={i}>{r}</li>)
+                          ) : (
+                            <li className="font-sans text-muted-foreground/70">No repositories specified</li>
                           )}
-                          <div className="min-w-0 flex-1">
-                            <RecommendationCard
-                              recommendation={rec}
-                              onAccept={(title) => setActiveNoteDialog({ title, action: "Accept" })}
-                              onDecline={(title) =>
-                                setActiveNoteDialog({ title, action: "Decline" })
-                              }
-                            />
-                          </div>
-                        </div>
-                      );
-                    })}
+                        </ul>
+                      </div>
+
+                      <div>
+                        <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
+                          Commits
+                        </h4>
+                        <ul className="mt-2 space-y-1 font-mono text-sm text-muted-foreground">
+                          {planDetail?.commits && planDetail.commits.length > 0 ? (
+                            planDetail.commits.map((c, i) => <li key={i}>{c}</li>)
+                          ) : (
+                            <li className="font-sans text-muted-foreground/70">No commits yet</li>
+                          )}
+                        </ul>
+                      </div>
+
+                      {planDetail?.prs && planDetail.prs.length > 0 && (
+                        <PlanPullRequests planId={selectedPlan.id} prs={planDetail.prs} />
+                      )}
+                    </div>
                   </div>
-                )}
-              </div>,
-            ],
+                </div>
+              ),
+
+              activeTab === GIT_TAB && (
+                <div
+                  key="git"
+                  data-testid="review-tab-git"
+                  className="min-h-0 flex-1 overflow-y-auto"
+                >
+                  <div className="w-full max-w-[var(--content-measure)] px-8 py-6">
+                    {gitError ? (
+                      <p data-testid="git-tab-error" className="text-xs text-destructive">
+                        {gitError}
+                      </p>
+                    ) : gitData ? (
+                      <PlanGitView
+                        data={gitData}
+                        prs={planDetail?.prs ?? []}
+                        planState={selectedPlan.state}
+                        onOpenUrl={(url) => void openPath(url)}
+                      />
+                    ) : (
+                      <p className="text-sm text-muted-foreground/70">Loading git state…</p>
+                    )}
+                  </div>
+                </div>
+              ),
+
+              activeTab === CHANGES_TAB && (
+                <div
+                  key="changes"
+                  data-testid="review-tab-changes"
+                  className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4"
+                >
+                  {changesLoading && !changesData ? (
+                    <p className="text-sm text-muted-foreground">Loading changes…</p>
+                  ) : changesData && changesData.files.length > 0 ? (
+                    <PlanChangesView
+                      id={`review-changes-${selectedPlan.id}`}
+                      files={changesData.files}
+                      comments={draftComments}
+                      eventHandler={handleChangesEvent}
+                      showTree
+                    />
+                  ) : (
+                    <p data-testid="no-changes" className="text-sm text-muted-foreground">
+                      No file changes recorded for this plan.
+                    </p>
+                  )}
+                </div>
+              ),
+
+              activeTab === ARTIFACTS_TAB && (
+                <div
+                  key="artifacts"
+                  data-testid="review-tab-artifacts"
+                  className="min-h-0 flex-1 overflow-y-auto"
+                >
+                  <div className="w-full max-w-[var(--content-measure)] space-y-6 px-8 py-6">
+                    <div>
+                      <h3 className="text-sm font-semibold text-foreground">Plan Artifacts</h3>
+                      <p className="text-xs text-muted-foreground">
+                        Outputs, sample files, and screenshots captured during execution.
+                      </p>
+                    </div>
+
+                    {artifacts === null ? (
+                      <p className="text-sm text-muted-foreground">Loading artifacts…</p>
+                    ) : totalArtifacts === 0 ? (
+                      <p data-testid="no-artifacts" className="text-sm text-muted-foreground">
+                        No artifacts found for this plan.
+                      </p>
+                    ) : (
+                      <>
+                        {artifacts.screenshots && artifacts.screenshots.length > 0 && (
+                          <div className="space-y-3">
+                            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                              Screenshots ({artifacts.screenshots.length})
+                            </h4>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                              {artifacts.screenshots.map((file, idx) => {
+                                const filename = file.split(/[/\\]/).pop() ?? file;
+                                const src = isTauri() ? convertFileSrc(file) : file;
+                                return (
+                                  <div
+                                    key={idx}
+                                    className="group relative flex flex-col rounded-md border border-border bg-card p-2 overflow-hidden shadow-sm"
+                                  >
+                                    <div className="relative aspect-video w-full overflow-hidden rounded bg-muted">
+                                      <img
+                                        src={src}
+                                        alt={filename}
+                                        className="h-full w-full object-contain cursor-pointer transition-transform duration-200 group-hover:scale-105"
+                                        onClick={() => void openPath(file)}
+                                      />
+                                    </div>
+                                    <div className="mt-2 flex items-center justify-between gap-1">
+                                      <span
+                                        className="truncate text-xs font-mono text-foreground"
+                                        title={filename}
+                                      >
+                                        {filename}
+                                      </span>
+                                      <div className="flex items-center gap-1 shrink-0">
+                                        <Button
+                                          type="button"
+                                          variant="ghost"
+                                          size="sm"
+                                          className="h-6 px-1.5 text-xs"
+                                          onClick={() => void copyToClipboard(file)}
+                                          title="Copy path"
+                                        >
+                                          Copy
+                                        </Button>
+                                        <Button
+                                          type="button"
+                                          variant="outline"
+                                          size="sm"
+                                          className="h-6 px-1.5 text-xs"
+                                          onClick={() => void openPath(file)}
+                                          title="Open in system viewer"
+                                        >
+                                          Open
+                                        </Button>
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        )}
+
+                        {artifacts.other && artifacts.other.length > 0 && (
+                          <div className="space-y-2">
+                            <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                              Other Artifact Files ({artifacts.other.length})
+                            </h4>
+                            <ul className="divide-y divide-border rounded border border-border bg-card">
+                              {artifacts.other.map((file, idx) => {
+                                const filename = file.split(/[/\\]/).pop() ?? file;
+                                return (
+                                  <li
+                                    key={idx}
+                                    className="flex items-center justify-between p-2 text-xs"
+                                  >
+                                    <span
+                                      className="font-mono text-muted-foreground truncate mr-2"
+                                      title={file}
+                                    >
+                                      {filename}
+                                    </span>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="sm"
+                                        className="h-6 px-1.5 text-xs"
+                                        onClick={() => void copyToClipboard(file)}
+                                      >
+                                        Copy
+                                      </Button>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        className="h-6 px-1.5 text-xs"
+                                        onClick={() => void openPath(file)}
+                                      >
+                                        Open
+                                      </Button>
+                                    </div>
+                                  </li>
+                                );
+                              })}
+                            </ul>
+                          </div>
+                        )}
+                      </>
+                    )}
+                  </div>
+                </div>
+              ),
+
+              activeTab === RECOMMENDATIONS_TAB && (
+                <div
+                  key="recommendations"
+                  data-testid="review-tab-recommendations"
+                  className="w-full max-w-[var(--content-measure)] space-y-3 p-4"
+                >
+                  {recsError && (
+                    <ErrorBanner data-testid="recommendations-error">{recsError}</ErrorBanner>
+                  )}
+
+                  {/* `Text.Muted("Loading...")` while the plan's content query is in flight. */}
+                  {loadedRecsFor !== selectedId && !recsError && (
+                    <p className="text-sm text-muted-foreground">Loading...</p>
+                  )}
+
+                  {loadedRecsFor === selectedId && !recsError && recommendations.length === 0 && (
+                    <p data-testid="no-recommendations" className="text-sm text-muted-foreground">
+                      No recommendations.
+                    </p>
+                  )}
+
+                  {pendingRecs.length > 0 && (
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        data-testid="implement-recommendations"
+                        disabled={pendingAction !== null}
+                        onClick={() => void implementSelectedRecommendations()}
+                        className="h-8"
+                      >
+                        {pendingAction === "implementRecs" ? "Starting…" : "Implement"}
+                        {selectedRecTitles.size > 0 && (
+                          <span className="rounded-full bg-muted px-1.5 text-xs tabular-nums">
+                            {selectedRecTitles.size}
+                          </span>
+                        )}
+                      </Button>
+                      <span className="text-xs text-muted-foreground">
+                        Accepts the ticked recommendations and retries the plan with them as the
+                        change request.
+                      </span>
+                    </div>
+                  )}
+
+                  {recommendations.length > 0 && (
+                    <div className="space-y-2">
+                      {recommendations.map((rec) => {
+                        const isPending = !rec.state || rec.state === "Pending";
+                        return (
+                          <div key={rec.title} className="flex items-start gap-2">
+                            {/* `RecommendationRowView`'s checkbox, which only a pending row carries. */}
+                            {isPending && (
+                              <input
+                                type="checkbox"
+                                aria-label={`Select ${rec.title}`}
+                                checked={selectedRecTitles.has(rec.title)}
+                                onChange={() => toggleRecSelection(rec.title)}
+                                className="mt-4 size-4 shrink-0 accent-primary"
+                              />
+                            )}
+                            <div className="min-w-0 flex-1">
+                              <RecommendationCard
+                                recommendation={rec}
+                                onAccept={(title) => setActiveNoteDialog({ title, action: "Accept" })}
+                                onDecline={(title) =>
+                                  setActiveNoteDialog({ title, action: "Decline" })
+                                }
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              ),
+            ].filter((node): node is React.ReactElement => Boolean(node)),
           }}
         />
       )}

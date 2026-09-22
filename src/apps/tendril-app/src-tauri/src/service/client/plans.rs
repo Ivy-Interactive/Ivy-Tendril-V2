@@ -4,7 +4,8 @@
 use super::{path_segment, urlencoding, TendrilClient};
 use crate::error::BridgeError;
 use crate::models::{
-    PlanDetailDto, PlanGitDto, PlanQueryDto, PlanSummaryDto, RepoStatusDto, RevisionResultDto,
+    PlanArtifactsDto, PlanChangesDto, PlanDetailDto, PlanGitDto, PlanQueryDto, PlanSummaryContentDto,
+    PlanSummaryDto, RepoStatusDto, RevisionResultDto,
 };
 use crate::service::plan_mapping::{map_plan_detail, map_plan_summary};
 use serde_json::json;
@@ -433,5 +434,48 @@ impl TendrilClient {
             revision: rev_num,
             message,
         })
+    }
+
+    pub async fn get_plan_changes(&self, plan_id: &str) -> Result<PlanChangesDto, BridgeError> {
+        let url = format!("{}/api/plans/{}/changes", self.base_url, urlencoding(plan_id));
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "GET_PLAN_CHANGES_FAILED",
+                format!("Failed to get plan changes for '{plan_id}' ({status}): {text}"),
+            ));
+        }
+        Ok(resp.json().await?)
+    }
+
+    pub async fn get_plan_summary(&self, plan_id: &str) -> Result<Option<String>, BridgeError> {
+        let url = format!("{}/api/plans/{}/summary", self.base_url, urlencoding(plan_id));
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "GET_PLAN_SUMMARY_FAILED",
+                format!("Failed to get plan summary for '{plan_id}' ({status}): {text}"),
+            ));
+        }
+        let res: PlanSummaryContentDto = resp.json().await?;
+        Ok(res.summary)
+    }
+
+    pub async fn get_plan_artifacts(&self, plan_id: &str) -> Result<PlanArtifactsDto, BridgeError> {
+        let url = format!("{}/api/plans/{}/artifacts", self.base_url, urlencoding(plan_id));
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "GET_PLAN_ARTIFACTS_FAILED",
+                format!("Failed to get plan artifacts for '{plan_id}' ({status}): {text}"),
+            ));
+        }
+        Ok(resp.json().await?)
     }
 }

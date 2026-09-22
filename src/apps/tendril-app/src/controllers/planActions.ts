@@ -61,14 +61,14 @@ export class PlanActionsController {
   /**
    * Check if CreatePr is allowed.
    * Gating:
-   * - Must be in Review state
+   * - Must be in Review or Failed state
    * - All required verifications must have Pass status (none Fail or Pending)
    */
   public static canCreatePr(plan: PlanDetail | PlanSummary): ActionGatingResult {
-    if (plan.state !== "Review") {
+    if (plan.state !== "Review" && plan.state !== "Failed") {
       return {
         allowed: false,
-        reason: `Create PR is only allowed when plan is in Review (current: ${plan.state}).`,
+        reason: `Create PR is only allowed when plan is in Review or Failed (current: ${plan.state}).`,
       };
     }
 
@@ -168,10 +168,10 @@ export class PlanActionsController {
    * otherwise plain completion suffices.
    */
   public static canCompletePartial(plan: PlanDetail | PlanSummary): ActionGatingResult {
-    if (plan.state !== "Review") {
+    if (plan.state !== "Review" && plan.state !== "Failed") {
       return {
         allowed: false,
-        reason: `Partial delivery is only allowed when plan is in Review (current: ${plan.state}).`,
+        reason: `Partial delivery is only allowed when plan is in Review or Failed (current: ${plan.state}).`,
       };
     }
     const failing = (plan.verifications || []).filter((v) => v.status === "Fail");
@@ -182,6 +182,65 @@ export class PlanActionsController {
       };
     }
     return { allowed: true };
+  }
+
+  /**
+   * Check if CompletePlan is allowed.
+   * Available when plan is in Review or Failed state.
+   */
+  public static canComplete(plan: PlanDetail | PlanSummary): ActionGatingResult {
+    if (plan.state === "Completed") {
+      return { allowed: false, reason: "Plan is already completed." };
+    }
+    if (IN_FLIGHT_STATES.includes(plan.state)) {
+      return {
+        allowed: false,
+        reason: `Cannot complete a plan while it is ${plan.state} — cancel the job first.`,
+      };
+    }
+    return { allowed: true };
+  }
+
+  /**
+   * Completes a plan:
+   * If the plan has commits, starts a CreatePr job configured with auto-merge and branch deletion
+   * so that git changes are integrated into the main repository and the plan completes through the job.
+   * If the plan has no commits, transitions the plan directly to Completed.
+   */
+  public static async completePlan(
+    plan: PlanDetail | PlanSummary,
+    options?: CreatePrOptions,
+  ): Promise<StartJobResponse | void> {
+    const check = this.canComplete(plan);
+    if (!check.allowed) {
+      throw new Error(check.reason || "Complete plan blocked");
+    }
+
+    let commits = "commits" in plan && Array.isArray(plan.commits) ? plan.commits : [];
+    if (commits.length === 0 && !("commits" in plan)) {
+      try {
+        const detail = await bridge.getPlan(plan.id);
+        if (detail?.commits && Array.isArray(detail.commits)) {
+          commits = detail.commits;
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    if (commits.length > 0) {
+      return bridge.startJob({
+        type: "CreatePr",
+        folderPath: plan.id,
+        solveMergeConflicts: true,
+        merge: true,
+        deleteBranch: true,
+        includeArtifacts: true,
+        ...options,
+      });
+    }
+
+    await bridge.updatePlanField(plan.id, "state", "Completed", true);
   }
 
   /**

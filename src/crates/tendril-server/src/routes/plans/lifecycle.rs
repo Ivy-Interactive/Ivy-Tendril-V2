@@ -38,7 +38,10 @@ fn is_terminal(state: &str) -> bool {
 
 /// The repos a plan's execution would actually touch: its own `repos` when set,
 /// otherwise its project's, mirroring how ExecutePlan resolves them.
-fn effective_repos(state: &AppState, plan: &tendril_core::models::PlanYaml) -> Vec<String> {
+pub(crate) fn effective_repos(
+    state: &AppState,
+    plan: &tendril_core::models::PlanYaml,
+) -> Vec<String> {
     if !plan.repos.is_empty() {
         return plan.repos.clone();
     }

@@ -731,9 +731,9 @@ export const JobsView: React.FC<JobsViewProps> = ({
             className="min-h-0 flex-1"
             showDivider={false}
             scrollContent={false}
-            contentClassName="flex h-full min-h-0 flex-col p-4"
+            contentClassName="flex h-full min-h-0 flex-col"
             header={
-              <SheetHeader className="pr-8">
+              <SheetHeader className="pl-2 pr-8">
                 <SheetTitle>{openJobTitle}</SheetTitle>
               </SheetHeader>
             }

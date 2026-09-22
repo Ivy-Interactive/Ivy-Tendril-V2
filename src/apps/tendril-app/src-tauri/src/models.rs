@@ -285,6 +285,44 @@ pub struct PlanGitDto {
     pub unassociated_commit_ref_status: std::collections::HashMap<String, String>,
 }
 
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChangedFileDto {
+    pub file_path: String,
+    pub diff: String,
+    pub additions: usize,
+    pub deletions: usize,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanChangesDto {
+    #[serde(default)]
+    pub files: Vec<ChangedFileDto>,
+    #[serde(default)]
+    pub raw_diff: String,
+    #[serde(default)]
+    pub total_additions: usize,
+    #[serde(default)]
+    pub total_deletions: usize,
+    pub repository: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanSummaryContentDto {
+    pub summary: Option<String>,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlanArtifactsDto {
+    #[serde(default)]
+    pub screenshots: Vec<String>,
+    #[serde(default)]
+    pub other: Vec<String>,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JobDto {

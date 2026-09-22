@@ -17,8 +17,10 @@ const reviewPlan = planSummary({
   ],
 });
 
-function renderReview() {
-  return render(<ReviewView plans={[reviewPlan]} onSelectPlan={() => {}} />);
+function renderReview(initialTab = "recommendations") {
+  return render(
+    <ReviewView plans={[reviewPlan]} onSelectPlan={() => {}} initialTab={initialTab} />,
+  );
 }
 
 beforeEach(() => {
@@ -758,7 +760,14 @@ describe("ReviewView implement selected recommendations", () => {
     });
     const onJobStarted = vi.fn();
 
-    render(<ReviewView plans={[reviewPlan]} onSelectPlan={() => {}} onJobStarted={onJobStarted} />);
+    render(
+      <ReviewView
+        plans={[reviewPlan]}
+        onSelectPlan={() => {}}
+        onJobStarted={onJobStarted}
+        initialTab="recommendations"
+      />,
+    );
 
     fireEvent.click(await screen.findByLabelText("Select Two"));
     fireEvent.click(screen.getByTestId("implement-recommendations"));

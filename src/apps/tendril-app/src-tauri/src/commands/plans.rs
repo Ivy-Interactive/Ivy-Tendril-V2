@@ -1,8 +1,9 @@
 use super::get_client_from_master;
 use crate::error::BridgeError;
 use crate::models::{
-    AnnotationDto, DraftCommentDto, PlanDetailDto, PlanGitDto, PlanQueryDto, PlanSummaryDto,
-    RecommendationDto, RepoStatusDto, RevisionResultDto, VerificationReportDto,
+    AnnotationDto, DraftCommentDto, PlanArtifactsDto, PlanChangesDto, PlanDetailDto, PlanGitDto,
+    PlanQueryDto, PlanSummaryDto, RecommendationDto, RepoStatusDto, RevisionResultDto,
+    VerificationReportDto,
 };
 
 #[tauri::command]
@@ -89,6 +90,24 @@ pub async fn cmd_get_repo_status(id: String) -> Result<Vec<RepoStatusDto>, Bridg
 #[tauri::command]
 pub async fn cmd_get_plan_git(id: String) -> Result<PlanGitDto, BridgeError> {
     get_client_from_master()?.get_plan_git(&id).await
+}
+
+/// The plan's code changes diff and file statistics.
+#[tauri::command]
+pub async fn cmd_get_plan_changes(id: String) -> Result<PlanChangesDto, BridgeError> {
+    get_client_from_master()?.get_plan_changes(&id).await
+}
+
+/// The plan's summary markdown from Artifacts/summary.md.
+#[tauri::command]
+pub async fn cmd_get_plan_summary(id: String) -> Result<Option<String>, BridgeError> {
+    get_client_from_master()?.get_plan_summary(&id).await
+}
+
+/// The plan's artifacts (screenshots and files) in the Artifacts folder.
+#[tauri::command]
+pub async fn cmd_get_plan_artifacts(id: String) -> Result<PlanArtifactsDto, BridgeError> {
+    get_client_from_master()?.get_plan_artifacts(&id).await
 }
 
 /// Read one verification report for a plan.

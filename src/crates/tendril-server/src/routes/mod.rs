@@ -78,6 +78,12 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(plans::repo_status_handler),
         )
         .route("/api/plans/:id/git", get(plans::plan_git_handler))
+        .route("/api/plans/:id/changes", get(plans::plan_changes_handler))
+        .route("/api/plans/:id/summary", get(plans::plan_summary_handler))
+        .route(
+            "/api/plans/:id/artifacts",
+            get(plans::plan_artifacts_handler),
+        )
         .route(
             "/api/plans/:id/revisions",
             get(plans::get_revision_handler).post(plans::write_revision_handler),

@@ -329,7 +329,8 @@ pub async fn update_plan_field(
                     // `spawn_worktree_reaper` would get there eventually, but only after
                     // `worktreeReaperGrace`; a plan the operator has explicitly given up on should
                     // not hold a checkout for that long.
-                    reclaim_worktrees = !was_skipped && new_state == PlanStatus::Skipped;
+                    reclaim_worktrees = (!was_skipped && new_state == PlanStatus::Skipped)
+                        || (!was_completed && will_be_completed);
 
                     if !was_completed && will_be_completed {
                         let folder_name = folder
