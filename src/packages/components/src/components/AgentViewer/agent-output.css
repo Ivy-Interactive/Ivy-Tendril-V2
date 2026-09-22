@@ -1,5 +1,10 @@
-/* ─── Terminal palette (uses framework CSS variables, adapts to light/dark) ─ */
-.aov-shell {
+/* ─── Terminal palette (uses framework CSS variables, adapts to light/dark) ─
+   Carried by the metrics strip as well as the shell, because the strip is mounted on its own: the
+   chat thread's `TurnMetrics` renders `AgentMetricsFooter` under a message, outside any
+   `.aov-shell`. Defined only on the shell, every one of these resolved to nothing there and the
+   muted figures inherited the body's full foreground. `:where()` so the palette keeps the
+   specificity it had and any rule below can still override it. */
+:where(.aov-shell, .aov-metrics) {
   --aov-fg-muted: #52525b;
   --aov-fg-faint: #595962;
   --aov-accent-soft: color-mix(in srgb, var(--foreground) 6%, transparent);
@@ -14,17 +19,22 @@
     Consolas,
     monospace
   );
+}
+
+.dark :where(.aov-shell, .aov-metrics) {
+  --aov-fg-muted: #a1a1aa;
+  --aov-fg-faint: #9ca3af;
+}
+
+.aov-shell {
+  /* A layout constant of the viewer's own tool cards, not part of the palette the bare strip needs:
+     it stays on the shell, which is the only thing that lays those cards out. */
   --aov-tool-header-h: 26px;
 
   color: var(--foreground);
   font-size: 14px;
   line-height: 1.55;
   position: relative;
-}
-
-.dark .aov-shell {
-  --aov-fg-muted: #a1a1aa;
-  --aov-fg-faint: #9ca3af;
 }
 
 .aov-shell * {
