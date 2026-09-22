@@ -5,8 +5,11 @@ import path from "node:path";
 import { emitRouteShells } from "./src/plugins/emit-route-shells";
 import { emitAgenticAssets } from "./src/plugins/emit-agentic-assets";
 
+const rawBase = process.env.VITE_BASE_PATH || process.env.BASE_PATH || "/";
+const BASE = (rawBase.startsWith("/") ? rawBase : `/${rawBase}`).replace(/\/+$/, "") + "/";
+
 export default defineConfig({
-  base: "/",
+  base: BASE,
   fmt: {
     ignorePatterns: ["dist/**", "node_modules/**"],
   },
@@ -31,8 +34,8 @@ export default defineConfig({
   plugins: [
     react(),
     tailwindcss(),
-    emitRouteShells({ contentDir: path.resolve(__dirname, "./content"), base: "/" }),
-    emitAgenticAssets({ contentDir: path.resolve(__dirname, "./content"), base: "/" }),
+    emitRouteShells({ contentDir: path.resolve(__dirname, "./content"), base: BASE }),
+    emitAgenticAssets({ contentDir: path.resolve(__dirname, "./content"), base: BASE }),
   ],
   resolve: {
     dedupe: ["react", "react-dom"],

@@ -60,7 +60,7 @@ jobs:
       - name: Build docs static site
         run: pnpm --filter @ivy-interactive/tendril-docs build
         env:
-          VITE_BASE_PATH: ${{ steps.pages.outputs.base_path }}/docs/
+          VITE_BASE_PATH: ${{ steps.pages.outputs.base_path }}/
 
       - name: Run docs tests
         run: pnpm --filter @ivy-interactive/tendril-docs test

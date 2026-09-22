@@ -71,18 +71,19 @@ export function allRoutesForContent(contentDir: string): string[] {
 /** Path of the shell to emit for `route`, relative to the build output directory. */
 export function shellPathForRoute(route: string, base: string): string | undefined {
   const prefix = base.endsWith("/") ? base : `${base}/`;
-  if (!route.startsWith(prefix.slice(0, -1))) {
-    if (base !== "/") {
-      const match = /^\/([a-z]{2})\/docs(?:\/|$)/.exec(route);
-      if (match && isSiteLocale(match[1])) {
-        const relative = route.replace(/^\/+/, "");
-        return relative.length > 0 ? `${relative}/index.html` : undefined;
-      }
+  if (base !== "/") {
+    if (route.startsWith(prefix.slice(0, -1))) {
+      const relative = route.slice(prefix.length - 1).replace(/^\/+/, "");
+      return relative.length > 0 ? `${relative}/index.html` : undefined;
+    }
+    const match = /^\/([a-z]{2})\/(?:docs(?:\/|$))?/.exec(route);
+    if (match && isSiteLocale(match[1])) {
+      const relative = route.replace(/^\/+/, "");
+      return relative.length > 0 ? `${relative}/index.html` : undefined;
     }
     return undefined;
   }
-  const relative = route.slice(prefix.length - 1).replace(/^\/+/, "");
-  // The base route itself is already the build's own index.html.
+  const relative = route.replace(/^\/+/, "");
   return relative.length > 0 ? `${relative}/index.html` : undefined;
 }
 
