@@ -16,8 +16,6 @@
     "predev": "node ../../scripts/ensure-components.mjs",
     "pretypecheck": "node ../../scripts/ensure-components.mjs",
     "preview": "vp preview",
-    "storybook": "storybook dev -p 6007",
-    "storybook:build": "storybook build -o dist-storybook",
     "tauri": "tauri",
     "test": "vp test",
     "typecheck": "tsc --noEmit"
@@ -36,10 +34,6 @@
     "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {
-    "@storybook/addon-a11y": "^8.6.18",
-    "@storybook/addon-essentials": "^8.6.18",
-    "@storybook/react": "^8.6.18",
-    "@storybook/react-vite": "^8.6.18",
     "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/cli": "^2.11.4",
     "@testing-library/jest-dom": "^7.0.1",
@@ -49,7 +43,6 @@
     "@types/react-dom": "19.2.2",
     "@vitejs/plugin-react": "^6.1.1",
     "jsdom": "^26.0.0",
-    "storybook": "^8.6.18",
     "tailwindcss": "^4.3.3",
     "typescript": "^5.8.2",
     "vite": "catalog:",
