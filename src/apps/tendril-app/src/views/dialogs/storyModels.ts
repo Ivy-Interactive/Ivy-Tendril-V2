@@ -1,17 +1,16 @@
-import type { PlanDetail, PlanSummary, RepoStatus } from "../../../types/api";
+import type { PlanDetail, PlanSummary, RepoStatus } from "../../types/api";
 import type { PlanQuestion } from "@ivy-interactive/components/tendril";
 
 /**
- * Model builders for the scenario catalogs.
+ * Model builders for the dialog stories.
  *
- * Deliberately *not* `tests/fixtures/plan.fixture`, which builds the same shapes. The catalogs are
- * app source: the harness renders them in the running app, so anything they import ships. Reaching
- * into `tests/` would pull test-only code into the app graph, and inverting it (fixtures importing
- * these) would make a test helper depend on a debug view. Two small builders in each place is the
- * cheaper of the three.
+ * Deliberately *not* `tests/fixtures/plan.fixture`, which builds the same shapes. Stories are read
+ * by Storybook's Vite build, which has no reason to resolve anything under `tests/`, and inverting
+ * it (fixtures importing these) would make a test helper depend on a story. Two small builders in
+ * each place is the cheaper of the three.
  *
  * Values are deliberately plausible rather than minimal - real-looking paths, titles and counts -
- * because the harness is read by a person judging whether a dialog looks right.
+ * because a story is read by a person judging whether a dialog looks right.
  */
 
 export function plan(overrides: Partial<PlanDetail> = {}): PlanDetail {

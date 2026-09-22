@@ -66,7 +66,10 @@ export default defineConfig({
     },
     overrides: [
       {
-        files: ["vite.config.ts", "vitest.config.ts"],
+        // CSF requires `export default meta`, and Storybook's own config files are default-export
+        // modules too. Same exemption `packages/components/vite.config.ts` already carries, for the
+        // same reason: the format is not ours to change.
+        files: ["**/*.stories.tsx", ".storybook/**", "vite.config.ts", "vitest.config.ts"],
         rules: {
           "import/no-default-export": "off",
         },

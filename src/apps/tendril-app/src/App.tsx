@@ -128,10 +128,9 @@ const IceboxView = React.lazy(() =>
 const JobsView = React.lazy(() =>
   import("./views/JobsView").then((m) => ({ default: m.JobsView })),
 );
-// Lazy for a reason of its own: the scenario registry behind this view imports *every* dialog, so
-// an eager import would pull the whole dialog family into the shell's first chunk. That is the same
-// graph `views/dialogs/index.ts` warns about, and `code-splitting.test.tsx` sits at 93.8% of its
-// eager budget with no room for it. Hidden from the nav, so nothing reaches this unless asked.
+// Lazy like the rest, though its graph is now small: the dialog harness this page used to carry
+// moved to Storybook, leaving a notifications bench that pulls in only the store it fires through.
+// Hidden from the nav, so nothing reaches it unless asked for by `activeNav`.
 const DebugView = React.lazy(() =>
   import("./views/debug/DebugView").then((m) => ({ default: m.DebugView })),
 );

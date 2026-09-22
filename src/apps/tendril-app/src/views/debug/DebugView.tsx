@@ -1,99 +1,158 @@
 import * as React from "react";
 import { Button } from "@ivy-interactive/components/ui";
-import { ChevronDown, ChevronRight, Eye } from "lucide-react";
-import { SURFACES } from "./scenarios/registry";
+import { notificationsStore, shouldShowInAppToast } from "../../state/notificationsStore";
+// The same runtime gate the notifications store and `api/bridge.ts` use. Imported rather than
+// re-derived, and the store's own copy is module-private, so this is the public one.
+import { isTauri } from "../../utils/tauri";
 
 /**
- * V1's `Apps/Debug/DialogsApp.cs`: a hidden harness for looking at how each dialog renders across
- * its input permutations.
+ * The debug page: a notifications bench.
  *
- * V1 registers one `Expandable` per dialog and opens the real component with a hand-built model.
- * This does the same, over the shared catalogs in `scenarios/` - the difference being that those
- * catalogs also drive `tests/dialog-scenarios.test.tsx`, so what is looked at here is what CI
- * checks. V1's harness was visual only, which is part of why it stopped at one dialog out of
- * forty-eight.
+ * V1's `Apps/Debug/DialogsApp.cs` was a dialog harness. The dialogs now live in Storybook, where a
+ * story is both the thing you look at and the thing CI renders, so this page keeps only the part
+ * Storybook cannot do: **firing a real notification through the real routing**.
  *
- * Copy is V1's, verbatim: "Dialog Test Harness", and "Expand a dialog to preview how it renders
- * across input permutations."
+ * That routing is the reason a bench is worth having. `deliver` picks between an OS notification
+ * and an in-app toast using two inputs that are both awkward to reach any other way - whether this
+ * is the desktop shell, and whether the operator has desktop notifications on - and then falls back
+ * to a toast if the OS refuses. In a browser it is always a toast; in the desktop app with the
+ * setting on it is an OS notification, unless permission was denied, in which case it is a toast
+ * again. Four paths, one of which only appears after an OS-level refusal.
  *
- * **One scenario is open at a time**, deliberately. Several dialogs seed their fields once per
- * opening rather than on prop identity - `CreateIssueDialog` most visibly - so showing two at once
- * and swapping props between them would display the first scenario's values under the second
- * scenario's title. Closing and remounting is the only way to see a scenario as its caller would.
+ * `notifyJobExit` additionally goes through the burst summarizer, so a wave of jobs exiting
+ * together is one notification rather than one per job. Firing five at once is the only convenient
+ * way to see that happen.
  */
 export function DebugView() {
-  const [expanded, setExpanded] = React.useState<string | null>(SURFACES[0]?.id ?? null);
-  const [open, setOpen] = React.useState<{ surface: string; index: number } | null>(null);
+  const [tick, setTick] = React.useState(0);
 
-  const close = React.useCallback(() => setOpen(null), []);
-  const active = open ? SURFACES.find((s) => s.id === open.surface) : undefined;
-  const totalScenarios = SURFACES.reduce((n, s) => n + s.scenarios.length, 0);
+  const desktopEnabled = notificationsStore.isDesktopNotificationsEnabled();
+  const isDesktop = isTauri();
+  const routesToToast = shouldShowInAppToast(isDesktop, desktopEnabled);
+
+  // The store holds the setting, and nothing publishes a change - so a read after any action here
+  // needs a nudge to re-render. Cheaper than making the store observable for one debug page.
+  const refresh = () => setTick((n) => n + 1);
 
   return (
-    // No outer padding and no scroll container of its own: the shell owns both
-    // (`CONTENT_PADDED_CLASS` is `flex-1 overflow-y-auto p-4`), and a view that adds them nests a
-    // second scroller inside the first and pays the inset twice.
     <div data-testid="debug-view" className="space-y-6">
       <header className="flex flex-col gap-1">
-        <h2 className="text-lg font-semibold text-foreground">Dialog Test Harness</h2>
+        <h2 className="text-lg font-semibold text-foreground">Notifications</h2>
         <p className="text-sm text-muted-foreground">
-          Expand a dialog to preview how it renders across input permutations.
-        </p>
-        <p className="text-xs text-muted-foreground">
-          {SURFACES.length} dialogs · {totalScenarios} scenarios · the same catalogs
-          <code className="mx-1 font-mono">tests/dialog-scenarios.test.tsx</code>
-          asserts.
+          Fire a notification through the real routing. Dialogs and sheets live in Storybook.
         </p>
       </header>
 
-      <ul className="flex flex-col gap-2">
-        {SURFACES.map((surface) => {
-          const isExpanded = expanded === surface.id;
-          return (
-            <li key={surface.id} className="rounded-box border border-border">
-              <button
-                type="button"
-                className="flex w-full items-center gap-2 p-3 text-left"
-                aria-expanded={isExpanded}
-                onClick={() => setExpanded(isExpanded ? null : surface.id)}
-                data-testid={`harness-surface-${surface.id}`}
-              >
-                {isExpanded ? (
-                  <ChevronDown className="size-4 text-muted-foreground" aria-hidden />
-                ) : (
-                  <ChevronRight className="size-4 text-muted-foreground" aria-hidden />
-                )}
-                <span className="font-mono text-sm font-medium text-foreground">{surface.id}</span>
-                <span className="text-xs text-muted-foreground">
-                  {surface.scenarios.length} scenarios
-                </span>
-              </button>
+      <section className="rounded-box border border-border p-4" data-testid="debug-routing">
+        <h3 className="mb-2 text-sm font-semibold text-foreground">Where a notification goes</h3>
+        <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
+          <dt className="text-muted-foreground">Shell</dt>
+          <dd className="font-mono text-foreground" data-testid="debug-shell">
+            {isDesktop ? "desktop" : "browser"}
+          </dd>
+          <dt className="text-muted-foreground">Desktop notifications</dt>
+          <dd className="font-mono text-foreground" data-testid="debug-setting">
+            {desktopEnabled ? "on" : "off"}
+          </dd>
+          <dt className="text-muted-foreground">Routes to</dt>
+          <dd className="font-mono text-foreground" data-testid="debug-route">
+            {routesToToast ? "in-app toast" : "OS notification (toast if refused)"}
+          </dd>
+        </dl>
+        <p className="mt-3 text-xs text-muted-foreground">
+          The setting is read at notification time, so changing it in Settings takes effect without
+          a reload. This page reads the same value the router does.
+        </p>
+      </section>
 
-              {isExpanded && (
-                <ul className="flex flex-col gap-3 border-t border-border p-3">
-                  {surface.scenarios.map((scenario, index) => (
-                    <li key={scenario.title} className="flex flex-col gap-1">
-                      <div>
-                        <Button
-                          variant="outline"
-                          onClick={() => setOpen({ surface: surface.id, index })}
-                          data-testid={`harness-scenario-${surface.id}-${index}`}
-                        >
-                          <Eye className="size-4" aria-hidden />
-                          {scenario.title}
-                        </Button>
-                      </div>
-                      <p className="text-xs text-muted-foreground">{scenario.hint}</p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </li>
-          );
-        })}
-      </ul>
+      <section className="flex flex-col gap-3">
+        <h3 className="text-sm font-semibold text-foreground">Fire one</h3>
 
-      {active && open ? active.render(open.index, { onClose: close }) : null}
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            data-testid="debug-notify-success"
+            onClick={() => {
+              notificationsStore.notifySuccess("Saved", "Notification settings saved");
+              refresh();
+            }}
+          >
+            Success toast
+          </Button>
+
+          <Button
+            variant="outline"
+            data-testid="debug-notify-error"
+            onClick={() => {
+              notificationsStore.notifyError("Plan 00412 is held by a running job (#1184)");
+              refresh();
+            }}
+          >
+            Error toast
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          These two are always in-app and never coalesced: they confirm or refuse an action the
+          operator just took, so they belong next to the app rather than in Notification Center.
+        </p>
+
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            data-testid="debug-notify-job-exit"
+            onClick={() => {
+              notificationsStore.notifyJobExit({
+                title: "ExecutePlan finished",
+                message: "00412 Port the dialog stories",
+                isSuccess: true,
+              });
+              refresh();
+            }}
+          >
+            One job exit
+          </Button>
+
+          <Button
+            variant="outline"
+            data-testid="debug-notify-job-failure"
+            onClick={() => {
+              notificationsStore.notifyJobExit({
+                title: "ExecutePlan failed",
+                message: "00412 RustClippy denied 2 warnings",
+                isSuccess: false,
+              });
+              refresh();
+            }}
+          >
+            One job failure
+          </Button>
+
+          <Button
+            variant="outline"
+            data-testid="debug-notify-burst"
+            onClick={() => {
+              for (let i = 1; i <= 5; i += 1) {
+                notificationsStore.notifyJobExit({
+                  title: "ExecutePlan finished",
+                  message: `0041${i} Plan number ${i}`,
+                  isSuccess: i !== 3,
+                });
+              }
+              refresh();
+            }}
+          >
+            Burst of five
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Job exits go through the burst summarizer. Five at once should arrive as one summary, not
+          five notifications — the window opens at the first, so a quiet shell pays nothing.
+        </p>
+      </section>
+
+      <span className="hidden" data-testid="debug-tick">
+        {tick}
+      </span>
     </div>
   );
 }
