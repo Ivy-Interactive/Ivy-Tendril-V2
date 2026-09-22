@@ -76,6 +76,10 @@ jobs:
         run: pnpm run test-skills-manifests
 
       - name: Frontend tests
+        # Every locale's catalogs are complete, so a new English key without its translations fails
+        # CI (`tests/i18n-completeness.test.ts` in the app and the components package).
+        env:
+          I18N_REQUIRE_COMPLETE: "1"
         run: pnpm test
 
       - name: Typecheck (all packages)
