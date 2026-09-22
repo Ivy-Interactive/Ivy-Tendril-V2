@@ -1,0 +1,320 @@
+{
+  "runId": "20260922-090000-full",
+  "profile": "full",
+  "createdAt": "2026-09-22T08:59:40.012+02:00",
+  "updatedAt": "2026-09-22T11:38:00.000+02:00",
+  "status": "complete",
+  "suitesRequested": [
+    "size",
+    "cli",
+    "startup",
+    "idle",
+    "api",
+    "ui",
+    "desktop"
+  ],
+  "datasets": [
+    "empty",
+    "small",
+    "medium",
+    "large"
+  ],
+  "apps": [
+    "v1",
+    "v2"
+  ],
+  "pins": {
+    "v1Ref": "v1.2.4",
+    "v1Sha": "f6b1de3dc299a4153d44e08409fe3aa6390f542b",
+    "v2Ref": "2959bbb30050948c3e54bedc99323fc331f9ddf1",
+    "v2Sha": "2959bbb30050948c3e54bedc99323fc331f9ddf1"
+  },
+  "env": {
+    "capturedAt": "2026-09-22T08:59:41.207+02:00",
+    "hostname": "bench-host",
+    "machine": {
+      "model": "Mac16,5",
+      "cpu": "Apple M4 Max",
+      "logicalCpus": 16,
+      "physicalCpus": 16,
+      "perfCores": 12,
+      "efficiencyCores": 4,
+      "memBytes": 51539607552,
+      "pageSize": 16384
+    },
+    "os": {
+      "productName": "macOS",
+      "productVersion": "27.0",
+      "buildVersion": "26A5289h",
+      "kernel": "27.0.0",
+      "arch": "arm64"
+    },
+    "power": {
+      "source": "AC Power",
+      "raw": null,
+      "lowPowerMode": "0",
+      "powerMode": "0"
+    },
+    "thermal": {
+      "warning": false,
+      "raw": null
+    },
+    "loadavg": [
+      1.21,
+      1.65,
+      2.02
+    ],
+    "uptime": "9:00  up 3 days,  1:12, 4 users, load averages: 1.21 1.65 2.02",
+    "memoryPressure": {
+      "freePercent": 61,
+      "raw": null
+    },
+    "topProcesses": [
+      {
+        "pid": 511,
+        "cpu": 12.4,
+        "rssKiB": 402112,
+        "command": "/Applications/Slack.app/Contents/MacOS/Slack"
+      },
+      {
+        "pid": 822,
+        "cpu": 6.1,
+        "rssKiB": 188004,
+        "command": "/System/Library/CoreServices/WindowServer"
+      },
+      {
+        "pid": 1301,
+        "cpu": 3.3,
+        "rssKiB": 96480,
+        "command": "/usr/libexec/mds_stores"
+      },
+      {
+        "pid": 4242,
+        "cpu": 2,
+        "rssKiB": 81220,
+        "command": "node"
+      },
+      {
+        "pid": 97,
+        "cpu": 0.9,
+        "rssKiB": 22004,
+        "command": "/usr/libexec/logd"
+      }
+    ],
+    "tools": {
+      "node": "v26.0.0",
+      "pnpm": "11.25.0",
+      "rustc": "rustc 1.98.1 (e9d1b0b3a 2026-08-06)",
+      "cargo": "cargo 1.98.1 (a7e6d9f1c 2026-07-30)",
+      "dotnet": "10.0.203",
+      "dotnetRuntimes": "Microsoft.NETCore.App 10.0.7",
+      "git": "git version 2.50.1",
+      "cc": "Apple clang version 21.0.0 (clang-2100.0.1.1)",
+      "gh": "gh version 2.80.0 (2026-08-20)",
+      "brotli": "brotli 1.1.0",
+      "gzip": "Apple gzip 479",
+      "xcodeSelect": "/Library/Developer/CommandLineTools"
+    },
+    "playwright": {
+      "version": "1.63.0",
+      "chromium": {
+        "revision": "1243",
+        "version": "153.0.8010.12"
+      },
+      "headlessShell": {
+        "revision": "1243",
+        "version": "153.0.8010.12"
+      }
+    },
+    "apps": {
+      "v1": {
+        "ref": "v1.2.4",
+        "expectedSha": "f6b1de3dc299a4153d44e08409fe3aa6390f542b",
+        "cloneSha": "f6b1de3dc299a4153d44e08409fe3aa6390f542b",
+        "cloneDirty": 0,
+        "binaries": [
+          {
+            "path": "/Users/bench/Desktop/tendril-benchmark/builds/v1-publish/Ivy.Tendril",
+            "exists": true,
+            "bytes": 165963484,
+            "version": "1.2.4",
+            "frameworks": [
+              {
+                "name": "Microsoft.NETCore.App",
+                "version": "10.0.7"
+              },
+              {
+                "name": "Microsoft.AspNetCore.App",
+                "version": "10.0.7"
+              }
+            ],
+            "appBundleVersion": null
+          },
+          {
+            "path": "/Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril",
+            "exists": true,
+            "bytes": 165830496,
+            "version": "1.2.4",
+            "frameworks": [
+              {
+                "name": "Microsoft.NETCore.App",
+                "version": "10.0.12"
+              },
+              {
+                "name": "Microsoft.AspNetCore.App",
+                "version": "10.0.12"
+              }
+            ],
+            "appBundleVersion": "1.2.4"
+          }
+        ]
+      },
+      "v2": {
+        "ref": "2959bbb30050948c3e54bedc99323fc331f9ddf1",
+        "cloneSha": "2959bbb30050948c3e54bedc99323fc331f9ddf1",
+        "cloneDirty": 0,
+        "bin": "/Users/bench/Desktop/tendril-benchmark/ivy-tendril-v2/target/release/tendril",
+        "binBytes": 38940096,
+        "version": "tendril 0.1.0",
+        "distPresent": true
+      }
+    },
+    "harness": {
+      "node": "v26.0.0",
+      "pid": 4242,
+      "argv": [
+        "run",
+        "--profile",
+        "full",
+        "--quiet-load",
+        "2"
+      ],
+      "benchSha": "0f3c2a9d8e7b6a5f4e3d2c1b0a9f8e7d6c5b4a39",
+      "benchDirty": 0
+    },
+    "scrubbedVarsPresent": [
+      "TENDRIL_HOME"
+    ]
+  },
+  "buildInfo": {
+    "createdAt": "2026-09-22T08:12:40.551+02:00",
+    "v1": {
+      "ref": "v1.2.4",
+      "sha": "f6b1de3dc299a4153d44e08409fe3aa6390f542b",
+      "serverBinary": "/Users/bench/Desktop/tendril-benchmark/builds/v1-publish/Ivy.Tendril",
+      "desktopApp": "/Applications/Ivy Tendril.app",
+      "installer": "IvyTendril-1.2.4-osx-arm64.pkg"
+    },
+    "v2": {
+      "sha": "2959bbb30050948c3e54bedc99323fc331f9ddf1",
+      "cargoProfile": "release",
+      "tauriBundle": "target/release/bundle/macos/Tendril.app",
+      "dmg": "target/release/bundle/dmg/Tendril_0.1.0_aarch64.dmg",
+      "shim": "builds/v2-shim/target/release/v2shim"
+    }
+  },
+  "options": {
+    "synthetic": true,
+    "quietLoad": 2,
+    "quietTimeoutSec": 600,
+    "datasetOverride": null,
+    "apps": [
+      "v1",
+      "v2"
+    ],
+    "knobs": {
+      "name": "full",
+      "serverDatasets": [
+        "empty",
+        "small",
+        "medium",
+        "large"
+      ],
+      "desktopDatasets": [
+        "empty",
+        "medium",
+        "large"
+      ],
+      "cliDatasets": [
+        "small",
+        "large"
+      ],
+      "startup": {
+        "firstStartRuns": 5,
+        "warmRuns": 10
+      },
+      "idle": {
+        "runs": 2,
+        "durationSec": 90
+      },
+      "api": {
+        "seqWarmup": 25,
+        "seqSamples": 300,
+        "concurrency": [
+          1,
+          8,
+          32
+        ],
+        "concurrencyDurationSec": 8,
+        "maxLatencySamples": 5000
+      },
+      "ui": {
+        "coldLoads": 8,
+        "navCycles": 8,
+        "pushSamples": 20,
+        "fsPushSamples": 10,
+        "navUnderLoadCycles": 8
+      },
+      "desktop": {
+        "warmupRuns": 1,
+        "runs": 3,
+        "durationSec": 90
+      },
+      "cli": {
+        "warmup": 3,
+        "runs": 20
+      }
+    }
+  },
+  "invocations": [
+    {
+      "argv": [
+        "run",
+        "--profile",
+        "full",
+        "--quiet-load",
+        "2"
+      ],
+      "startedAt": "2026-09-22T08:59:40.012+02:00",
+      "finishedAt": "2026-09-22T11:38:00.000+02:00",
+      "status": "complete",
+      "suites": [
+        "size",
+        "cli",
+        "startup",
+        "idle",
+        "api",
+        "ui",
+        "desktop"
+      ],
+      "suiteStatus": {
+        "size": "ok",
+        "cli": "ok",
+        "startup": "ok",
+        "idle": "ok",
+        "api": "ok",
+        "ui": "failures",
+        "desktop": "failures"
+      }
+    }
+  ],
+  "suiteStatus": {
+    "size": "ok",
+    "cli": "ok",
+    "startup": "ok",
+    "idle": "ok",
+    "api": "ok",
+    "ui": "failures",
+    "desktop": "failures"
+  }
+}
