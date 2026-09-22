@@ -94,6 +94,7 @@ describe("Package Exports", () => {
       expect(ui.Toggle).toBeDefined();
       expect(ui.Label).toBeDefined();
       expect(ui.Select).toBeDefined();
+      expect(ui.NativeSelect).toBeDefined();
       expect(ui.DataTable).toBeDefined();
       expect(ui.DataTablePagination).toBeDefined();
     });
@@ -103,6 +104,7 @@ describe("Package Exports", () => {
       expect(ui.ExpandableVariants).toBeDefined();
       expect(ui.InputVariants).toBeDefined();
       expect(ui.SelectVariants).toBeDefined();
+      expect(ui.nativeSelectVariant).toBeDefined();
       expect(ui.TableVariants).toBeDefined();
     });
 

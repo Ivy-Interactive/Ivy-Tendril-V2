@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from "react";
 import { Flame, Search, Trash2 } from "lucide-react";
-import { Badge, Button } from "@ivy-interactive/components/ui";
+import { Badge, Button, NativeSelect } from "@ivy-interactive/components/ui";
 import { plansStore } from "../state/plansStore";
 import { describeBridgeError, type PlanSummary } from "../types/api";
 import { VERIFICATION_DOT_CLASS } from "../utils/verificationStatus";
@@ -166,11 +166,12 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
         </div>
 
         {projects.length > 0 && (
-          <select
+          <NativeSelect
             aria-label="Project"
+            wrapperClassName="w-auto"
+            className="w-auto text-xs"
             value={selectedProject}
             onChange={(e) => setSelectedProject(e.target.value)}
-            className="h-9 rounded-field border border-border bg-background px-3 text-xs text-foreground focus:border-ring focus:outline-none"
           >
             <option value="all">All Projects</option>
             {projects.map((p) => (
@@ -178,15 +179,16 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
                 {p}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         )}
 
         {levels.length > 0 && (
-          <select
+          <NativeSelect
             aria-label="Level"
+            wrapperClassName="w-auto"
+            className="w-auto text-xs"
             value={selectedLevel}
             onChange={(e) => setSelectedLevel(e.target.value)}
-            className="h-9 rounded-field border border-border bg-background px-3 text-xs text-foreground focus:border-ring focus:outline-none"
           >
             <option value="all">All Levels</option>
             {levels.map((l) => (
@@ -194,7 +196,7 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
                 {l}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         )}
       </div>
 
