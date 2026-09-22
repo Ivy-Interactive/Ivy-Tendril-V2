@@ -25,6 +25,7 @@ import { queryJobsPage } from "../api/tableQuery";
 import { describeBridgeError, type Job, type JobDetail } from "../types/api";
 import { isActiveStatus, jobsStore } from "../state/jobsStore";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { JobFeedbackDialog } from "../components/JobFeedbackDialog";
 import { ConfirmDialog } from "./dialogs";
 import { parseProjects } from "./PlansView";
 import {
@@ -191,6 +192,11 @@ export const JobsView: React.FC<JobsViewProps> = ({
   const [deleteJobId, setDeleteJobId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [feedbackDialog, setFeedbackDialog] = useState<{
+    isOpen: boolean;
+    action: "relaunch" | "retry";
+    job: JobRow;
+  } | null>(null);
 
   /**
    * The clear the operator picked from the header menu, and how many rows it would take.
@@ -344,6 +350,8 @@ export const JobsView: React.FC<JobsViewProps> = ({
   const capabilities: JobRowActionCapabilities = {
     canDelete: jobsStore.canDeleteJob(),
     canForceStart: jobsStore.canForceStartJob(),
+    canRelaunch: jobsStore.canRelaunchJob(),
+    canRetry: jobsStore.canRetryJob(),
   };
 
   const runAction = async (action: () => Promise<unknown>, label: string) => {
@@ -355,6 +363,19 @@ export const JobsView: React.FC<JobsViewProps> = ({
       // leave the operator believing a job they could not stop had stopped.
       setActionError(`${label} failed: ${describeBridgeError(err)}`);
     }
+  };
+
+  const handleFeedbackSubmit = async (feedback?: string) => {
+    if (!feedbackDialog) return;
+    const { action, job } = feedbackDialog;
+    setFeedbackDialog(null);
+    await runAction(
+      () =>
+        action === "relaunch"
+          ? jobsStore.relaunchJob(job.id, feedback)
+          : jobsStore.retryJob(job.id, feedback),
+      action === "relaunch" ? "Relaunch" : "Retry",
+    );
   };
 
   const clearPrompt = pendingClear
@@ -584,6 +605,10 @@ export const JobsView: React.FC<JobsViewProps> = ({
             void runAction(() => jobsStore.cancelJob(row.id), "Stop");
           } else if (tag === "force-start-job") {
             void runAction(() => jobsStore.forceStartJob(row.id), "Force start");
+          } else if (tag === "relaunch-job") {
+            setFeedbackDialog({ isOpen: true, action: "relaunch", job: row });
+          } else if (tag === "retry-step") {
+            setFeedbackDialog({ isOpen: true, action: "retry", job: row });
           } else if (tag === "debug-job") {
             openJobDebug(row.id);
           } else if (tag === "delete-job") {
@@ -906,6 +931,16 @@ export const JobsView: React.FC<JobsViewProps> = ({
             setIsDeleting(false);
           }
         }}
+      />
+
+      <JobFeedbackDialog
+        isOpen={Boolean(feedbackDialog?.isOpen)}
+        action={feedbackDialog?.action ?? "relaunch"}
+        jobId={feedbackDialog?.job.id ?? ""}
+        jobType={feedbackDialog?.job.type}
+        prompt={feedbackDialog?.job.prompt}
+        onClose={() => setFeedbackDialog(null)}
+        onSubmit={handleFeedbackSubmit}
       />
     </div>
   );

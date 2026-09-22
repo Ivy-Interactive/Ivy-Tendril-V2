@@ -40,6 +40,26 @@ pub async fn cmd_force_start_job(id: String) -> Result<(), BridgeError> {
     get_client_from_master()?.force_start_job(&id).await
 }
 
+#[tauri::command]
+pub async fn cmd_relaunch_job(
+    id: String,
+    feedback: Option<String>,
+) -> Result<StartJobResponseDto, BridgeError> {
+    get_client_from_master()?
+        .relaunch_job(&id, feedback.as_deref())
+        .await
+}
+
+#[tauri::command]
+pub async fn cmd_retry_job(
+    id: String,
+    feedback: Option<String>,
+) -> Result<StartJobResponseDto, BridgeError> {
+    get_client_from_master()?
+        .retry_job(&id, feedback.as_deref())
+        .await
+}
+
 /// Bulk-clear finished jobs by scope, answering how many rows went.
 ///
 /// `status` names the scope (`completed`, `failed`, `timeout`, `stopped`, `finished`) and is forwarded

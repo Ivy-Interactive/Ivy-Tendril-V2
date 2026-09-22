@@ -73,6 +73,8 @@ export function coerceJobStatus(raw: unknown): JobStatus | undefined {
 interface OptionalJobBridge {
   deleteJob?: (id: string) => Promise<void>;
   forceStartJob?: (id: string) => Promise<void>;
+  relaunchJob?: (id: string, feedback?: string) => Promise<{ jobId: string; status: string }>;
+  retryJob?: (id: string, feedback?: string) => Promise<{ jobId: string; status: string }>;
   /** `POST /api/jobs/clear`, which answers `{ cleared: n }`. */
   clearJobs?: (status: string) => Promise<number>;
 }
@@ -266,6 +268,16 @@ class JobsStore {
   /** Whether `Force Start` can be offered at all. See {@link OptionalJobBridge}. */
   public canForceStartJob(): boolean {
     return typeof optionalBridge().forceStartJob === "function";
+  }
+
+  /** Whether `Relaunch` can be offered at all. See {@link OptionalJobBridge}. */
+  public canRelaunchJob(): boolean {
+    return typeof optionalBridge().relaunchJob === "function";
+  }
+
+  /** Whether `Retry` can be offered at all. See {@link OptionalJobBridge}. */
+  public canRetryJob(): boolean {
+    return typeof optionalBridge().retryJob === "function";
   }
 
   /** Whether the bulk clears can be offered at all. See {@link OptionalJobBridge}. */
@@ -522,6 +534,34 @@ class JobsStore {
     await forceStartViaBridge(id);
     await this.fetchJobs().catch(() => {});
     return true;
+  }
+
+  public async relaunchJob(id: string, feedback?: string): Promise<string> {
+    const relaunchViaBridge = optionalBridge().relaunchJob;
+    if (!relaunchViaBridge) {
+      throw new Error(
+        "Relaunching a job needs bridge.relaunchJob, which does not exist yet; " +
+          "gate the action on jobsStore.canRelaunchJob().",
+      );
+    }
+
+    const res = await relaunchViaBridge(id, feedback);
+    await this.fetchJobs().catch(() => {});
+    return res.jobId;
+  }
+
+  public async retryJob(id: string, feedback?: string): Promise<string> {
+    const retryViaBridge = optionalBridge().retryJob;
+    if (!retryViaBridge) {
+      throw new Error(
+        "Retrying a job needs bridge.retryJob, which does not exist yet; " +
+          "gate the action on jobsStore.canRetryJob().",
+      );
+    }
+
+    const res = await retryViaBridge(id, feedback);
+    await this.fetchJobs().catch(() => {});
+    return res.jobId;
   }
 
   /**

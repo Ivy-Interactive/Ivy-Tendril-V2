@@ -159,9 +159,7 @@ export function getReviewActionTooltip(
   const cond = action.condition?.trim();
 
   if (conditionMet === false) {
-    return cond
-      ? `Disabled: Condition not met (${cond})`
-      : "Disabled: Condition not met";
+    return cond ? `Disabled: Condition not met (${cond})` : "Disabled: Condition not met";
   }
 
   if (conditionMet === "unknown") {
@@ -170,9 +168,7 @@ export function getReviewActionTooltip(
         ? `Disabled: Condition could not be evaluated (${cond}): ${reason}`
         : `Disabled: Condition could not be evaluated: ${reason}`;
     }
-    return cond
-      ? `Disabled: Condition not met (${cond})`
-      : "Disabled: Condition not met";
+    return cond ? `Disabled: Condition not met (${cond})` : "Disabled: Condition not met";
   }
 
   const portKeys = allocatedPorts ? Object.keys(allocatedPorts).sort() : [];
@@ -260,7 +256,12 @@ function presentAction(
   if (verdict.state === false || verdict.state === "unknown") {
     return {
       disabled: true,
-      tooltip: getReviewActionTooltip(action, verdict.state, options.allocatedPorts, verdict.reason),
+      tooltip: getReviewActionTooltip(
+        action,
+        verdict.state,
+        options.allocatedPorts,
+        verdict.reason,
+      ),
       dimmed: true,
       busy: false,
     };

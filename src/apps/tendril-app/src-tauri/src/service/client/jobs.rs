@@ -363,6 +363,92 @@ impl TendrilClient {
         Ok(())
     }
 
+    /// Relaunches a stopped/failed job with optional feedback.
+    pub async fn relaunch_job(
+        &self,
+        job_id: &str,
+        feedback: Option<&str>,
+    ) -> Result<StartJobResponseDto, BridgeError> {
+        let url = format!(
+            "{}/api/jobs/{}/relaunch",
+            self.base_url,
+            urlencoding(job_id)
+        );
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .json(&json!({ "feedback": feedback }))
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "RELAUNCH_JOB_FAILED",
+                format!("Failed to relaunch job '{job_id}' ({status}): {text}"),
+            ));
+        }
+
+        let val: serde_json::Value = resp.json().await?;
+        let job_id = val
+            .get("jobId")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let status = val
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Started")
+            .to_string();
+
+        Ok(StartJobResponseDto { job_id, status })
+    }
+
+    /// Retries the last step of a stopped/failed job with optional feedback.
+    pub async fn retry_job(
+        &self,
+        job_id: &str,
+        feedback: Option<&str>,
+    ) -> Result<StartJobResponseDto, BridgeError> {
+        let url = format!(
+            "{}/api/jobs/{}/retry",
+            self.base_url,
+            urlencoding(job_id)
+        );
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .json(&json!({ "feedback": feedback }))
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "RETRY_JOB_FAILED",
+                format!("Failed to retry job '{job_id}' ({status}): {text}"),
+            ));
+        }
+
+        let val: serde_json::Value = resp.json().await?;
+        let job_id = val
+            .get("jobId")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let status = val
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Started")
+            .to_string();
+
+        Ok(StartJobResponseDto { job_id, status })
+    }
+
     /// Bulk-clear finished jobs by scope: `POST /api/jobs/clear` with `{ "status": scope }`, answering
     /// how many rows went.
     ///

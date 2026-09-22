@@ -1,4 +1,4 @@
-import { Bug, EllipsisVertical, Pause, RotateCw, Trash, Zap } from "lucide-react";
+import { Bug, EllipsisVertical, Pause, RotateCcw, RotateCw, Trash, Zap } from "lucide-react";
 import type { DataTableRowAction, StackedProgressSegment } from "@ivy-interactive/components/ui";
 import type { Job, JobDetail, JobStatus } from "../../types/api";
 import { isActiveStatus } from "../../state/jobsStore";
@@ -200,19 +200,18 @@ export function buildJobRows(jobs: readonly Job[], options: BuildJobRowsOptions 
 export interface JobRowActionCapabilities {
   canDelete: boolean;
   canForceStart: boolean;
+  canRelaunch?: boolean;
+  canRetry?: boolean;
 }
 
 /**
  * `JobsApp.DataTable.cs` `RowActions`, in V1's order and with V1's labels, icons and tooltips:
- * Stop, Rerun, Force Start, Debug, Delete.
+ * Stop, Relaunch, Retry Last Step, Force Start, Debug, Delete.
  *
  * - **Stop** covers every state a job can still be taken out of, not just the two already moving
  *   (`:183`, and `isActiveStatus` is the same set).
- * - **Rerun** is `CanRerun` (`JobsApp.Helpers.cs:235`): Failed, Timeout and Stopped unconditionally,
- *   and Completed only when the job's args support corrective feedback. `SupportsFeedback` returns
- *   false for a null `TypedArgs`, so with the DTO carrying none a Completed job is offered nothing -
- *   which is exactly what V1 would do with the same data - and the three failure states get the
- *   entry **disabled**, carrying {@link RERUN_UNAVAILABLE_REASON}.
+ * - **Relaunch Job** and **Retry Last Step**: available for Stopped, Failed, and Timeout jobs,
+ *   opening a feedback dialog before re-dispatching.
  * - **Force Start** is Blocked-only (`:195`): its whole point is skipping the dependency gate.
  * - **Debug** (`:201`) is unconditional. V1 gates it on being passed a `showDebug`, and `JobsApp.cs:113`
  *   always passes one, so the gate has no false case in practice and there is none here. It opens
@@ -236,13 +235,22 @@ export function buildJobRowActions(
   }
 
   if (row.status === "Failed" || row.status === "Timeout" || row.status === "Stopped") {
-    items.push({
-      tag: "rerun-job",
-      label: "Rerun",
-      icon: <RotateCw aria-hidden="true" />,
-      tooltip: RERUN_UNAVAILABLE_REASON,
-      disabled: true,
-    });
+    if (capabilities.canRelaunch !== false) {
+      items.push({
+        tag: "relaunch-job",
+        label: "Relaunch Job",
+        icon: <RotateCw aria-hidden="true" />,
+        tooltip: "Relaunch this job entirely with optional feedback",
+      });
+    }
+    if (capabilities.canRetry !== false) {
+      items.push({
+        tag: "retry-step",
+        label: "Retry Last Step",
+        icon: <RotateCcw aria-hidden="true" />,
+        tooltip: "Retry the last step of this job with optional feedback",
+      });
+    }
   }
 
   if (row.status === "Blocked" && capabilities.canForceStart) {

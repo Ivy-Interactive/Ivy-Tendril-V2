@@ -637,6 +637,16 @@ const tauriClient = {
     return invoke<void>("cmd_force_start_job", { id });
   },
 
+  /** Relaunches a stopped or failed job entirely with optional feedback. */
+  async relaunchJob(this: void, id: string, feedback?: string): Promise<StartJobResponse> {
+    return invoke<StartJobResponse>("cmd_relaunch_job", { id, feedback });
+  },
+
+  /** Retries the last step of a stopped or failed job with optional feedback. */
+  async retryJob(this: void, id: string, feedback?: string): Promise<StartJobResponse> {
+    return invoke<StartJobResponse>("cmd_retry_job", { id, feedback });
+  },
+
   /**
    * Bulk-clears finished jobs by scope, answering how many rows went.
    *

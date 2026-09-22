@@ -495,6 +495,321 @@ pub async fn force_start_job(
     }
 }
 
+#[derive(Debug, Deserialize, Default)]
+pub struct JobFeedbackRequest {
+    pub feedback: Option<String>,
+}
+
+pub async fn relaunch_job_handler(
+    State(state): State<Arc<AppState>>,
+    Path(job_id): Path<String>,
+    Json(req): Json<Option<JobFeedbackRequest>>,
+) -> impl IntoResponse {
+    let job = match state.job_manager.get_job(&job_id).await {
+        Ok(Some(j)) => j,
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Job not found: {}", job_id) })),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to load job: {}", e) })),
+            )
+                .into_response()
+        }
+    };
+
+    if job.status == JobStatus::Running || job.status == JobStatus::Queued {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": "Cannot relaunch a job that is currently running or queued" })),
+        )
+            .into_response();
+    }
+
+    let mut args = match job.typed_args.clone().or_else(|| {
+        job.args
+            .as_deref()
+            .and_then(|a| serde_json::from_str::<JobArgs>(a).ok())
+    }) {
+        Some(a) => a,
+        None => {
+            return (
+                StatusCode::BAD_REQUEST,
+                Json(json!({ "error": "Cannot relaunch: original args were not preserved." })),
+            )
+                .into_response();
+        }
+    };
+
+    let feedback = req.and_then(|r| r.feedback).filter(|f| !f.trim().is_empty());
+
+    if let Some(fb) = &feedback {
+        match &mut args {
+            JobArgs::CreatePlan(a) => {
+                a.description = format!("{}\n\nFeedback:\n{}", a.description, fb);
+            }
+            JobArgs::ExecutePlan(a) => {
+                a.note = match &a.note {
+                    Some(prev) => Some(format!("{}\n{}", prev, fb)),
+                    None => Some(fb.clone()),
+                };
+            }
+            JobArgs::RetryPlan(a) => {
+                a.change_request = format!("{}\n\nFeedback:\n{}", a.change_request, fb);
+            }
+            JobArgs::UpdatePlan(a) => {
+                a.instructions = match &a.instructions {
+                    Some(prev) => Some(format!("{}\n{}", prev, fb)),
+                    None => Some(fb.clone()),
+                };
+            }
+            JobArgs::CreatePr(a) => {
+                a.comment = match &a.comment {
+                    Some(prev) => Some(format!("{}\n{}", prev, fb)),
+                    None => Some(fb.clone()),
+                };
+            }
+            JobArgs::CreateIssue(a) => {
+                a.comment = match &a.comment {
+                    Some(prev) => Some(format!("{}\n{}", prev, fb)),
+                    None => Some(fb.clone()),
+                };
+            }
+            _ => {}
+        }
+    }
+
+    let opts = StartOptions {
+        force: true,
+        priority: Some(job.priority),
+        chat_session_id: job.chat_session_id.clone(),
+        ..Default::default()
+    };
+
+    match state.job_manager.start_job_with(args, opts).await {
+        Ok(new_job_id) => {
+            notify_master_chat(&state, &job, &new_job_id, "relaunched", feedback.as_deref()).await;
+            (
+                StatusCode::OK,
+                Json(json!({ "jobId": new_job_id, "status": "Started" })),
+            )
+                .into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to relaunch job: {}", e) })),
+        )
+            .into_response(),
+    }
+}
+
+pub async fn retry_job_handler(
+    State(state): State<Arc<AppState>>,
+    Path(job_id): Path<String>,
+    Json(req): Json<Option<JobFeedbackRequest>>,
+) -> impl IntoResponse {
+    let job = match state.job_manager.get_job(&job_id).await {
+        Ok(Some(j)) => j,
+        Ok(None) => {
+            return (
+                StatusCode::NOT_FOUND,
+                Json(json!({ "error": format!("Job not found: {}", job_id) })),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            return (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                Json(json!({ "error": format!("Failed to load job: {}", e) })),
+            )
+                .into_response()
+        }
+    };
+
+    if job.status == JobStatus::Running || job.status == JobStatus::Queued {
+        return (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": "Cannot retry a job that is currently running or queued" })),
+        )
+            .into_response();
+    }
+
+    let feedback = req.and_then(|r| r.feedback).filter(|f| !f.trim().is_empty());
+
+    let plan_folder = job
+        .typed_args
+        .as_ref()
+        .and_then(|a| a.plan_folder().map(str::to_string))
+        .or_else(|| {
+            let pf = job.plan_file.trim();
+            if !pf.is_empty() {
+                Some(pf.to_string())
+            } else {
+                None
+            }
+        });
+
+    let args = if matches!(job.job_type.as_str(), "ExecutePlan" | "RetryPlan") {
+        let folder = match plan_folder {
+            Some(f) => f,
+            None => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "error": "Cannot retry last step: plan folder is unknown." })),
+                )
+                    .into_response();
+            }
+        };
+        let change_request = feedback
+            .as_deref()
+            .unwrap_or("Please retry the last step and continue execution.")
+            .to_string();
+        JobArgs::RetryPlan(tendril_core::models::RetryPlanArgs {
+            folder_path: folder,
+            change_request,
+        })
+    } else {
+        let mut original_args = match job.typed_args.clone().or_else(|| {
+            job.args
+                .as_deref()
+                .and_then(|a| serde_json::from_str::<JobArgs>(a).ok())
+        }) {
+            Some(a) => a,
+            None => {
+                return (
+                    StatusCode::BAD_REQUEST,
+                    Json(json!({ "error": "Cannot retry: original args were not preserved." })),
+                )
+                    .into_response();
+            }
+        };
+        if let Some(fb) = &feedback {
+            match &mut original_args {
+                JobArgs::CreatePlan(a) => {
+                    a.description = format!("{}\n\nFeedback:\n{}", a.description, fb);
+                }
+                JobArgs::UpdatePlan(a) => {
+                    a.instructions = match &a.instructions {
+                        Some(prev) => Some(format!("{}\n{}", prev, fb)),
+                        None => Some(fb.clone()),
+                    };
+                }
+                JobArgs::CreatePr(a) => {
+                    a.comment = match &a.comment {
+                        Some(prev) => Some(format!("{}\n{}", prev, fb)),
+                        None => Some(fb.clone()),
+                    };
+                }
+                JobArgs::CreateIssue(a) => {
+                    a.comment = match &a.comment {
+                        Some(prev) => Some(format!("{}\n{}", prev, fb)),
+                        None => Some(fb.clone()),
+                    };
+                }
+                _ => {}
+            }
+        }
+        original_args
+    };
+
+    let opts = StartOptions {
+        force: true,
+        priority: Some(job.priority),
+        chat_session_id: job.chat_session_id.clone(),
+        ..Default::default()
+    };
+
+    match state.job_manager.start_job_with(args, opts).await {
+        Ok(new_job_id) => {
+            notify_master_chat(
+                &state,
+                &job,
+                &new_job_id,
+                "retried (last step)",
+                feedback.as_deref(),
+            )
+            .await;
+            (
+                StatusCode::OK,
+                Json(json!({ "jobId": new_job_id, "status": "Started" })),
+            )
+                .into_response()
+        }
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            Json(json!({ "error": format!("Failed to retry job: {}", e) })),
+        )
+            .into_response(),
+    }
+}
+
+async fn notify_master_chat(
+    state: &AppState,
+    job: &JobItem,
+    new_job_id: &str,
+    action_kind: &str,
+    feedback: Option<&str>,
+) {
+    let folder_name = job
+        .typed_args
+        .as_ref()
+        .and_then(|a| a.plan_folder().map(str::to_string))
+        .or_else(|| {
+            let pf = job.plan_file.trim();
+            if !pf.is_empty() {
+                Some(pf.to_string())
+            } else {
+                None
+            }
+        });
+
+    let plan_chat_session_id = folder_name.as_deref().and_then(|fn_str| {
+        tendril_core::plans::reader::read_plan_yaml(&state.plans_dir.join(fn_str))
+            .ok()
+            .and_then(|(p, _)| p.chat_session_id)
+    });
+
+    let target_chat = job
+        .chat_session_id
+        .clone()
+        .or_else(|| plan_chat_session_id.clone());
+
+    if target_chat.is_none() && folder_name.is_none() {
+        return;
+    }
+
+    let fb_part = match feedback {
+        Some(fb) if !fb.trim().is_empty() => {
+            format!("\n\nFeedback provided:\n> {}", fb.trim().replace('\n', "\n> "))
+        }
+        _ => String::new(),
+    };
+
+    let msg = format!(
+        "[System Event] Job #{} ({}) was {} as new job #{}.{}",
+        job.id, job.job_type, action_kind, new_job_id, fb_part
+    );
+
+    if let Some(fn_str) = folder_name.as_deref() {
+        let _ = tendril_core::chat::storage::broadcast_system_message_to_plan_sessions(
+            &state.tendril_home,
+            fn_str,
+            plan_chat_session_id.as_deref(),
+            None,
+            &msg,
+        );
+    }
+
+    if let Some(chat_id) = target_chat {
+        let _ = state.chat_manager.notify_event(&chat_id, &msg).await;
+    }
+}
+
 /// Stops every job that has not finished.
 pub async fn stop_all_jobs(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     match state.job_manager.stop_all_jobs().await {

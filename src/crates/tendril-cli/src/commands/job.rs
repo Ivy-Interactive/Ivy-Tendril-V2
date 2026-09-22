@@ -39,6 +39,12 @@ pub enum JobCommands {
     #[command(about = "Promote a blocked or queued job past its gates and run it next")]
     ForceStart(JobForceStartArgs),
 
+    #[command(about = "Relaunch a stopped or failed job with optional feedback")]
+    Relaunch(JobRelaunchArgs),
+
+    #[command(about = "Retry the last step of a stopped or failed job with optional feedback")]
+    Retry(JobRetryArgs),
+
     #[command(about = "Stop every running, queued, pending or blocked job")]
     StopAll,
 
@@ -223,6 +229,24 @@ pub struct JobDeleteArgs {
 #[derive(Args)]
 pub struct JobForceStartArgs {
     pub job_id: String,
+}
+
+#[derive(Args)]
+pub struct JobRelaunchArgs {
+    #[arg(help = "Job ID to relaunch")]
+    pub job_id: String,
+
+    #[arg(long, short, help = "Optional feedback or instructions to include in the relaunch")]
+    pub feedback: Option<String>,
+}
+
+#[derive(Args)]
+pub struct JobRetryArgs {
+    #[arg(help = "Job ID whose last step to retry")]
+    pub job_id: String,
+
+    #[arg(long, short, help = "Optional feedback or instructions to include in the retry")]
+    pub feedback: Option<String>,
 }
 
 #[derive(Args)]
@@ -411,6 +435,38 @@ pub async fn handle_job_command(cmd: JobCommands, tendril_home: &Path) -> anyhow
             }
             resp.error_for_status()?;
             println!("Job {} force-started.", args.job_id);
+        }
+        JobCommands::Relaunch(args) => {
+            let master = get_master_or_err(tendril_home)?;
+            let url = format!("{}/api/jobs/{}/relaunch", master.base_url(), args.job_id);
+            let body = serde_json::json!({ "feedback": args.feedback });
+            let resp = send(client.post(&url).json(&body), &master).await?;
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                anyhow::bail!("Job {} not found", args.job_id);
+            }
+            if resp.status() == reqwest::StatusCode::CONFLICT {
+                let res: serde_json::Value = resp.json().await.unwrap_or_default();
+                anyhow::bail!("{}", res["error"].as_str().unwrap_or("Job cannot be relaunched"));
+            }
+            let res: serde_json::Value = resp.error_for_status()?.json().await?;
+            let new_id = res["jobId"].as_str().unwrap_or("unknown");
+            println!("Job {} relaunched as job {}.", args.job_id, new_id);
+        }
+        JobCommands::Retry(args) => {
+            let master = get_master_or_err(tendril_home)?;
+            let url = format!("{}/api/jobs/{}/retry", master.base_url(), args.job_id);
+            let body = serde_json::json!({ "feedback": args.feedback });
+            let resp = send(client.post(&url).json(&body), &master).await?;
+            if resp.status() == reqwest::StatusCode::NOT_FOUND {
+                anyhow::bail!("Job {} not found", args.job_id);
+            }
+            if resp.status() == reqwest::StatusCode::CONFLICT {
+                let res: serde_json::Value = resp.json().await.unwrap_or_default();
+                anyhow::bail!("{}", res["error"].as_str().unwrap_or("Job cannot be retried"));
+            }
+            let res: serde_json::Value = resp.error_for_status()?.json().await?;
+            let new_id = res["jobId"].as_str().unwrap_or("unknown");
+            println!("Job {} retried (last step) as job {}.", args.job_id, new_id);
         }
         JobCommands::StopAll => {
             let master = get_master_or_err(tendril_home)?;

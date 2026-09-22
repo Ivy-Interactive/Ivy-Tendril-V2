@@ -193,6 +193,8 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/jobs/maintenance", post(jobs::run_maintenance))
         .route("/api/jobs/:id", get(jobs::get_job).delete(jobs::delete_job))
         .route("/api/jobs/:id/force-start", post(jobs::force_start_job))
+        .route("/api/jobs/:id/relaunch", post(jobs::relaunch_job_handler))
+        .route("/api/jobs/:id/retry", post(jobs::retry_job_handler))
         .route("/api/jobs/:id/status", put(jobs::update_job_status))
         .route("/api/jobs/:id/fail", put(jobs::report_job_failure))
         .route("/api/jobs/:id/cancel", post(jobs::cancel_job))

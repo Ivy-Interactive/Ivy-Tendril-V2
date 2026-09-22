@@ -11,7 +11,6 @@ import {
   jobStatusMessage,
   agentOutputLabel,
   AGENT_OUTPUT_STARTING,
-  RERUN_UNAVAILABLE_REASON,
   type JobRowActionCapabilities,
 } from "../src/views/JobsView";
 import { JOB_STATUS_COLOR, JOB_TYPE_COLOR, projectColor } from "../src/utils/jobStatus";
@@ -245,20 +244,31 @@ describe("row menu gating", () => {
    * The DTO carries no `typedArgs` at all, so Completed is offered nothing and the three failure
    * states get the entry disabled with V1's reason on it.
    */
-  it("offers Rerun disabled, with V1's reason, for the three rerunnable statuses", () => {
+  it("offers Relaunch Job and Retry Last Step for the three retryable statuses", () => {
     for (const status of ["Failed", "Timeout", "Stopped"] as JobStatus[]) {
-      const rerun = (buildJobRowActions({ status }, ALL_CAPS)[0].children ?? []).find(
-        (child) => child.tag === "rerun-job",
-      );
-      expect(rerun, `${status} should offer Rerun`).toBeDefined();
-      expect(rerun?.label).toBe("Rerun");
-      expect(rerun?.disabled).toBe(true);
-      expect(rerun?.tooltip).toBe(RERUN_UNAVAILABLE_REASON);
+      const children = buildJobRowActions({ status }, ALL_CAPS)[0].children ?? [];
+      const relaunch = children.find((child) => child.tag === "relaunch-job");
+      const retry = children.find((child) => child.tag === "retry-step");
+      expect(relaunch, `${status} should offer Relaunch Job`).toBeDefined();
+      expect(relaunch?.label).toBe("Relaunch Job");
+      expect(retry, `${status} should offer Retry Last Step`).toBeDefined();
+      expect(retry?.label).toBe("Retry Last Step");
     }
   });
 
-  it("offers no Rerun on a Completed job, since its args cannot be shown to support feedback", () => {
+  it("offers neither Relaunch nor Retry on a Completed job", () => {
     expect(menuTags("Completed")).toEqual(["debug-job", "delete-job"]);
+  });
+
+  it("respects canRelaunch and canRetry capability flags", () => {
+    expect(
+      menuTags("Stopped", {
+        canDelete: true,
+        canForceStart: false,
+        canRelaunch: false,
+        canRetry: false,
+      }),
+    ).toEqual(["debug-job", "delete-job"]);
   });
 
   // `:207`: V1 adds Delete unconditionally, terminal rows included.
@@ -284,9 +294,9 @@ describe("row menu gating", () => {
     expect(menuTags("Running", withoutDelete)).toEqual(["stop-job", "debug-job"]);
   });
 
-  // V1's order: Stop, Rerun, Force Start, Debug, Delete.
-  it("keeps V1's order", () => {
-    expect(menuTags("Stopped")).toEqual(["rerun-job", "debug-job", "delete-job"]);
+  // V1's order: Stop, Relaunch, Retry, Force Start, Debug, Delete.
+  it("keeps expected order with relaunch and retry", () => {
+    expect(menuTags("Stopped")).toEqual(["relaunch-job", "retry-step", "debug-job", "delete-job"]);
     expect(menuTags("Blocked")).toEqual(["stop-job", "force-start-job", "debug-job", "delete-job"]);
   });
 });
