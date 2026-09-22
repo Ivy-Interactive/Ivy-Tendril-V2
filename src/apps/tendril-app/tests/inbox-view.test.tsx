@@ -1636,6 +1636,18 @@ describe("InboxView Component & Triage Tests", () => {
      * different hat. The filters live in the `DataTable` toolbar (as `PullRequestsView` puts them),
      * which `fillHeight` renders `shrink-0` *above* the scroll viewport — so they are outside the
      * thing that scrolls, not at the end of it.
+     *
+     * The controls are looked up *inside* the toolbar rather than across the document, and that is
+     * load-bearing for the suite, not style. A label or accessible-name query asks every candidate
+     * element for its `labels`, and jsdom answers that by walking the whole document and asking each
+     * node for its `control` — which, for a `<label for>`, is another walk of the document to find
+     * the id (`HTMLLabelElement-impl.js`, `helpers/form-controls.js`). A long page carries 51 of
+     * those labels (the `DataTable`'s sr-only "Select row N" and "Select all rows") and ~280
+     * labelable buttons, so one document-wide `getByLabelText` here cost ~1s on an idle machine and
+     * over 5s on a loaded one: the test timed out, and its orphaned continuation then typed into the
+     * next test's search box and failed that one too. Scoped to the toolbar, only its own few
+     * controls are asked. It still fails if the search box leaves the toolbar, since `within` then
+     * finds nothing.
      */
     it("keeps the filter bar above the rows instead of at the end of them", async () => {
       listGitHubIssuesSpy.mockResolvedValue(longIssuePage());
@@ -1643,21 +1655,20 @@ describe("InboxView Component & Triage Tests", () => {
       await waitForInboxIdle();
       await waitFor(() => expect(issueRow(300)).not.toBeNull());
 
-      const search = screen.getByLabelText("Search issues");
+      // The toolbar is the table's own `shrink-0` chrome, and it precedes the viewport's box.
       const table = screen.getByTestId("inbox-issue-table");
       const viewport = table.parentElement as HTMLElement;
+      const tableRoot = viewport.parentElement?.parentElement as HTMLElement;
+      const toolbar = tableRoot.firstElementChild as HTMLElement;
+      const search = within(toolbar).getByLabelText("Search issues");
 
       // Not inside the scroller, so no amount of scrolling can move it off screen.
       expect(viewport.contains(search)).toBe(false);
-      const labelFilter = screen.getByRole("button", { name: "Filter by label..." });
-      const assigneeFilter = screen.getByRole("button", { name: "Filter by assignee..." });
+      const labelFilter = within(toolbar).getByRole("button", { name: "Filter by label..." });
+      const assigneeFilter = within(toolbar).getByRole("button", { name: "Filter by assignee..." });
       expect(viewport.contains(labelFilter)).toBe(false);
       expect(viewport.contains(assigneeFilter)).toBe(false);
 
-      // The toolbar is the table's own `shrink-0` chrome, and it precedes the viewport's box.
-      const tableRoot = viewport.parentElement?.parentElement as HTMLElement;
-      const toolbar = tableRoot.firstElementChild as HTMLElement;
-      expect(toolbar.contains(search)).toBe(true);
       expect(toolbar.className).toContain("shrink-0");
       expect(
         toolbar.compareDocumentPosition(viewport) & Node.DOCUMENT_POSITION_FOLLOWING,
