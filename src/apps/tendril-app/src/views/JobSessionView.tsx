@@ -549,7 +549,10 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
             eventHandler={noop}
           />
         ) : explainsItself && message ? null : ( // a contradiction. // available." directly under "Waiting for a job slot to become available", which reads as // text is only reached when there is nothing to say. Rendering both put "No output // `OutputSheet.cs:26-49` **returns** its callout for a job with no output; the fallback
-          <p className={`text-sm text-muted-foreground ${isSheet ? "px-4" : ""}`} data-testid="job-no-output">
+          <p
+            className={`text-sm text-muted-foreground ${isSheet ? "px-4" : ""}`}
+            data-testid="job-no-output"
+          >
             No output available.
           </p>
         )}
