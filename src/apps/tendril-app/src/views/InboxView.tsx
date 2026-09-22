@@ -38,6 +38,14 @@ import {
   PlanMarkdown,
   type BadgeSelectOption,
 } from "@ivy-interactive/components/tendril";
+import {
+  selectRelativeTimeUnit,
+  useFormatters,
+  useLocale,
+  type Formatters,
+  type RelativeTimeUnit,
+} from "@ivy-interactive/components/i18n";
+import { i18n, useTranslation, type TFunction } from "../i18n";
 import { bridge } from "../api/bridge";
 import { describeBridgeError } from "../types/api";
 import type { GitHubIssue, InboxProposal, ProjectSummary, SweepReport } from "../types/api";
@@ -71,13 +79,46 @@ const POLL_INTERVAL_MS: Record<PollInterval, number> = {
   "15m": 900_000,
 };
 
-const POLL_INTERVAL_LABELS: Record<PollInterval, string> = {
-  off: "Off",
-  "30s": "30s",
-  "1m": "1m",
-  "5m": "5m",
-  "15m": "15m",
+/**
+ * Each interval as a duration, which `Intl` spells in the current language: `30s` and `15m` in
+ * English (the labels this select always showed), `30 Sek.` and `15 Min.` in German.
+ */
+const POLL_INTERVAL_DURATIONS: Record<
+  Exclude<PollInterval, "off">,
+  [number, "second" | "minute"]
+> = {
+  "30s": [30, "second"],
+  "1m": [1, "minute"],
+  "5m": [5, "minute"],
+  "15m": [15, "minute"],
 };
+
+function pollIntervalLabel(interval: PollInterval, t: TFunction<"inbox">, format: Formatters) {
+  if (interval === "off") return t("freshness.autoRefresh.off");
+  const [value, unit] = POLL_INTERVAL_DURATIONS[interval];
+  return format.number(value, { style: "unit", unit, unitDisplay: "narrow" });
+}
+
+/**
+ * A relative time in whole units from `minUnit` up to `maxUnit`, narrow ("3h ago"), or `null` for
+ * a moment less than one `minUnit` ago - or in the future, or unparseable - which the callers say as
+ * "just now". That is exactly how the hand-rolled "Nh ago" / "Nm ago" helpers this replaces counted.
+ */
+function relativeOrJustNow(
+  format: Formatters,
+  value: string | Date,
+  minUnit: RelativeTimeUnit,
+  maxUnit: RelativeTimeUnit,
+): string | null {
+  const time = (value instanceof Date ? value : new Date(value)).getTime();
+  if (Number.isNaN(time)) return null;
+  const now = Date.now();
+  const deltaMs = time - now;
+  if (deltaMs >= 0 || selectRelativeTimeUnit(deltaMs, { minUnit, maxUnit }).value === 0) {
+    return null;
+  }
+  return format.relativeTime(time, { now, style: "narrow", numeric: "always", minUnit, maxUnit });
+}
 
 /**
  * V1's inbox queries carry `new QueryOptions { Expiration = TimeSpan.FromSeconds(60) }`
@@ -202,29 +243,40 @@ export function buildInboxChatPrompt(issues: GitHubIssue[]): string {
  * anything.
  */
 export function describeSweep(report: SweepReport): string {
-  if (report.outcome === "AlreadyRunning") return "A check is already running.";
-  if (report.outcome === "NotMaster") return "This daemon is not the master, so it did not check.";
+  if (report.outcome === "AlreadyRunning") return i18n.t("inbox:sweep.alreadyRunning");
+  if (report.outcome === "NotMaster") return i18n.t("inbox:sweep.notMaster");
 
-  const parts = [`Imported ${report.imported.length}, skipped ${report.skipped}.`];
+  const parts = [
+    i18n.t("inbox:sweep.imported", {
+      imported: report.imported.length,
+      skipped: report.skipped,
+    }),
+  ];
   if (report.accepted > 0) {
     parts.push(
-      `${report.accepted} started a plan straight away${
-        report.accepted === report.imported.length ? "" : " (the rest await your decision)"
-      }.`,
+      i18n.t("inbox:sweep.accepted", {
+        count: report.accepted,
+        context: report.accepted === report.imported.length ? undefined : "partial",
+      }),
     );
   }
   if (report.errors.length > 0) {
+    // The first error is the daemon's own text, and stays as it is.
     parts.push(
-      `${report.errors.length} error${report.errors.length === 1 ? "" : "s"}: ${report.errors[0]}`,
+      i18n.t("inbox:sweep.errors", { count: report.errors.length, error: report.errors[0] }),
     );
   }
-  return parts.join(" ");
+  // Each sentence is its own key, and so is the joint between two of them: Japanese and Chinese
+  // sentences end in 。 and take no space after it, which a hard-coded " " would force on them.
+  return parts.reduce((previous, next) => i18n.t("inbox:sweep.join", { previous, next }));
 }
 
 /** V1 `InboxChatPrompt.Title`. */
 export function inboxChatTitle(issues: GitHubIssue[]): string | undefined {
   if (issues.length === 0) return undefined;
-  return issues.length === 1 ? `#${issues[0].number}` : `${issues.length} issues`;
+  return issues.length === 1
+    ? `#${issues[0].number}`
+    : i18n.t("inbox:chatTitle", { count: issues.length });
 }
 
 /**
@@ -320,19 +372,19 @@ const RailSubItem: React.FC<{
  * The two of V1's issue row actions (`IssuesTableView`'s `RowActions`) that every issue row carries
  * unchanged, whether or not it is awaiting a decision; see `rowActionsFor` for the rows that are.
  */
-const VIEW_DETAILS_ACTION: DataTableRowAction<GitHubIssue> = {
+const viewDetailsAction = (t: TFunction<"inbox">): DataTableRowAction<GitHubIssue> => ({
   tag: "view-details",
-  label: "View Details",
+  label: t("issueTable.actions.viewDetails.label"),
   icon: <FileText aria-hidden="true" />,
-  tooltip: "View issue details",
-};
+  tooltip: t("issueTable.actions.viewDetails.tooltip"),
+});
 
-const OPEN_GITHUB_ACTION: DataTableRowAction<GitHubIssue> = {
+const openGitHubAction = (t: TFunction<"inbox">): DataTableRowAction<GitHubIssue> => ({
   tag: "open-github",
-  label: "Open in GitHub",
+  label: t("issueTable.actions.openGitHub.label"),
   icon: <ExternalLink aria-hidden="true" />,
-  tooltip: "Open issue on GitHub",
-};
+  tooltip: t("issueTable.actions.openGitHub.tooltip"),
+});
 
 export interface InboxViewProps {
   projects?: ProjectSummary[];
@@ -367,6 +419,9 @@ export const InboxView: React.FC<InboxViewProps> = ({
   onOpenNewPlanModal,
   onOpenChat,
 }) => {
+  const { t } = useTranslation("inbox");
+  const format = useFormatters();
+  const { language } = useLocale();
   const [selectedCategory, setSelectedCategory] = useState<InboxCategory>("my-issues");
   const [selectedProject, setSelectedProject] = useState<string>(projects[0]?.name || "");
   const [selectedRepo, setSelectedRepo] = useState<string>(projects[0]?.repos[0] || "");
@@ -504,7 +559,14 @@ export const InboxView: React.FC<InboxViewProps> = ({
           setIssues([]);
           setTotalCount(0);
           setHasMore(false);
-          setError(`No git remotes resolved for project ${selectedProject || "(none selected)"}.`);
+          // `i18n.t` rather than the hook's `t`: a stored message keeps the language it was made in,
+          // and `t` as a dependency would refetch the issues on every language change.
+          setError(
+            i18n.t("inbox:errors.noRemotes", {
+              project: selectedProject,
+              context: selectedProject ? undefined : "noProject",
+            }),
+          );
           return;
         }
 
@@ -768,17 +830,17 @@ export const InboxView: React.FC<InboxViewProps> = ({
     const names = new Set<string>();
     issues.forEach((issue) => issue.labels.forEach((lbl) => names.add(lbl.name)));
     return Array.from(names)
-      .sort((a, b) => a.localeCompare(b))
+      .sort((a, b) => a.localeCompare(b, language))
       .map((name) => ({ value: name, label: name }));
-  }, [issues]);
+  }, [issues, language]);
 
   const assigneeOptions = useMemo<BadgeSelectOption[]>(() => {
     const logins = new Set<string>();
     issues.forEach((issue) => issue.assignees.forEach((a) => logins.add(a.login)));
     return Array.from(logins)
-      .sort((a, b) => a.localeCompare(b))
+      .sort((a, b) => a.localeCompare(b, language))
       .map((login) => ({ value: login, label: login }));
-  }, [issues]);
+  }, [issues, language]);
 
   const filteredIssues = useMemo(() => {
     return tableIssues.filter((issue) => {
@@ -982,52 +1044,36 @@ export const InboxView: React.FC<InboxViewProps> = ({
       if (failure) {
         const failedOn = distinct[fired.size]?.number;
         setFireNotice(
-          `Fired off ${fired.size} of ${distinct.length}. Failed on ` +
-            `${failedOn !== undefined ? `#${failedOn}` : "an issue"}: ${failure}`,
+          t("fireNotice.partial", {
+            fired: fired.size,
+            total: distinct.length,
+            number: failedOn,
+            error: failure,
+            context: failedOn !== undefined ? undefined : "unknownIssue",
+          }),
         );
       } else {
-        setFireNotice(`Fired off ${fired.size} issue${fired.size === 1 ? "" : "s"} in Tendril`);
+        setFireNotice(t("fireNotice.success", { count: fired.size }));
       }
       setIsFiring(false);
     },
-    [onCreatePlan, onOpenNewPlanModal, resolveProjectForIssue],
+    [onCreatePlan, onOpenNewPlanModal, resolveProjectForIssue, t],
   );
 
-  const formatRelativeTime = (isoDate: string) => {
-    try {
-      const date = new Date(isoDate);
-      const now = new Date();
-      const diffMs = now.getTime() - date.getTime();
-      const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
-      const diffDays = Math.floor(diffHrs / 24);
-
-      if (diffDays > 0) {
-        return `${diffDays}d ago`;
-      }
-      if (diffHrs > 0) {
-        return `${diffHrs}h ago`;
-      }
-      return "just now";
-    } catch {
-      return isoDate;
-    }
-  };
-
+  /** "Updated 5m ago": whole minutes under an hour, whole hours after that, "just now" under one. */
   const formatLastUpdated = (date: Date) => {
-    const diffMs = Date.now() - date.getTime();
-    const diffMins = Math.floor(diffMs / (1000 * 60));
-    if (diffMins < 1) return "Updated just now";
-    if (diffMins < 60) return `Updated ${diffMins}m ago`;
-    const diffHrs = Math.floor(diffMins / 60);
-    return `Updated ${diffHrs}h ago`;
+    const when = relativeOrJustNow(format, date, "minute", "hour");
+    return when === null
+      ? t("freshness.updated", { context: "justNow" })
+      : t("freshness.updated", { when });
   };
 
-  /** V1's `Updated` column is `pr.UpdatedAt.Value.ToString("M/d")`. */
-  const formatMonthDay = (isoDate: string) => {
-    const date = new Date(isoDate);
-    if (Number.isNaN(date.getTime())) return "";
-    return `${date.getMonth() + 1}/${date.getDate()}`;
-  };
+  /**
+   * V1's `Updated` column is `pr.UpdatedAt.Value.ToString("M/d")`: the month and day as numbers, in
+   * the language's order (`9/2` in English, `2.9.` in German).
+   */
+  const formatMonthDay = (isoDate: string) =>
+    format.date(isoDate, { month: "numeric", day: "numeric" });
 
   const issueLink = (issue: GitHubIssue, className = "") => (
     <button
@@ -1076,16 +1122,20 @@ export const InboxView: React.FC<InboxViewProps> = ({
   const issueCell = (row: GitHubIssue) => {
     const proposal = proposalFor(row);
     if (!proposal) return issueLink(row);
+    // Whole hours under a day, whole days after that, "just now" under an hour.
+    const found = relativeOrJustNow(format, proposal.discovered, "hour", "day");
     return (
       <div className="flex min-w-0 items-center gap-1.5">
         <span
           role="img"
-          aria-label="Awaiting decision"
+          aria-label={t("issueTable.awaitingMark.ariaLabel")}
           className="inline-flex shrink-0 text-info"
           data-testid={`inbox-awaiting-mark-${proposal.id}`}
-          title={`Awaiting your decision. Found by the assigned-issues check ${formatRelativeTime(
-            proposal.discovered,
-          )}; Accept starts a plan in ${proposal.project}.`}
+          title={t("issueTable.awaitingMark.tooltip", {
+            when: found,
+            project: proposal.project,
+            context: found === null ? "justNow" : undefined,
+          })}
         >
           <Hourglass className="size-3.5" aria-hidden="true" />
         </span>
@@ -1102,23 +1152,27 @@ export const InboxView: React.FC<InboxViewProps> = ({
     () => [
       {
         name: "issue",
-        header: "Issue",
+        header: t("issueTable.columns.issue"),
         width: "45%",
         accessor: (row) => row.number,
         cell: (_value, row) => issueCell(row),
       },
       {
         name: "repository",
-        header: "Repository",
+        header: t("issueTable.columns.repository"),
         width: "180px",
         accessor: (row) => repoLabelOf(row),
         cell: (_value, row) => repositoryCell(row),
       },
       {
         name: "labels",
-        header: "Labels",
+        header: t("issueTable.columns.labels"),
         width: "200px",
-        accessor: (row) => row.labels.map((l) => l.name).join(", "),
+        accessor: (row) =>
+          format.list(
+            row.labels.map((l) => l.name),
+            { type: "unit", style: "short" },
+          ),
         // V1's sheet renders labels as `BadgeVariant.Outline` badges and its table column carries no
         // colour mapping at all, so the GitHub label hex is deliberately not used here.
         cell: (_value, row) => (
@@ -1134,13 +1188,20 @@ export const InboxView: React.FC<InboxViewProps> = ({
       },
       {
         name: "assignees",
-        header: "Assignees",
+        header: t("issueTable.columns.assignees"),
         width: "150px",
-        accessor: (row) => row.assignees.map((a) => a.login).join(", "),
+        // A unit list: "alice, bob" in English, as the `join(", ")` it replaces, and each language's
+        // own separator elsewhere.
+        accessor: (row) =>
+          format.list(
+            row.assignees.map((a) => a.login),
+            { type: "unit", style: "short" },
+          ),
       },
     ],
-    // Rebuilt when the proposals change, so the Issue cell's mark follows them.
-    [proposalFor],
+    // Rebuilt when the proposals change, so the Issue cell's mark follows them, and when the
+    // language does.
+    [proposalFor, t, format],
   );
 
   /**
@@ -1152,43 +1213,47 @@ export const InboxView: React.FC<InboxViewProps> = ({
     () => [
       {
         name: "review",
-        header: "Pull Request",
+        header: t("reviewTable.columns.pullRequest"),
         width: "50%",
         accessor: (row) => row.number,
         cell: (_value, row) => issueLink(row),
       },
       {
         name: "repository",
-        header: "Repository",
+        header: t("reviewTable.columns.repository"),
         width: "180px",
         accessor: (row) => repoLabelOf(row),
         cell: (_value, row) => repositoryCell(row),
       },
       {
         name: "updated",
-        header: "Updated",
+        header: t("reviewTable.columns.updated"),
         width: "100px",
         accessor: (row) => row.updatedAt,
         cell: (_value, row) => formatMonthDay(row.updatedAt),
       },
     ],
-    [],
+    [t, format],
   );
+
+  /** The two actions every issue row shares, built once per language as the constants they were. */
+  const viewDetails = useMemo(() => viewDetailsAction(t), [t]);
+  const openGitHub = useMemo(() => openGitHubAction(t), [t]);
 
   /** V1's `RowActions`, in V1's order and with V1's labels, icons and tooltips. */
   const issueRowActions: DataTableRowAction<GitHubIssue>[] = useMemo(
     () => [
       {
         tag: "fire-off",
-        label: "Fire off in Tendril",
+        label: t("issueTable.actions.fireOff.label"),
         icon: <Zap aria-hidden="true" />,
-        tooltip: "Fire off this issue in Tendril",
+        tooltip: t("issueTable.actions.fireOff.tooltip"),
         disabled: isFiring,
       },
-      VIEW_DETAILS_ACTION,
-      OPEN_GITHUB_ACTION,
+      viewDetails,
+      openGitHub,
     ],
-    [isFiring],
+    [isFiring, t, viewDetails, openGitHub],
   );
 
   /**
@@ -1218,22 +1283,22 @@ export const InboxView: React.FC<InboxViewProps> = ({
       return [
         {
           tag: "accept",
-          label: "Accept",
+          label: t("issueTable.actions.accept.label"),
           icon: <Check aria-hidden="true" />,
-          tooltip: `Accept: start a plan for this issue in ${proposal.project}`,
+          tooltip: t("issueTable.actions.accept.tooltip", { project: proposal.project }),
           disabled: deciding,
         },
-        VIEW_DETAILS_ACTION,
+        viewDetails,
         {
           tag: "awaiting-menu",
-          label: "More actions",
+          label: t("issueTable.actions.more.label"),
           icon: <EllipsisVertical aria-hidden="true" />,
-          tooltip: "Open in GitHub, or dismiss",
+          tooltip: t("issueTable.actions.more.tooltip"),
           children: [
-            OPEN_GITHUB_ACTION,
+            openGitHub,
             {
               tag: "dismiss",
-              label: "Dismiss",
+              label: t("issueTable.actions.dismiss.label"),
               icon: <X aria-hidden="true" />,
               variant: "destructive",
               disabled: deciding,
@@ -1242,35 +1307,39 @@ export const InboxView: React.FC<InboxViewProps> = ({
         },
       ];
     },
-    [decidingId, issueRowActions, proposalFor],
+    [decidingId, issueRowActions, proposalFor, t, viewDetails, openGitHub],
   );
 
   const reviewRowActions: DataTableRowAction<GitHubIssue>[] = useMemo(
     () => [
       {
         tag: "open-github",
-        label: "Review on GitHub",
+        label: t("reviewTable.actions.openGitHub.label"),
         icon: <ExternalLink aria-hidden="true" />,
-        tooltip: "Open pull request on GitHub",
+        tooltip: t("reviewTable.actions.openGitHub.tooltip"),
       },
       {
         tag: "view-details",
-        label: "View Details",
+        label: t("reviewTable.actions.viewDetails.label"),
         icon: <FileText aria-hidden="true" />,
-        tooltip: "View review details",
+        tooltip: t("reviewTable.actions.viewDetails.tooltip"),
       },
     ],
-    [],
+    [t],
   );
 
   const activeProject = projects.find((p) => p.name === selectedProject);
 
   /** V1's `Text.H3(title).Bold()`: `My Issues`, `Reviews`, or `{project} Issues`. */
+  const projectName = activeProject?.name || selectedProject;
   const title = isReviews
-    ? "Reviews"
+    ? t("header.title.reviews")
     : isMyIssues
-      ? "My Issues"
-      : `${activeProject?.name || selectedProject || "Project"} Issues`;
+      ? t("header.title.myIssues")
+      : t("header.title.projectIssues", {
+          project: projectName,
+          context: projectName ? undefined : "noProject",
+        });
 
   /**
    * The Issues categories are served from `repos/{slug}/issues`, which answers with pull requests
@@ -1319,14 +1388,14 @@ export const InboxView: React.FC<InboxViewProps> = ({
       <div
         role="tablist"
         aria-orientation="vertical"
-        aria-label="Inbox categories"
+        aria-label={t("rail.ariaLabel")}
         /* The rail scrolls itself once a config has more projects than fit, as the Settings section
            rail does, rather than being the thing that grows the frame. */
         className="flex w-48 shrink-0 flex-col gap-1 overflow-y-auto"
       >
         <RailRow
           icon={CircleDot}
-          label="My issues"
+          label={t("rail.myIssues")}
           count={counts["my-issues"]}
           selected={isMyIssues}
           testId="category-my-issues"
@@ -1334,14 +1403,14 @@ export const InboxView: React.FC<InboxViewProps> = ({
         />
         <RailRow
           icon={GitPullRequest}
-          label="Reviews"
+          label={t("rail.reviews")}
           count={counts["review-requests"]}
           selected={isReviews}
           testId="category-review-requests"
           onClick={() => setSelectedCategory("review-requests")}
         />
         <RailExpander
-          label="Projects"
+          label={t("rail.projects")}
           expanded={isProjectsExpanded}
           selected={selectedCategory === "project-issues"}
           onClick={() => setIsProjectsExpanded((prev) => !prev)}
@@ -1349,7 +1418,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
         {isProjectsExpanded &&
           (projects.length === 0 ? (
             <RailSubItem
-              label="No projects in settings"
+              label={t("rail.noProjects")}
               icon={FolderClosed}
               testId="inbox-no-projects"
             />
@@ -1391,8 +1460,8 @@ export const InboxView: React.FC<InboxViewProps> = ({
               type="button"
               variant="ghost"
               size="icon-sm"
-              aria-label="Refresh"
-              title="Refresh"
+              aria-label={t("header.refresh")}
+              title={t("header.refresh")}
               disabled={isLoading}
               onClick={() => void fetchIssues()}
             >
@@ -1411,12 +1480,10 @@ export const InboxView: React.FC<InboxViewProps> = ({
                 density="Small"
                 data-testid="inbox-auto-accept"
                 title={
-                  autoAccept
-                    ? "Newly assigned issues start a plan as soon as they are found"
-                    : "Newly assigned issues are marked Awaiting decision below for you to accept or dismiss"
+                  autoAccept ? t("header.autoAccept.onTooltip") : t("header.autoAccept.offTooltip")
                 }
               >
-                {autoAccept ? "Auto-Accept: On" : "Auto-Accept: Off"}
+                {autoAccept ? t("header.autoAccept.on") : t("header.autoAccept.off")}
               </Badge>
             )}
             {isMyIssues && (
@@ -1426,8 +1493,8 @@ export const InboxView: React.FC<InboxViewProps> = ({
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Auto-Accept Settings"
-                title="Auto-Accept Settings"
+                aria-label={t("header.autoAccept.settings")}
+                title={t("header.autoAccept.settings")}
                 data-testid="inbox-auto-accept-settings"
                 onClick={() => setIsAutoAcceptSettingsOpen(true)}
               >
@@ -1445,10 +1512,10 @@ export const InboxView: React.FC<InboxViewProps> = ({
                 data-testid="inbox-check-now"
                 onClick={() => void handleCheckNow()}
                 disabled={isChecking}
-                title="Import GitHub issues assigned to you now, without waiting for the next scheduled check"
+                title={t("header.checkNow.tooltip")}
               >
                 <RefreshCw aria-hidden="true" />
-                {isChecking ? "Checking..." : "Check Now"}
+                {isChecking ? t("header.checkNow.checking") : t("header.checkNow.label")}
               </Button>
             )}
           </div>
@@ -1456,7 +1523,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
           {!isReviews && (
             <div className="flex flex-wrap items-center gap-2">
               <Button type="button" variant="ghost" size="sm" onClick={selectAll}>
-                Select All
+                {t("bulk.selectAll")}
               </Button>
               <Button
                 type="button"
@@ -1465,7 +1532,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                 disabled={selectedCount === 0}
                 onClick={deselectAll}
               >
-                Deselect All
+                {t("bulk.deselectAll")}
               </Button>
               {/* V1: `{selectedCount} of {allIssues.Count} selected`, where `allIssues` is the whole
                   category, which V1 had loaded in full. V2 pages, so this counts against the same
@@ -1478,7 +1545,10 @@ export const InboxView: React.FC<InboxViewProps> = ({
                   row each leave `selectedCount` at 2 while the current page holds 1, and "2 of 1"
                   is worse than the total it is counting towards. */}
               <span className="text-xs text-muted-foreground" data-testid="inbox-selection-summary">
-                {selectedCount} of {Math.max(selectedCount, rowCount)} selected
+                {t("bulk.summary", {
+                  selected: selectedCount,
+                  total: Math.max(selectedCount, rowCount),
+                })}
               </span>
               {onOpenChat && (
                 <Button
@@ -1486,14 +1556,16 @@ export const InboxView: React.FC<InboxViewProps> = ({
                   variant="outline"
                   size="sm"
                   data-testid="inbox-open-chat"
-                  title="Discuss the selected issues with the coding agent"
+                  title={t("bulk.openChat.tooltip")}
                   disabled={selectedCount === 0}
                   onClick={() =>
                     onOpenChat(buildInboxChatPrompt(selectedIssues), inboxChatTitle(selectedIssues))
                   }
                 >
                   <MessageCircle aria-hidden="true" />
-                  {selectedCount > 0 ? `Open Chat (${selectedCount})` : "Open Chat"}
+                  {selectedCount > 0
+                    ? t("bulk.openChat.labelWithCount", { selected: selectedCount })
+                    : t("bulk.openChat.label")}
                 </Button>
               )}
               <Button
@@ -1505,8 +1577,8 @@ export const InboxView: React.FC<InboxViewProps> = ({
               >
                 <Zap aria-hidden="true" />
                 {selectedCount > 0
-                  ? `Fire off in Tendril (${selectedCount})`
-                  : "Fire off in Tendril"}
+                  ? t("bulk.fireOff.labelWithCount", { selected: selectedCount })
+                  : t("bulk.fireOff.label")}
               </Button>
             </div>
           )}
@@ -1516,10 +1588,10 @@ export const InboxView: React.FC<InboxViewProps> = ({
         <div className="flex shrink-0 flex-wrap items-center gap-3 text-xs text-muted-foreground">
           {selectedCategory === "project-issues" && activeProjectRepos.length > 1 && (
             <div className="flex items-center gap-1.5">
-              <label htmlFor="inbox-repo-select">Repo:</label>
+              <label htmlFor="inbox-repo-select">{t("freshness.repo.label")}</label>
               <NativeSelect
                 id="inbox-repo-select"
-                aria-label="Filter by repository"
+                aria-label={t("freshness.repo.ariaLabel")}
                 density="Small"
                 wrapperClassName="w-auto"
                 className="w-auto"
@@ -1546,24 +1618,24 @@ export const InboxView: React.FC<InboxViewProps> = ({
               aria-hidden="true"
             />
             <span data-testid="inbox-last-updated">
-              {lastUpdated ? formatLastUpdated(lastUpdated) : "Not yet updated"}
+              {lastUpdated ? formatLastUpdated(lastUpdated) : t("freshness.notYetUpdated")}
             </span>
           </span>
 
           <span className="flex items-center gap-1.5">
-            <label htmlFor="inbox-poll-interval">Auto-refresh:</label>
+            <label htmlFor="inbox-poll-interval">{t("freshness.autoRefresh.label")}</label>
             <NativeSelect
               id="inbox-poll-interval"
-              aria-label="Auto-refresh interval"
+              aria-label={t("freshness.autoRefresh.ariaLabel")}
               density="Small"
               wrapperClassName="w-auto"
               className="w-auto"
               value={pollInterval}
               onChange={(e) => handlePollIntervalChange(e.target.value as PollInterval)}
             >
-              {(Object.keys(POLL_INTERVAL_LABELS) as PollInterval[]).map((opt) => (
+              {(Object.keys(POLL_INTERVAL_MS) as PollInterval[]).map((opt) => (
                 <option key={opt} value={opt}>
-                  {POLL_INTERVAL_LABELS[opt]}
+                  {pollIntervalLabel(opt, t, format)}
                 </option>
               ))}
             </NativeSelect>
@@ -1604,7 +1676,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
             spinner. */}
         {error && (
           <ErrorBanner data-testid="inbox-error" className="shrink-0 space-y-2">
-            <div className="font-semibold text-destructive">Failed to load GitHub issues</div>
+            <div className="font-semibold text-destructive">{t("errors.loadFailed")}</div>
             <p>{error}</p>
             {error.toLowerCase().includes("auth login") && (
               <div className="rounded bg-background p-2 font-mono text-xs text-muted-foreground">
@@ -1618,7 +1690,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
               className="mt-2"
               onClick={() => void fetchIssues()}
             >
-              Retry
+              {t("common:actions.retry")}
             </Button>
           </ErrorBanner>
         )}
@@ -1627,7 +1699,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
             data-testid="inbox-loading"
             className="flex h-32 items-center justify-center text-xs text-muted-foreground"
           >
-            Loading issues from GitHub...
+            {t("loading")}
           </div>
         ) : error && tableIssues.length === 0 ? null : tableIssues.length === 0 && page === 1 ? (
           <div data-testid="inbox-empty">
@@ -1635,13 +1707,13 @@ export const InboxView: React.FC<InboxViewProps> = ({
                 `BuildReviewsView`/`BuildIssuesView` return the header above a bare `NoContentView`. */}
             {isReviews ? (
               <NoContentView
-                title="All Caught Up!"
-                description="No pull requests currently require your review."
+                title={t("empty.reviews.title")}
+                description={t("empty.reviews.description")}
               />
             ) : (
               <NoContentView
-                title="No Issues Found"
-                description="No issues match the selected view."
+                title={t("empty.issues.title")}
+                description={t("empty.issues.description")}
               />
             )}
           </div>
@@ -1706,18 +1778,14 @@ export const InboxView: React.FC<InboxViewProps> = ({
               setPageSize(size);
               resetToFirstPage();
             }}
-            emptyState={
-              <span className="text-muted-foreground">
-                No issues match your current search and filter criteria.
-              </span>
-            }
+            emptyState={<span className="text-muted-foreground">{t("empty.filtered")}</span>}
             toolbar={{
               left: (
                 <div className="flex flex-wrap items-center gap-2">
                   <input
                     type="search"
-                    aria-label="Search issues"
-                    placeholder="Search by title, #number, author, or description..."
+                    aria-label={t("filters.search.ariaLabel")}
+                    placeholder={t("filters.search.placeholder")}
                     value={searchQuery}
                     onChange={(e) => {
                       setSearchQuery(e.target.value);
@@ -1746,14 +1814,14 @@ export const InboxView: React.FC<InboxViewProps> = ({
                         setAwaitingOnly(pressed);
                         resetToFirstPage();
                       }}
-                      title="Show only the assigned issues awaiting your decision"
+                      title={t("filters.awaiting.tooltip")}
                       className="group px-2 text-xs"
                     >
                       <Hourglass
                         className="text-info group-data-[state=on]:text-current"
                         aria-hidden="true"
                       />
-                      Awaiting
+                      {t("filters.awaiting.label")}
                       <Badge variant="info" density="Small">
                         {proposalsByIssue.size}
                       </Badge>
@@ -1768,7 +1836,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                         id="inbox-label-filter"
                         options={labelOptions}
                         value={selectedLabels}
-                        placeholder="Filter by label..."
+                        placeholder={t("filters.labelPlaceholder")}
                         multiple={true}
                         events={["OnChange"]}
                         eventHandler={(_evt: string, _id: string, args?: unknown[]) => {
@@ -1786,7 +1854,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                         id="inbox-assignee-filter"
                         options={assigneeOptions}
                         value={selectedAssignees}
-                        placeholder="Filter by assignee..."
+                        placeholder={t("filters.assigneePlaceholder")}
                         multiple={true}
                         events={["OnChange"]}
                         eventHandler={(_evt: string, _id: string, args?: unknown[]) => {
@@ -1818,7 +1886,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
         <SheetContent className="inset-y-0 w-full overflow-y-auto sm:w-3/4 sm:max-w-none lg:w-1/2 xl:w-2/5">
           <SheetHeader>
             <SheetTitle>
-              {sheetIssue ? `#${sheetIssue.number} ${sheetIssue.title}` : "Issue"}
+              {sheetIssue ? `#${sheetIssue.number} ${sheetIssue.title}` : t("sheet.titleFallback")}
             </SheetTitle>
           </SheetHeader>
           {sheetIssue && (
@@ -1832,7 +1900,12 @@ export const InboxView: React.FC<InboxViewProps> = ({
                   )}
                   {sheetIssue.assignees.length > 0 && (
                     <span className="text-xs text-muted-foreground">
-                      Assigned: {sheetIssue.assignees.map((a) => a.login).join(", ")}
+                      {t("sheet.assigned", {
+                        assignees: format.list(
+                          sheetIssue.assignees.map((a) => a.login),
+                          { type: "unit", style: "short" },
+                        ),
+                      })}
                     </span>
                   )}
                 </div>
@@ -1845,7 +1918,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                       onClick={() => void handleOpenGitHub(sheetIssue.url)}
                     >
                       <ExternalLink aria-hidden="true" />
-                      Open on GitHub
+                      {t("sheet.openOnGitHub")}
                     </Button>
                   ) : (
                     <>
@@ -1869,7 +1942,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                             type="button"
                             variant="outline"
                             size="sm"
-                            title="Dismiss for good: the assigned-issues check will not propose this issue again"
+                            title={t("sheet.dismiss.tooltip")}
                             disabled={decidingId === sheetProposal.id}
                             onClick={() => {
                               void handleDismissProposal(sheetProposal.id);
@@ -1877,12 +1950,12 @@ export const InboxView: React.FC<InboxViewProps> = ({
                             }}
                           >
                             <X aria-hidden="true" />
-                            Dismiss
+                            {t("sheet.dismiss.label")}
                           </Button>
                           <Button
                             type="button"
                             size="sm"
-                            title={`Start a plan for this issue in ${sheetProposal.project}`}
+                            title={t("sheet.accept.tooltip", { project: sheetProposal.project })}
                             disabled={decidingId === sheetProposal.id}
                             onClick={() => {
                               void handleAcceptProposal(sheetProposal.id);
@@ -1890,7 +1963,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                             }}
                           >
                             <Check aria-hidden="true" />
-                            Accept
+                            {t("sheet.accept.label")}
                           </Button>
                         </>
                       ) : (
@@ -1904,7 +1977,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                           }}
                         >
                           <Zap aria-hidden="true" />
-                          Fire off in Tendril
+                          {t("sheet.fireOff")}
                         </Button>
                       )}
                     </>
@@ -1932,7 +2005,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                   dangerouslyAllowLocalFiles
                 />
               ) : (
-                <p className="text-sm text-muted-foreground">No description provided.</p>
+                <p className="text-sm text-muted-foreground">{t("sheet.noDescription")}</p>
               )}
             </div>
           )}

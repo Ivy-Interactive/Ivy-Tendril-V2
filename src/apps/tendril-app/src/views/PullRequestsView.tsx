@@ -17,9 +17,11 @@ import {
   PlanMarkdown,
   type BadgeSelectOption,
 } from "@ivy-interactive/components/tendril";
+import { useFormatters, type Formatters } from "@ivy-interactive/components/i18n";
+import { useTranslation, type TFunction } from "../i18n";
 import { bridge } from "../api/bridge";
 import { onPrStatusEvent } from "../api/events";
-import { bridgeErrorCode, describeBridgeError, type PrStatus } from "../types/api";
+import { bridgeErrorCode, describeBridgeError, type PrState, type PrStatus } from "../types/api";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { NoContentView } from "../components/NoContentView";
 import { useWireframeBaseUrl } from "../api/proxyOrigin";
@@ -30,12 +32,26 @@ import { formatCost, formatTokensCompact } from "../utils/format";
 /** The original's `BatchSize` — a cross-plan PR list is long, so the page holds more than the default 10. */
 const DEFAULT_PAGE_SIZE = 50;
 
-const STATUS_OPTIONS: BadgeSelectOption[] = [
-  { value: "Open", label: "Open" },
-  { value: "Merged", label: "Merged" },
-  { value: "Closed", label: "Closed" },
-  { value: "Unknown", label: "Unknown" },
-];
+/** Each PR state's label. The state itself is what the filter compares and the daemon sends. */
+const PR_STATUS_LABEL_KEYS = {
+  Open: "pullRequests.status.open",
+  Merged: "pullRequests.status.merged",
+  Closed: "pullRequests.status.closed",
+  Unknown: "pullRequests.status.unknown",
+} as const satisfies Record<PrState, string>;
+
+/** A state's label; one this build has no label for is shown as it is. */
+function prStatusLabel(t: TFunction<"inbox">, status: string): string {
+  return Object.hasOwn(PR_STATUS_LABEL_KEYS, status)
+    ? t(PR_STATUS_LABEL_KEYS[status as PrState])
+    : status;
+}
+
+const statusOptions = (t: TFunction<"inbox">): BadgeSelectOption[] =>
+  (Object.keys(PR_STATUS_LABEL_KEYS) as PrState[]).map((value) => ({
+    value,
+    label: prStatusLabel(t, value),
+  }));
 
 /**
  * Blank rather than a figure for a plan with no priceable cost and no recorded tokens — the
@@ -59,16 +75,26 @@ const costCell = (cost: number): string => (cost > 0 ? formatCost(cost) : "");
  * fourth PR state, so the cell says which of those it is and when the daemon last looked. Nothing in
  * the table said this before, and a grey chip is exactly what an operator skims past.
  */
-function statusTooltip(row: PrStatus): string {
-  const checked = row.lastChecked ? `last checked ${row.lastChecked}` : "never checked";
+function statusTooltip(t: TFunction<"inbox">, format: Formatters, row: PrStatus): string {
+  // `lastChecked` is the daemon's RFC 3339 timestamp (`to_rfc3339()` in routes/pull_requests.rs).
+  // It renders as a localized date and time in the reader's time zone ("Sep 22, 2026, 10:00 AM"),
+  // not the raw RFC 3339 text the tooltip showed before. A value JS cannot parse formats to "", so
+  // the daemon's own text is shown then rather than an empty slot.
+  const checked = {
+    lastChecked: row.lastChecked ? format.dateTime(row.lastChecked) || row.lastChecked : "",
+    context: row.lastChecked ? undefined : "neverChecked",
+  };
   if (row.status === "Unknown") {
-    return `Unknown: the daemon could not resolve this pull request (${checked}). Resync to try again.`;
+    return t("pullRequests.statusTooltip.unknown", checked);
   }
   if (row.status === "Merged") {
     // The first of pr_sync's three guards: a merge is terminal on GitHub's side.
-    return `Merged (${checked}). Merged pull requests are never re-checked.`;
+    return t("pullRequests.statusTooltip.merged", checked);
   }
-  return `${row.status} as of ${checked}.`;
+  return t("pullRequests.statusTooltip.other", {
+    ...checked,
+    status: prStatusLabel(t, row.status),
+  });
 }
 
 export interface PullRequestsViewProps {
@@ -93,6 +119,8 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
   onSelectPlan,
   onOpenNewPlanModal,
 }) => {
+  const { t } = useTranslation("inbox");
+  const format = useFormatters();
   const [rows, setRows] = useState<PrStatus[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -172,18 +200,23 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
       // on screen is untouched. `checked === 0` with errors is exactly that case, and it is worth
       // saying plainly rather than leaving them to read a list of repository names.
       if (report.errors.length > 0) {
-        const scope =
-          report.checked === 0 ? "No status could be refreshed" : "Some statuses are unchanged";
+        // The errors are the daemon's own text (`owner/repo: …`), listed as it sends them.
         setNotice(
-          `${scope}: GitHub could not be reached for ${report.errors.join("; ")}. ` +
-            `Check that the \`gh\` CLI is installed and authenticated (\`gh auth status\`).`,
+          t(
+            report.checked === 0
+              ? "pullRequests.syncNotice.unreachableAll"
+              : "pullRequests.syncNotice.unreachableSome",
+            { repos: report.errors.join("; "), cli: "gh", command: "gh auth status" },
+          ),
         );
       } else if (report.checked === 0 && report.tracked > 0) {
         // The freshness and terminal-merge guards, said out loud: a pass that skipped everything is
         // not a failure, but a silent no-op invites a second click that will also do nothing.
         setNotice(
-          `Nothing to refresh: ${report.skippedFresh} recently checked, ` +
-            `${report.skippedMerged} already merged.`,
+          t("pullRequests.syncNotice.nothingToRefresh", {
+            fresh: report.skippedFresh,
+            merged: report.skippedMerged,
+          }),
         );
       }
       await load();
@@ -192,14 +225,14 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
       // pass broadcasts its result anyway — so it is a notice, not an error banner.
       if (cancelledRef.current) return;
       if (bridgeErrorCode(err) === "PR_SYNC_IN_PROGRESS") {
-        setNotice("A sync pass is already running.");
+        setNotice(t("pullRequests.syncNotice.alreadyRunning"));
       } else {
         setSyncError(describeBridgeError(err));
       }
     } finally {
       if (!cancelledRef.current) setIsSyncing(false);
     }
-  }, [load]);
+  }, [load, t]);
 
   const openPlanSheet = useCallback(async (row: PrStatus) => {
     setSheetRow(row);
@@ -236,7 +269,7 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
     () => [
       {
         name: "plan",
-        header: "Plan",
+        header: t("pullRequests.columns.plan"),
         width: "24%",
         // Numeric so the default Descending sort orders 00610 above 00099 rather than lexically.
         accessor: (row) => Number.parseInt(row.planId, 10) || 0,
@@ -253,7 +286,7 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
       },
       {
         name: "project",
-        header: "Project",
+        header: t("pullRequests.columns.project"),
         // Wide enough for `Ivy-Tendril-V2`; at 110px every row read `Ivy-Tendril-...`, so the column
         // carried no information at all.
         width: "140px",
@@ -270,18 +303,22 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
       },
       {
         name: "status",
-        header: "Status",
+        header: t("pullRequests.columns.status"),
         width: "100px",
         accessor: (row) => row.status,
         cell: (_value, row) => (
-          <Badge title={statusTooltip(row)} color={PR_STATE_COLOR[row.status]} density="Small">
-            {row.status || "Unknown"}
+          <Badge
+            title={statusTooltip(t, format, row)}
+            color={PR_STATE_COLOR[row.status]}
+            density="Small"
+          >
+            {prStatusLabel(t, row.status || "Unknown")}
           </Badge>
         ),
       },
       {
         name: "pr",
-        header: "PR",
+        header: t("pullRequests.columns.pr"),
         // A PR number is five characters; the original's 25% was a copy-paste from the text columns.
         width: "70px",
         accessor: (row) => row.number,
@@ -298,7 +335,7 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
       },
       {
         name: "tokens",
-        header: "Tokens",
+        header: t("pullRequests.columns.tokens"),
         width: "80px",
         align: "Right",
         accessor: (row) => row.tokens,
@@ -306,7 +343,7 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
       },
       {
         name: "cost",
-        header: "Cost",
+        header: t("pullRequests.columns.cost"),
         width: "80px",
         align: "Right",
         accessor: (row) => row.cost,
@@ -314,7 +351,7 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
       },
       {
         name: "repository",
-        header: "Repository",
+        header: t("pullRequests.columns.repository"),
         width: "15%",
         accessor: (row) => `${row.owner}/${row.repo}`,
         // `owner/repo` and a `tendril/00610-...` branch are both longer than any column that fits on
@@ -332,7 +369,7 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
       },
       {
         name: "branch",
-        header: "Branch",
+        header: t("pullRequests.columns.branch"),
         width: "13%",
         accessor: (row) => row.branch ?? "",
         cell: (_value, row) => (
@@ -342,28 +379,42 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
         ),
       },
     ],
-    [openPlanSheet],
+    [openPlanSheet, t, format],
   );
 
   const rowActions: DataTableRowAction<PrStatus>[] = useMemo(
     () => [
-      { tag: "view-plan", label: "View Plan", icon: <FileText aria-hidden="true" /> },
-      { tag: "follow-up", label: "Follow Up", icon: <GitBranch aria-hidden="true" /> },
-      { tag: "open-pr", label: "Open PR", icon: <ExternalLink aria-hidden="true" /> },
+      {
+        tag: "view-plan",
+        label: t("pullRequests.actions.viewPlan"),
+        icon: <FileText aria-hidden="true" />,
+      },
+      {
+        tag: "follow-up",
+        label: t("pullRequests.actions.followUp"),
+        icon: <GitBranch aria-hidden="true" />,
+      },
+      {
+        tag: "open-pr",
+        label: t("pullRequests.actions.openPr"),
+        icon: <ExternalLink aria-hidden="true" />,
+      },
       {
         tag: "resync",
-        label: "Resync",
+        label: t("pullRequests.actions.resync"),
         icon: <RefreshCw aria-hidden="true" />,
         disabled: isSyncing,
       },
     ],
-    [isSyncing],
+    [isSyncing, t],
   );
+
+  const statusFilterOptions = useMemo(() => statusOptions(t), [t]);
 
   return (
     <div className="space-y-6" data-testid="pull-requests-view">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold text-foreground">Pull Requests</h1>
+        <h1 className="text-2xl font-bold text-foreground">{t("pullRequests.title")}</h1>
       </div>
 
       {error && <ErrorBanner>{error}</ErrorBanner>}
@@ -372,8 +423,8 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
 
       {!isLoading && rows.length === 0 && !error ? (
         <NoContentView
-          title="No pull requests"
-          description="No plan has a pull request recorded yet. Create one from the Review tab and it will appear here."
+          title={t("pullRequests.empty.title")}
+          description={t("pullRequests.empty.description")}
         />
       ) : (
         <DataTable<PrStatus>
@@ -418,9 +469,7 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
           // read as unrelated.
           emptyState={
             <span className="text-muted-foreground">
-              {error
-                ? "The pull request list could not be loaded, so nothing can be shown."
-                : "No pull requests match your current search query or filter criteria."}
+              {error ? t("pullRequests.empty.loadFailed") : t("pullRequests.empty.filtered")}
             </span>
           }
           toolbar={{
@@ -429,8 +478,8 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
                 <input
                   type="text"
                   role="searchbox"
-                  aria-label="Search pull requests"
-                  placeholder="Search by plan, project, repository, or branch..."
+                  aria-label={t("pullRequests.search.ariaLabel")}
+                  placeholder={t("pullRequests.search.placeholder")}
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="w-72 rounded-field border border-border bg-card px-4 py-2 text-sm text-foreground placeholder-muted-foreground/70 focus-visible:border-ring focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
@@ -438,9 +487,9 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
                 <div className="min-w-[180px]">
                   <BadgeSelect
                     id="pr-status-filter"
-                    options={STATUS_OPTIONS}
+                    options={statusFilterOptions}
                     value={selectedStatuses}
-                    placeholder="Filter by status..."
+                    placeholder={t("pullRequests.statusFilterPlaceholder")}
                     multiple={true}
                     // BadgeSelect only emits events it was opted into, so omitting this leaves the
                     // filter inert — the trigger opens and closes but no selection ever arrives.
@@ -465,7 +514,7 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
               >
                 {/* "All" rather than "Resync": the row action carries that label, and one pass
                     covers every PR, so the toolbar control says which scope it has. */}
-                {isSyncing ? "Resyncing..." : "Resync All"}
+                {isSyncing ? t("pullRequests.resyncing") : t("pullRequests.resyncAll")}
               </Button>
             ),
           }}
@@ -481,16 +530,20 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
         <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
           <SheetHeader>
             <SheetTitle>
-              {sheetRow ? `#${sheetRow.planId} ${sheetRow.planTitle}` : "Plan"}
+              {sheetRow
+                ? `#${sheetRow.planId} ${sheetRow.planTitle}`
+                : t("pullRequests.sheet.titleFallback")}
             </SheetTitle>
           </SheetHeader>
           <div className="mt-4">
             {revisionError ? (
               <p className="text-xs text-destructive">{revisionError}</p>
             ) : revision === null ? (
-              <p className="text-sm text-muted-foreground">Loading revision...</p>
+              <p className="text-sm text-muted-foreground">
+                {t("pullRequests.sheet.loadingRevision")}
+              </p>
             ) : revision.trim() === "" ? (
-              <p className="text-sm text-muted-foreground">Plan not found or empty.</p>
+              <p className="text-sm text-muted-foreground">{t("pullRequests.sheet.notFound")}</p>
             ) : (
               <PlanMarkdown
                 id="pr-plan-revision"
