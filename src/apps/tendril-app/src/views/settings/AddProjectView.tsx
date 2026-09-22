@@ -214,9 +214,7 @@ export const AddProjectView: React.FC<AddProjectViewProps> = ({
           }}
         >
           <div className="space-y-2">
-            <p className="text-xs font-medium text-muted-foreground">
-              Add one or more Git repositories
-            </p>
+            <p className="text-xs font-medium text-foreground">Add one or more Git repositories</p>
             {repos.map((path, index) => (
               <div key={path} className="flex items-center gap-2 rounded-selector bg-muted/50 p-2">
                 <span className="min-w-0 flex-1 truncate font-mono text-xs text-primary">

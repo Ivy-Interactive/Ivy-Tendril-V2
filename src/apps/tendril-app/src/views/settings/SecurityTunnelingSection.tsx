@@ -482,7 +482,7 @@ const PasswordField: React.FC<{
   onChange: (value: string) => void;
 }> = ({ id, label, placeholder, value, disabled, autoComplete, onChange }) => (
   <div className="space-y-1">
-    <Label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+    <Label htmlFor={id} className="text-xs font-medium text-foreground">
       {label}
     </Label>
     <Input

@@ -122,7 +122,7 @@ export const NumberField: React.FC<{
   onChange: (value: number) => void;
 }> = ({ id, label, value, min, max, suffix, hint, onChange }) => (
   <div className="space-y-1">
-    <Label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+    <Label htmlFor={id} className="text-xs font-medium text-foreground">
       {label}
     </Label>
     <div className="relative">
@@ -159,7 +159,7 @@ export const TextField: React.FC<{
   onChange: (value: string) => void;
 }> = ({ id, label, value, placeholder, hint, error, disabled, onChange }) => (
   <div className="space-y-1">
-    <Label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+    <Label htmlFor={id} className="text-xs font-medium text-foreground">
       {label}
     </Label>
     <Input
@@ -189,7 +189,7 @@ export const SelectField: React.FC<{
   onChange: (value: string) => void;
 }> = ({ id, label, value, options, hint, disabled, onChange }) => (
   <div className="space-y-1">
-    <Label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+    <Label htmlFor={id} className="text-xs font-medium text-foreground">
       {label}
     </Label>
     <Select value={value} onValueChange={onChange} disabled={disabled}>
@@ -228,7 +228,7 @@ export const NativeSelectField: React.FC<{
   onChange: (value: string) => void;
 }> = ({ id, label, value, options, hint, disabled, onChange }) => (
   <div className="space-y-1">
-    <Label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+    <Label htmlFor={id} className="text-xs font-medium text-foreground">
       {label}
     </Label>
     <select
@@ -263,7 +263,7 @@ export const LinesField: React.FC<{
   onChange: (value: string) => void;
 }> = ({ id, label, value, hint, placeholder, rows = "short", onChange }) => (
   <div className="space-y-1">
-    <Label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+    <Label htmlFor={id} className="text-xs font-medium text-foreground">
       {label}
     </Label>
     <Textarea
@@ -370,7 +370,7 @@ export const ColorSwatchField: React.FC<{
 
   return (
     <div className="space-y-1">
-      <Label htmlFor={id} className="text-xs font-medium text-muted-foreground">
+      <Label htmlFor={id} className="text-xs font-medium text-foreground">
         {label}
       </Label>
       <div className="flex items-center gap-2">
