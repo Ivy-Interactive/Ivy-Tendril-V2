@@ -7,6 +7,14 @@ import { i18n } from "../src/i18n";
 import { LANGUAGE_STORAGE_KEY } from "../src/state/language";
 import { notificationsStore } from "../src/state/notificationsStore";
 import type { ServiceInfo, TendrilConfig } from "../src/types/api";
+import germanSettings from "../src/locales/de/settings.json";
+
+/** The toast is worded after the switch, so it is already German - read from the German catalog
+ *  rather than spelled out, so a reworded translation does not break this test. */
+const GERMAN_SAVED_TOAST = [
+  germanSettings.shared.toastSaved,
+  germanSettings.appearance.language.saved.replace("{{language}}", "Deutsch"),
+] as const;
 
 /**
  * The Language block in Settings > Appearance: every language by its own name, applied on the change
@@ -33,7 +41,9 @@ const serviceInfo: ServiceInfo = {
 };
 
 const html = document.documentElement;
-const picker = () => screen.getByLabelText("Language") as HTMLSelectElement;
+/** The picker's label is in whatever language is current, which a choice changes mid-test. */
+const picker = () =>
+  screen.getByLabelText(i18n.t("settings:appearance.language.label")) as HTMLSelectElement;
 
 async function renderAppearance(config: TendrilConfig = baseConfig) {
   vi.spyOn(bridge, "getConfig").mockResolvedValue(config);
@@ -136,7 +146,7 @@ describe("Settings / Appearance / Language", () => {
 
     await choose("de");
 
-    await waitFor(() => expect(notify).toHaveBeenCalledWith("Saved", "Language set to Deutsch"));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith(...GERMAN_SAVED_TOAST));
     expect(putConfig).toHaveBeenCalledWith("language", "de");
     expect(i18n.language).toBe("de");
     expect(html.lang).toBe("de");
@@ -171,7 +181,7 @@ describe("Settings / Appearance / Language", () => {
 
     await choose("ru");
     await choose("de");
-    await waitFor(() => expect(notify).toHaveBeenCalledWith("Saved", "Language set to Deutsch"));
+    await waitFor(() => expect(notify).toHaveBeenCalledWith(...GERMAN_SAVED_TOAST));
     await act(async () => {
       releaseRussian!();
       await new Promise((resolve) => setTimeout(resolve, 0));

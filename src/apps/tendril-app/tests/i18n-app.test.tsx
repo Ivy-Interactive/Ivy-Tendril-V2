@@ -9,6 +9,7 @@ import {
   Trans,
   type TFunction,
 } from "../src/i18n";
+import germanCommon from "../src/locales/de/common.json";
 
 /**
  * The app's binding to the shared runtime: its catalogs load on demand, `initI18n` never leaves the
@@ -43,8 +44,9 @@ describe("initI18n", () => {
       expect(i18n.hasResourceBundle("de", namespace), namespace).toBe(true);
     }
     expect(i18n.hasResourceBundle("de", "uiDialogs")).toBe(true);
-    // Nothing is translated yet, so every string still renders its English fallback.
-    expect(i18n.t("common:enums.jobStatus.running")).toBe("Running");
+    // The German catalog is the one rendered, not English's fallback.
+    expect(i18n.t("common:enums.jobStatus.running")).toBe(germanCommon.enums.jobStatus.running);
+    expect(i18n.t("common:enums.jobStatus.running")).not.toBe("Running");
   });
 
   it("starts the app in English when a language's catalogs fail to load", async () => {
