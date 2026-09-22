@@ -7,7 +7,10 @@ import {
   type DataTableFilterOption,
   type RemoteSortColumn,
 } from "@ivy-interactive/components/ui";
+import { useFormatters, useLocale } from "@ivy-interactive/components/i18n";
 import { fetchTableColumnValues } from "../../api/tableQuery";
+import { useTranslation } from "../../i18n";
+import { useEnumLabels } from "../../i18n/enumLabels";
 import {
   JOB_STATUS_COLOR,
   JOB_TYPE_COLOR,
@@ -86,6 +89,13 @@ export const SORT_COLUMNS: RemoteSortColumn[] = [
  * not turn over inside a session, and re-reading them on every poll would be three requests a second
  * for a list that never changes.
  *
+ * Each option is labelled with its raw value, in every language. The options are not a control: they
+ * are the words the filter expression accepts, which the help popover lists and the parser sends to
+ * the daemon as typed. A translated label there would tell a user to type text that matches no row.
+ *
+ * Sorted in the language the user picked rather than the operating system's, and sorted again when
+ * that language changes.
+ *
  * @param split For a column that stores a joined list, how one stored value becomes several offered
  *   ones. `Project` holds "web, api".
  */
@@ -93,7 +103,8 @@ export function useColumnValues(
   column: string,
   split?: (value: string) => string[],
 ): DataTableFilterOption[] {
-  const [options, setOptions] = useState<DataTableFilterOption[]>([]);
+  const [values, setValues] = useState<string[]>([]);
+  const { language } = useLocale();
 
   useEffect(() => {
     let cancelled = false;
@@ -101,11 +112,7 @@ export function useColumnValues(
       .then((page) => {
         if (cancelled) return;
         const values = page.values.map(String).flatMap((value) => split?.(value) ?? [value]);
-        setOptions(
-          Array.from(new Set(values.filter((value) => value.length > 0)))
-            .sort((a, b) => a.localeCompare(b))
-            .map((value) => ({ value, label: value })),
-        );
+        setValues(Array.from(new Set(values.filter((value) => value.length > 0))));
       })
       .catch(() => {
         /* See above: the table's own error is the one worth showing. */
@@ -117,7 +124,13 @@ export function useColumnValues(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [column]);
 
-  return options;
+  return useMemo(
+    () =>
+      [...values]
+        .sort((a, b) => a.localeCompare(b, language))
+        .map((value) => ({ value, label: value })),
+    [values, language],
+  );
 }
 
 /**
@@ -135,6 +148,7 @@ export interface JobColumnsOptions {
   openJobCost: (jobId: string) => void;
   /** V1's `showPrompt(...)`: the full, untruncated prompt. */
   openJobPrompt: (jobId: string) => void;
+  /** The daemon's values, labelled raw: they are what the filter expression accepts. */
   statusOptions: DataTableFilterOption[];
   typeOptions: DataTableFilterOption[];
   projectOptions: DataTableFilterOption[];
@@ -150,6 +164,10 @@ export function useJobColumns({
   typeOptions,
   projectOptions,
 }: JobColumnsOptions): DataTableColumn<JobRow>[] {
+  const { t } = useTranslation("jobs");
+  const labels = useEnumLabels();
+  const format = useFormatters();
+
   /**
    * V1's columns, in V1's order, at V1's widths, with the headers Ivy derives from the property
    * names via `SplitPascalCase` (so `PlanId` reads "Plan Id" and `StatusMessage` "Status Message").
@@ -161,7 +179,7 @@ export function useJobColumns({
       // `.Filterable(t => t.Id, false)` (`:83`) as well as `.Hidden(...)`: no filter control.
       {
         name: "id",
-        header: "Id",
+        header: t("table.columns.id.header"),
         width: "90px",
         hidden: true,
         accessor: (row) => row.id,
@@ -174,18 +192,24 @@ export function useJobColumns({
       },
       {
         name: "status",
-        header: "Status",
+        header: t("table.columns.status.header"),
         width: "100px",
         // A closed set, so the editor can offer its values: `[Status] in ("Running", "Queued")` is the
         // `inSet` condition the framework's editor cannot type but its proto has had all along.
-        filter: { kind: "select", options: statusOptions, placeholder: "All" },
+        // The options stay the daemon's raw values in every language (see `useColumnValues`): only the
+        // badge below is translated.
+        filter: {
+          kind: "select",
+          options: statusOptions,
+          placeholder: t("table.columns.status.filterPlaceholder"),
+        },
         accessor: (row) => row.status,
         cell: (_value, row) => (
           <div className="flex items-center gap-1">
             {/* V1's `LabelsDisplayRenderer` over `Constants.JobStatusColors` — the colour *is* the way
                 this column is read at a glance, so it is V1's colour and not an approximation. */}
             <Badge color={JOB_STATUS_COLOR[row.status] ?? UNMAPPED_COLOR} density="Small">
-              {row.status}
+              {labels.jobStatus(row.status)}
             </Badge>
             {/* Not a V1 column: V1 has no notion of a detached job. `JobSessionView` shows the same
                 badge for one, and a row that a previous daemon started is worth flagging where the
@@ -195,9 +219,11 @@ export function useJobColumns({
                 color="Orange"
                 density="Small"
                 data-testid={`job-detached-${row.id}`}
-                title={`Detached (PID ${row.processId ?? "unknown"}) — monitoring an active process started before the last daemon restart`}
+                title={t("table.detached.title", {
+                  pid: row.processId ?? t("table.detached.unknownPid"),
+                })}
               >
-                Detached
+                {t("table.detached.label")}
               </Badge>
             )}
           </div>
@@ -205,7 +231,7 @@ export function useJobColumns({
       },
       {
         name: "planId",
-        header: "Plan Id",
+        header: t("table.columns.planId.header"),
         width: "80px",
         // Both columns the cell can be showing, ORed. The value rendered is `reportedPlanId` when the
         // promptware reported one and the id read off `planFile` otherwise, so filtering either alone
@@ -215,7 +241,7 @@ export function useJobColumns({
           kind: "text",
           column: "reportedPlanId",
           alsoColumns: ["planFile"],
-          placeholder: "Id…",
+          placeholder: t("table.columns.planId.filterPlaceholder"),
         },
         // V1's Plan Id cell action navigates (`JobsApp.DataTable.cs:95-141`), so this is the framework's
         // *link* cell: `cursor: pointer` on the cell and blue underlined text in it.
@@ -248,7 +274,7 @@ export function useJobColumns({
       },
       {
         name: "prompt",
-        header: "Prompt",
+        header: t("table.columns.prompt.header"),
         width: "250px",
         // V1's free-text `[Prompt] contains "…"`, as a box. The cell reads `ReportedPlanTitle` when the
         // agent has reported a plan and the launch arguments otherwise, so the filter has to reach both
@@ -270,29 +296,33 @@ export function useJobColumns({
       },
       {
         name: "type",
-        header: "Type",
+        header: t("table.columns.type.header"),
         width: "100px",
-        filter: { kind: "select", options: typeOptions, placeholder: "All" },
+        filter: {
+          kind: "select",
+          options: typeOptions,
+          placeholder: t("table.columns.type.filterPlaceholder"),
+        },
         accessor: (row) => row.type,
         // `Constants.JobTypeColors`, all eleven hues (`JobsApp.DataTable.cs:68-74`). Reachable because
         // the design system publishes a token per Ivy colour and `Badge`'s `color` tints from it — so
         // this is a categorical palette the theme already owns, not a decorative ramp invented here.
         cell: (_value, row) => (
           <Badge color={JOB_TYPE_COLOR[row.type] ?? UNMAPPED_COLOR} density="Small">
-            {row.type}
+            {labels.jobType(row.type)}
           </Badge>
         ),
       },
       {
         name: "project",
-        header: "Project",
+        header: t("table.columns.project.header"),
         width: "150px",
         // `contains`, because a job can name several projects and the cell (and the column) holds them
         // joined: "web, api" is equal to neither "web" nor "api".
         filter: {
           kind: "select",
           options: projectOptions,
-          placeholder: "All",
+          placeholder: t("table.columns.project.filterPlaceholder"),
           function: "contains",
         },
         accessor: (row) => row.project,
@@ -311,14 +341,18 @@ export function useJobColumns({
       },
       {
         name: "timer",
-        header: "Timer",
+        header: t("table.columns.timer.header"),
         width: "80px",
         // Derived from `StartedAt` for a running job, so the database's closest total order is the
         // recorded duration. See {@link SORT_COLUMNS}.
         sortColumn: "durationSeconds",
         // Filtered as the recorded duration in seconds, so `> 300` asks for runs over five minutes.
         // V1 could only match its formatted `1:04` as a string.
-        filter: { kind: "text", column: "durationSeconds", placeholder: "Seconds…" },
+        filter: {
+          kind: "text",
+          column: "durationSeconds",
+          placeholder: t("table.columns.timer.filterPlaceholder"),
+        },
         accessor: (row) => row.timerSeconds,
         cell: (_value, row) => (
           <span className="font-mono text-xs text-muted-foreground">
@@ -328,13 +362,17 @@ export function useJobColumns({
       },
       {
         name: "agentOutput",
-        header: "Agent Output",
+        header: t("table.columns.agentOutput.header"),
         width: "100px",
         // How long since the agent last wrote a line, not its status message — that has its own column.
         // `Status` is what groups the three forms this cell takes; see {@link SORT_COLUMNS}.
         sortColumn: "status",
         // The cell counts up from `lastOutputAt`, so that is what a filter on it means.
-        filter: { kind: "text", column: "lastOutputAt", placeholder: "Date…" },
+        filter: {
+          kind: "text",
+          column: "lastOutputAt",
+          placeholder: t("table.columns.agentOutput.filterPlaceholder"),
+        },
         // V1's cell action here opens the output sheet rather than navigating, which is the framework's
         // plain clickable cell: the cursor, and no link styling.
         clickable: true,
@@ -363,11 +401,15 @@ export function useJobColumns({
       },
       {
         name: "cost",
-        header: "Cost",
+        header: t("table.columns.cost.header"),
         width: "80px",
         align: "Right",
         // The real numeric column, so `> 5` means five dollars. V1 filtered its rendered `~$1.23`.
-        filter: { kind: "text", column: "cost", placeholder: "Amount…" },
+        filter: {
+          kind: "text",
+          column: "cost",
+          placeholder: t("table.columns.cost.filterPlaceholder"),
+        },
         // V1's Cost cell action is `showCost(id)` - the Cost & Tokens sheet, which is where the `~`
         // on this cell is explained. Same destination as Tokens below, as in V1.
         clickable: true,
@@ -377,7 +419,7 @@ export function useJobColumns({
           <span
             className="font-mono text-xs text-foreground"
             data-testid={`job-cost-${row.id}`}
-            title={row.cost === null ? "No cost was reported for this job" : undefined}
+            title={row.cost === null ? t("cost.notReported") : undefined}
           >
             {row.cost ?? NO_VALUE}
           </span>
@@ -385,10 +427,14 @@ export function useJobColumns({
       },
       {
         name: "tokens",
-        header: "Tokens",
+        header: t("table.columns.tokens.header"),
         width: "80px",
         align: "Right",
-        filter: { kind: "text", column: "tokens", placeholder: "Count…" },
+        filter: {
+          kind: "text",
+          column: "tokens",
+          placeholder: t("table.columns.tokens.filterPlaceholder"),
+        },
         // V1's Tokens cell action is `showCost(id)` as well (`JobsApp.DataTable.cs:156`): the one
         // sheet breaks both figures down, so both cells lead to it.
         clickable: true,
@@ -401,9 +447,7 @@ export function useJobColumns({
             title={
               row.tokens === null
                 ? undefined
-                : [row.tokens.toLocaleString("en-US"), row.tokenBreakdown]
-                    .filter(Boolean)
-                    .join(" — ")
+                : [format.number(row.tokens), row.tokenBreakdown].filter(Boolean).join(" — ")
             }
           >
             {row.tokens === null ? NO_VALUE : formatTokens(row.tokens)}
@@ -412,13 +456,17 @@ export function useJobColumns({
       },
       {
         name: "timestamp",
-        header: "Timestamp",
+        header: t("table.columns.timestamp.header"),
         width: "110px",
         sortColumn: "completedAt",
         // The stored RFC 3339 stamp, so `starts with "2026-09-17"` asks for a day and `>` for a cutoff.
-        filter: { kind: "text", column: "completedAt", placeholder: "Date…" },
+        filter: {
+          kind: "text",
+          column: "completedAt",
+          placeholder: t("table.columns.timestamp.filterPlaceholder"),
+        },
         accessor: (row) => row.completedAtMs,
-        // `FormatTimestamp`: `MM-dd HH:mm` in the viewer's local time, "-" until the job finishes.
+        // `FormatTimestamp`: month, day and time in the viewer's local time and language, "-" until the job finishes.
         cell: (_value, row) => (
           <span className="font-mono text-xs text-muted-foreground">
             {row.completedAtMs === null ? NO_TIME : formatMonthDayTime(row.completedAtMs)}
@@ -427,7 +475,7 @@ export function useJobColumns({
       },
       {
         name: "statusMessage",
-        header: "Status Message",
+        header: t("table.columns.statusMessage.header"),
         width: "auto",
         filter: { kind: "text" },
         accessor: (row) => row.statusMessage,
@@ -439,9 +487,10 @@ export function useJobColumns({
       },
     ],
     // `onSelectPlan` and the sheet opener are the only closures the cells capture; the three option
-    // lists are the only other thing a column declaration reads.
+    // lists and the language (`t`, the enum labels, the formatters) are the only other things a
+    // column declaration reads.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [onSelectPlan, statusOptions, typeOptions, projectOptions],
+    [onSelectPlan, statusOptions, typeOptions, projectOptions, t, labels, format],
   );
 
   return columns;
