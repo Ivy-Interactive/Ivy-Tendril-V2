@@ -1,0 +1,25 @@
+[package]
+name = "v2shim"
+version = "0.0.0"
+edition = "2021"
+publish = false
+description = "Benchmark-only IPC shim: serves Tendril V2's built frontend to a normal browser and answers its Tauri IPC with the app's real cmd_* handlers"
+
+# Standalone on purpose. As a member of the Tendril workspace it would fall under the workspace-wide
+# CI gates and add its dependencies to the root Cargo.lock; with its own empty table, cargo stops
+# looking for a parent workspace here.
+[workspace]
+
+[dependencies]
+# `setup` copies this crate to <ws>/builds/v2-shim and rewrites this path to the benchmark clone's
+# src-tauri, so the shim links exactly the commit under test. In the repo the path is still valid.
+tendril-app = { path = "../../apps/tendril-app/src-tauri" }
+# `test` provides MockRuntime; tendril-app already uses it for its own tests (dev-dependency).
+tauri = { version = "2", features = ["test"] }
+tokio = { version = "1", features = ["full"] }
+# `ws` carries the IPC. Chromium allows six HTTP/1.1 connections per origin, so plain POSTs would
+# queue a fan-out of IPC calls that the real app runs concurrently; one WebSocket has no such cap.
+axum = { version = "0.8", features = ["ws"] }
+serde_json = "1"
+futures-util = "0.3"
+base64 = "0.22"
