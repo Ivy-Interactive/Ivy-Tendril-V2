@@ -1,3 +1,4 @@
+import { TuiKbd } from "@ivy-interactive/components/ui";
 import { navigate } from "../lib/router";
 
 interface NotFoundProps {
@@ -15,8 +16,7 @@ export function NotFound({ route, homeRoute }: NotFoundProps) {
         <code className="rounded bg-muted px-1 py-0.5 font-mono">{route}</code>.
       </p>
       <p className="text-base leading-relaxed">
-        Use the sidebar, press <kbd className="rounded border border-border px-1 font-mono">⌘K</kbd>{" "}
-        to search, or{" "}
+        Use the sidebar, press <TuiKbd keys="⌘K" variant="outline" /> to search, or{" "}
         <a
           href={homeRoute}
           onClick={(event) => {

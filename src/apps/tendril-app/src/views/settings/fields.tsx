@@ -3,6 +3,7 @@ import { Check } from "lucide-react";
 import {
   Input,
   Label,
+  NativeSelect,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -231,13 +232,12 @@ export const NativeSelectField: React.FC<{
     <Label htmlFor={id} className="text-xs font-medium text-foreground">
       {label}
     </Label>
-    <select
+    <NativeSelect
       id={id}
       aria-label={label}
       value={value}
       disabled={disabled}
       onChange={(e) => onChange(e.target.value)}
-      className="h-9 w-full rounded-field border border-input bg-background px-2 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50 focus:outline-none focus:ring-2 focus:ring-ring"
     >
       {!options.some((option) => option.value === value) && (
         <option value={value}>{value || "Default"}</option>
@@ -247,7 +247,7 @@ export const NativeSelectField: React.FC<{
           {option.label}
         </option>
       ))}
-    </select>
+    </NativeSelect>
     {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
   </div>
 );

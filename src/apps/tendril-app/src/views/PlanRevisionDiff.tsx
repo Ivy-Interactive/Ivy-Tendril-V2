@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { createTwoFilesPatch } from "diff";
 import { PlanDiffView } from "@ivy-interactive/components/tendril";
+import { NativeSelect } from "@ivy-interactive/components/ui";
 import { bridge } from "../api/bridge";
 import { onPlanEvent } from "../api/events";
 import { describeBridgeError, type DraftComment } from "../types/api";
@@ -237,33 +238,37 @@ export const PlanRevisionDiff: React.FC<PlanRevisionDiffProps> = ({ planId, revi
       <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
         <label className="flex items-center gap-2">
           <span>Compare revision</span>
-          <select
+          <NativeSelect
             aria-label="Old revision"
+            density="Small"
+            wrapperClassName="w-auto"
+            className="w-auto"
             value={oldRevision}
             onChange={(e) => setOldRevision(Number(e.target.value))}
-            className="rounded border border-border bg-background px-2 py-1 text-foreground"
           >
             {revisions.map((n) => (
               <option key={n} value={n}>
                 {n}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
         <label className="flex items-center gap-2">
           <span>against</span>
-          <select
+          <NativeSelect
             aria-label="New revision"
+            density="Small"
+            wrapperClassName="w-auto"
+            className="w-auto"
             value={newRevision}
             onChange={(e) => setNewRevision(Number(e.target.value))}
-            className="rounded border border-border bg-background px-2 py-1 text-foreground"
           >
             {revisions.map((n) => (
               <option key={n} value={n}>
                 {n}
               </option>
             ))}
-          </select>
+          </NativeSelect>
         </label>
         <span className="text-muted-foreground/70">
           {revisionCount} revision{revisionCount === 1 ? "" : "s"} on disk

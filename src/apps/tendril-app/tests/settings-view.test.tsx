@@ -344,8 +344,12 @@ describe("SettingsView", () => {
       const model = screen.getByLabelText("Deep");
       const effort = screen.getAllByLabelText("Effort")[0];
 
-      const modelCol = model.closest("div")!.parentElement!;
-      const effortCol = effort.closest("div")!.parentElement!;
+      // By the weighted column itself rather than by a fixed number of `parentElement` hops: a
+      // control is free to nest (a select wraps itself to anchor its chevron, as `NumberField`
+      // does for its suffix), and the contract under test is the column, not the depth.
+      const column = (control: HTMLElement) => control.closest("[class*='grow-']")!;
+      const modelCol = column(model);
+      const effortCol = column(effort);
       const row = modelCol.parentElement!;
 
       // Same row, in V1's order.
