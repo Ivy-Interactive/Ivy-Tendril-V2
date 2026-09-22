@@ -76,6 +76,10 @@ export function shellPathForRoute(route: string, base: string): string | undefin
       const relative = route.slice(prefix.length - 1).replace(/^\/+/, "");
       return relative.length > 0 ? `${relative}/index.html` : undefined;
     }
+    if (route.startsWith("/docs/") || route === "/docs") {
+      const relative = route.replace(/^\/+/, "");
+      return relative.length > 0 ? `${relative}/index.html` : undefined;
+    }
     const match = /^\/([a-z]{2})\/(?:docs(?:\/|$))?/.exec(route);
     if (match && isSiteLocale(match[1])) {
       const relative = route.replace(/^\/+/, "");
