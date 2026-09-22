@@ -14,7 +14,7 @@ import {
 } from "../config/locales.config";
 import { getTranslations } from "../config/translations";
 import { cn } from "../lib/cn";
-import { navigate, useLocation } from "../lib/router";
+import { navigate, toAppHref, useLocation } from "../lib/router";
 
 export interface LanguageSwitcherProps {
   className?: string;
@@ -55,12 +55,13 @@ export function LanguageSwitcher({
         )}
       >
         <Globe className="size-3.5 shrink-0" aria-hidden="true" />
-        <span>{activeLocale.label}</span>
+        <span className="max-w-[110px] truncate">{activeLocale.label}</span>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48 max-h-[80vh] overflow-y-auto">
         {SITE_LOCALES.map((locale) => {
           const isActive = locale.code === activeCode;
           const targetHref = `${localizePath(path, locale.code)}${currentHash || ""}`;
+          const fullHref = toAppHref(targetHref);
           return (
             <DropdownMenuItem
               key={locale.code}
@@ -73,7 +74,7 @@ export function LanguageSwitcher({
               )}
             >
               <a
-                href={targetHref}
+                href={fullHref}
                 lang={locale.hreflang}
                 hrefLang={locale.hreflang}
                 onClick={(e) => {

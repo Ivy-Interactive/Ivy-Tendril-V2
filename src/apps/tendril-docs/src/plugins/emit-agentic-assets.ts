@@ -16,6 +16,7 @@ import type { Plugin } from "vite";
 import { readContentFiles, routesForContent } from "./emit-route-shells";
 import { buildNavTree, flattenNavRoutes } from "../lib/nav";
 import { parsePages } from "../lib/page";
+import { SITE_LOCALES } from "../config/locales.config";
 
 export interface EmitAgenticAssetsOptions {
   contentDir: string;
@@ -42,6 +43,33 @@ export function resolveSiteUrls(rawSiteUrl: string = CANONICAL_BASE_URL): Resolv
   const urlObj = new URL(siteRootUrl);
   const repoSubpath = urlObj.pathname.replace(/\/+$/, "");
   return { siteRootUrl, docsBaseUrl, repoSubpath };
+}
+
+export function renderStaticNav(siteRootUrl: string, docsBaseUrl: string): string {
+  const options = SITE_LOCALES.map((locale) => {
+    const isEn = locale.code === "en";
+    const href = isEn
+      ? `${docsBaseUrl}/gettingstarted/introduction`
+      : `${siteRootUrl}/${locale.code}/docs/gettingstarted/introduction`;
+    return `        <option value="${href}"${isEn ? " selected" : ""}>${locale.label}</option>`;
+  }).join("\n");
+
+  return `    <nav aria-label="Main Navigation">
+      <a href="${siteRootUrl}/">Home</a>
+      <a href="${siteRootUrl}/developers">Developer Portal</a>
+      <a href="${docsBaseUrl}/gettingstarted/introduction">Documentation</a>
+      <a href="${siteRootUrl}/about">About</a>
+      <a href="${siteRootUrl}/contact">Contact</a>
+      <a href="${siteRootUrl}/privacy">Privacy Policy</a>
+      <a href="${siteRootUrl}/llms.txt">llms.txt</a>
+      <a href="${siteRootUrl}/sitemap.xml">Sitemap</a>
+      <span style="display:inline-flex;align-items:center;margin-left:auto;gap:0.35rem">
+        <label for="lang-select" style="font-size:0.875rem;font-weight:500;color:#6b7280">Language:</label>
+        <select id="lang-select" onchange="window.location.href=this.value" style="padding:0.2rem 0.4rem;border:1px solid #d1d5db;border-radius:4px;font-size:0.85rem;background:#ffffff;color:#111827">
+${options}
+        </select>
+      </span>
+    </nav>`;
 }
 
 export function generateRobotsTxt(rawSiteUrl: string = CANONICAL_BASE_URL): string {
@@ -1182,13 +1210,7 @@ export function generateGettingStartedPage(rawSiteUrl: string = CANONICAL_BASE_U
 </head>
 <body>
   <header>
-    <nav aria-label="Main Navigation">
-      <a href="${siteRootUrl}/">Home</a>
-      <a href="${siteRootUrl}/developers">Developer Portal</a>
-      <a href="${docsBaseUrl}/gettingstarted/introduction">Documentation</a>
-      <a href="${siteRootUrl}/llms.txt">llms.txt</a>
-      <a href="${siteRootUrl}/sitemap.xml">Sitemap</a>
-    </nav>
+${renderStaticNav(siteRootUrl, docsBaseUrl)}
     <h1>Getting Started with Ivy Tendril</h1>
     <p>The Agentic Software Factory for 10x Builders. Run autonomous coding agents in parallel git worktrees with verification gates and human-in-the-loop plan supervision.</p>
   </header>
@@ -1353,13 +1375,7 @@ export function generateMcpPage(rawSiteUrl: string = CANONICAL_BASE_URL): string
 </head>
 <body>
   <header>
-    <nav aria-label="Main Navigation">
-      <a href="${siteRootUrl}/">Home</a>
-      <a href="${siteRootUrl}/developers">Developer Portal</a>
-      <a href="${docsBaseUrl}/gettingstarted/introduction">Documentation</a>
-      <a href="${siteRootUrl}/llms.txt">llms.txt</a>
-      <a href="${siteRootUrl}/sitemap.xml">Sitemap</a>
-    </nav>
+${renderStaticNav(siteRootUrl, docsBaseUrl)}
     <h1>Ivy Tendril MCP Server</h1>
     <p>Connect Claude, ChatGPT, and custom orchestrators directly to Tendril's agentic execution engine.</p>
   </header>
@@ -1500,13 +1516,7 @@ export function generateDocsOverviewPage(rawSiteUrl: string = CANONICAL_BASE_URL
 </head>
 <body>
   <header>
-    <nav aria-label="Main Navigation">
-      <a href="${siteRootUrl}/">Home</a>
-      <a href="${siteRootUrl}/developers">Developer Portal</a>
-      <a href="${docsBaseUrl}/gettingstarted/introduction">Documentation</a>
-      <a href="${siteRootUrl}/llms.txt">llms.txt</a>
-      <a href="${siteRootUrl}/sitemap.xml">Sitemap</a>
-    </nav>
+${renderStaticNav(siteRootUrl, docsBaseUrl)}
     <h1>Ivy Tendril Documentation</h1>
     <p>Explore the complete documentation for the Ivy Tendril agentic software factory.</p>
   </header>
@@ -1662,15 +1672,7 @@ export function generateAboutPage(rawSiteUrl: string = CANONICAL_BASE_URL): stri
 </head>
 <body>
   <header>
-    <nav>
-      <a href="${siteRootUrl}/">Home</a>
-      <a href="${siteRootUrl}/developers">Developer Portal</a>
-      <a href="${docsBaseUrl}/gettingstarted/introduction">Documentation</a>
-      <a href="${siteRootUrl}/about">About</a>
-      <a href="${siteRootUrl}/contact">Contact</a>
-      <a href="${siteRootUrl}/privacy">Privacy Policy</a>
-      <a href="${siteRootUrl}/llms.txt">llms.txt</a>
-    </nav>
+${renderStaticNav(siteRootUrl, docsBaseUrl)}
     <h1>About Ivy Interactive & Ivy Tendril</h1>
   </header>
   <main>
@@ -1745,15 +1747,7 @@ export function generateContactPage(rawSiteUrl: string = CANONICAL_BASE_URL): st
 </head>
 <body>
   <header>
-    <nav>
-      <a href="${siteRootUrl}/">Home</a>
-      <a href="${siteRootUrl}/developers">Developer Portal</a>
-      <a href="${docsBaseUrl}/gettingstarted/introduction">Documentation</a>
-      <a href="${siteRootUrl}/about">About</a>
-      <a href="${siteRootUrl}/contact">Contact</a>
-      <a href="${siteRootUrl}/privacy">Privacy Policy</a>
-      <a href="${siteRootUrl}/llms.txt">llms.txt</a>
-    </nav>
+${renderStaticNav(siteRootUrl, docsBaseUrl)}
     <h1>Contact Ivy Interactive</h1>
   </header>
   <main>
@@ -1823,15 +1817,7 @@ export function generatePrivacyPage(rawSiteUrl: string = CANONICAL_BASE_URL): st
 </head>
 <body>
   <header>
-    <nav>
-      <a href="${siteRootUrl}/">Home</a>
-      <a href="${siteRootUrl}/developers">Developer Portal</a>
-      <a href="${docsBaseUrl}/gettingstarted/introduction">Documentation</a>
-      <a href="${siteRootUrl}/about">About</a>
-      <a href="${siteRootUrl}/contact">Contact</a>
-      <a href="${siteRootUrl}/privacy">Privacy Policy</a>
-      <a href="${siteRootUrl}/llms.txt">llms.txt</a>
-    </nav>
+${renderStaticNav(siteRootUrl, docsBaseUrl)}
     <h1>Privacy Policy</h1>
     <p>Last updated: September 21, 2026</p>
   </header>
@@ -1971,16 +1957,7 @@ export function generateDeveloperPortalPage(rawSiteUrl: string = CANONICAL_BASE_
 </head>
 <body>
   <header>
-    <nav aria-label="Main Navigation">
-      <a href="${siteRootUrl}/">Home</a>
-      <a href="${siteRootUrl}/developers">Developer Portal</a>
-      <a href="${docsBaseUrl}/gettingstarted/introduction">Documentation</a>
-      <a href="${siteRootUrl}/about">About</a>
-      <a href="${siteRootUrl}/contact">Contact</a>
-      <a href="${siteRootUrl}/privacy">Privacy Policy</a>
-      <a href="${siteRootUrl}/llms.txt">llms.txt</a>
-      <a href="${siteRootUrl}/sitemap.xml">Sitemap</a>
-    </nav>
+${renderStaticNav(siteRootUrl, docsBaseUrl)}
     <h1>Ivy Tendril Developer Portal</h1>
     <p>Everything you need to integrate, orchestrate, and build on Ivy Tendril's agentic software factory.</p>
   </header>
@@ -2135,13 +2112,7 @@ export function generate404Html(rawSiteUrl: string = CANONICAL_BASE_URL): string
 </head>
 <body>
 <header>
-  <nav aria-label="Main Navigation">
-    <a href="${siteRootUrl}/">Home</a>
-    <a href="${siteRootUrl}/developers">Developer Portal</a>
-    <a href="${docsBaseUrl}/gettingstarted/introduction">Documentation</a>
-    <a href="${siteRootUrl}/llms.txt">llms.txt</a>
-    <a href="${siteRootUrl}/sitemap.xml">Sitemap</a>
-  </nav>
+${renderStaticNav(siteRootUrl, docsBaseUrl)}
 </header>
 <main>
   <h1>404 Not Found</h1>
@@ -2269,16 +2240,7 @@ export function generateHomepageHtml(rawSiteUrl: string = CANONICAL_BASE_URL): s
 </head>
 <body>
   <header>
-    <nav aria-label="Main Navigation">
-      <a href="${siteRootUrl}/">Home</a>
-      <a href="${siteRootUrl}/developers">Developer Portal</a>
-      <a href="${docsBaseUrl}/gettingstarted/introduction">Documentation</a>
-      <a href="${siteRootUrl}/about">About</a>
-      <a href="${siteRootUrl}/contact">Contact</a>
-      <a href="${siteRootUrl}/privacy">Privacy Policy</a>
-      <a href="${siteRootUrl}/llms.txt">llms.txt</a>
-      <a href="${siteRootUrl}/sitemap.xml">Sitemap</a>
-    </nav>
+${renderStaticNav(siteRootUrl, docsBaseUrl)}
   </header>
   <main>
     <section>

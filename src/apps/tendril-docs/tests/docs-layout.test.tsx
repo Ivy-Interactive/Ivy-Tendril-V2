@@ -146,4 +146,27 @@ describe("DocsLayout", () => {
       expect(document.documentElement.classList.contains("light")).toBe(true);
     });
   });
+
+  it("renders the language selector in the header and displays all 10 locales", async () => {
+    const user = userEvent.setup();
+    renderDocs("/docs/concepts/plans");
+    await screen.findByRole("heading", { level: 1, name: "Plans" });
+
+    const langTriggers = screen.getAllByRole("button", { name: "Choose language" });
+    expect(langTriggers.length).toBeGreaterThanOrEqual(1);
+    const headerTrigger = langTriggers[0];
+    expect(headerTrigger).toHaveTextContent("English");
+
+    await user.click(headerTrigger);
+    const menu = screen.getByRole("menu");
+    expect(within(menu).getByText("Deutsch")).toBeInTheDocument();
+    expect(within(menu).getByText("日本語")).toBeInTheDocument();
+    expect(within(menu).getByText("Español")).toBeInTheDocument();
+    expect(within(menu).getByText("Français")).toBeInTheDocument();
+    expect(within(menu).getByText("Português (Brasil)")).toBeInTheDocument();
+    expect(within(menu).getByText("简体中文")).toBeInTheDocument();
+    expect(within(menu).getByText("Русский")).toBeInTheDocument();
+    expect(within(menu).getByText("Svenska")).toBeInTheDocument();
+    expect(within(menu).getByText("हिन्दी")).toBeInTheDocument();
+  });
 });

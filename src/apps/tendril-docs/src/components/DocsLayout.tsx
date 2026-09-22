@@ -11,7 +11,7 @@ import {
 } from "../content";
 import { flattenNavRoutes, localizeNavTree, type NavSection } from "../lib/nav";
 import type { DocPage as DocPageModel } from "../lib/page";
-import { navigate } from "../lib/router";
+import { navigate, toAppHref } from "../lib/router";
 import { ROUTE_BASE, normalizeRoute } from "../lib/slug";
 import { SITE_LOCALES, getLocale, localizePath, splitLocale } from "../config/locales.config";
 import { getTranslations } from "../config/translations";
@@ -249,7 +249,7 @@ export function DocsLayout({
           </button>
 
           <a
-            href={homeRoute}
+            href={toAppHref(homeRoute)}
             onClick={(event) => {
               if (event.metaKey || event.ctrlKey || event.shiftKey || event.button !== 0) return;
               event.preventDefault();
@@ -275,7 +275,7 @@ export function DocsLayout({
             </span>
           </button>
 
-          <LanguageSwitcher />
+          <LanguageSwitcher route={effectiveRoute} hash={hash} />
 
           <ThemeToggle />
         </div>
@@ -293,6 +293,8 @@ export function DocsLayout({
           <div className="flex flex-col gap-4">
             <div className="lg:hidden pb-3 border-b border-border">
               <LanguageSwitcher
+                route={effectiveRoute}
+                hash={hash}
                 className="w-full justify-between"
                 onSelect={() => setDrawerOpen(false)}
               />
