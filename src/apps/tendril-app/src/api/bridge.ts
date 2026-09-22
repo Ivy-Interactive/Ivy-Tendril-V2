@@ -25,6 +25,7 @@ import type {
   JobDetail,
   ModelCatalogStatus,
   OnboardingStatus,
+  PlanArtifactContent,
   PlanArtifacts,
   PlanChangesData,
   PlanDetail,
@@ -411,6 +412,20 @@ const tauriClient = {
       "cmd_get_plan_artifacts",
       { id },
       `/api/plans/${encodeURIComponent(id)}/artifacts`,
+    );
+  },
+
+  /**
+   * One artifact's text for the Review app's artifact sheet, by the absolute path
+   * `getPlanArtifacts` listed. The daemon refuses a path that does not resolve inside the plan's
+   * `Artifacts/` folder (`VALIDATION_ERROR`), and answers `binary` / `tooLarge` rather than text for
+   * a file there is nothing to show of. Images go through `getLocalFilePreview` instead.
+   */
+  async getPlanArtifactContent(this: void, id: string, path: string): Promise<PlanArtifactContent> {
+    return invokeOrFetch<PlanArtifactContent>(
+      "cmd_get_plan_artifact_content",
+      { id, path },
+      `/api/plans/${encodeURIComponent(id)}/artifacts/content?path=${encodeURIComponent(path)}`,
     );
   },
 

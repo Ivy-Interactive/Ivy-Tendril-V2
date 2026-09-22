@@ -81,6 +81,16 @@ export interface PlanArtifacts {
   other: string[];
 }
 
+/**
+ * One file in a plan's `Artifacts/` folder, as the Review app's artifact sheet shows it. Mirrors
+ * `tendril_core::plans::PlanArtifactContent`: only `text` carries content, and `binary` / `tooLarge`
+ * say why there is none (the daemon does not read a file past its 1 MiB preview cap).
+ */
+export type PlanArtifactContent =
+  | { kind: "text"; text: string; size: number }
+  | { kind: "binary"; size: number }
+  | { kind: "tooLarge"; size: number };
+
 /** Mirrors `JobStatus` in tendril-core `models/job.rs`. */
 export type JobStatus =
   | "Pending"

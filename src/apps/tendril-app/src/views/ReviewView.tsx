@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { convertFileSrc, isTauri } from "@tauri-apps/api/core";
 import { copyToClipboard } from "@ivy-interactive/components";
 import {
   PlanChangesView,
@@ -32,6 +31,7 @@ import { useWireframeBaseUrl } from "../api/proxyOrigin";
 import { PlanActionsController } from "../controllers/planActions";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { VerificationReportSheet } from "../components/VerificationReportSheet";
+import { ArtifactFileSheet, ArtifactThumbnail } from "../components/ArtifactFileSheet";
 import { NoContentView } from "../components/NoContentView";
 import { VERIFICATION_BADGE_VARIANT } from "../utils/verificationStatus";
 import { PlanChatPanel } from "../components/chat/PlanChatPanel";
@@ -235,6 +235,11 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [activeDialog, setActiveDialog] = useState<TriageDialog | null>(null);
   const [openVerification, setOpenVerification] = useState<string | null>(null);
+  /**
+   * The artifact open in `ArtifactFileSheet`, by the absolute path the listing gave it - V1's
+   * `openArtifact` state in `Review/ContentView.cs`.
+   */
+  const [openArtifact, setOpenArtifact] = useState<string | null>(null);
 
   /**
    * `PlanSelectionHelper.ResolveSelection`, re-resolved on every render as V1 re-resolves it on every
@@ -497,6 +502,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     setGitError(null);
     setChangesData(null);
     setArtifacts(null);
+    setOpenArtifact(null);
     if (!selectedId) return;
 
     let cancelled = false;
@@ -1529,20 +1535,15 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                               {artifacts.screenshots.map((file, idx) => {
                                 const filename = file.split(/[/\\]/).pop() ?? file;
-                                const src = isTauri() ? convertFileSrc(file) : file;
                                 return (
                                   <div
                                     key={idx}
                                     className="group relative flex flex-col rounded-md border border-border bg-card p-2 overflow-hidden shadow-sm"
                                   >
-                                    <div className="relative aspect-video w-full overflow-hidden rounded bg-muted">
-                                      <img
-                                        src={src}
-                                        alt={filename}
-                                        className="h-full w-full object-contain cursor-pointer transition-transform duration-200 group-hover:scale-105"
-                                        onClick={() => void openPath(file)}
-                                      />
-                                    </div>
+                                    <ArtifactThumbnail
+                                      path={file}
+                                      onOpen={() => setOpenArtifact(file)}
+                                    />
                                     <div className="mt-2 flex items-center justify-between gap-1">
                                       <span
                                         className="truncate text-xs font-mono text-foreground"
@@ -1566,8 +1567,8 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                                           variant="outline"
                                           size="sm"
                                           className="h-6 px-1.5 text-xs"
-                                          onClick={() => void openPath(file)}
-                                          title="Open in system viewer"
+                                          onClick={() => setOpenArtifact(file)}
+                                          title="Open in a side panel"
                                         >
                                           Open
                                         </Button>
@@ -1614,7 +1615,8 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                                         variant="outline"
                                         size="sm"
                                         className="h-6 px-1.5 text-xs"
-                                        onClick={() => void openPath(file)}
+                                        onClick={() => setOpenArtifact(file)}
+                                        title="Open in a side panel"
                                       >
                                         Open
                                       </Button>
@@ -1785,6 +1787,14 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
             verificationName={openVerification}
             initialStatus={verifications.find((v) => v.name === openVerification)?.status}
             onClose={() => setOpenVerification(null)}
+            wireframeBaseUrl={wireframeBaseUrl}
+          />
+          <ArtifactFileSheet
+            planId={selectedPlan.id}
+            path={openArtifact}
+            onClose={() => setOpenArtifact(null)}
+            planFolderPath={planDetail?.folderPath}
+            onOpenArtifact={setOpenArtifact}
             wireframeBaseUrl={wireframeBaseUrl}
           />
         </>
