@@ -1,7 +1,12 @@
 import React from "react";
-import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../ui/sheet";
-import { BladeContainer } from "../ui/blades";
-import type { BladeDescriptor } from "../ui/blades";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  BladeContainer,
+} from "@ivy-interactive/components/ui";
+import type { BladeDescriptor } from "@ivy-interactive/components/ui";
 
 /**
  * The Dashboard's KPI drill-down, on the shared `ui/sheet.tsx` — same side, header and close
