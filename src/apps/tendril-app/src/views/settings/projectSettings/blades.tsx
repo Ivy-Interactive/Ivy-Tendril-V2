@@ -2,12 +2,12 @@ import React from "react";
 import { Check, X } from "lucide-react";
 import { Button, Input, Spinner, Switch, useBlades } from "@ivy-interactive/components/ui";
 import { bridge } from "../../../api/bridge";
+import { useTranslation } from "../../../i18n";
 import { notificationsStore } from "../../../state/notificationsStore";
 import { describeBridgeError } from "../../../types/api";
 import { LinesField, TextField } from "../fields";
 import { formatEnvLines, parseEnvLines } from "../configValues";
 import {
-  PORTS_ARE_MERGED,
   type ProjectEnvFileConfigEntry,
   type ProjectMcpServerRefEntry,
   type ProjectPortConfigEntry,
@@ -30,11 +30,12 @@ const BladeFooter: React.FC<{
   disabled?: boolean;
   onConfirm: () => void;
 }> = ({ confirmLabel, disabled, onConfirm }) => {
+  const { t } = useTranslation("settingsProjects");
   const { pop } = useBlades();
   return (
     <div className="flex flex-wrap items-center gap-2 pt-2">
       <Button type="button" variant="outline" onClick={() => pop(1)}>
-        Cancel
+        {t("common:actions.cancel")}
       </Button>
       <Button type="button" disabled={disabled} onClick={onConfirm}>
         {confirmLabel}
@@ -50,6 +51,7 @@ export const ReviewActionBlade: React.FC<{
   existing: ReviewActionConfigEntry | null;
   onSubmit: (action: ReviewActionConfigEntry) => void;
 }> = ({ existing, onSubmit }) => {
+  const { t } = useTranslation("settingsProjects");
   const [name, setName] = React.useState(existing?.name ?? "");
   const [command, setCommand] = React.useState(existing?.command ?? "");
   const [condition, setCondition] = React.useState(existing?.condition ?? "");
@@ -60,27 +62,27 @@ export const ReviewActionBlade: React.FC<{
     <div className="max-w-170 space-y-4">
       <TextField
         id="review-action-name"
-        label="Name"
+        label={t("reviewActionBlade.name.label")}
         value={name}
-        placeholder="Action name..."
+        placeholder={t("reviewActionBlade.name.placeholder")}
         onChange={setName}
       />
       <TextField
         id="review-action-command"
-        label="Command"
+        label={t("reviewActionBlade.command.label")}
         value={command}
-        placeholder="e.g. dotnet test"
+        placeholder={t("reviewActionBlade.command.placeholder")}
         onChange={setCommand}
       />
       <TextField
         id="review-action-condition"
-        label="Condition"
+        label={t("reviewActionBlade.condition.label")}
         value={condition}
-        placeholder="e.g. ${hasChanges}"
+        placeholder={t("reviewActionBlade.condition.placeholder", { example: "${hasChanges}" })}
         onChange={setCondition}
       />
       <BladeFooter
-        confirmLabel={existing ? "Save" : "Add"}
+        confirmLabel={existing ? t("common:actions.save") : t("bladeFooter.add")}
         disabled={invalid}
         onConfirm={() =>
           onSubmit({
@@ -103,6 +105,7 @@ export const VerificationBlade: React.FC<{
   onSubmit: (name: string, prompt: string) => void;
   existingNames: string[];
 }> = ({ onSubmit, existingNames }) => {
+  const { t } = useTranslation("settingsProjects");
   const [name, setName] = React.useState("");
   const [prompt, setPrompt] = React.useState("");
 
@@ -114,22 +117,22 @@ export const VerificationBlade: React.FC<{
     <div className="max-w-170 space-y-4">
       <TextField
         id="verification-name"
-        label="Name"
+        label={t("verificationBlade.name.label")}
         value={name}
-        placeholder="Verification name..."
-        error={duplicate ? `A verification named '${trimmed}' already exists.` : null}
+        placeholder={t("verificationBlade.name.placeholder")}
+        error={duplicate ? t("verificationBlade.name.duplicate", { name: trimmed }) : null}
         onChange={setName}
       />
       <LinesField
         id="verification-prompt"
-        label="Prompt"
+        label={t("verificationBlade.prompt.label")}
         value={prompt}
         rows="tall"
-        placeholder="Verification prompt..."
+        placeholder={t("verificationBlade.prompt.placeholder")}
         onChange={setPrompt}
       />
       <BladeFooter
-        confirmLabel="Add"
+        confirmLabel={t("bladeFooter.add")}
         disabled={trimmed === "" || duplicate}
         onConfirm={() => onSubmit(trimmed, prompt)}
       />
@@ -144,6 +147,7 @@ export const McpServerBlade: React.FC<{
 }> = ({ existing, onSubmit }) => {
   const [name, setName] = React.useState(existing?.name ?? "");
   const [command, setCommand] = React.useState(existing?.command ?? "");
+  const { t } = useTranslation("settingsProjects");
   const [args, setArgs] = React.useState((existing?.arguments ?? []).join(" "));
   const [env, setEnv] = React.useState(formatEnvLines(existing?.environment ?? {}));
   const [disabled, setDisabled] = React.useState(existing?.disabled ?? false);
@@ -154,32 +158,32 @@ export const McpServerBlade: React.FC<{
     <div className="max-w-170 space-y-4">
       <TextField
         id="mcp-name"
-        label="Name"
+        label={t("mcpServerBlade.name.label")}
         value={name}
-        placeholder="Server name (e.g. sqlite)..."
+        placeholder={t("mcpServerBlade.name.placeholder")}
         onChange={setName}
       />
       <TextField
         id="mcp-command"
-        label="Command"
+        label={t("mcpServerBlade.command.label")}
         value={command}
-        placeholder="Command executable (e.g. npx)..."
+        placeholder={t("mcpServerBlade.command.placeholder")}
         onChange={setCommand}
       />
       <TextField
         id="mcp-arguments"
-        label="Arguments"
+        label={t("mcpServerBlade.arguments.label")}
         value={args}
-        placeholder="Arguments (e.g. -y @modelcontextprotocol/server-sqlite)..."
-        hint="Split on whitespace, the way EditMcpServerBladeView splits them."
+        placeholder={t("mcpServerBlade.arguments.placeholder")}
+        hint={t("mcpServerBlade.arguments.hint")}
         onChange={setArgs}
       />
       <LinesField
         id="mcp-environment"
-        label="Environment Variables"
+        label={t("mcpServerBlade.environment.label")}
         value={env}
         placeholder={"KEY=VALUE"}
-        hint="One KEY=VALUE per line."
+        hint={t("mcpServerBlade.environment.hint")}
         onChange={setEnv}
       />
       <div className="flex items-center gap-3">
@@ -194,11 +198,11 @@ export const McpServerBlade: React.FC<{
           htmlFor="mcp-disabled"
           className="text-xs font-medium text-foreground"
         >
-          Disabled
+          {t("mcpServerBlade.disabled")}
         </label>
       </div>
       <BladeFooter
-        confirmLabel={existing ? "Save" : "Add"}
+        confirmLabel={existing ? t("common:actions.save") : t("bladeFooter.add")}
         disabled={invalid}
         onConfirm={() =>
           onSubmit({
@@ -222,6 +226,7 @@ export const SkillBlade: React.FC<{
 }> = ({ existing, onSubmit }) => {
   const [name, setName] = React.useState(existing?.name ?? "");
   const [description, setDescription] = React.useState(existing?.description ?? "");
+  const { t } = useTranslation("settingsProjects");
   const [instructions, setInstructions] = React.useState(existing?.instructions ?? "");
   const [path, setPath] = React.useState(existing?.path ?? "");
   const [disabled, setDisabled] = React.useState(existing?.disabled ?? false);
@@ -230,31 +235,31 @@ export const SkillBlade: React.FC<{
     <div className="max-w-170 space-y-4">
       <TextField
         id="skill-name"
-        label="Name"
+        label={t("skillBlade.name.label")}
         value={name}
-        placeholder="Skill name (e.g. code-review)..."
+        placeholder={t("skillBlade.name.placeholder")}
         onChange={setName}
       />
       <TextField
         id="skill-description"
-        label="Description"
+        label={t("skillBlade.description.label")}
         value={description}
-        placeholder="Short description..."
+        placeholder={t("skillBlade.description.placeholder")}
         onChange={setDescription}
       />
       <LinesField
         id="skill-instructions"
-        label="Instructions"
+        label={t("skillBlade.instructions.label")}
         value={instructions}
         rows="tall"
-        placeholder="Markdown instructions for the agent..."
+        placeholder={t("skillBlade.instructions.placeholder")}
         onChange={setInstructions}
       />
       <TextField
         id="skill-path"
-        label="File/Folder Path"
+        label={t("skillBlade.path.label")}
         value={path}
-        placeholder="Path to skill folder/file (e.g. %TENDRIL_HOME%/Skills/my-skill)..."
+        placeholder={t("skillBlade.path.placeholder")}
         onChange={setPath}
       />
       <div className="flex items-center gap-3">
@@ -269,11 +274,11 @@ export const SkillBlade: React.FC<{
           htmlFor="skill-disabled"
           className="text-xs font-medium text-foreground"
         >
-          Disabled
+          {t("skillBlade.disabled")}
         </label>
       </div>
       <BladeFooter
-        confirmLabel={existing ? "Save" : "Add"}
+        confirmLabel={existing ? t("common:actions.save") : t("bladeFooter.add")}
         disabled={name.trim() === ""}
         onConfirm={() =>
           onSubmit({
@@ -296,6 +301,7 @@ export const PortBlade: React.FC<{
   onSubmit: (port: ProjectPortConfigEntry) => void;
 }> = ({ existing, onSubmit }) => {
   const [name, setName] = React.useState(existing?.name ?? "");
+  const { t } = useTranslation("settingsProjects");
   const [port, setPort] = React.useState(String(existing?.defaultPort ?? 3000));
   const [description, setDescription] = React.useState(existing?.description ?? "");
 
@@ -308,31 +314,31 @@ export const PortBlade: React.FC<{
     <div className="max-w-170 space-y-4">
       <TextField
         id="port-name"
-        label="Name"
+        label={t("portBlade.name.label")}
         value={name}
-        placeholder="e.g. backend"
-        error={renaming ? PORTS_ARE_MERGED : null}
-        hint="Port identifier referenced in environment overrides via ${ports.<name>} placeholders."
+        placeholder={t("portBlade.name.placeholder")}
+        error={renaming ? t("ports.mergeLimitation") : null}
+        hint={t("portBlade.name.hint", { placeholder: "${ports.<name>}" })}
         onChange={setName}
       />
       <TextField
         id="port-default"
-        label="Default Port"
+        label={t("portBlade.defaultPort.label")}
         value={port}
         placeholder="3000"
-        error={portInvalid ? "Default Port must be between 1 and 65535." : null}
-        hint="Preferred port. If it is already taken, Tendril allocates a free one instead."
+        error={portInvalid ? t("portBlade.defaultPort.invalid") : null}
+        hint={t("portBlade.defaultPort.hint")}
         onChange={setPort}
       />
       <TextField
         id="port-description"
-        label="Description"
+        label={t("portBlade.description.label")}
         value={description}
-        placeholder="What listens here..."
+        placeholder={t("portBlade.description.placeholder")}
         onChange={setDescription}
       />
       <BladeFooter
-        confirmLabel={existing ? "Save" : "Add"}
+        confirmLabel={existing ? t("common:actions.save") : t("bladeFooter.add")}
         disabled={name.trim() === "" || portInvalid || renaming}
         onConfirm={() =>
           onSubmit({
@@ -353,6 +359,7 @@ export const EnvFileBlade: React.FC<{
   onSubmit: (file: ProjectEnvFileConfigEntry) => void;
 }> = ({ existing, onSubmit }) => {
   const [path, setPath] = React.useState(existing?.path ?? "");
+  const { t } = useTranslation("settingsProjects");
   const [template, setTemplate] = React.useState(existing?.template ?? "");
   const [overrides, setOverrides] = React.useState(formatEnvLines(existing?.overrides ?? {}));
 
@@ -360,31 +367,35 @@ export const EnvFileBlade: React.FC<{
     <div className="max-w-170 space-y-4">
       <TextField
         id="env-file-path"
-        label="Path"
+        label={t("envFileBlade.path.label")}
         value={path}
-        placeholder="e.g. apps/web/.env"
-        hint="Relative path to the environment file recreated inside the plan worktree."
+        placeholder={t("envFileBlade.path.placeholder")}
+        hint={t("envFileBlade.path.hint")}
         onChange={setPath}
       />
       <TextField
         id="env-file-template"
-        label="Template"
+        label={t("envFileBlade.template.label")}
         value={template}
-        placeholder="e.g. .env.example"
-        hint="Optional base template copied into the worktree before overrides are applied."
+        placeholder={t("envFileBlade.template.placeholder")}
+        hint={t("envFileBlade.template.hint")}
         onChange={setTemplate}
       />
       <LinesField
         id="env-file-overrides"
-        label="Overrides"
+        label={t("envFileBlade.overrides.label")}
         value={overrides}
         rows="tall"
         placeholder={"PORT=${ports.backend}"}
-        hint="KEY=VALUE lines supporting ${ports.<name>}, ${env.<VAR>} and %VAR% placeholders."
+        hint={t("envFileBlade.overrides.hint", {
+          ports: "${ports.<name>}",
+          env: "${env.<VAR>}",
+          variable: "%VAR%",
+        })}
         onChange={setOverrides}
       />
       <BladeFooter
-        confirmLabel={existing ? "Save" : "Add"}
+        confirmLabel={existing ? t("common:actions.save") : t("bladeFooter.add")}
         disabled={path.trim() === ""}
         onConfirm={() =>
           onSubmit({
@@ -420,6 +431,7 @@ export const ProjectNameEditor: React.FC<{
   onReloadConfig: () => Promise<void>;
   onDone: () => void;
 }> = ({ name, siblingNames, onReloadConfig, onDone }) => {
+  const { t } = useTranslation("settingsProjects");
   const [draft, setDraft] = React.useState(name);
   const [isSaving, setIsSaving] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -438,7 +450,7 @@ export const ProjectNameEditor: React.FC<{
       ? null
       : (describeProjectNameError(draft) ??
         (siblingNames.some((sibling) => sibling.toLowerCase() === trimmed.toLowerCase())
-          ? `A project named '${trimmed}' already exists.`
+          ? t("nameEditor.duplicate", { name: trimmed })
           : null));
 
   const commit = async () => {
@@ -457,7 +469,10 @@ export const ProjectNameEditor: React.FC<{
       // will match on the next read.
       const stored = await bridge.renameProject(name, trimmed);
       await onReloadConfig();
-      notificationsStore.notifySuccess("Renamed", `Renamed project to '${stored}'`);
+      notificationsStore.notifySuccess(
+        t("notifications.renamed"),
+        t("nameEditor.renamed", { name: stored }),
+      );
       // Nothing re-points the selection: `update_project` renames the entry in place, so the
       // `project:<index>` tag still resolves, and the screen is keyed on the project's name, so the
       // reload above remounts it under the new one. That remount is also what unmounts this editor -
@@ -473,7 +488,7 @@ export const ProjectNameEditor: React.FC<{
     <div className="space-y-1">
       <div className="flex items-center gap-1">
         <Input
-          aria-label="Project name"
+          aria-label={t("nameEditor.ariaLabel")}
           data-testid="project-name-input"
           value={draft}
           disabled={isSaving}
@@ -492,8 +507,8 @@ export const ProjectNameEditor: React.FC<{
           variant="ghost"
           size="icon"
           disabled={isSaving || validationError !== null}
-          title="Confirm rename"
-          aria-label="Confirm rename"
+          title={t("nameEditor.confirm")}
+          aria-label={t("nameEditor.confirm")}
           data-testid="confirm-rename"
           onClick={() => void commit()}
         >
@@ -504,8 +519,8 @@ export const ProjectNameEditor: React.FC<{
           variant="ghost"
           size="icon"
           disabled={isSaving}
-          title="Cancel rename"
-          aria-label="Cancel rename"
+          title={t("nameEditor.cancel")}
+          aria-label={t("nameEditor.cancel")}
           onClick={onDone}
         >
           <X className="size-4" aria-hidden />
