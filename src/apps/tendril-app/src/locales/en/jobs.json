@@ -146,10 +146,6 @@
       "title_stopped": "Job Stopped"
     }
   },
-  "debugSheet": {
-    "title": "Job Debug",
-    "loading": "Loading job details…"
-  },
   "costSheet": {
     "title": "Cost & Tokens",
     "titleWithPlan": "Cost & Tokens — {{planId}}",
