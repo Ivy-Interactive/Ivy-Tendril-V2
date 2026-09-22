@@ -102,22 +102,26 @@ export const VerificationReportSheet: React.FC<VerificationReportSheetProps> = (
                   Verification report details for {verificationName ?? "plan"}
                 </SheetDescription>
                 {outcome && (
-                  <Badge variant={VERIFICATION_BADGE_VARIANT[outcome]} data-testid="verification-sheet-status">
+                  <Badge
+                    variant={VERIFICATION_BADGE_VARIANT[outcome]}
+                    data-testid="verification-sheet-status"
+                  >
                     {outcome}
                   </Badge>
                 )}
               </div>
               {report?.date && (
-                <span className="mr-4 font-mono text-xs text-muted-foreground">
-                  {report.date}
-                </span>
+                <span className="mr-4 font-mono text-xs text-muted-foreground">{report.date}</span>
               )}
             </SheetHeader>
           }
         >
           <div className="flex-1 overflow-y-auto px-6 py-4">
             {loading && (
-              <div className="flex h-32 items-center justify-center text-sm text-muted-foreground" data-testid="verification-sheet-loading">
+              <div
+                className="flex h-32 items-center justify-center text-sm text-muted-foreground"
+                data-testid="verification-sheet-loading"
+              >
                 Loading verification report…
               </div>
             )}

@@ -997,8 +997,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   }, [gitData, planDetail?.commits, planDetail?.prs]);
 
   const changesCount = changesData?.files?.length ?? 0;
-  const totalArtifacts =
-    (artifacts?.screenshots?.length ?? 0) + (artifacts?.other?.length ?? 0);
+  const totalArtifacts = (artifacts?.screenshots?.length ?? 0) + (artifacts?.other?.length ?? 0);
 
   const tabs = useMemo<PlanTabDto[]>(() => {
     const list: PlanTabDto[] = [
@@ -1235,7 +1234,11 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                     ) : (
                       <PlanMarkdown
                         id="review-summary-markdown"
-                        content={typeof summaryContent === "string" && summaryContent ? summaryContent : FALLBACK_SUMMARY_MARKDOWN}
+                        content={
+                          typeof summaryContent === "string" && summaryContent
+                            ? summaryContent
+                            : FALLBACK_SUMMARY_MARKDOWN
+                        }
                         article
                         dangerouslyAllowLocalFiles
                       />
@@ -1256,7 +1259,9 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                     )}
                     <PlanMarkdown
                       id="review-plan-markdown"
-                      content={planDetail?.latestRevisionContent || "# No plan specification available."}
+                      content={
+                        planDetail?.latestRevisionContent || "# No plan specification available."
+                      }
                       wireframeBaseUrl={wireframeBaseUrl}
                       article
                       dangerouslyAllowLocalFiles
@@ -1345,7 +1350,9 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                           {planDetail?.repos && planDetail.repos.length > 0 ? (
                             planDetail.repos.map((r, i) => <li key={i}>{r}</li>)
                           ) : (
-                            <li className="font-sans text-muted-foreground/70">No repositories specified</li>
+                            <li className="font-sans text-muted-foreground/70">
+                              No repositories specified
+                            </li>
                           )}
                         </ul>
                       </div>
@@ -1649,7 +1656,9 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                             <div className="min-w-0 flex-1">
                               <RecommendationCard
                                 recommendation={rec}
-                                onAccept={(title) => setActiveNoteDialog({ title, action: "Accept" })}
+                                onAccept={(title) =>
+                                  setActiveNoteDialog({ title, action: "Accept" })
+                                }
                                 onDecline={(title) =>
                                   setActiveNoteDialog({ title, action: "Decline" })
                                 }
