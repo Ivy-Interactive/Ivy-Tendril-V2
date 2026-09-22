@@ -26,7 +26,7 @@ import { newSuiteResult, type AppId, type SuiteResult } from '../lib/results.ts'
 import type { AppAdapter, ServerHandle } from '../apps/types.ts';
 import { restoreHome } from '../datasets/index.ts';
 import type { SuiteContext } from './index.ts';
-import { checkCliLinks, cliLinkState, Recorder, round, toMiB } from './csi-shared.ts';
+import { checkCliLinks, cliLinkState, isTimeout, Recorder, round, toMiB } from './csi-shared.ts';
 
 /** Sampling cadence while a server starts (resolution of footprint/CPU "at ready"). */
 const SAMPLE_MS = 100;
@@ -133,11 +133,18 @@ async function measuredStart(ps: ProcStat, app: AppAdapter, home: string, runDir
 
 interface Collected {
   runs: StartMeasure[];
+  /** Starts that did not reach ready within TIMEOUTS.startupMs (censored at the limit). */
+  timedOut: number;
   prime?: Record<string, unknown>;
 }
 
 function record(rec: Recorder, scenario: string, app: AppId, dataset: string, c: Collected): void {
-  if (!c.runs.length) return;
+  const censored = c.timedOut ? Array.from({ length: c.timedOut }, () => TIMEOUTS.startupMs) : undefined;
+  if (!c.runs.length) {
+    // Every start timed out: the readiness metrics still say "at least the limit" for this app.
+    if (censored) for (const metric of ['http_ready_ms', 'data_ready_ms', 'usable_ms']) rec.metric({ scenario, app, dataset, metric, unit: 'ms', samples: [], censored, meta: { timedOut: c.timedOut, limitMs: TIMEOUTS.startupMs } });
+    return;
+  }
   const col = (f: (m: StartMeasure) => number, digits = 3) => c.runs.map((m) => round(f(m), digits));
   const perRun = c.runs.map((m) => ({
     httpMs: round(m.httpMs, 1),
@@ -153,9 +160,9 @@ function record(rec: Recorder, scenario: string, app: AppId, dataset: string, c:
     app === 'v1'
       ? 'http = GET /api/ping 200; data = stdout "Initial sync complete" (can precede http)'
       : 'GET /api/health 200, which the daemon only answers after reconcile (sync + recommendations rebuild): http = data';
-  rec.metric({ scenario, app, dataset, metric: 'http_ready_ms', unit: 'ms', samples: col((m) => m.httpMs), meta: { readiness, runs: perRun, prime: c.prime, bin: c.runs[0]!.serverMeta.bin } });
-  rec.metric({ scenario, app, dataset, metric: 'data_ready_ms', unit: 'ms', samples: col((m) => m.dataMs), meta: { readiness } });
-  rec.metric({ scenario, app, dataset, metric: 'usable_ms', unit: 'ms', samples: col((m) => m.usableMs), meta: { definition: 'max(http_ready_ms, data_ready_ms)' } });
+  rec.metric({ scenario, app, dataset, metric: 'http_ready_ms', unit: 'ms', samples: col((m) => m.httpMs), censored, meta: { readiness, runs: perRun, prime: c.prime, bin: c.runs[0]!.serverMeta.bin } });
+  rec.metric({ scenario, app, dataset, metric: 'data_ready_ms', unit: 'ms', samples: col((m) => m.dataMs), censored, meta: { readiness } });
+  rec.metric({ scenario, app, dataset, metric: 'usable_ms', unit: 'ms', samples: col((m) => m.usableMs), censored, meta: { definition: 'max(http_ready_ms, data_ready_ms): both the API and the synced data are available' } });
   const tree = { what: 'server process plus descendants seen by the sampler', samplePeriodMs: SAMPLE_MS };
   rec.metric({ scenario, app, dataset, metric: 'footprint_at_ready_mib', unit: 'MiB', samples: col((m) => toMiB(m.footprintAtReady)), meta: { ...tree, at: 'first sample at or after usable_ms (lag per run in http_ready_ms meta)' } });
   rec.metric({ scenario, app, dataset, metric: 'peak_footprint_startup_mib', unit: 'MiB', samples: col((m) => toMiB(m.peakToReady)), meta: { ...tree, definition: 'sum over the tree of each process lifetime max phys_footprint, up to ready (upper bound on the simultaneous peak)' } });
@@ -183,11 +190,14 @@ export async function run(ctx: SuiteContext): Promise<SuiteResult> {
 
   for (const dataset of ctx.datasets as DatasetName[]) {
     // first-start: a new copy of the template for every run.
-    const first = new Map<AppId, Collected>(ctx.apps.map((a) => [a.id, { runs: [] }]));
+    const first = new Map<AppId, Collected>(ctx.apps.map((a) => [a.id, { runs: [], timedOut: 0 }]));
     const firstOut = await ctx.interleave(firstStartRuns, ctx.apps, async (app: AppAdapter) => {
       const h = await restoreHome({ paths: ctx.paths, dataset, app: app.id, runDir: ctx.runDir, suffix: 'startup-first', log });
       const t0 = performance.now();
-      const { m, server } = await measuredStart(ctx.procstat, app, h.home, ctx.runDir, log);
+      const { m, server } = await measuredStart(ctx.procstat, app, h.home, ctx.runDir, log).catch((e: unknown) => {
+        if (isTimeout(e)) first.get(app.id)!.timedOut++;
+        throw e;
+      });
       await server.stop();
       first.get(app.id)!.runs.push(m);
       log.info(`first-start ${app.id}/${dataset}: http ${m.httpMs.toFixed(0)} ms, data ${m.dataMs.toFixed(0)} ms, ${toMiB(m.footprintAtReady).toFixed(1)} MiB at ready (${((performance.now() - t0) / 1000).toFixed(1)} s incl. stop)`);
@@ -205,7 +215,7 @@ export async function run(ctx: SuiteContext): Promise<SuiteResult> {
         const prime = { httpMs: round(server.timings.httpReadyMs, 1), dataMs: round(server.timings.dataReadyMs, 1) };
         await server.stop();
         warmHomes.set(app.id, h.home);
-        warm.set(app.id, { runs: [], prime });
+        warm.set(app.id, { runs: [], timedOut: 0, prime });
       } catch (e) {
         log.warn(`${app.id}/${dataset}: priming the warm-start home failed: ${errorMessage(e)}`);
         rec.fail(app.id, dataset, 'warm-start', new Error(`priming start failed: ${errorMessage(e)}`));
@@ -214,7 +224,10 @@ export async function run(ctx: SuiteContext): Promise<SuiteResult> {
     const warmApps = ctx.apps.filter((a) => warmHomes.has(a.id));
     if (warmApps.length) {
       const warmOut = await ctx.interleave(warmRuns, warmApps, async (app: AppAdapter) => {
-        const { m, server } = await measuredStart(ctx.procstat, app, warmHomes.get(app.id)!, ctx.runDir, log);
+        const { m, server } = await measuredStart(ctx.procstat, app, warmHomes.get(app.id)!, ctx.runDir, log).catch((e: unknown) => {
+          if (isTimeout(e)) warm.get(app.id)!.timedOut++;
+          throw e;
+        });
         await server.stop();
         warm.get(app.id)!.runs.push(m);
         log.info(`warm-start ${app.id}/${dataset}: http ${m.httpMs.toFixed(0)} ms, data ${m.dataMs.toFixed(0)} ms, ${toMiB(m.footprintAtReady).toFixed(1)} MiB at ready`);

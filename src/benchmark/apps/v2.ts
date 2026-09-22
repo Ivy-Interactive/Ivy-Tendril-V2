@@ -299,7 +299,7 @@ export async function createV2Adapter(opts: AdapterOptions): Promise<AppAdapter>
     }
   }
 
-  async function launchDesktop(o: { home: string; runDir: string }): Promise<DesktopHandle> {
+  async function launchDesktop(o: { home: string; runDir: string; appHome?: (daemon: ServerHandle) => Promise<string> }): Promise<DesktopHandle> {
     if (!res.app) throw new Error(`V2 Tendril.app not built (looked in ${paths.artifactsV2} and ${path.join(paths.v2Clone, 'target/release/bundle/macos')}; run \`setup\`)`);
     const app = res.app;
     const exe = path.join(app, 'Contents', 'MacOS', 'tendril-app');
@@ -309,9 +309,20 @@ export async function createV2Adapter(opts: AdapterOptions): Promise<AppAdapter>
     // The app reads .master once at setup to start its WebSocket bridge and never retries, so the
     // daemon must be healthy first; the app never starts one itself (provisioning is disabled below).
     const server = await startServer({ home: o.home, runDir: o.runDir, mode: 'web' });
+    let appHome = o.home;
+    if (o.appHome) {
+      try {
+        appHome = await o.appHome(server);
+        assertDesktopHome('V2', appHome);
+        fs.rmSync(path.join(appHome, 'ui_state.json'), { force: true });
+      } catch (e) {
+        await server.stop();
+        throw e;
+      }
+    }
     const tag = nextTag();
     const launchEnv = {
-      TENDRIL_HOME: path.resolve(o.home),
+      TENDRIL_HOME: path.resolve(appHome),
       CLAUDE_CONFIG_DIR: paths.emptyClaudeConfig,
       // Without these a release build copies ~250 MB of sidecars into <home>/bin and registers a
       // launchd agent that starts a second daemon on port 5010.
@@ -343,6 +354,7 @@ export async function createV2Adapter(opts: AdapterOptions): Promise<AppAdapter>
       daemonPid: server.pid,
       daemonPort: server.port,
       daemonReadyMs: Math.round(server.timings.httpReadyMs),
+      appHome: appHome === o.home ? undefined : appHome,
       openMs: Math.round(launch.openMs),
       pidSeenMs: Math.round(launch.pidSeenAt - launch.launchedAt),
       stdout: launch.stdoutPath,
@@ -364,6 +376,7 @@ export async function createV2Adapter(opts: AdapterOptions): Promise<AppAdapter>
     return {
       appPid,
       launchedAt: launch.launchedAt,
+      backendSpawnedAt: server.timings.spawnAt,
       roots: async () => {
         const wk = await webkitProcesses(procstat, appPid);
         return [{ role: 'app', pid: appPid }, ...wk.map((w) => ({ role: w.role, pid: w.pid })), { role: 'daemon', pid: server.pid }];
@@ -379,7 +392,7 @@ export async function createV2Adapter(opts: AdapterOptions): Promise<AppAdapter>
         unregister();
         const agentAfter = fs.existsSync(LAUNCH_AGENT);
         meta.launchAgentCreated = !agentBefore && agentAfter;
-        meta.provisionedBin = fs.existsSync(path.join(o.home, 'bin'));
+        meta.provisionedBin = fs.existsSync(path.join(o.home, 'bin')) || fs.existsSync(path.join(appHome, 'bin'));
         if (meta.launchAgentCreated) log.error(`${LAUNCH_AGENT} appeared during the V2 desktop run: provisioning was not disabled`);
       },
       meta,

@@ -52,6 +52,12 @@ export interface DesktopHandle {
   roots(): Promise<Array<{ role: string; pid: number }>>;
   /** performance.now() when the launch command was issued. */
   launchedAt: number;
+  /**
+   * performance.now() when the app's backend was started: the same as launchedAt for V1 (its server
+   * runs inside the app process), the daemon's spawn for V2 (the adapter starts it and waits for its
+   * health before the launch command). A cold launch of V2 is timed from here.
+   */
+  backendSpawnedAt: number;
   stop(): Promise<void>;
   /** Optional adapter facts (which .app, pid discovery, quit details once stopped, ...). */
   meta?: Record<string, unknown>;
@@ -93,8 +99,6 @@ export interface ApiRequest {
 
 /** Nav targets of the shared Tendril shell (`button.tsh-nav-item[data-menu-item=...]`). */
 export type NavTarget = 'plans' | 'jobs' | 'dashboard' | 'review' | 'recommendations';
-
-export const NAV_TARGETS: readonly NavTarget[] = ['plans', 'jobs', 'dashboard', 'review', 'recommendations'];
 
 export interface ReadyProbe {
   selector: string;
@@ -143,7 +147,12 @@ export interface AppAdapter {
   migrate(home: string): Promise<void>;
   startServer(opts: { home: string; runDir: string; mode: 'web' }): Promise<ServerHandle>;
   startUi(server: ServerHandle, runDir: string): Promise<UiHandle>;
-  launchDesktop(opts: { home: string; runDir: string }): Promise<DesktopHandle>;
+  /**
+   * `appHome` (V2 only) gives the app process a different TENDRIL_HOME from its daemon's, prepared
+   * once the daemon is healthy: the network suite uses it to put a byte-counting proxy between the
+   * real Tauri host and the daemon (a shadow home whose .master names the proxy). V1 ignores it.
+   */
+  launchDesktop(opts: { home: string; runDir: string; appHome?: (daemon: ServerHandle) => Promise<string> }): Promise<DesktopHandle>;
   cli: { bin: string; env(home: string): Record<string, string> };
   api: Record<ApiScenario, (ctx: ApiRequestContext) => ApiRequest>;
   ui: UiSelectors;

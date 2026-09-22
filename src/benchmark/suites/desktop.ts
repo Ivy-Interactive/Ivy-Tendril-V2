@@ -11,6 +11,18 @@
 // process set once a second for `durationSec` seconds from the launch command, then quits the app and
 // proves nothing it started is still running.
 //
+// Two launch scenarios. `launch` times from the launch command; for V2 its daemon is already healthy
+// by then (the adapter starts it first, because the app reads .master once at setup). `cold-launch`
+// times the same runs from the moment the app's backend was spawned: identical for V1 (its server
+// runs inside the app process), daemon spawn for V2, so V2's daemon startup (tens of seconds on a
+// large home) is included. The cold numbers are the like-for-like "start the app from nothing".
+//
+// Process milestones are not content: V1's window only appears once its in-process server answers
+// Ivy.Desktop's health poll, while Tauri shows V2's window before the page has loaded, so
+// window_visible_ms means different things for the two apps and is not used for claims. A content
+// milestone (first data request reaching the backend) would need instrumenting either app or a
+// proxy inside the V1 process; it is not measured here (the ui suite times content in Chromium).
+//
 // Timing sources, chosen so a slow harness under load cannot inflate them:
 //   app_process_ms       kernel start time of the app process (proc_pidinfo) minus the launch command
 //   webcontent_spawn_ms  kernel start time of the first WebContent process the app is responsible for
@@ -205,6 +217,10 @@ interface RunRecord {
   screenLocked: boolean | null;
   /** Seconds between the launch command and the sampler's first point. */
   samplerOffsetSec: number;
+  /** ms from the backend's spawn to the launch command (0 for V1; V2's daemon start and health wait). */
+  backendLeadMs: number;
+  /** CPU seconds the backend used before the launch command (V2's daemon startup; 0 for V1). */
+  backendCpuBeforeLaunchS: number;
   durationSec: number;
   fp15: Point | null;
   fpEnd: Point | null;
@@ -291,6 +307,8 @@ async function launchOnce(ctx: SuiteContext, app: AppAdapter, dataset: DatasetNa
   const pts = sampler.points;
   if (!pts.length) throw new Error(`no samples taken (${sampler.errors.join('; ') || 'sampler never ran'})`);
   const offsetSec = (pts[0]!.t - handle.launchedAt) / 1000;
+  const backendLeadMs = Math.max(0, handle.launchedAt - handle.backendSpawnedAt);
+  const machToPerfMs = pts[0]!.t - pts[0]!.t_ns / 1e6;
   const roles = sampler.roles();
   const pointOf = (idx: number): Point => {
     const pt = pts[idx]!;
@@ -320,7 +338,27 @@ async function launchOnce(ctx: SuiteContext, app: AppAdapter, dataset: DatasetNa
     if (c !== null) cpuPercentByRole[r] = round(c, 2);
     peakByRole[r] = round(sampler.peakFootprint(r) / MiB);
   }
-  const cpuToSettle = idx15 === null ? null : sampler.delta('cpu_ns', 0, pts[idx15]!.sec) / 1e9;
+  // CPU from a clock start to +15 s after the launch: a process started after the clock start counts
+  // all of its CPU (its counter starts at its spawn, so the time before the first sample, finding
+  // the app pid and checking its environment, is not lost); one started before counts only the part
+  // after the first sample. For V2's cold launch the daemon, spawned at the clock start, counts whole.
+  const cpuSince = (clockStartPerf: number): number | null => {
+    if (idx15 === null) return null;
+    const first = new Map<number, number>();
+    const last = new Map<number, { cpu: number; startPerf: number }>();
+    for (const pt of pts.slice(0, idx15 + 1)) {
+      for (const [pid, p] of pt.procs) {
+        if (!first.has(pid)) first.set(pid, p.cpu_ns);
+        last.set(pid, { cpu: p.cpu_ns, startPerf: p.start_ns / 1e6 + machToPerfMs });
+      }
+    }
+    let ns = 0;
+    for (const [pid, l] of last) ns += l.startPerf >= clockStartPerf - 1 ? l.cpu : l.cpu - first.get(pid)!;
+    return ns / 1e9;
+  };
+  const cpuToSettle = cpuSince(handle.launchedAt);
+  const cpuToSettleCold = cpuSince(handle.backendSpawnedAt);
+  const backendCpuBeforeLaunchS = cpuToSettle === null || cpuToSettleCold === null ? 0 : Math.max(0, cpuToSettleCold - cpuToSettle);
 
   // Time series: whole tree, per role, and CPU % of one core between consecutive points.
   const total: Array<[number, number]> = [];
@@ -339,7 +377,6 @@ async function launchOnce(ctx: SuiteContext, app: AppAdapter, dataset: DatasetNa
 
   // WebContent processes: kernel start times (from the process table at the end, or mapped from the
   // helper's mach clock for any that exited before then).
-  const machToPerfMs = pts[0]!.t - pts[0]!.t_ns / 1e6;
   const wcStarts: number[] = [];
   const seenWc = new Set<number>();
   for (const pt of pts) {
@@ -376,6 +413,8 @@ async function launchOnce(ctx: SuiteContext, app: AppAdapter, dataset: DatasetNa
     windowPolls: windows.stats().polls,
     screenLocked: lockedBefore === true || lockedAfter === true ? true : lockedBefore === null && lockedAfter === null ? null : false,
     samplerOffsetSec: round(offsetSec, 3),
+    backendLeadMs: round(backendLeadMs, 1),
+    backendCpuBeforeLaunchS: round(backendCpuBeforeLaunchS, 4),
     durationSec: round(fpEnd.sec, 2),
     fp15: idx15 === null ? null : pointOf(idx15),
     fpEnd,
@@ -400,8 +439,19 @@ async function launchOnce(ctx: SuiteContext, app: AppAdapter, dataset: DatasetNa
       ` ${rec.windowFirst ? `${rec.windowFirst.w}x${rec.windowFirst.h} pt` : ''}; footprint +${SETTLE_SEC}s ${fmt(rec.fp15?.total ?? null)} MiB,` +
       ` end ${fmt(fpEnd.total)} MiB (${Object.entries(fpEnd.byRole).map(([r, v]) => `${r} ${v.toFixed(0)}`).join(', ')}); CPU ${fmt(rec.cpuPercent, 2)}%`,
   );
-  if (!windowSeen) throw new Error(`no on-screen window larger than ${MIN_WINDOW_PT}x${MIN_WINDOW_PT} pt within ${durationSec} s of launch (footprint at end ${fpEnd.total.toFixed(0)} MiB)`);
+  if (!windowSeen) throw new NoWindow(`no on-screen window larger than ${MIN_WINDOW_PT}x${MIN_WINDOW_PT} pt within ${durationSec} s of launch (footprint at end ${fpEnd.total.toFixed(0)} MiB)`, durationSec * 1000, backendLeadMs);
   return rec;
+}
+
+/** A launch whose window never appeared: window_visible_ms is censored at the run length. */
+class NoWindow extends Error {
+  readonly boundMs: number;
+  readonly backendLeadMs: number;
+  constructor(message: string, boundMs: number, backendLeadMs: number) {
+    super(message);
+    this.boundMs = boundMs;
+    this.backendLeadMs = backendLeadMs;
+  }
 }
 
 function fmt(x: number | null, d = 0): string {
@@ -429,6 +479,7 @@ export async function run(ctx: SuiteContext): Promise<SuiteResult> {
   }
 
   const records: RunRecord[] = [];
+  const noWindow: Array<{ app: AppId; dataset: DatasetName; e: NoWindow }> = [];
   try {
     for (const dataset of ctx.desktopDatasets) {
       for (let w = 0; w < warmupRuns; w++) {
@@ -450,6 +501,7 @@ export async function run(ctx: SuiteContext): Promise<SuiteResult> {
           noteRunProblems(result, o.value);
         } else {
           result.failures.push({ app: o.app.id, dataset, scenario: `launch#${o.i + 1}`, error: errorMessage(o.error) });
+          if (o.error instanceof NoWindow) noWindow.push({ app: o.app.id, dataset, e: o.error });
         }
       }
     }
@@ -460,7 +512,8 @@ export async function run(ctx: SuiteContext): Promise<SuiteResult> {
   for (const dataset of ctx.desktopDatasets) {
     for (const app of apps) {
       const rs = records.filter((r) => r.dataset === dataset && r.app === app.id).sort((a, b) => a.i - b.i);
-      if (rs.length) emit(result, app.id, dataset, rs);
+      const lost = noWindow.filter((x) => x.dataset === dataset && x.app === app.id).map((x) => x.e);
+      if (rs.length || lost.length) emit(result, app.id, dataset, rs, lost);
     }
   }
   windowSizeNote(result, records);
@@ -494,16 +547,23 @@ function noteRunProblems(result: SuiteResult, r: RunRecord): void {
   if (quit?.webkitForced?.length) result.notes.push(`${tag}: ${quit.webkitForced.length} WebKit process(es) outlived the app by 10 s and were killed`);
 }
 
-function emit(result: SuiteResult, app: AppId, dataset: DatasetName, rs: RunRecord[]): void {
-  const push = (scenario: string, metric: string, unit: Unit, values: Array<number | null>, meta?: Record<string, unknown>): void => {
+function emit(result: SuiteResult, app: AppId, dataset: DatasetName, rs: RunRecord[], lost: NoWindow[]): void {
+  const push = (scenario: string, metric: string, unit: Unit, values: Array<number | null>, meta?: Record<string, unknown>, censored?: number[]): void => {
     const samples = values.filter((v): v is number => v !== null && Number.isFinite(v));
     if (samples.length < values.length) {
       const missing = values.map((v, k) => (v === null || !Number.isFinite(v) ? rs[k]!.i + 1 : null)).filter((x) => x !== null);
       result.failures.push({ app, dataset, scenario, error: `${metric}: no value in run(s) ${missing.join(', ')}` });
     }
-    if (!samples.length) return;
-    result.metrics.push({ suite: 'desktop', scenario, app, dataset, metric, unit, samples, better: 'lower', ...(meta ? { meta } : {}) } satisfies Metric);
+    if (!samples.length && !censored?.length) return;
+    const m: Metric = { suite: 'desktop', scenario, app, dataset, metric, unit, samples, better: 'lower', ...(meta ? { meta } : {}) };
+    if (censored?.length) m.censored = censored;
+    result.metrics.push(m);
   };
+  // Launches whose window never appeared: at least the run length (plus the backend lead when cold).
+  const noWindow = lost.length ? lost.map((e) => e.boundMs) : undefined;
+  const noWindowCold = lost.length ? lost.map((e) => e.boundMs + e.backendLeadMs) : undefined;
+  const lead = (r: RunRecord, v: number | null) => (v === null ? null : round(v + r.backendLeadMs, 1));
+  const launchNote = app === 'v2' ? 'V2: its daemon was started and healthy before the launch command; its startup is not included here (see cold-launch)' : 'V1: the server runs inside the app process, so this is also its cold launch';
   const roles = [...new Set(rs.flatMap((r) => Object.keys(r.fpEnd?.byRole ?? {})))].sort();
   const byRoleOf = (pick: (r: RunRecord) => Record<string, number> | undefined, d = 1): Record<string, number[]> => {
     const out: Record<string, number[]> = {};
@@ -511,20 +571,50 @@ function emit(result: SuiteResult, app: AppId, dataset: DatasetName, rs: RunReco
     return out;
   };
 
+  const windowNote = 'process milestone, not content: V1 shows its window only after its in-process server answers, Tauri shows V2 window before the page has loaded';
   push('launch', 'app_process_ms', 'ms', rs.map((r) => r.appProcessMs), {
     definition: 'launch command (open -n -F) to the kernel start time of the app process',
+    note: launchNote,
     pidSeenMs: rs.map((r) => r.pidSeenMs),
-    ...(app === 'v2' ? { daemonReadyMs: rs.map((r) => r.adapter.daemonReadyMs ?? null), daemonNote: 'the V2 daemon is started and healthy before the launch command; not included' } : {}),
   });
   push('launch', 'webcontent_spawn_ms', 'ms', rs.map((r) => r.webcontentSpawnMs), {
     definition: 'launch command to the kernel start time of the first WebKit WebContent process the app is responsible for',
+    note: launchNote,
     allWebContentStartsMs: rs.map((r) => r.webcontentStartsMs),
   });
-  push('launch', 'window_visible_ms', 'ms', rs.map((r) => r.windowVisibleMs), {
-    definition: `launch command to the first poll that sees an on-screen layer-0 window of the app larger than ${MIN_WINDOW_PT}x${MIN_WINDOW_PT} pt`,
-    resolutionMs: WINDOW_POLL_MS,
-    windowFirstPt: rs.map((r) => r.windowFirst),
-    windowPolls: rs.map((r) => r.windowPolls),
+  push(
+    'launch',
+    'window_visible_ms',
+    'ms',
+    rs.map((r) => r.windowVisibleMs),
+    {
+      definition: `launch command to the first poll that sees an on-screen layer-0 window of the app larger than ${MIN_WINDOW_PT}x${MIN_WINDOW_PT} pt`,
+      note: `${launchNote}; ${windowNote}`,
+      resolutionMs: WINDOW_POLL_MS,
+      windowFirstPt: rs.map((r) => r.windowFirst),
+      windowPolls: rs.map((r) => r.windowPolls),
+    },
+    noWindow,
+  );
+  push('launch', 'cpu_s_to_15s', 'cpu_s', rs.map((r) => (r.cpuSecondsToSettle === null ? null : round(r.cpuSecondsToSettle, 3))), {
+    definition: `CPU seconds the process set used from the first sample (just after the launch command) to +${SETTLE_SEC} s`,
+    note: launchNote,
+  });
+
+  // Cold launch: the same runs, timed from the backend's spawn (V1: the launch command).
+  const coldDef = app === 'v2' ? 'from the spawn of the V2 daemon (tendril serve), which the app needs before it can start' : 'from the launch command (V1 has no separate backend process)';
+  if (app === 'v2') {
+    push('cold-launch', 'backend_ready_ms', 'ms', rs.map((r) => (typeof r.adapter.daemonReadyMs === 'number' ? r.adapter.daemonReadyMs : null)), {
+      definition: 'daemon spawn to its first 200 from /api/health (it answers only after its initial sync); the app is launched right after',
+      v2Only: true,
+    });
+  }
+  push('cold-launch', 'app_process_ms', 'ms', rs.map((r) => lead(r, r.appProcessMs)), { definition: `app process start, ${coldDef}` });
+  push('cold-launch', 'webcontent_spawn_ms', 'ms', rs.map((r) => lead(r, r.webcontentSpawnMs)), { definition: `first WebContent process start, ${coldDef}` });
+  push('cold-launch', 'window_visible_ms', 'ms', rs.map((r) => lead(r, r.windowVisibleMs)), { definition: `app window on screen, ${coldDef}`, note: windowNote }, noWindowCold);
+  push('cold-launch', 'cpu_s_to_15s', 'cpu_s', rs.map((r) => (r.cpuSecondsToSettle === null ? null : round(r.cpuSecondsToSettle + r.backendCpuBeforeLaunchS, 3))), {
+    definition: `CPU seconds of the whole process set ${coldDef} to ${SETTLE_SEC} s after the launch command`,
+    backendCpuBeforeLaunchS: rs.map((r) => r.backendCpuBeforeLaunchS),
   });
 
   const common = { durationSec: rs.map((r) => r.durationSec), samplerOffsetSec: rs.map((r) => r.samplerOffsetSec) };
@@ -557,9 +647,6 @@ function emit(result: SuiteResult, app: AppId, dataset: DatasetName, rs: RunReco
   });
   push('steady-state', 'idle_wakeups_per_s', 'count', rs.map((r) => (r.wakeupsPerSec === null ? null : round(r.wakeupsPerSec, 2))), {
     definition: `package idle + interrupt wakeups of the process set per second, from +${SETTLE_SEC} s to the end`,
-  });
-  push('launch', 'cpu_s_to_15s', 'cpu_s', rs.map((r) => (r.cpuSecondsToSettle === null ? null : round(r.cpuSecondsToSettle, 3))), {
-    definition: `CPU seconds the process set used from the first sample to +${SETTLE_SEC} s (the launch work)`,
   });
 
   for (const r of rs) {

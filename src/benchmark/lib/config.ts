@@ -173,21 +173,43 @@ export type ProfileName = (typeof PROFILE_NAMES)[number];
 
 export interface ProfileKnobs {
   name: ProfileName;
-  /** Datasets for the server-side suites (startup, idle, api, ui). */
+  /** Datasets for the server-side suites (startup, idle, api, ui, network). */
   serverDatasets: DatasetName[];
   desktopDatasets: DatasetName[];
   cliDatasets: DatasetName[];
   startup: { firstStartRuns: number; warmRuns: number };
-  idle: { runs: number; durationSec: number };
+  idle: {
+    runs: number;
+    /**
+     * Seconds after ready before the measured window opens. Both apps run one-off work after start
+     * (V1: pricing fetch at +15 s, cost backfill at +60 s; V2: PR sync at +30 s, model enrichment),
+     * so an earlier window measures the tail of startup, not idle. That phase is reported separately.
+     */
+    settleSec: number;
+    /** Length of the measured window after `settleSec`. */
+    durationSec: number;
+  };
   api: {
+    /**
+     * Independent server instances per app and dataset (fresh home, fresh process), run in ABBA
+     * order. The instance, not the request, is the replicate: requests on one server share its JIT
+     * state, caches and background timers, so pooling them alone would overstate the precision.
+     */
+    instances: number;
+    /** Sequential warmup requests per scenario and instance (beyond .NET's 30-call tier-up threshold). */
     seqWarmup: number;
+    /** Timed sequential requests per scenario and instance. */
     seqSamples: number;
     concurrency: number[];
+    /** Length of one timed load window; every instance runs each level once. */
     concurrencyDurationSec: number;
     /** Latency samples per concurrency run are systematically subsampled to at most this many. */
     maxLatencySamples: number;
   };
   ui: {
+    /** Independent server + browser sessions per app and dataset, in ABBA order (see api.instances). */
+    instances: number;
+    /** The counts below are per app and dataset, split as evenly as possible across the instances. */
     coldLoads: number;
     navCycles: number;
     pushSamples: number;
@@ -209,6 +231,11 @@ export interface ProfileKnobs {
     sessionPushes: number;
     /** Seconds of nettop sampling of each real desktop app for external traffic; 0 skips it. */
     desktopIdleSec: number;
+    /**
+     * Seconds the real V2 Tendril.app is watched through a proxy in front of its daemon, to check
+     * the IPC shim's host <-> daemon traffic against the real host's; 0 skips the check.
+     */
+    realHostSec: number;
   };
 }
 
@@ -219,12 +246,12 @@ export const PROFILES: Readonly<Record<ProfileName, ProfileKnobs>> = {
     desktopDatasets: ['small'],
     cliDatasets: ['small'],
     startup: { firstStartRuns: 2, warmRuns: 3 },
-    idle: { runs: 1, durationSec: 20 },
-    api: { seqWarmup: 10, seqSamples: 50, concurrency: [1, 8], concurrencyDurationSec: 3, maxLatencySamples: 5000 },
-    ui: { coldLoads: 2, navCycles: 2, pushSamples: 4, fsPushSamples: 2, navUnderLoadCycles: 2 },
+    idle: { runs: 1, settleSec: 20, durationSec: 20 },
+    api: { instances: 1, seqWarmup: 100, seqSamples: 50, concurrency: [1, 8], concurrencyDurationSec: 3, maxLatencySamples: 5000 },
+    ui: { instances: 1, coldLoads: 2, navCycles: 2, pushSamples: 4, fsPushSamples: 2, navUnderLoadCycles: 2 },
     desktop: { warmupRuns: 1, runs: 1, durationSec: 30 },
     cli: { warmup: 1, runs: 5 },
-    network: { coldLoads: 3, pushSamples: 4, idleWindows: 2, idleWindowSec: 30, sessions: 2, sessionPushes: 2, desktopIdleSec: 45 },
+    network: { coldLoads: 3, pushSamples: 4, idleWindows: 2, idleWindowSec: 30, sessions: 2, sessionPushes: 2, desktopIdleSec: 45, realHostSec: 30 },
   },
   full: {
     name: 'full',
@@ -232,27 +259,32 @@ export const PROFILES: Readonly<Record<ProfileName, ProfileKnobs>> = {
     desktopDatasets: ['empty', 'medium', 'large'],
     cliDatasets: ['small', 'large'],
     startup: { firstStartRuns: 5, warmRuns: 10 },
-    // 5 runs so Mann-Whitney U can reach p < 0.01 (2 runs never can); 60 s still spans both apps'
-    // 30 s rescans.
-    idle: { runs: 5, durationSec: 60 },
-    api: {
-      seqWarmup: 25,
-      seqSamples: 300,
-      concurrency: [1, 8, 32],
-      concurrencyDurationSec: 8,
-      maxLatencySamples: 5000,
-    },
-    ui: { coldLoads: 8, navCycles: 8, pushSamples: 20, fsPushSamples: 10, navUnderLoadCycles: 8 },
+    // 5 runs so Mann-Whitney U can reach p < 0.01 (the smallest two-sided p with 5 vs 5 is 0.008).
+    // The window opens 120 s after ready, past both apps' one-off startup work, and 45 s spans at
+    // least one of both apps' 30 s rescans.
+    idle: { runs: 5, settleSec: 120, durationSec: 45 },
+    // 3 instances x 100 timed requests = 300 per scenario; each instance runs every load level once,
+    // so every level has 3 independent repeats.
+    api: { instances: 3, seqWarmup: 100, seqSamples: 100, concurrency: [1, 8, 32], concurrencyDurationSec: 5, maxLatencySamples: 5000 },
+    // Pushes are capped where V1 is slow: its file pushes wait for a 30 s rescan, and on large its
+    // REST pushes often do too.
+    ui: { instances: 3, coldLoads: 9, navCycles: 6, pushSamples: 10, fsPushSamples: 5, navUnderLoadCycles: 6 },
     // 5 runs, not the spec's 3: Mann-Whitney U cannot reach p < 0.01 with 3 vs 3 (the smallest
-    // two-sided exact p is 0.10). 60 s keeps 5 x 3 datasets x 2 apps near half an hour.
+    // two-sided exact p is 0.10).
     desktop: { warmupRuns: 1, runs: 5, durationSec: 60 },
     cli: { warmup: 3, runs: 20 },
     // Bytes are near-deterministic, so 5 loads are plenty for a median; idle windows are 60 s so
     // each spans V1's 30 s plan rescan and several of V2's 5 s job polls. The desktop window runs
     // past V1's +15 s model-pricing fetch.
-    network: { coldLoads: 5, pushSamples: 10, idleWindows: 3, idleWindowSec: 60, sessions: 3, sessionPushes: 4, desktopIdleSec: 90 },
+    network: { coldLoads: 5, pushSamples: 10, idleWindows: 3, idleWindowSec: 60, sessions: 3, sessionPushes: 4, desktopIdleSec: 90, realHostSec: 45 },
   },
 };
+
+/** `total` items split over `parts` instances as evenly as possible (earlier instances get the extra). */
+export function shareOf(total: number, parts: number, index: number): number {
+  const p = Math.max(1, parts);
+  return Math.floor(total / p) + (index < total % p ? 1 : 0);
+}
 
 export function isProfileName(s: string): s is ProfileName {
   return (PROFILE_NAMES as readonly string[]).includes(s);

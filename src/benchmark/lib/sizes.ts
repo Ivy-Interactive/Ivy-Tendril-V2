@@ -110,21 +110,6 @@ export function compressedSizes(buf: Buffer): CompressedSizes {
   return { raw: buf.length, gzip9: gzipBytes(buf, 9), brotli11: brotliBytes(buf, 11), brotli9: brotliBytes(buf, 9) };
 }
 
-export interface GroupSizes extends CompressedSizes {
-  files: number;
-  /** Per file, sorted by path, so a report can show what dominates. */
-  perFile: Array<{ name: string } & CompressedSizes>;
-}
-
-/** Sums per-file compressed sizes over a group of files (each file compressed on its own). */
-export function groupSizes(files: ReadonlyArray<string | { name: string; data: Buffer }>): GroupSizes {
-  const perFile = files
-    .map((f) => (typeof f === 'string' ? { name: f, ...compressedSizes(fs.readFileSync(f)) } : { name: f.name, ...compressedSizes(f.data) }))
-    .sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  const sum = (k: keyof CompressedSizes) => perFile.reduce((s, f) => s + f[k], 0);
-  return { files: perFile.length, raw: sum('raw'), gzip9: sum('gzip9'), brotli11: sum('brotli11'), brotli9: sum('brotli9'), perFile };
-}
-
 // ---------------------------------------------------------------------------------------------
 // Frontend: eager closure
 

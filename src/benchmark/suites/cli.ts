@@ -25,7 +25,7 @@ import type { AppAdapter } from '../apps/types.ts';
 import { emptyCwd } from '../apps/common.ts';
 import { restoreHome, type DatasetManifest } from '../datasets/index.ts';
 import type { SuiteContext } from './index.ts';
-import { checkCliLinks, cliLinkState, medianOf, Recorder, round, toMiB } from './csi-shared.ts';
+import { checkCliLinks, cliLinkState, isTimeout, medianOf, Recorder, round, toMiB } from './csi-shared.ts';
 
 const CLIEXEC_SOURCE = path.join(BENCH_ROOT, 'native', 'cliexec.c');
 
@@ -205,6 +205,8 @@ function commands(m: DatasetManifest): CliCommand[] {
 
 interface Collected {
   wall: number[];
+  /** Runs that did not exit within TIMEOUTS.cliRunMs (censored at the limit). */
+  timedOut: number;
   peak: number[];
   cpu: number[];
   childCpu: number[];
@@ -216,7 +218,7 @@ interface Collected {
 }
 
 function emptyCollected(): Collected {
-  return { wall: [], peak: [], cpu: [], childCpu: [], spawn: [], maxRss: [], stdoutBytes: [], rows: [], warmupWall: [] };
+  return { wall: [], timedOut: 0, peak: [], cpu: [], childCpu: [], spawn: [], maxRss: [], stdoutBytes: [], rows: [], warmupWall: [] };
 }
 
 export async function run(ctx: SuiteContext): Promise<SuiteResult> {
@@ -271,6 +273,9 @@ export async function run(ctx: SuiteContext): Promise<SuiteResult> {
           cwd: emptyCwd(ctx.runDir),
           dir: outDir,
           tag: `${app.id}-${dataset}-${cmd.scenario.replace(/[^A-Za-z0-9]+/g, '_')}`,
+        }).catch((e: unknown) => {
+          if (i >= warmup && isTimeout(e)) got.get(app.id)!.timedOut++;
+          throw e;
         });
         const checked = cmd.check(res.stdout, manifest!);
         const c = got.get(app.id)!;
@@ -309,7 +314,7 @@ export async function run(ctx: SuiteContext): Promise<SuiteResult> {
           maxRssBytesMedian: medianOf(c.maxRss),
           bin: app.cli.bin,
         };
-        rec.metric({ scenario: cmd.scenario, app: app.id, dataset, metric: 'wall_ms', unit: 'ms', samples: c.wall, meta });
+        rec.metric({ scenario: cmd.scenario, app: app.id, dataset, metric: 'wall_ms', unit: 'ms', samples: c.wall, censored: c.timedOut ? Array.from({ length: c.timedOut }, () => TIMEOUTS.cliRunMs) : undefined, meta });
         rec.metric({ scenario: cmd.scenario, app: app.id, dataset, metric: 'peak_footprint_mib', unit: 'MiB', samples: c.peak, meta: { what: 'lifetime max phys_footprint of the command process' } });
         rec.metric({ scenario: cmd.scenario, app: app.id, dataset, metric: 'cpu_s', unit: 'cpu_s', samples: c.cpu, meta: { childCpuSMedian: medianOf(c.childCpu) } });
         log.info(`${cmd.scenario} ${app.id}/${dataset}: wall median ${medianOf(c.wall)?.toFixed(1)} ms, peak ${medianOf(c.peak)?.toFixed(1)} MiB (n=${c.wall.length})`);

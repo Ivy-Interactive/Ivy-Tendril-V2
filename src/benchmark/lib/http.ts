@@ -110,21 +110,6 @@ export function request(opts: RequestOptions): Promise<RequestResult> {
   });
 }
 
-/** request() plus JSON parsing; throws on a non-2xx status or unparsable body. */
-export async function requestJson<T = unknown>(opts: RequestOptions): Promise<{ status: number; json: T; bytes: number; ms: number }> {
-  const r = await request({ ...opts, collectBody: true });
-  if (r.status < 200 || r.status >= 300) {
-    const snippet = r.body ? r.body.toString('utf8').slice(0, 300) : (r.error ?? '');
-    throw new Error(`${opts.method ?? 'GET'} ${opts.url}: HTTP ${r.status} ${snippet}`);
-  }
-  const text = r.body?.toString('utf8') ?? '';
-  try {
-    return { status: r.status, json: (text ? JSON.parse(text) : null) as T, bytes: r.bytes, ms: r.ms };
-  } catch {
-    throw new Error(`${opts.method ?? 'GET'} ${opts.url}: response is not JSON: ${text.slice(0, 200)}`);
-  }
-}
-
 // ---------------------------------------------------------------------------------------------
 // Load generation
 
@@ -148,14 +133,6 @@ export interface LoadStats {
   bytes: number;
   statuses: Record<string, number>;
   errorSamples: string[];
-}
-
-export interface ClosedLoopOptions {
-  concurrency: number;
-  /** Builds request `i` (global sequence number) for `worker`. */
-  next: (i: number, worker: number) => RequestSpec;
-  agent?: http.Agent;
-  timeoutMs?: number;
 }
 
 export interface LoadHandle {
@@ -204,53 +181,6 @@ function finalize(stats: LoadStats, first: number, last: number): LoadStats {
   return stats;
 }
 
-/**
- * Closed-loop load: `concurrency` workers, each issuing its next request as soon as the previous one
- * finished. Runs until stop(). Single Node thread: at high concurrency against a fast server the
- * client can be the bottleneck, so suites should report the harness CPU alongside throughput.
- */
-export function startClosedLoop(opts: ClosedLoopOptions): LoadHandle {
-  const stats = newStats(opts.concurrency);
-  const agent = opts.agent ?? createAgent({ maxSockets: opts.concurrency });
-  let stopped = false;
-  let seq = 0;
-  let first = Infinity;
-  let last = 0;
-  const worker = async (w: number) => {
-    while (!stopped) {
-      const spec = opts.next(seq++, w);
-      const r = await request({ ...spec, agent, timeoutMs: opts.timeoutMs });
-      first = Math.min(first, r.start);
-      last = Math.max(last, r.end);
-      record(stats, r);
-    }
-  };
-  const workers = Array.from({ length: opts.concurrency }, (_, w) => worker(w));
-  return {
-    async stop() {
-      stopped = true;
-      await Promise.all(workers);
-      if (!opts.agent) agent.destroy();
-      return finalize(stats, first, last);
-    },
-  };
-}
-
-/** startClosedLoop for a fixed duration (in-flight requests at the deadline still complete). */
-export async function runClosedLoop(opts: ClosedLoopOptions & { durationMs: number; warmupMs?: number }): Promise<LoadStats> {
-  const agent = opts.agent ?? createAgent({ maxSockets: opts.concurrency });
-  if (opts.warmupMs) {
-    const w = startClosedLoop({ ...opts, agent });
-    await new Promise((r) => setTimeout(r, opts.warmupMs));
-    await w.stop();
-  }
-  const h = startClosedLoop({ ...opts, agent });
-  await new Promise((r) => setTimeout(r, opts.durationMs));
-  const stats = await h.stop();
-  if (!opts.agent) agent.destroy();
-  return stats;
-}
-
 /** One request every `everyMs` (open loop, skipped if the previous one is still running). */
 export function startPeriodic(opts: { everyMs: number; next: (i: number) => RequestSpec; agent?: http.Agent; timeoutMs?: number }): LoadHandle {
   const stats = newStats(1);
@@ -271,6 +201,59 @@ export function startPeriodic(opts: { everyMs: number; next: (i: number) => Requ
     async stop() {
       clearInterval(timer);
       if (busy) await busy;
+      return finalize(stats, first, last);
+    },
+  };
+}
+
+/**
+ * Open-loop load: one request every 1000 / ratePerSec ms on a fixed schedule, whether or not earlier
+ * ones have answered, so both servers are offered the same request rate (a closed loop offers a
+ * faster server more work). At most `maxInFlight` requests are outstanding; a slot that finds the
+ * cap reached is skipped and counted in `skipped` rather than queued, so an overloaded server cannot
+ * make the harness pile up requests.
+ */
+export function startOpenLoop(opts: { ratePerSec: number; maxInFlight: number; next: (i: number) => RequestSpec; agent?: http.Agent; timeoutMs?: number }): LoadHandle & { skipped(): number } {
+  const stats = newStats(opts.maxInFlight);
+  const agent = opts.agent ?? createAgent({ maxSockets: opts.maxInFlight });
+  const periodMs = 1000 / opts.ratePerSec;
+  const inFlight = new Set<Promise<void>>();
+  let i = 0;
+  let skipped = 0;
+  let first = Infinity;
+  let last = 0;
+  let stopped = false;
+  const t0 = performance.now();
+  let slot = 0;
+  let timer: NodeJS.Timeout | null = null;
+  const tick = () => {
+    timer = null;
+    if (stopped) return;
+    // Every slot that is due fires now (a late timer does not silently lower the offered rate).
+    const due = Math.floor((performance.now() - t0) / periodMs);
+    for (; slot <= due; slot++) {
+      if (inFlight.size >= opts.maxInFlight) {
+        skipped++;
+        continue;
+      }
+      const p: Promise<void> = request({ ...opts.next(i++), agent, timeoutMs: opts.timeoutMs }).then((r) => {
+        first = Math.min(first, r.start);
+        last = Math.max(last, r.end);
+        record(stats, r);
+        inFlight.delete(p);
+      });
+      inFlight.add(p);
+    }
+    timer = setTimeout(tick, Math.max(0, t0 + slot * periodMs - performance.now()));
+  };
+  tick();
+  return {
+    skipped: () => skipped,
+    async stop() {
+      stopped = true;
+      if (timer) clearTimeout(timer);
+      await Promise.all([...inFlight]);
+      if (!opts.agent) agent.destroy();
       return finalize(stats, first, last);
     },
   };

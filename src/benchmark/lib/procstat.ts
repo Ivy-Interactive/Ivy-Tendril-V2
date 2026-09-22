@@ -606,7 +606,7 @@ export class Sampler {
         this.lastIntervalMax.set(p.pid, { role, bytes: p.interval_max_footprint });
       });
       // Drop pids that are gone so the next tick does not keep asking for them.
-      this.members = this.members.filter((m, i) => s.procs[i]?.ok);
+      this.members = this.members.filter((_, i) => s.procs[i]?.ok);
       this.points.push({ sec: (s.t_ns - this.t0Ns) / 1e9, t_ns: s.t_ns, t: s.t, procs });
     } catch (e) {
       this.errors.push((e as Error).message);
@@ -645,6 +645,17 @@ export class Sampler {
         this.schedule();
       });
     }, delay);
+  }
+
+  /**
+   * Starts a new peak window mid-run: resets the interval maximum of every current member and
+   * forgets the peaks recorded so far, so peakFootprint() afterwards covers only what follows.
+   */
+  async resetPeaks(): Promise<void> {
+    if (this.inFlight) await this.inFlight;
+    const r = await this.ps.reset(this.members.map((m) => m.pid));
+    for (const f of r.failed) this.errors.push(`reset ${f.pid}: ${f.err}`);
+    this.lastIntervalMax.clear();
   }
 
   /** Stops polling and takes one last sample so the window ends exactly now. */

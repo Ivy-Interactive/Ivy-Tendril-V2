@@ -21,7 +21,3 @@ export async function createAdapters(ids: readonly AppId[], opts: AdapterOptions
   }
   return out;
 }
-
-export async function createAdapter(id: AppId, opts: AdapterOptions): Promise<AppAdapter> {
-  return FACTORIES[id](opts);
-}

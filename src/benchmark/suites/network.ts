@@ -13,6 +13,9 @@
 //   V1  Chromium -> proxy -> V1 server                     leg "net" (and "ui": the same leg)
 //   V2  Chromium -> proxy -> shim                          leg "ui": IPC + assets, not a socket in the real app
 //       shim     -> proxy -> daemon                        leg "net": the real loopback traffic
+// The like-for-like comparison of the two UIs is the "ui" leg (what the page exchanges with its
+// backend, assets and data counted separately). The "net" leg is architecture-internal: for V1 it is
+// the page itself (so it includes the assets), for V2 only host <-> daemon (no assets, no IPC).
 // For V2 the shim must reach the daemon through the proxy without touching the daemon's own `.master`
 // (the daemon rewrites it from memory on a 30 s heartbeat). The shim therefore runs with a shadow
 // TENDRIL_HOME: a directory of symlinks to the real home's entries plus its own copy of `.master`
@@ -26,8 +29,14 @@
 //   push               REST PUT (harness -> server directly, not counted) toggling a Draft; what the
 //                      UI side then receives until the badge has changed and traffic has settled
 //   session            fresh context: load, visit every view, a few pushes, as one total
-// plus, when the profile asks for it, the external (non-loopback) traffic of the real desktop apps
-// sampled with nettop (a lower bound: nettop only sees sockets that are open when it samples).
+// plus, when the profile asks for it:
+//   desktop-external     the external (non-loopback) traffic of the real desktop apps, sampled with
+//                        nettop started before the app (and V2's daemon) is spawned, filtered to the
+//                        app's process tree afterwards (a lower bound: nettop only sees sockets that
+//                        are open when it samples)
+//   real-host-cold-load  V2 only, a check of the shim: the real Tendril.app runs with a shadow
+//                        TENDRIL_HOME whose .master points at a proxy in front of its daemon, and its
+//                        host <-> daemon traffic after launch is compared with the shim's cold load
 //
 // "Settled" means no byte moved on either leg for QUIET_MS. Background traffic inside a window
 // (V2's 5 s job poll, SignalR keep-alives) is part of the count; the idle scenario measures it.
@@ -46,6 +55,7 @@ import { errorMessage, type Logger } from '../lib/log.ts';
 import { isAlive, registerCleanup, sleep } from '../lib/proc.ts';
 import { newSuiteResult, type AppId, type Metric, type SuiteResult, type Unit } from '../lib/results.ts';
 import { CountingProxy, deltaCounters, topRoutes, type ProxyCounters } from '../lib/tcpproxy.ts';
+import { descendantsFromTable } from '../lib/procstat.ts';
 import type { SuiteContext } from './index.ts';
 
 const SUITE = 'network';
@@ -213,8 +223,8 @@ function recordIdle(r: Recorder, a: Snap, b: Snap, extra: Record<string, unknown
 }
 
 function legName(app: AppId, leg: Leg): string {
-  if (app === 'v1') return 'browser <-> V1 server (loopback HTTP + SignalR WebSocket)';
-  return leg === 'net' ? 'host (IPC shim) <-> daemon (loopback REST + WebSocket + SSE)' : 'browser <-> IPC shim (IPC + assets; in-process in the real app)';
+  if (app === 'v1') return 'browser <-> V1 server (loopback HTTP + SignalR WebSocket; the UI leg and the internal socket are the same)';
+  return leg === 'net' ? 'architecture-internal socket: host (IPC shim) <-> daemon (loopback REST + WebSocket + SSE; no assets, no IPC)' : 'UI to backend: browser <-> IPC shim (IPC + assets; in-process in the real app)';
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -484,11 +494,11 @@ async function session(s: Session, i: number, pushes: number): Promise<void> {
 // V2 wiring: the shim reaches the daemon through the proxy via a shadow home
 
 /**
- * A home for the shim whose `.master` points at `proxyPort` and whose every other entry is a
- * symlink into the daemon's real home. The daemon's own `.master` is never touched.
+ * A home for the V2 host (shim or real app) whose `.master` points at `proxyPort` and whose every
+ * other entry is a symlink into the daemon's real home. The daemon's own `.master` is never touched.
  */
-function shadowHome(realHome: string, runDir: string, ds: DatasetName, proxyPort: number): { home: string; linked: string[]; master: Record<string, unknown> } {
-  const home = path.join(runDir, 'homes', `v2-${ds}-network-shadow`);
+function shadowHome(realHome: string, homesDir: string, ds: DatasetName, proxyPort: number): { home: string; linked: string[]; master: Record<string, unknown> } {
+  const home = path.join(homesDir, `v2-${ds}-network-shadow`);
   fs.rmSync(home, { recursive: true, force: true });
   fs.mkdirSync(home, { recursive: true });
   const linked: string[] = [];
@@ -515,7 +525,7 @@ async function wire(app: AppAdapter, server: ServerHandle, runDir: string, ds: D
   let ui: UiHandle | null = null;
   let uiProxy: CountingProxy | null = null;
   try {
-    const sh = shadowHome(server.home, runDir, ds, net.port);
+    const sh = shadowHome(server.home, path.join(runDir, 'homes'), ds, net.port);
     ui = await app.startUi({ ...server, home: sh.home }, runDir);
     const shimPort = Number(new URL(ui.url).port);
     uiProxy = await CountingProxy.start({ targetHost: '127.0.0.1', targetPort: shimPort, label: 'browser->shim' });
@@ -631,6 +641,7 @@ async function runSession(ctx: SuiteContext, result: SuiteResult, app: AppAdapte
 
 interface ExtConn {
   proc: string;
+  pid: number | null;
   local: string;
   remote: string;
   bytesIn: number;
@@ -647,6 +658,7 @@ function isLoopback(addr: string): boolean {
  */
 function parseNettop(text: string, into: Map<string, ExtConn>): void {
   let proc = '?';
+  let pid: number | null = null;
   for (const raw of text.split('\n')) {
     const line = raw.trim();
     if (!line || line.startsWith(',') || line.startsWith('time,')) continue;
@@ -655,6 +667,8 @@ function parseNettop(text: string, into: Map<string, ExtConn>): void {
     const m = /^tcp[46] (\S+)<->(\S+)$/.exec(name);
     if (!m) {
       proc = name;
+      const pm = /\.(\d+)$/.exec(name);
+      pid = pm ? Number(pm[1]) : null;
       continue;
     }
     const [, local, remote] = m as unknown as [string, string, string];
@@ -663,7 +677,7 @@ function parseNettop(text: string, into: Map<string, ExtConn>): void {
     const bout = Number(cols[2] || 0);
     const key = `${proc}|${local}|${remote}`;
     const cur = into.get(key);
-    if (!cur) into.set(key, { proc, local, remote, bytesIn: bin, bytesOut: bout });
+    if (!cur) into.set(key, { proc, pid, local, remote, bytesIn: bin, bytesOut: bout });
     else {
       cur.bytesIn = Math.max(cur.bytesIn, bin);
       cur.bytesOut = Math.max(cur.bytesOut, bout);
@@ -688,6 +702,47 @@ async function reverse(ip: string): Promise<string | null> {
   }
 }
 
+/** nettop over every process for `samples` one-second samples (it flushes only on a normal exit). */
+function startNettop(samples: number): { done: Promise<Map<string, ExtConn>>; kill(): void } {
+  const conns = new Map<string, ExtConn>();
+  let buf = '';
+  const np = spawn('/usr/bin/nettop', ['-L', String(samples), '-s', '1', '-x', '-n', '-m', 'tcp', '-t', 'external', '-J', 'bytes_in,bytes_out'], { stdio: ['ignore', 'pipe', 'ignore'] });
+  np.stdout!.on('data', (c: Buffer) => {
+    buf += c.toString('utf8');
+    const cut = buf.lastIndexOf('\n');
+    if (cut >= 0) {
+      parseNettop(buf.slice(0, cut), conns);
+      buf = buf.slice(cut + 1);
+    }
+  });
+  const unregister = registerCleanup(() => {
+    if (np.exitCode === null) np.kill('SIGKILL');
+  });
+  const done = new Promise<Map<string, ExtConn>>((resolve, reject) => {
+    const timer = setTimeout(() => {
+      np.kill('SIGKILL');
+      reject(new Error(`nettop did not finish ${samples} samples in time`));
+    }, samples * 1000 + 20_000);
+    np.once('exit', () => {
+      clearTimeout(timer);
+      unregister();
+      parseNettop(buf, conns);
+      resolve(conns);
+    });
+    np.once('error', (e) => {
+      clearTimeout(timer);
+      unregister();
+      reject(e);
+    });
+  });
+  return {
+    done,
+    kill: () => {
+      if (np.exitCode === null) np.kill('SIGKILL');
+    },
+  };
+}
+
 async function desktopExternal(ctx: SuiteContext, result: SuiteResult): Promise<void> {
   const sec = ctx.knobs.network.desktopIdleSec;
   if (sec <= 0) return;
@@ -697,50 +752,42 @@ async function desktopExternal(ctx: SuiteContext, result: SuiteResult): Promise<
     const log = ctx.log.child(`${app.id}/desktop`);
     const scenario = 'desktop-external';
     let handle: Awaited<ReturnType<AppAdapter['launchDesktop']>> | null = null;
-    let nettop: ReturnType<typeof spawn> | null = null;
+    let nettop: ReturnType<typeof startNettop> | null = null;
     try {
       const restored = await restoreHome({ paths: ctx.paths, dataset: ds, app: app.id, runDir: ctx.runDir, homesRoot: desktopHomesRoot(ctx.runDir), suffix: 'network', log });
+      // nettop runs over every process from before the launch (so V2's daemon start and the apps'
+      // first seconds are covered) and is filtered to this launch's processes afterwards.
+      nettop = startNettop(sec);
+      const t0 = performance.now();
       handle = await app.launchDesktop({ home: restored.home, runDir: ctx.runDir });
-      const roots = await handle.roots();
-      // The app, its WebKit networking process and (V2) the daemon are the processes that can open
-      // sockets; WebKit's pids are only known once the app has started them, so re-read after 3 s.
-      await sleep(3000);
-      const pids = [...new Set([...roots, ...(await handle.roots())].map((r) => r.pid))];
-      const conns = new Map<string, ExtConn>();
-      let buf = '';
-      // A fixed sample count, not -L 0 + a signal: nettop block-buffers a pipe and loses the buffer
-      // when it is killed, but flushes on a normal exit.
-      const samples = Math.max(1, Math.round((sec * 1000 - (performance.now() - handle.launchedAt)) / 1000));
-      nettop = spawn('/usr/bin/nettop', ['-L', String(samples), '-s', '1', '-x', '-n', '-m', 'tcp', '-t', 'external', '-J', 'bytes_in,bytes_out', ...pids.flatMap((p) => ['-p', String(p)])], { stdio: ['ignore', 'pipe', 'ignore'] });
-      const np = nettop;
-      np.stdout!.on('data', (c: Buffer) => {
-        buf += c.toString('utf8');
-        const cut = buf.lastIndexOf('\n');
-        if (cut >= 0) {
-          parseNettop(buf.slice(0, cut), conns);
-          buf = buf.slice(cut + 1);
+      const h = handle;
+      const pids = new Set<number>();
+      const roles = new Set<string>();
+      const collect = async () => {
+        const roots = await h.roots();
+        const table = await ctx.procstat.listAll();
+        for (const r of roots) {
+          pids.add(r.pid);
+          roles.add(r.role);
+          for (const d of descendantsFromTable(table, r.pid)) pids.add(d);
         }
-      });
-      const unregister = registerCleanup(() => {
-        if (np.exitCode === null) np.kill('SIGKILL');
-      });
-      const exited = new Promise<boolean>((resolve) => np.once('exit', () => resolve(true)));
-      const ok = np.exitCode !== null || (await Promise.race([exited, sleep(samples * 1000 + 15_000).then(() => false)]));
-      if (!ok) np.kill('SIGKILL');
-      unregister();
-      if (!ok) throw new Error(`nettop did not finish ${samples} samples in time`);
-      parseNettop(buf, conns);
-      const list = [...conns.values()];
+      };
+      while (performance.now() - t0 < sec * 1000) {
+        await collect().catch(() => {});
+        await sleep(2000);
+      }
+      const conns = await nettop.done;
+      const list = [...conns.values()].filter((c) => c.pid !== null && pids.has(c.pid));
       const hosts = new Map<string, string | null>();
       for (const c of list) {
-        const h = remoteHost(c.remote);
-        if (!hosts.has(h)) hosts.set(h, await reverse(h));
+        const host = remoteHost(c.remote);
+        if (!hosts.has(host)) hosts.set(host, await reverse(host));
       }
       const endpoints = list
         .map((c) => ({ process: c.proc, remote: c.remote, name: hosts.get(remoteHost(c.remote)) ?? null, bytesIn: c.bytesIn, bytesOut: c.bytesOut }))
         .sort((a, b) => b.bytesIn + b.bytesOut - (a.bytesIn + a.bytesOut));
       const rec = makeRecorder(result, app, ds);
-      const meta = { durationSec: sec, samples, pids, roles: roots.map((r) => r.role), endpoints, lowerBound: 'nettop only reports sockets still open when it samples (every 1 s)' };
+      const meta = { durationSec: sec, launchLeadMs: Math.round(performance.now() - t0), pids: [...pids].sort((a, b) => a - b), roles: [...roles].sort(), endpoints, lowerBound: 'nettop only reports sockets still open when it samples (every 1 s)' };
       rec.add(scenario, 'ext_bytes_in', 'bytes', list.reduce((s2, c) => s2 + c.bytesIn, 0), meta);
       rec.add(scenario, 'ext_bytes_out', 'bytes', list.reduce((s2, c) => s2 + c.bytesOut, 0));
       rec.add(scenario, 'ext_connections', 'count', list.length);
@@ -749,14 +796,87 @@ async function desktopExternal(ctx: SuiteContext, result: SuiteResult): Promise<
       log.warn(`desktop external traffic failed: ${errorMessage(e)}`);
       result.failures.push({ app: app.id, dataset: ds, scenario, error: errorMessage(e).split('\n')[0]! });
     } finally {
-      if (nettop && nettop.exitCode === null) nettop.kill('SIGKILL');
+      nettop?.kill();
       if (handle) await handle.stop().catch((e) => log.warn(`stopping the desktop app failed: ${errorMessage(e)}`));
     }
   }
   removeDesktopHomes(ctx.runDir);
   result.notes.push(
-    `desktop-external: each real desktop app (${ctx.desktopDatasets[0]} dataset) sampled with \`nettop -s 1 -m tcp -t external\` (one sample a second) until ${sec} s after launch, app + WebKit + (V2) daemon pids; loopback excluded. A lower bound: a socket opened and closed between two 1 s samples is missed.`,
+    `desktop-external: each real desktop app (${ctx.desktopDatasets[0]} dataset) watched with \`nettop -s 1 -m tcp -t external\` over every process, started before the app (and V2's daemon) was spawned and run for ${sec} s, then filtered to the app, its WebKit processes, (V2) the daemon and their descendants; loopback excluded. Both apps run their shipped background fetches (V1's model pricing warmup, V2's model enrichment). A lower bound: a socket opened and closed between two 1 s samples is missed.`,
   );
+}
+
+// ---------------------------------------------------------------------------------------------
+// The real V2 host behind a proxy (checks the shim's host <-> daemon traffic)
+
+async function realHostCheck(ctx: SuiteContext, result: SuiteResult): Promise<void> {
+  const sec = ctx.knobs.network.realHostSec;
+  const v2 = ctx.apps.find((a) => a.id === 'v2');
+  if (sec <= 0 || !v2) return;
+  const ds = ctx.datasets.includes('small') ? 'small' : ctx.datasets[ctx.datasets.length - 1];
+  if (!ds) return;
+  const scenario = 'real-host-cold-load';
+  const log = ctx.log.child('v2/real-host');
+  let proxy: CountingProxy | null = null;
+  let handle: Awaited<ReturnType<AppAdapter['launchDesktop']>> | null = null;
+  const homesDir = desktopHomesRoot(ctx.runDir);
+  try {
+    const restored = await restoreHome({ paths: ctx.paths, dataset: ds, app: 'v2', runDir: ctx.runDir, homesRoot: homesDir, suffix: 'network-real', log });
+    let shadow: ReturnType<typeof shadowHome> | null = null;
+    handle = await v2.launchDesktop({
+      home: restored.home,
+      runDir: ctx.runDir,
+      appHome: async (daemon) => {
+        proxy = await CountingProxy.start({ targetHost: '127.0.0.1', targetPort: daemon.port, label: 'tendril-app->daemon' });
+        shadow = shadowHome(daemon.home, homesDir, ds, proxy.port);
+        return shadow.home;
+      },
+    });
+    const p = proxy as CountingProxy | null;
+    if (!p) throw new Error('the proxy in front of the daemon was not started');
+    const t0 = performance.now();
+    // Cold load: until the host's first burst has settled (as the shim's cold-load window).
+    let first: ProxyCounters | null = null;
+    while (performance.now() - t0 < Math.min(sec * 1000, 60_000)) {
+      if (p.totalBytes() > 0) break;
+      await sleep(SETTLE_POLL_MS);
+    }
+    const taps: Taps = { net: p, ui: p, pageUrl: '' };
+    const st = await settle(taps);
+    first = p.snapshot();
+    const coldMs = Math.round(first.at - t0);
+    await sleep(Math.max(0, sec * 1000 - (performance.now() - t0)));
+    const all = p.snapshot();
+    const adopted = await hasConnectionTo(handle.appPid, p.port);
+    const rec = makeRecorder(result, v2, ds);
+    const shimCold = result.metrics.find((m) => m.app === 'v2' && m.dataset === ds && m.scenario === 'cold-load' && m.metric === 'net_total_bytes');
+    const shimReq = result.metrics.find((m) => m.app === 'v2' && m.dataset === ds && m.scenario === 'cold-load' && m.metric === 'net_requests');
+    const med = (m: Metric | undefined) => (m && m.samples.length ? [...m.samples].sort((a, b) => a - b)[Math.floor(m.samples.length / 2)]! : null);
+    const meta = {
+      validation: true,
+      what: 'the real Tendril.app host <-> daemon traffic, through a proxy via a shadow TENDRIL_HOME, from the launch until the first burst settled (1.5 s quiet); compare with the IPC shim cold-load net leg',
+      windowMs: coldMs,
+      settleCapped: st.capped,
+      wholeWindow: { sec, bytes: all.up + all.down, requests: all.requests, connections: all.connsOpened, routes: topRoutes(all, TOP_ROUTES) },
+      routes: topRoutes(first, TOP_ROUTES),
+      shimColdLoadMedian: { bytes: med(shimCold), requests: med(shimReq) },
+      shadow: (shadow as ReturnType<typeof shadowHome> | null)?.linked ?? null,
+      includesBridgeSetup: 'the host connects its WebSocket and SSE bridges at launch, inside this window; the shim connects them at its own start, outside its cold-load window',
+    };
+    rec.add(scenario, 'net_total_bytes', 'bytes', first.up + first.down, meta);
+    rec.add(scenario, 'net_requests', 'count', first.requests);
+    rec.add(scenario, 'net_connections', 'count', first.connsOpened);
+    log.info(`real tendril-app host <-> daemon cold load: ${first.up + first.down} B in ${first.requests} request(s) over ${coldMs} ms (shim cold-load median ${String(med(shimCold))} B, ${String(med(shimReq))} requests); whole ${sec} s: ${all.up + all.down} B`);
+    if (adopted === false) result.notes.push('real-host-cold-load: tendril-app held no connection to the proxy at the end of the window, so it may not have used the proxied daemon');
+    else if (adopted) result.notes.push(`real-host-cold-load: tendril-app was connected to the daemon through the proxy (shadow home; ${first.requests} request(s) in the cold-load window)`);
+  } catch (e) {
+    log.warn(`real host check failed: ${errorMessage(e)}`);
+    result.failures.push({ app: 'v2', dataset: ds, scenario, error: errorMessage(e).split('\n')[0]! });
+  } finally {
+    if (handle) await handle.stop().catch((e) => log.warn(`stopping the desktop app failed: ${errorMessage(e)}`));
+    await (proxy as CountingProxy | null)?.close();
+    removeDesktopHomes(ctx.runDir);
+  }
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -767,7 +887,7 @@ export async function run(ctx: SuiteContext): Promise<SuiteResult> {
   const k = ctx.knobs.network;
   result.notes.push(
     `Bytes are counted on the wire by a TCP proxy (lib/tcpproxy.ts) that follows HTTP/1.1 and WebSocket framing: application-layer bytes in each direction (HTTP heads and bodies, WebSocket frame headers and payloads, SSE streams), TCP/IP headers excluded. Assets are requests the browser marks Sec-Fetch-Dest document/script/style/font/image (or GET of a static file extension); data is everything else (total minus assets).`,
-    `Leg "net" = loopback socket traffic of the shipped architecture: V1 browser <-> V1 server; V2 host <-> daemon (the host is the IPC shim running the real tendril-app command handlers and bridges, reaching the daemon through a shadow TENDRIL_HOME whose .master points at the proxy). Leg "ui" = what the page exchanges with its backend: for V1 the same leg; for V2 browser <-> shim, which in the real Tauri app is in-process IPC plus assets from the app bundle and never touches a socket.`,
+    `Leg "ui" (the like-for-like comparison) = what the page exchanges with its backend, assets and data counted separately: for V1 browser <-> V1 server; for V2 browser <-> shim, which in the real Tauri app is in-process IPC plus assets from the app bundle and never touches a socket. Leg "net" = architecture-internal loopback sockets: for V1 the same leg as "ui"; for V2 host <-> daemon only (the host is the IPC shim running the real tendril-app command handlers and bridges, reaching the daemon through a shadow TENDRIL_HOME whose .master points at the proxy), so it carries no assets and no IPC.`,
     `Per dataset and app: ${k.coldLoads} cold loads (fresh context) each followed by first visits of ${NAV_ORDER.join(', ')}; ${k.idleWindows} idle window(s) of ${k.idleWindowSec} s on a warm page; ${k.pushSamples} REST pushes (the PUT itself goes straight to the server and is not counted); ${k.sessions} scripted session(s) of load + every view + ${k.sessionPushes} pushes. A window ends when no byte has moved on either leg for ${QUIET_MS} ms (at most ${SETTLE_MAX_MS / 1000} s), so background traffic inside it (V2's 5 s job poll, SignalR keep-alives) is included; the idle scenario measures that background alone. Headless Chromium ${VIEWPORT.width}x${VIEWPORT.height}, as in the ui suite.`,
   );
   for (const [di, ds] of ctx.datasets.entries()) {
@@ -791,6 +911,11 @@ export async function run(ctx: SuiteContext): Promise<SuiteResult> {
     await desktopExternal(ctx, result);
   } catch (e) {
     result.notes.push(`desktop-external did not run: ${errorMessage(e)}`);
+  }
+  try {
+    await realHostCheck(ctx, result);
+  } catch (e) {
+    result.notes.push(`real-host-cold-load did not run: ${errorMessage(e)}`);
   }
   if (ctx.apps.some((a) => a.id === 'v2')) result.notes.push(`V2 "ui" leg: role of the far end is the ${SHIM_LABEL}.`);
   return result;

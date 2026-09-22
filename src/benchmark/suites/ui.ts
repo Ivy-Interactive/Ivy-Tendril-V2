@@ -2,7 +2,8 @@
 // (`Ivy.Tendril --web`); V2's frontend runs through the IPC shim (apps/v2.ts startUi), which serves
 // the built dist and answers the page's Tauri invoke()s with the app's real cmd_* functions.
 //
-// Per dataset x app, one server (and for V2 one shim) and one fresh browser:
+// Per dataset x app, `instances` independent sessions (each a fresh home, server, V2 shim and
+// browser), run in ABBA order; the counts in the profile are per dataset and app, split across them:
 //   about-blank-baseline   memory of the browser with nothing but about:blank open
 //   cold-load              fresh context per iteration: DOMContentLoaded, load, shell, content,
 //                          wire bytes and requests to content, JS heap and DOM nodes after settling
@@ -10,27 +11,35 @@
 //                          fresh context) are nav_first_ms, revisits on the warm page are nav_ms
 //   push-rest / push-fs    a REST PUT, or an atomic rewrite of plan.yaml on disk, to the moment the
 //                          plans nav badge shows the new count
-//   nav-under-load:<view>  the navigate loop while plans.list runs at c=4 plus one plans.update
-//                          every 500 ms
+//   nav-under-load:<view>  the navigate loop while plans.list is offered at a fixed open-loop rate
+//                          (the same for both apps) plus one plans.update every 500 ms
 //   memory-after-flows     page renderer, whole browser tree, server tree (V2: daemon + shim)
 //
 // Every time is taken inside the page (performance.now(), or timeOrigin + now() as epoch ms where
 // it has to meet a harness clock), by a MutationObserver + requestAnimationFrame watcher installed
 // before the app's own scripts. Playwright's locator waits are not used for timing: they poll from
 // the driver with a 20/50/100/500 ms backoff, so a view that took 40 ms could be reported at 540.
+// The watcher checks at most once per frame on mutations (plus one trailing check), so a page that
+// mutates constantly does not pay for a check per mutation; each sample records how many checks ran
+// and how long they took, so the watcher's own cost is visible.
+//
+// A sample that never completes (a wait that timed out, a click the page never accepted, a server
+// that exited) is recorded as censored at its limit: a timeout is a result, and dropping it would
+// keep only the runs that finished.
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { chromium, type Browser, type BrowserContext, type CDPSession, type Page } from 'playwright';
 import type { AppAdapter, NavTarget, ReadyCondition, ServerHandle, UiHandle } from '../apps/types.ts';
-import { TIMEOUTS, type DatasetName } from '../lib/config.ts';
+import { shareOf, TIMEOUTS, type DatasetName } from '../lib/config.ts';
 import { loadManifest, restoreHome, type DatasetManifest } from '../datasets/index.ts';
-import { createAgent, joinUrl, request, startClosedLoop, startPeriodic, type LoadStats } from '../lib/http.ts';
+import { createAgent, joinUrl, request, startOpenLoop, startPeriodic, type LoadStats } from '../lib/http.ts';
 import { errorMessage, type Logger } from '../lib/log.ts';
 import { isAlive, killTree, registerCleanup, sleep } from '../lib/proc.ts';
 import { toMiB, type TreeSample } from '../lib/procstat.ts';
 import { newSuiteResult, type AppId, type Metric, type SuiteResult, type Unit } from '../lib/results.ts';
-import type { SuiteContext } from './index.ts';
+import { abbaSchedule, type SuiteContext } from './index.ts';
 
 const SUITE = 'ui';
 
@@ -60,8 +69,16 @@ const PUSH_TIMEOUT_MS = TIMEOUTS.uiWaitMs;
  * connection an overlay covers the page and a click can never land.
  */
 const CLICK_TIMEOUT_MS = 30_000;
-const LOAD_CONCURRENCY = 4;
+/**
+ * Background plans.list rate during nav-under-load, the same for both apps. An open loop offers both
+ * servers the same work; a closed loop would send a faster server (and its larger responses) more.
+ */
+const LOAD_RATE_PER_SEC = 25;
+/** At most this many background requests outstanding (a slot is skipped, and counted, beyond it). */
+const LOAD_MAX_IN_FLIGHT = 8;
 const LOAD_UPDATE_EVERY_MS = 500;
+/** Checks without a mutation still run this often (a layout-only change, a stylesheet arriving). */
+const IDLE_CHECK_MS = 50;
 const LOAD_WARMUP_MS = 1000;
 /** Before the memory reading at the end, so the last flow's transient allocations are not caught mid-flight. */
 const MEMORY_SETTLE_MS = 2000;
@@ -94,13 +111,16 @@ interface CondSpec {
 }
 
 interface WaitDone {
-  /** performance.now() in the page when the condition first held. */
+  /** performance.now() in the page when the check that saw the condition started. */
   t: number;
   /** performance.timeOrigin + t (epoch ms). */
   epoch: number;
   kind: string;
   selector: string;
   via: string;
+  /** Watcher checks run for this wait, and their total time in the page (ms). */
+  checks: number;
+  checkMs: number;
   error?: string;
 }
 
@@ -153,7 +173,8 @@ function condFor(c: ReadyCondition, want: Want, ipcDone: string | null = null): 
  * Serialised by Playwright (Function.toString), hence self-contained and loosely typed. `auto`
  * arms watchers at document start (shell and landing content for cold loads).
  */
-function pageWatcher(auto: Record<string, CondSpec> | null): void {
+function pageWatcher(arg: { auto: Record<string, CondSpec> | null; idleCheckMs: number }): void {
+  const { auto, idleCheckMs } = arg;
   const w = window as unknown as Record<string, any>;
   if (w.top !== w || w.__TBENCH__) return;
   const waits = new Map<string, any>();
@@ -213,42 +234,57 @@ function pageWatcher(auto: Record<string, CondSpec> | null): void {
   B.arm = (id: string, c: any) => {
     B.cancel(id);
     let first;
+    const a0 = performance.now();
     try {
       first = check(c);
     } catch (e) {
       return { already: false, error: String(e) };
     }
     if (first) return { already: true, selector: first.selector };
-    const rec: any = { done: null, checks: 0 };
+    const rec: any = { done: null, checks: 1, checkMs: performance.now() - a0, dirty: false, checkedThisFrame: false, lastCheck: performance.now() };
     let raf = 0;
     const finish = (d: any) => {
       if (rec.done) return;
-      rec.done = d;
+      rec.done = { ...d, checks: rec.checks, checkMs: Math.round(rec.checkMs * 1000) / 1000 };
       rec.stop();
     };
     const attempt = (via: string) => {
       if (rec.done) return;
+      const a = performance.now();
       rec.checks++;
+      rec.dirty = false;
+      rec.checkedThisFrame = true;
+      let hit;
       try {
-        const hit = check(c);
-        if (hit) {
-          const t = performance.now();
-          finish({ t, epoch: performance.timeOrigin + t, kind: hit.kind, selector: hit.selector, via, checks: rec.checks });
-        }
+        hit = check(c);
       } catch (e) {
-        finish({ t: performance.now(), epoch: 0, kind: 'error', selector: '', via, error: String(e) });
+        rec.checkMs += performance.now() - a;
+        finish({ t: a, epoch: 0, kind: 'error', selector: '', via, error: String(e) });
+        return;
       }
+      rec.lastCheck = performance.now();
+      rec.checkMs += rec.lastCheck - a;
+      // The DOM satisfied the condition when this check began; its own cost is not the app's.
+      if (hit) finish({ t: a, epoch: performance.timeOrigin + a, kind: hit.kind, selector: hit.selector, via });
     };
-    // Mutations catch an insertion before the next paint; frames catch layout-only changes; the
-    // timer covers a page whose rAF is throttled.
-    const mo = new MutationObserver(() => attempt('mutation'));
+    // A mutation is checked at once unless a check already ran in this frame (then the frame's
+    // callback runs one trailing check), so a page mutating constantly costs at most two checks per
+    // frame. Frames without mutations still check every IDLE_CHECK_MS for layout-only changes, and
+    // the timer covers a page whose rAF is throttled.
+    const mo = new MutationObserver(() => {
+      if (rec.checkedThisFrame) rec.dirty = true;
+      else attempt('mutation');
+    });
     mo.observe(document, { subtree: true, childList: true, attributes: true, characterData: true });
     const frame = () => {
-      attempt('frame');
+      if (rec.dirty || performance.now() - rec.lastCheck >= idleCheckMs) attempt('frame');
+      rec.checkedThisFrame = false;
       if (!rec.done) raf = requestAnimationFrame(frame);
     };
     raf = requestAnimationFrame(frame);
-    const iv = setInterval(() => attempt('timer'), 100);
+    const iv = setInterval(() => {
+      if (performance.now() - rec.lastCheck >= 4 * idleCheckMs) attempt('timer');
+    }, 4 * idleCheckMs);
     rec.stop = () => {
       mo.disconnect();
       cancelAnimationFrame(raf);
@@ -280,8 +316,6 @@ async function cancel(page: Page, id: string): Promise<void> {
   await page.evaluate((i) => (window as unknown as WatcherWindow).__TBENCH__?.cancel(i), id).catch(() => {});
 }
 
-/** The server behind a page is gone: nothing the page waits for can arrive any more. */
-class ServerGone extends Error {}
 
 /** Per page, why waiting on it is pointless (the server behind it exited); null while it is fine. */
 const pageBail = new WeakMap<Page, () => string | null>();
@@ -296,7 +330,7 @@ async function waitDone(page: Page, id: string, timeoutMs: number, what: string)
   const gone = new Promise<never>((_, reject) => {
     timer = setInterval(() => {
       const why = bail?.();
-      if (why) reject(new ServerGone(`${what}: ${why}`));
+      if (why) reject(new ServerGone(`${what}: ${why}`, timeoutMs));
     }, 250);
   });
   const wait = page.waitForFunction((i) => (window as unknown as WatcherWindow).__TBENCH__?.result(i) ?? null, id, { polling: 25, timeout: timeoutMs });
@@ -309,7 +343,8 @@ async function waitDone(page: Page, id: string, timeoutMs: number, what: string)
     return v;
   } catch (e) {
     await cancel(page, id);
-    if (!(e instanceof ServerGone) && /Timeout/i.test(errorMessage(e))) throw new Error(`${what}: timed out after ${timeoutMs} ms`);
+    if (e instanceof AppStalled) throw e;
+    if (/Timeout/i.test(errorMessage(e))) throw new AppStalled(`${what}: timed out after ${timeoutMs} ms`, timeoutMs);
     throw e;
   } finally {
     clearInterval(timer);
@@ -390,23 +425,68 @@ class Collector {
   constructor(result: SuiteResult) {
     this.result = result;
   }
-  add(o: { scenario: string; app: AppId; dataset: string | null; metric: string; unit: Unit; value: number; better?: 'lower' | 'higher'; sampleMeta?: Record<string, unknown> }): void {
-    if (!Number.isFinite(o.value)) return;
+  private get(o: { scenario: string; app: AppId; dataset: string | null; metric: string; unit: Unit; better?: 'lower' | 'higher' }): Metric {
     const key = `${o.scenario}\u0000${o.app}\u0000${o.dataset ?? ''}\u0000${o.metric}`;
     let m = this.byKey.get(key);
     if (!m) {
-      m = { suite: SUITE, scenario: o.scenario, app: o.app, dataset: o.dataset, metric: o.metric, unit: o.unit, samples: [], better: o.better ?? 'lower', meta: {} };
+      m = { suite: SUITE, scenario: o.scenario, app: o.app, dataset: o.dataset, metric: o.metric, unit: o.unit, samples: [], instance: [], better: o.better ?? 'lower', meta: {} };
       this.byKey.set(key, m);
       this.result.metrics.push(m);
     }
+    return m;
+  }
+  add(o: { scenario: string; app: AppId; dataset: string | null; metric: string; unit: Unit; value: number; instance: number; better?: 'lower' | 'higher'; sampleMeta?: Record<string, unknown> }): void {
+    if (!Number.isFinite(o.value)) return;
+    const m = this.get(o);
     m.samples.push(o.value);
-    if (o.sampleMeta) ((m.meta!.perSample ??= []) as unknown[]).push(o.sampleMeta);
+    m.instance!.push(o.instance);
+    if (o.sampleMeta) ((m.meta!.perSample ??= []) as unknown[]).push({ instance: o.instance, ...o.sampleMeta });
+  }
+  /** A sample that did not complete within `bound` (ms): kept as a lower bound, with why. */
+  censor(o: { scenario: string; app: AppId; dataset: string | null; metric: string; unit: Unit; bound: number; instance: number; reason: string }): void {
+    const m = this.get(o);
+    (m.censored ??= []).push(o.bound);
+    ((m.meta!.censoredWhy ??= []) as unknown[]).push({ instance: o.instance, boundMs: o.bound, reason: o.reason.slice(0, 200) });
   }
   meta(scenario: string, app: AppId, dataset: string | null, metric: string, meta: Record<string, unknown>): void {
     const m = this.byKey.get(`${scenario}\u0000${app}\u0000${dataset ?? ''}\u0000${metric}`);
     if (m) Object.assign(m.meta!, meta);
   }
+  /** Appends one value per role to meta.byRole (role -> one value per session) and merges `meta`. */
+  appendRoles(scenario: string, app: AppId, dataset: string | null, metric: string, byRole: Record<string, number>, meta: Record<string, unknown>): void {
+    const m = this.byKey.get(`${scenario}\u0000${app}\u0000${dataset ?? ''}\u0000${metric}`);
+    if (!m) return;
+    const roles = (m.meta!.byRole ??= {}) as Record<string, number[]>;
+    for (const [role, v] of Object.entries(byRole)) (roles[role] ??= []).push(v);
+    Object.assign(m.meta!, meta);
+  }
+  /** Facts about one session (instance), appended to meta.sessions of every metric it produced. */
+  sessionMeta(app: AppId, dataset: string, info: Record<string, unknown>): void {
+    for (const m of this.byKey.values()) {
+      if (m.app !== app || m.dataset !== dataset) continue;
+      ((m.meta!.sessions ??= []) as unknown[]).push(info);
+    }
+  }
 }
+
+/**
+ * Failures of the app rather than of the harness: the wait ran out, the page stopped accepting
+ * input, or the server behind it exited. These become censored samples; anything else (a stale
+ * view before a click, a watcher error) only drops the sample.
+ */
+class AppStalled extends Error {
+  readonly bound: number;
+  constructor(message: string, bound: number) {
+    super(message);
+    this.bound = bound;
+  }
+}
+
+/** The server behind a page is gone: nothing the page waits for can arrive any more. */
+class ServerGone extends AppStalled {}
+
+/** A click that could not land: the page no longer takes input, so its later samples are skipped. */
+class ClickBlocked extends AppStalled {}
 
 // ---------------------------------------------------------------------------------------------
 // Session
@@ -414,6 +494,8 @@ class Collector {
 interface Session {
   app: AppAdapter;
   ds: DatasetName;
+  /** Which independent session of this app and dataset (0-based). */
+  instance: number;
   manifest: DatasetManifest;
   home: string;
   server: ServerHandle;
@@ -426,6 +508,11 @@ interface Session {
   col: Collector;
   fail: (scenario: string, e: unknown) => void;
   note: (s: string) => void;
+  /**
+   * Records a failed sample: always in failures, and as a censored value of `metric` when the app
+   * (not the harness) is why it failed (see AppStalled).
+   */
+  lost: (scenario: string, metric: string, e: unknown) => void;
   log: Logger;
   procstat: SuiteContext['procstat'];
   timeoutMs: number;
@@ -439,8 +526,11 @@ interface PageRig {
   cdp: CDPSession;
   net: NetTap;
   pageErrors: string[];
-  /** Set once a click could not land (the page stopped taking input); later samples on it are skipped. */
-  stuck: string | null;
+  /**
+   * Set once a click could not land or the server exited: later samples on the page are skipped and
+   * recorded as censored at `bound`.
+   */
+  stuck: { why: string; bound: number } | null;
 }
 
 function wantFor(m: DatasetManifest): Record<NavTarget, Want> {
@@ -468,7 +558,7 @@ async function newRig(s: Session): Promise<PageRig> {
   try {
     if (s.ui.initScript) await ctx.addInitScript({ content: s.ui.initScript });
     const shell: CondSpec = { anyOf: probeSpecs([{ selector: s.app.ui.shell, state: 'visible', kind: 'shell' }]), allOf: [], noneOf: [], ipcDone: null };
-    await ctx.addInitScript(pageWatcher, { shell, content: landingCond(s) });
+    await ctx.addInitScript(pageWatcher, { auto: { shell, content: landingCond(s) }, idleCheckMs: IDLE_CHECK_MS });
     const page = await ctx.newPage();
     pageBail.set(page, () => (isAlive(s.server.pid) ? null : `${s.app.id} server (pid ${s.server.pid}) exited`));
     const pageErrors: string[] = [];
@@ -549,6 +639,8 @@ interface NavResult {
   ms: number;
   kind: string;
   via: string;
+  checks: number;
+  checkMs: number;
   /** Harness-side time from issuing the click to the page seeing it (Playwright actionability). */
   clickLagMs: number;
 }
@@ -584,22 +676,28 @@ async function navigateTo(s: Session, page: Page, target: NavTarget): Promise<Na
       return performance.now();
     });
     await page.click(s.app.ui.navButton(target), { timeout: CLICK_TIMEOUT_MS }).catch(async (e) => {
-      throw new ClickBlocked(`${target}: the nav click did not land within ${CLICK_TIMEOUT_MS} ms: ${shortError(e)}; ${await diagnose(s, page, `click-${target}`)}`);
+      throw new ClickBlocked(`${target}: the nav click did not land within ${CLICK_TIMEOUT_MS} ms: ${shortError(e)}; ${await diagnose(s, page, `click-${target}`)}`, CLICK_TIMEOUT_MS);
     });
-    const done = await waitDone(page, id, s.timeoutMs, `navigate to ${target}`).catch(async (e) => {
-      throw new Error(`${errorMessage(e)}; ${await diagnose(s, page, `nav-${target}`)}`);
+    const done = await waitDone(page, id, s.timeoutMs, `navigate to ${target}`).catch(async (e: unknown) => {
+      throw withDiagnosis(e, await diagnose(s, page, `nav-${target}`));
     });
     const click = (await page.evaluate(() => (window as unknown as WatcherWindow).__TBENCH__.lastClick)) as number | null;
     if (click === null) throw new Error(`${target}: the click never reached the page`);
     if (done.t < click) throw new Error(`${target}: ready ${Math.round(click - done.t)} ms before the click`);
-    return { ms: done.t - click, kind: done.kind, via: done.via, clickLagMs: click - before };
+    return { ms: done.t - click, kind: done.kind, via: done.via, checks: done.checks, checkMs: done.checkMs, clickLagMs: click - before };
   } finally {
     await cancel(page, id);
   }
 }
 
-/** A click that could not land: the page no longer takes input, so its later samples are skipped. */
-class ClickBlocked extends Error {}
+/** Appends page diagnostics to an error without losing its class (AppStalled decides censoring). */
+function withDiagnosis(e: unknown, diag: string): Error {
+  if (e instanceof Error) {
+    e.message = `${e.message}; ${diag}`;
+    return e;
+  }
+  return new Error(`${errorMessage(e)}; ${diag}`);
+}
 
 /**
  * One pass over NAV_ORDER. A failed view is recorded and the pass goes on; if anything failed,
@@ -611,9 +709,9 @@ async function navPass(s: Session, rig: PageRig, scenarioPrefix: string, metric:
   let failed = false;
   for (const target of NAV_ORDER) {
     const scenario = `${scenarioPrefix}:${target}`;
-    if (!rig.stuck && !isAlive(s.server.pid)) rig.stuck = `${s.app.id} server (pid ${s.server.pid}) exited`;
+    if (!rig.stuck && !isAlive(s.server.pid)) rig.stuck = { why: `${s.app.id} server (pid ${s.server.pid}) exited`, bound: s.timeoutMs };
     if (rig.stuck) {
-      s.fail(scenario, new Error(`skipped: the page stopped taking input earlier (${rig.stuck})`));
+      s.lost(scenario, metric, new AppStalled(`skipped: the page stopped taking input earlier (${rig.stuck.why})`, rig.stuck.bound));
       continue;
     }
     try {
@@ -621,11 +719,11 @@ async function navPass(s: Session, rig: PageRig, scenarioPrefix: string, metric:
       const net0 = rig.net.cut(null);
       const r = await navigateTo(s, rig.page, target);
       const tm = await transportMeta(s, rig, t0, net0);
-      s.col.add({ scenario, app: s.app.id, dataset: s.ds, metric, unit: 'ms', value: r.ms, sampleMeta: { kind: r.kind, via: r.via, clickLagMs: round1(r.clickLagMs), ...tm, ...extraMeta } });
+      s.col.add({ scenario, app: s.app.id, dataset: s.ds, metric, unit: 'ms', value: r.ms, instance: s.instance, sampleMeta: { kind: r.kind, via: r.via, clickLagMs: round1(r.clickLagMs), watcherChecks: r.checks, watcherCheckMs: r.checkMs, ...tm, ...extraMeta } });
     } catch (e) {
       failed = true;
-      if (e instanceof ClickBlocked || e instanceof ServerGone) rig.stuck = `${scenario}: ${e.message.split(';')[0]}`;
-      s.fail(scenario, e);
+      if (e instanceof ClickBlocked || e instanceof ServerGone) rig.stuck = { why: `${scenario}: ${e.message.split(';')[0]}`, bound: e.bound };
+      s.lost(scenario, metric, e);
     }
   }
   if (failed && !rig.stuck) await backToPlans(s, rig);
@@ -657,8 +755,8 @@ async function blankBaseline(s: Session): Promise<void> {
     await sleep(SETTLE_MS);
     const mem = await browserMemory(s, before);
     const meta = { rendererPid: mem.rendererPid, rendererMethod: mem.rendererMethod, byType: mem.byType };
-    s.col.add({ scenario: 'about-blank-baseline', app: s.app.id, dataset: s.ds, metric: 'renderer_footprint_mib', unit: 'MiB', value: mem.rendererMiB, sampleMeta: meta });
-    s.col.add({ scenario: 'about-blank-baseline', app: s.app.id, dataset: s.ds, metric: 'browser_tree_footprint_mib', unit: 'MiB', value: mem.totalMiB, sampleMeta: meta });
+    s.col.add({ scenario: 'about-blank-baseline', app: s.app.id, dataset: s.ds, metric: 'renderer_footprint_mib', unit: 'MiB', value: mem.rendererMiB, instance: s.instance, sampleMeta: meta });
+    s.col.add({ scenario: 'about-blank-baseline', app: s.app.id, dataset: s.ds, metric: 'browser_tree_footprint_mib', unit: 'MiB', value: mem.totalMiB, instance: s.instance, sampleMeta: meta });
   } finally {
     await ctx.close().catch(() => {});
   }
@@ -667,12 +765,16 @@ async function blankBaseline(s: Session): Promise<void> {
 async function coldLoad(s: Session, i: number): Promise<void> {
   const rig = await newRig(s);
   const scenario = 'cold-load';
+  // Which milestones a failure leaves unreached (censored if the app is why).
+  let pending = ['shell_visible_ms', 'content_ready_ms'];
   try {
     await rig.page.goto(s.ui.url, { waitUntil: 'commit', timeout: s.timeoutMs });
     const shell = await waitDone(rig.page, 'shell', s.timeoutMs, 'shell visible');
-    const content = await waitDone(rig.page, 'content', s.timeoutMs, 'content ready').catch(async (e) => {
-      throw new Error(`${errorMessage(e)}; ${await diagnose(s, rig.page, `cold-${i}`)}`);
+    pending = ['content_ready_ms'];
+    const content = await waitDone(rig.page, 'content', s.timeoutMs, 'content ready').catch(async (e: unknown) => {
+      throw withDiagnosis(e, await diagnose(s, rig.page, `cold-${i}`));
     });
+    pending = [];
     await rig.page.waitForLoadState('load', { timeout: s.timeoutMs });
     const nav = await rig.page.evaluate(() => {
       const n = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
@@ -697,6 +799,8 @@ async function coldLoad(s: Session, i: number): Promise<void> {
       bytesAfterSettle: settled.bytes,
       requestsAfterSettle: settled.requests,
       pageErrors: rig.pageErrors.length,
+      watcherChecks: { shell: shell.checks, content: content.checks },
+      watcherCheckMs: { shell: shell.checkMs, content: content.checkMs },
     };
     if (ipc && ipcSettled) {
       Object.assign(sampleMeta, {
@@ -707,7 +811,7 @@ async function coldLoad(s: Session, i: number): Promise<void> {
         ipcByCmd: ipcSettled.byCmd,
       });
     }
-    const add = (metric: string, unit: Unit, value: number) => s.col.add({ scenario, app: s.app.id, dataset: s.ds, metric, unit, value, sampleMeta });
+    const add = (metric: string, unit: Unit, value: number) => s.col.add({ scenario, app: s.app.id, dataset: s.ds, metric, unit, value, instance: s.instance, sampleMeta });
     add('dom_content_loaded_ms', 'ms', nav.dcl);
     add('load_ms', 'ms', nav.load);
     add('shell_visible_ms', 'ms', shell.t);
@@ -717,7 +821,8 @@ async function coldLoad(s: Session, i: number): Promise<void> {
     add('js_heap_used_mib', 'MiB', pm.heapMiB);
     add('dom_nodes', 'count', pm.nodes);
   } catch (e) {
-    s.fail(scenario, e);
+    if (pending.length) for (const metric of pending) s.lost(scenario, metric, e);
+    else s.fail(scenario, e);
     await rig.ctx.close().catch(() => {});
     return;
   }
@@ -805,12 +910,25 @@ async function setState(s: Session, kind: PushKind, id: string, value: string, s
   return { startEpoch, meta: { renameMs: round1(Date.now() - startEpoch) } };
 }
 
+/**
+ * Page clock minus harness clock (epoch ms), from one round trip: push latency compares the
+ * harness's Date.now() at the write with the page's timeOrigin + now() at the badge change, and a page
+ * that has been open for many minutes can drift from the harness clock.
+ */
+async function clockOffset(page: Page): Promise<{ offsetMs: number; rttMs: number }> {
+  const a = Date.now();
+  const pageEpoch = await page.evaluate(() => performance.timeOrigin + performance.now());
+  const b = Date.now();
+  return { offsetMs: pageEpoch - (a + b) / 2, rttMs: b - a };
+}
+
 async function pushScenario(s: Session, rig: PageRig, kind: PushKind, samples: number): Promise<void> {
   const page = rig.page;
   const targets = pushTargets(s.manifest);
   if (samples <= 0) return;
   if (rig.stuck) {
-    s.fail(kind, new Error(`skipped ${samples} sample(s): the page stopped taking input earlier (${rig.stuck})`));
+    const why = `skipped: the page stopped taking input earlier (${rig.stuck.why})`;
+    for (let i = 0; i < samples; i++) s.lost(kind, 'push_latency_ms', new AppStalled(why, rig.stuck.bound));
     return;
   }
   if (!targets.length) {
@@ -821,7 +939,7 @@ async function pushScenario(s: Session, rig: PageRig, kind: PushKind, samples: n
   let pendingRestore: string | null = null;
   for (let i = 0; i < samples; i++) {
     if (!isAlive(s.server.pid)) {
-      s.fail(kind, new Error(`skipped ${samples - i} sample(s): ${s.app.id} server (pid ${s.server.pid}) exited`));
+      for (let k = i; k < samples; k++) s.lost(kind, 'push_latency_ms', new ServerGone(`skipped: ${s.app.id} server (pid ${s.server.pid}) exited`, PUSH_TIMEOUT_MS));
       return;
     }
     const target = targets[Math.floor(i / 2) % targets.length]!;
@@ -833,12 +951,23 @@ async function pushScenario(s: Session, rig: PageRig, kind: PushKind, samples: n
       if (shown !== (i % 2 === 0 ? q : q - 1)) throw new Error(`plans badge shows ${shown} before sample ${i}, expected ${i % 2 === 0 ? q : q - 1}`);
       const armed = await arm(page, id, { badge: s.app.ui.navBadge('plans'), expected });
       if (armed.already) throw new Error(`plans badge already shows ${expected}`);
+      const clock = await clockOffset(page);
       const { startEpoch, meta } = await setState(s, kind, target, value, i);
       pendingRestore = value === 'Icebox' ? target : null;
       const done = await waitDone(page, id, PUSH_TIMEOUT_MS, `${kind} ${value} of ${target}`);
-      s.col.add({ scenario: kind, app: s.app.id, dataset: s.ds, metric: 'push_latency_ms', unit: 'ms', value: done.epoch - startEpoch, sampleMeta: { i, target, value, badge: `${expected + (value === 'Icebox' ? 1 : -1)}->${expected}`, via: done.via, ...meta } });
+      const uncorrected = done.epoch - startEpoch;
+      s.col.add({
+        scenario: kind,
+        app: s.app.id,
+        dataset: s.ds,
+        metric: 'push_latency_ms',
+        unit: 'ms',
+        value: uncorrected - clock.offsetMs,
+        instance: s.instance,
+        sampleMeta: { i, target, value, badge: `${expected + (value === 'Icebox' ? 1 : -1)}->${expected}`, via: done.via, pageClockOffsetMs: round1(clock.offsetMs), offsetRttMs: clock.rttMs, uncorrectedMs: round1(uncorrected), watcherChecks: done.checks, watcherCheckMs: done.checkMs, ...meta },
+      });
     } catch (e) {
-      s.fail(kind, e);
+      s.lost(kind, 'push_latency_ms', e);
       await cancel(page, id);
     }
     await sleep(PUSH_GAP_MS);
@@ -857,11 +986,11 @@ async function pushScenario(s: Session, rig: PageRig, kind: PushKind, samples: n
 
 async function navUnderLoad(s: Session, rig: PageRig, cycles: number): Promise<void> {
   if (cycles <= 0) return;
-  const agent = createAgent({ maxSockets: LOAD_CONCURRENCY + 2 });
+  const agent = createAgent({ maxSockets: LOAD_MAX_IN_FLIGHT + 2 });
   const auth = s.server.authHeaders();
   const list = s.app.api['plans.list']({ planId: '', jobId: '', i: 0 });
   const updateId = s.manifest.ids.updatePlanId;
-  let loop: ReturnType<typeof startClosedLoop> | null = null;
+  let loop: ReturnType<typeof startOpenLoop> | null = null;
   let periodic: ReturnType<typeof startPeriodic> | null = null;
   let listStats: LoadStats | null = null;
   let updateStats: LoadStats | null = null;
@@ -869,7 +998,7 @@ async function navUnderLoad(s: Session, rig: PageRig, cycles: number): Promise<v
   let serverDied = false;
   let stopping: Promise<[LoadStats, LoadStats | null]> | null = null;
   try {
-    loop = startClosedLoop({ concurrency: LOAD_CONCURRENCY, agent, next: () => ({ method: list.method, url: joinUrl(s.server.baseUrl, list.path), headers: auth }) });
+    loop = startOpenLoop({ ratePerSec: LOAD_RATE_PER_SEC, maxInFlight: LOAD_MAX_IN_FLIGHT, agent, next: () => ({ method: list.method, url: joinUrl(s.server.baseUrl, list.path), headers: auth }) });
     if (updateId) {
       periodic = startPeriodic({
         everyMs: LOAD_UPDATE_EVERY_MS,
@@ -882,8 +1011,8 @@ async function navUnderLoad(s: Session, rig: PageRig, cycles: number): Promise<v
     } else {
       s.note(`nav-under-load for ${s.app.id}/${s.ds}: no plan to update, so the background load is plans.list only`);
     }
-    // A closed loop against a dead server spins on ECONNREFUSED as fast as the harness can go,
-    // which would load the machine and bury the stats; stop it as soon as the server is gone.
+    // Against a dead server every request fails at once and only buries the stats; stop the load
+    // as soon as the server is gone.
     const l = loop;
     const pr = periodic;
     watchdog = setInterval(() => {
@@ -908,7 +1037,7 @@ async function navUnderLoad(s: Session, rig: PageRig, cycles: number): Promise<v
   if (!isAlive(s.server.pid)) serverDied = true;
   const loadMeta = {
     backgroundLoad: {
-      plansList: listStats && { concurrency: LOAD_CONCURRENCY, completed: listStats.completed, okRps: round1(listStats.okRps), errors: listStats.errors, statuses: listStats.statuses },
+      plansList: listStats && { offeredRps: LOAD_RATE_PER_SEC, maxInFlight: LOAD_MAX_IN_FLIGHT, skippedAtCap: loop?.skipped() ?? 0, completed: listStats.completed, okRps: round1(listStats.okRps), errors: listStats.errors, statuses: listStats.statuses },
       plansUpdate: updateStats && { everyMs: LOAD_UPDATE_EVERY_MS, planId: updateId, completed: updateStats.completed, errors: updateStats.errors, statuses: updateStats.statuses },
       serverExited: serverDied,
     },
@@ -922,7 +1051,7 @@ async function navUnderLoad(s: Session, rig: PageRig, cycles: number): Promise<v
   if (rig.stuck) {
     // With the load gone the app may reconnect; memory is read either way, but say which state it was in.
     const recovered = await backToPlans(s, rig);
-    s.note(`${s.app.id}/${s.ds}: the page stopped taking input during nav-under-load (${rig.stuck}); ${recovered ? 'it responded again once the load stopped' : 'it was still unresponsive after the load stopped, so memory-after-flows describes that state'}`);
+    s.note(`${s.app.id}/${s.ds}: the page stopped taking input during nav-under-load (${rig.stuck.why}); ${recovered ? 'it responded again once the load stopped' : 'it was still unresponsive after the load stopped, so memory-after-flows describes that state'}`);
     if (recovered) rig.stuck = null;
   }
   // The periodic writes alternate Icebox/Draft, so the plan may be left in Icebox: restore it.
@@ -997,8 +1126,8 @@ async function memoryAfterFlows(s: Session, warm: WarmPage): Promise<void> {
   await sleep(MEMORY_SETTLE_MS);
   const mem = await browserMemory(s, new Map(), warm.rendererPid);
   const meta = { rendererPid: mem.rendererPid, rendererMethod: warm.rendererPid ? warm.rendererMethod : mem.rendererMethod, byType: mem.byType, browserRssMiB: round1(toMiB(mem.sample.total.resident)) };
-  s.col.add({ scenario, app: s.app.id, dataset: s.ds, metric: 'renderer_footprint_mib', unit: 'MiB', value: mem.rendererMiB, sampleMeta: meta });
-  s.col.add({ scenario, app: s.app.id, dataset: s.ds, metric: 'browser_tree_footprint_mib', unit: 'MiB', value: mem.totalMiB, sampleMeta: meta });
+  s.col.add({ scenario, app: s.app.id, dataset: s.ds, metric: 'renderer_footprint_mib', unit: 'MiB', value: mem.rendererMiB, instance: s.instance, sampleMeta: meta });
+  s.col.add({ scenario, app: s.app.id, dataset: s.ds, metric: 'browser_tree_footprint_mib', unit: 'MiB', value: mem.totalMiB, instance: s.instance, sampleMeta: meta });
   const serverRole = s.app.id === 'v1' ? 'server' : 'daemon';
   const roots = [{ role: serverRole, pid: s.server.pid }, ...(await s.ui.extraProcesses())];
   const tree = await s.procstat.sampleTree(roots);
@@ -1016,12 +1145,17 @@ async function memoryAfterFlows(s: Session, warm: WarmPage): Promise<void> {
     metric: 'server_tree_footprint_mib',
     unit: 'MiB',
     value: toMiB(tree.total.footprint),
-    sampleMeta: { rssMiB: round1(toMiB(tree.total.resident)), processes: tree.procs.length, missing: tree.missing },
+    instance: s.instance,
+    sampleMeta: { rssMiB: round1(toMiB(tree.total.resident)), processes: tree.procs.length, missing: tree.missing, byRole },
   });
-  s.col.meta(scenario, s.app.id, s.ds, 'server_tree_footprint_mib', { byRole, roleLabels });
+  // Per role, one value per session, so the report can take the median like any other sample.
+  s.col.appendRoles(scenario, s.app.id, s.ds, 'server_tree_footprint_mib', byRole, {
+    roleLabels,
+    what: s.app.id === 'v1' ? 'V1 server (Ivy.Tendril --web, which also renders the UI on the server)' : `V2 daemon plus the ${V2_SHIM_ROLE_LABEL}`,
+  });
   const pm = await pageMetrics(warm.rig, false);
-  s.col.add({ scenario, app: s.app.id, dataset: s.ds, metric: 'js_heap_used_mib', unit: 'MiB', value: pm.heapMiB, sampleMeta: { gc: false } });
-  s.col.add({ scenario, app: s.app.id, dataset: s.ds, metric: 'dom_nodes', unit: 'count', value: pm.nodes, sampleMeta: { listeners: pm.listeners } });
+  s.col.add({ scenario, app: s.app.id, dataset: s.ds, metric: 'js_heap_used_mib', unit: 'MiB', value: pm.heapMiB, instance: s.instance, sampleMeta: { gc: false } });
+  s.col.add({ scenario, app: s.app.id, dataset: s.ds, metric: 'dom_nodes', unit: 'count', value: pm.nodes, instance: s.instance, sampleMeta: { listeners: pm.listeners } });
 }
 
 // ---------------------------------------------------------------------------------------------
@@ -1041,20 +1175,35 @@ interface SessionDeps {
   result: SuiteResult;
 }
 
-async function runSession(d: SessionDeps, app: AppAdapter, ds: DatasetName, manifest: DatasetManifest): Promise<void> {
+/** This session's share of the per-dataset counts. */
+interface SessionCounts {
+  coldLoads: number;
+  navCycles: number;
+  pushSamples: number;
+  fsPushSamples: number;
+  navUnderLoadCycles: number;
+}
+
+async function runSession(d: SessionDeps, app: AppAdapter, ds: DatasetName, manifest: DatasetManifest, instance: number, k: SessionCounts): Promise<void> {
   const { ctx, result } = d;
-  const log = ctx.log.child(`${app.id}/${ds}`);
-  const k = ctx.knobs.ui;
+  const log = ctx.log.child(`${app.id}/${ds}#${instance + 1}`);
+  const tag = ctx.knobs.ui.instances > 1 ? ` (session ${instance + 1})` : '';
   const fail = (scenario: string, e: unknown) => {
-    const error = shortError(e);
+    const error = `${shortError(e)}${tag}`;
     log.warn(`${scenario}: ${error}`);
     result.failures.push({ app: app.id, dataset: ds, scenario, error });
   };
+  const lost = (scenario: string, metric: string, e: unknown) => {
+    fail(scenario, e);
+    if (e instanceof AppStalled) d.col.censor({ scenario, app: app.id, dataset: ds, metric, unit: 'ms', bound: e.bound, instance, reason: shortError(e) });
+  };
+  const load0 = os.loadavg()[0]!;
+  const t0 = performance.now();
   const note = (s: string) => {
     if (!result.notes.includes(s)) result.notes.push(s);
   };
 
-  const restored = await restoreHome({ paths: ctx.paths, dataset: ds, app: app.id, runDir: ctx.runDir, suffix: 'ui', log });
+  const restored = await restoreHome({ paths: ctx.paths, dataset: ds, app: app.id, runDir: ctx.runDir, suffix: `ui-${instance + 1}`, log });
   const server = await app.startServer({ home: restored.home, runDir: ctx.runDir, mode: 'web' });
   let ui: UiHandle | null = null;
   let browser: Browser | null = null;
@@ -1070,6 +1219,7 @@ async function runSession(d: SessionDeps, app: AppAdapter, ds: DatasetName, mani
     const s: Session = {
       app,
       ds,
+      instance,
       manifest,
       home: restored.home,
       server,
@@ -1081,6 +1231,7 @@ async function runSession(d: SessionDeps, app: AppAdapter, ds: DatasetName, mani
       col: d.col,
       fail,
       note,
+      lost,
       log,
       procstat: ctx.procstat,
       timeoutMs: TIMEOUTS.uiWaitMs,
@@ -1102,7 +1253,14 @@ async function runSession(d: SessionDeps, app: AppAdapter, ds: DatasetName, mani
     }
 
     log.info(`cold-load x${k.coldLoads}`);
-    for (let i = 0; i < k.coldLoads && alive('cold-load'); i++) await coldLoad(s, i);
+    for (let i = 0; i < k.coldLoads; i++) {
+      if (!alive('cold-load')) {
+        // The server died: the remaining loads can never reach content.
+        for (let j = i; j < k.coldLoads; j++) lost('cold-load', 'content_ready_ms', new ServerGone(`skipped: ${app.id} server (pid ${server.pid}) exited`, s.timeoutMs));
+        break;
+      }
+      await coldLoad(s, i);
+    }
 
     if (!alive('navigate')) return;
     let warm: WarmPage;
@@ -1154,6 +1312,7 @@ async function runSession(d: SessionDeps, app: AppAdapter, ds: DatasetName, mani
     if (ui) await ui.stop().catch((e) => log.warn(`stopping the UI host failed: ${errorMessage(e)}`));
     await server.stop().catch((e) => log.warn(`stopping the server failed: ${errorMessage(e)}`));
     fs.rmSync(restored.home, { recursive: true, force: true });
+    d.col.sessionMeta(app.id, ds, { instance, loadavg1Start: round2(load0), loadavg1End: round2(os.loadavg()[0]!), minutes: round2((performance.now() - t0) / 60_000), counts: k });
   }
 }
 
@@ -1161,13 +1320,16 @@ export async function run(ctx: SuiteContext): Promise<SuiteResult> {
   const result = newSuiteResult(SUITE, ctx.runId, ctx.profile);
   const col = new Collector(result);
   const k = ctx.knobs.ui;
+  const orderOf = (di: number) => (di % 2 === 0 ? ctx.apps : [...ctx.apps].reverse());
   result.notes.push(
-    `Chromium headless (Playwright chromium.launch headless:true, ${LAUNCH_ARGS.join(' ')}), viewport ${VIEWPORT.width}x${VIEWPORT.height}, one fresh browser per dataset x app; ${k.coldLoads} cold loads, ${k.navCycles} revisit cycles, ${k.pushSamples} REST pushes, ${k.fsPushSamples} file pushes, ${k.navUnderLoadCycles} cycles under load.`,
-    `Times are measured inside the page: cold-load milestones from navigation start (performance.timeOrigin); navigation from the click event to the view's ready marker (MutationObserver + requestAnimationFrame watcher installed before the app's scripts); push from the harness's Date.now() at the write to the page's timeOrigin + now() when the plans badge shows the new count.`,
-    `View order in navigation loops is ${NAV_ORDER.join(', ')} (V1 uses the same ready marker for plans and review, so they are never visited back to back). nav_first_ms samples are first visits in fresh contexts: one per cold load plus one on the warm page.`,
+    `Chromium headless (Playwright chromium.launch headless:true, ${LAUNCH_ARGS.join(' ')}), viewport ${VIEWPORT.width}x${VIEWPORT.height}. Per dataset and app: ${k.instances} independent session(s) (fresh home, server, V2 shim and browser each), in ABBA order with the starting app alternating per dataset (${ctx.datasets.map((d, i) => `${d}: ${abbaSchedule(k.instances, orderOf(i)).map((x) => `${x.app.id}#${x.i + 1}`).join(' ')}`).join('; ')}); in total ${k.coldLoads} cold loads, ${k.navCycles} revisit cycles, ${k.pushSamples} REST pushes, ${k.fsPushSamples} file pushes and ${k.navUnderLoadCycles} cycles under load, split across the sessions. Each session's load average and duration are in meta.sessions.`,
+    `Times are measured inside the page: cold-load milestones from navigation start (performance.timeOrigin); navigation from the click event to the view's ready marker (MutationObserver + requestAnimationFrame watcher installed before the app's scripts, at most one check per frame on mutations plus a trailing one, and one every ${IDLE_CHECK_MS} ms otherwise; meta.perSample[].watcherChecks/watcherCheckMs record its cost); push from the harness's Date.now() at the write to the page's timeOrigin + now() when the plans badge shows the new count, corrected by the page-to-harness clock offset measured just before each write (meta.perSample[].pageClockOffsetMs).`,
+    `View order in navigation loops is ${NAV_ORDER.join(', ')} (V1 uses the same ready marker for plans and review, so they are never visited back to back). nav_first_ms samples are first visits in fresh contexts: one per cold load plus one on each session's warm page.`,
     `transfer_bytes / request_count cover HTTP responses finished by content ready (CDP encodedDataLength, headers included); WebSocket traffic is in meta (V1's SignalR, V2's shim IPC socket).`,
     `V2 runs through the IPC shim; its memory is reported under role v2-shim: ${V2_SHIM_ROLE_LABEL}. The real tendril-app is measured in the desktop suite.`,
     `push-fs rewrites plan.yaml's state line via a temp file outside Plans/ and a rename; it includes each app's file-watcher debounce.`,
+    `nav-under-load offers plans.list at ${LOAD_RATE_PER_SEC} requests per second to both apps (open loop, at most ${LOAD_MAX_IN_FLIGHT} in flight) plus one plans.update every ${LOAD_UPDATE_EVERY_MS} ms.`,
+    'A sample that could not complete because of the app (a wait that timed out, a page that stopped taking clicks, a server that exited) is kept as a censored value at its limit (Metric.censored, reasons in meta.censoredWhy) as well as listed in failures.',
   );
   if (ctx.apps.some((a) => a.id === 'v2')) {
     result.notes.push(
@@ -1176,26 +1338,27 @@ export async function run(ctx: SuiteContext): Promise<SuiteResult> {
   }
   for (const [di, ds] of ctx.datasets.entries()) {
     const manifest = loadManifest(ctx.paths, ds);
-    const order = di % 2 === 0 ? ctx.apps : [...ctx.apps].reverse();
-    for (const app of order) {
+    for (const { app, i } of abbaSchedule(k.instances, orderOf(di))) {
       if (!manifest) {
-        result.failures.push({ app: app.id, dataset: ds, scenario: '(session)', error: `dataset ${ds} is not built; run \`datasets\`` });
+        if (i === 0) result.failures.push({ app: app.id, dataset: ds, scenario: '(session)', error: `dataset ${ds} is not built; run \`datasets\`` });
         continue;
       }
-      ctx.log.info(`ui: ${app.id} on ${ds}`);
+      const counts: SessionCounts = {
+        coldLoads: shareOf(k.coldLoads, k.instances, i),
+        navCycles: shareOf(k.navCycles, k.instances, i),
+        pushSamples: shareOf(k.pushSamples, k.instances, i),
+        fsPushSamples: shareOf(k.fsPushSamples, k.instances, i),
+        navUnderLoadCycles: shareOf(k.navUnderLoadCycles, k.instances, i),
+      };
+      ctx.log.info(`ui: ${app.id} on ${ds}, session ${i + 1}/${k.instances}`);
       try {
-        await runSession({ ctx, col, result }, app, ds, manifest);
+        await runSession({ ctx, col, result }, app, ds, manifest, i, counts);
       } catch (e) {
-        ctx.log.warn(`ui ${app.id}/${ds} session failed: ${errorMessage(e)}`);
-        result.failures.push({ app: app.id, dataset: ds, scenario: '(session)', error: errorMessage(e) });
+        ctx.log.warn(`ui ${app.id}/${ds} session ${i + 1} failed: ${errorMessage(e)}`);
+        result.failures.push({ app: app.id, dataset: ds, scenario: '(session)', error: `session ${i + 1}: ${errorMessage(e)}` });
       }
     }
   }
-  // The baseline shares metric names with memory-after-flows (the report labels it by scenario), and
-  // the report's headline takes the first metric of a name it finds, so baselines go last.
-  const isBaseline = (m: Metric) => m.scenario === 'about-blank-baseline';
-  result.metrics.sort((a, b) => Number(isBaseline(a)) - Number(isBaseline(b)));
-  if (ctx.datasets.length > 1) result.notes.push(`App order alternates per dataset (ABBA over datasets: ${ctx.datasets.map((d, i) => `${d} ${(i % 2 === 0 ? ctx.apps : [...ctx.apps].reverse()).map((a) => a.id).join(',')}`).join('; ')}); within a dataset each app's samples are taken back to back on its own server.`);
   return result;
 }
 

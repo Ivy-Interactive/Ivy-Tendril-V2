@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { errorMessage } from '../lib/log.ts';
+import { TimeoutError } from '../lib/proc.ts';
 import { toMiB } from '../lib/procstat.ts';
 import type { AppId, Metric, SuiteResult, Unit } from '../lib/results.ts';
 
@@ -51,10 +52,10 @@ export class Recorder {
     this.r = r;
   }
 
-  metric(o: { scenario: string; app: AppId; dataset: string | null; metric: string; unit: Unit; samples: number[]; better?: 'lower' | 'higher'; meta?: Record<string, unknown> }): void {
-    // A metric with no samples says nothing and trips validation; the failure explaining why is
-    // recorded separately.
-    if (!o.samples.length) return;
+  metric(o: { scenario: string; app: AppId; dataset: string | null; metric: string; unit: Unit; samples: number[]; censored?: number[]; better?: 'lower' | 'higher'; meta?: Record<string, unknown> }): void {
+    // A metric with no samples (and no timed-out ones) says nothing and trips validation; the
+    // failure explaining why is recorded separately.
+    if (!o.samples.length && !o.censored?.length) return;
     const m: Metric = {
       suite: this.r.suite,
       scenario: o.scenario,
@@ -65,6 +66,7 @@ export class Recorder {
       samples: o.samples,
       better: o.better ?? 'lower',
     };
+    if (o.censored?.length) m.censored = o.censored;
     if (o.meta && Object.keys(o.meta).length) m.meta = o.meta;
     this.r.metrics.push(m);
   }
@@ -85,4 +87,12 @@ export function medianOf(xs: number[]): number | null {
   const s = [...xs].sort((a, b) => a - b);
   const mid = s.length >> 1;
   return s.length % 2 ? s[mid]! : (s[mid - 1]! + s[mid]!) / 2;
+}
+
+/**
+ * Whether a failed sample ran out of time (a result: "not within the limit") rather than failing
+ * for another reason. Timed-out samples are recorded as censored values at the limit.
+ */
+export function isTimeout(e: unknown): boolean {
+  return e instanceof TimeoutError || (e instanceof Error && (e.name === 'TimeoutError' || /timed out|no exit within|within \d+ ms/i.test(e.message)));
 }

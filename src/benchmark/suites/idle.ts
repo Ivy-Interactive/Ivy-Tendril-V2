@@ -1,11 +1,17 @@
 // Suite 4, idle: the server alone with no clients. Start on a freshly restored home, wait until
-// ready, then sample the server tree (the server plus any descendants) every second for the
-// profile's duration. Footprint is read at +10 s and at the end; means, CPU and wakeups cover the
-// window from +10 s to the end, so the tail of startup work is left out. Runs are interleaved ABBA.
+// ready, then sample the server tree (the server plus any descendants) every second. The first
+// `settleSec` seconds after ready are the settling phase: both apps run one-off work after a start
+// (V1: model pricing fetch at +15 s, cost backfill at +60 s; V2: PR sync at +30 s and its model
+// enrichment fetch), and V1's footprint is still climbing then. The measured idle window is the
+// `durationSec` seconds after it; the settling phase is reported separately (settling_cpu_s) so its
+// cost is visible rather than mixed into "idle". Runs are interleaved ABBA.
 //
-// What falls inside the window (both apps' own timers, left at their defaults): both rescan plans
-// every 30 s; V1 also fetches model pricing at +15 s after start and backfills costs at +60 s; V2
-// runs job maintenance every 60 s and its PR sync at +30 s. They are part of each app's idle cost.
+// What falls inside the window (both apps' own timers, left at their shipped defaults): both rescan
+// plans every 30 s; V2 runs job maintenance every 60 s. They are part of each app's idle cost.
+//
+// The process set is the headless backend only: V1's `--web` server (which also renders its UI on the
+// server) against V2's daemon alone. V2's UI host (tendril-app) is not running here; the desktop
+// suite measures both apps' whole process trees.
 
 import fs from 'node:fs';
 import { type DatasetName } from '../lib/config.ts';
@@ -18,15 +24,15 @@ import type { SuiteContext } from './index.ts';
 import { checkCliLinks, cliLinkState, Recorder, round, toMiB } from './csi-shared.ts';
 
 const SAMPLE_MS = 1000;
-/** Start of the averaging window, seconds after ready. */
-const WINDOW_FROM_SEC = 10;
 
 interface IdleRun {
-  footprint10: number;
+  footprintStart: number;
   footprintEnd: number;
   footprintMean: number;
   rssMean: number;
   peak: number;
+  settlingCpuS: number;
+  settlingPeak: number;
   cpuPercent: number;
   wakeupsPerSec: number;
   windowSec: number;
@@ -45,10 +51,13 @@ export async function run(ctx: SuiteContext): Promise<SuiteResult> {
   const rec = new Recorder(r);
   const log = ctx.log;
   const links = cliLinkState();
-  const { runs, durationSec } = ctx.knobs.idle;
-  // A window too short for the +10 s start still yields numbers, over the whole run.
-  const from = durationSec > WINDOW_FROM_SEC + 2 ? WINDOW_FROM_SEC : 0;
-  r.notes.push(`${runs} run(s) x ${durationSec} s per dataset and app, sampled every ${SAMPLE_MS} ms; window for means, CPU and wakeups: +${from} s to the end`);
+  const { runs, settleSec, durationSec } = ctx.knobs.idle;
+  const from = settleSec;
+  const total = settleSec + durationSec;
+  r.notes.push(
+    `${runs} run(s) per dataset and app, sampled every ${SAMPLE_MS} ms from ready: a settling phase of ${settleSec} s (reported as settling_cpu_s and settling_peak_footprint_mib), then the measured idle window of ${durationSec} s (+${from} s to +${total} s after ready) for means, CPU and wakeups`,
+    'process set: the headless backend only (V1 Ivy.Tendril --web, which includes its server-side UI; V2 tendril serve without the tendril-app host); whole desktop process trees are in the desktop suite',
+  );
 
   for (const dataset of ctx.datasets as DatasetName[]) {
     const got = new Map<AppId, IdleRun[]>(ctx.apps.map((a) => [a.id, []]));
@@ -58,7 +67,12 @@ export async function run(ctx: SuiteContext): Promise<SuiteResult> {
       try {
         const sampler = new Sampler(ctx.procstat, () => [{ role: 'server', pid: server.pid }], { intervalMs: SAMPLE_MS, resetAtStart: true, log });
         await sampler.start();
+        let settlingPeak = NaN;
         try {
+          await sleep(settleSec * 1000);
+          // Peak of the settling phase, then a fresh interval so the window's own peak is separate.
+          settlingPeak = sampler.peakFootprint();
+          await sampler.resetPeaks();
           await sleep(durationSec * 1000);
         } finally {
           await sampler.stop();
@@ -78,12 +92,15 @@ export async function run(ctx: SuiteContext): Promise<SuiteResult> {
           const c = sampler.cpuPercent(pts[k - 1]!.sec, pts[k]!.sec);
           if (c !== null) cpuSeries.push([round(pts[k]!.sec, 3), round(c, 3)]);
         }
+        if (end < from + durationSec / 2) throw new Error(`the window ended ${end.toFixed(1)} s after ready, before +${from + durationSec / 2} s (${sampler.errors.slice(0, 3).join('; ') || 'no sampler errors'})`);
         const run: IdleRun = {
-          footprint10: sampler.valueAt(from) ?? NaN,
+          footprintStart: sampler.valueAt(from) ?? NaN,
           footprintEnd: sampler.valueAt(end) ?? NaN,
           footprintMean: sampler.mean('footprint', from, end) ?? NaN,
           rssMean: sampler.mean('resident', from, end) ?? NaN,
           peak: sampler.peakFootprint(),
+          settlingCpuS: sampler.delta('cpu_ns', 0, from) / 1e9,
+          settlingPeak,
           cpuPercent: sampler.cpuPercent(from, end) ?? NaN,
           wakeupsPerSec: sampler.wakeupsPerSec(from, end) ?? NaN,
           windowSec: end - from,
@@ -108,7 +125,7 @@ export async function run(ctx: SuiteContext): Promise<SuiteResult> {
       const rs = got.get(app.id)!;
       if (!rs.length) continue;
       const col = (f: (x: IdleRun) => number, digits = 3) => rs.map((x) => round(f(x), digits));
-      const window = { fromSec: from, windowSec: rs.map((x) => round(x.windowSec, 2)), samplePeriodMs: SAMPLE_MS, tree: 'server process plus descendants' };
+      const window = { fromSec: from, windowSec: rs.map((x) => round(x.windowSec, 2)), samplePeriodMs: SAMPLE_MS, tree: app.id === 'v1' ? 'Ivy.Tendril --web (server incl. server-side UI) plus descendants' : 'tendril serve (daemon only; the tendril-app host is not running) plus descendants' };
       rec.metric({
         scenario: 'idle',
         app: app.id,
@@ -118,9 +135,11 @@ export async function run(ctx: SuiteContext): Promise<SuiteResult> {
         samples: col((x) => toMiB(x.footprintMean)),
         meta: { ...window, runs: rs.map((x) => ({ points: x.points, maxProcesses: x.maxProcesses, processNames: x.processNames, readyMs: round(x.readyMs, 1), samplerErrors: x.samplerErrors.length ? x.samplerErrors : undefined })) },
       });
-      rec.metric({ scenario: 'idle', app: app.id, dataset, metric: 'footprint_10s_mib', unit: 'MiB', samples: col((x) => toMiB(x.footprint10)), meta: { atSec: from } });
+      rec.metric({ scenario: 'idle', app: app.id, dataset, metric: 'footprint_window_start_mib', unit: 'MiB', samples: col((x) => toMiB(x.footprintStart)), meta: { atSec: from } });
       rec.metric({ scenario: 'idle', app: app.id, dataset, metric: 'footprint_end_mib', unit: 'MiB', samples: col((x) => toMiB(x.footprintEnd)) });
-      rec.metric({ scenario: 'idle', app: app.id, dataset, metric: 'peak_footprint_mib', unit: 'MiB', samples: col((x) => toMiB(x.peak)), meta: { definition: 'sum of per-process interval max phys_footprint over the whole idle run (reset at its start)' } });
+      rec.metric({ scenario: 'idle', app: app.id, dataset, metric: 'peak_footprint_mib', unit: 'MiB', samples: col((x) => toMiB(x.peak)), meta: { definition: 'sum of per-process interval max phys_footprint over the idle window (reset when it opens)' } });
+      rec.metric({ scenario: 'settling', app: app.id, dataset, metric: 'settling_cpu_s', unit: 'cpu_s', samples: col((x) => x.settlingCpuS, 4), meta: { fromSec: 0, toSec: from, definition: 'CPU seconds of the server tree from ready until the idle window opens (one-off post-start work)' } });
+      rec.metric({ scenario: 'settling', app: app.id, dataset, metric: 'settling_peak_footprint_mib', unit: 'MiB', samples: col((x) => toMiB(x.settlingPeak)), meta: { fromSec: 0, toSec: from, definition: 'sum of per-process interval max phys_footprint from ready until the idle window opens' } });
       rec.metric({ scenario: 'idle', app: app.id, dataset, metric: 'cpu_percent_mean', unit: 'percent', samples: col((x) => x.cpuPercent, 4), meta: { ...window, definition: 'CPU time over the window / window length, percent of one core' } });
       rec.metric({ scenario: 'idle', app: app.id, dataset, metric: 'idle_wakeups_per_s', unit: 'count', samples: col((x) => x.wakeupsPerSec, 3), meta: { ...window, definition: 'pkg_idle_wkups + interrupt_wkups per second' } });
       rec.metric({ scenario: 'idle', app: app.id, dataset, metric: 'rss_mib', unit: 'MiB', samples: col((x) => toMiB(x.rssMean)), meta: { ...window, definition: 'mean resident size over the window (context only: counts shared pages)' } });

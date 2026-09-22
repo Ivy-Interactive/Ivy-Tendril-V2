@@ -28,6 +28,19 @@ export interface Metric {
   unit: Unit;
   /** Raw samples (one element for deterministic metrics like a file size). */
   samples: number[];
+  /**
+   * Samples that never completed (a timeout, or the app failing so the event could not happen), as
+   * lower bounds in the metric's unit: the true value is at least this. A timeout is a result, so the
+   * report ranks these with the samples (as values at their bound) instead of dropping them, which
+   * would keep only an app's faster runs. Only meaningful where lower is better.
+   */
+  censored?: number[];
+  /**
+   * The independent instance (server process, browser session, launch) each sample came from,
+   * parallel to `samples`. Samples of one instance are not independent of each other, so the report
+   * resamples instances before samples when it builds an interval (hierarchical bootstrap).
+   */
+  instance?: number[];
   better: 'lower' | 'higher';
   /** Response bytes, errors, notes, per-role breakdown, ... */
   meta?: Record<string, unknown>;
@@ -198,10 +211,20 @@ export function validateSuiteResult(r: SuiteResult): string[] {
     }
     const bad = m.samples.filter((x) => typeof x !== 'number' || !Number.isFinite(x)).length;
     if (bad) {
-      m.samples = m.samples.filter((x) => typeof x === 'number' && Number.isFinite(x));
+      const keep = m.samples.map((x) => typeof x === 'number' && Number.isFinite(x));
+      if (Array.isArray(m.instance) && m.instance.length === m.samples.length) m.instance = m.instance.filter((_, k) => keep[k]);
+      m.samples = m.samples.filter((_, k) => keep[k]);
       problems.push(`metric ${id}: removed ${bad} non-finite sample(s)`);
     }
-    if (m.samples.length === 0) problems.push(`metric ${id}: no samples`);
+    if (m.censored !== undefined && (!Array.isArray(m.censored) || m.censored.some((x) => typeof x !== 'number' || !Number.isFinite(x)))) {
+      problems.push(`metric ${id}: censored is not an array of finite numbers; dropped`);
+      delete m.censored;
+    }
+    if (m.instance !== undefined && (!Array.isArray(m.instance) || m.instance.length !== m.samples.length)) {
+      problems.push(`metric ${id}: instance does not match samples (${Array.isArray(m.instance) ? m.instance.length : 'not an array'} vs ${m.samples.length}); dropped`);
+      delete m.instance;
+    }
+    if (m.samples.length === 0 && !m.censored?.length) problems.push(`metric ${id}: no samples`);
     if (m.suite !== r.suite) problems.push(`metric ${id}: suite is "${m.suite}", expected "${r.suite}"`);
   }
   const seen = new Map<string, number>();
@@ -252,10 +275,6 @@ export function writeSuiteResult(runDir: string, result: SuiteResult): string {
   }
   writeJsonAtomic(file, out);
   return file;
-}
-
-export function readSuiteResult(runDir: string, suite: string): SuiteResult | null {
-  return readJson<SuiteResult>(path.join(runDirs(runDir).results, `${suite}.json`));
 }
 
 /** Every suite result of a run, ordered by suite name. */

@@ -370,6 +370,7 @@ export async function createV1Adapter(opts: AdapterOptions): Promise<AppAdapter>
     return {
       appPid,
       launchedAt: launch.launchedAt,
+      backendSpawnedAt: launch.launchedAt,
       roots: async () => {
         const wk = await webkitProcesses(procstat, appPid);
         return [{ role: 'app', pid: appPid }, ...wk.map((w) => ({ role: w.role, pid: w.pid }))];
