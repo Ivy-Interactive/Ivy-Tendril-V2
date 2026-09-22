@@ -1,4 +1,4 @@
-import { inputVariant } from "@ivy-interactive/components/ui";
+import { inputVariant } from "../ui/input/variant";
 
 /**
  * The styling for the lifecycle dialogs' two native `<select>`s: Create Issue's Repository and

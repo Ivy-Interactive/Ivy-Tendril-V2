@@ -55,3 +55,27 @@ export {
   type ShareTunnelStatus,
   type ShareTunnelApi,
 } from "./ShareTunnelDialog";
+export {
+  AutoAcceptSettingsDialog,
+  type AutoAcceptSettingsDialogProps,
+} from "./AutoAcceptSettingsDialog";
+export {
+  CreateIssueDialog,
+  type CreateIssueDialogProps,
+  type CreateIssueSubject,
+  type CreateIssueSubmit,
+} from "./CreateIssueDialog";
+export {
+  CreatePrDialog,
+  type CreatePrDialogProps,
+  type CreatePrOptions,
+} from "./CreatePrDialog";
+export {
+  SuggestChangesDialog,
+  type SuggestChangesDialogProps,
+} from "./SuggestChangesDialog";
+export {
+  formatChangeRequest,
+  readSource,
+  type AppComment,
+} from "./appComments";
