@@ -14,8 +14,8 @@ import { DATA_TABLE_ROW_HEIGHT_ESTIMATES } from "./use-data-table-virtualization
  *
  * The framework's canvas grid has the same pair of numbers as one number, because it draws rows itself:
  * `DENSITY_CONFIG.rowHeight` of 30 / 38 / 48 at `cellVerticalPadding` of 4 / 8 / 12
- * (`widgets/dataTables/dataTableEditor/constants.ts`). V2 sits under that at every density — 29 / 37 /
- * 41 — which the second test below pins. That relationship is recorded at the variant, and this test
+ * (`widgets/dataTables/dataTableEditor/constants.ts`). V2 sits under that at every density — 25 / 29 /
+ * 37 — which the second test below pins. That relationship is recorded at the variant, and this test
  * enforces the thing that matters: whatever the padding is, the estimate matches it.
  */
 

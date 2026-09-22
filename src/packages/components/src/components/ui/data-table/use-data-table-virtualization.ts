@@ -42,9 +42,9 @@ export const DATA_TABLE_OVERSCAN = 8;
  * an estimate that silently stops matching what renders is exactly the kind of thing that rots.
  */
 export const DATA_TABLE_ROW_HEIGHT_ESTIMATES: Record<Densities, number> = {
-  [Densities.Small]: 29,
-  [Densities.Medium]: 37,
-  [Densities.Large]: 41,
+  [Densities.Small]: 25,
+  [Densities.Medium]: 29,
+  [Densities.Large]: 37,
 };
 
 export interface UseDataTableVirtualizationOptions {
