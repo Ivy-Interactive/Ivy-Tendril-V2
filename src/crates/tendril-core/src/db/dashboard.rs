@@ -8,11 +8,14 @@
 //! [`crate::db::open_database`], which sets WAL and `busy_timeout = 5000`, so SQLite does the
 //! locking.
 
+use crate::chat::models::ChatMessage;
+use crate::chat::storage::load_all_sessions;
 use crate::error::Result;
 use chrono::{Datelike, Months, NaiveDate, Utc};
 use rusqlite::{params, Connection};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
+use std::path::Path;
 
 /// How far back the daily series go: 365 days the trend chart plots, six leading days so its
 /// first plotted point has a full 7 day rolling window, and 365 more for the prior-year
@@ -469,3 +472,367 @@ pub fn get_agent_cost_breakdown(conn: &Connection, days: i64) -> Result<Vec<Agen
     }
     Ok(results)
 }
+
+#[derive(Debug, Default, Clone, Copy, PartialEq)]
+pub struct ChatTurnUsage {
+    pub cost: f64,
+    pub tokens: i64,
+    pub api_cost: f64,
+    pub api_tokens: i64,
+    pub subsidized_cost: f64,
+    pub subsidized_tokens: i64,
+}
+
+fn get_usage_i64(obj: &serde_json::Map<String, serde_json::Value>, keys: &[&str]) -> i64 {
+    for k in keys {
+        if let Some(v) = obj.get(*k).and_then(|v| v.as_i64()) {
+            return v;
+        }
+    }
+    0
+}
+
+fn get_usage_f64(obj: &serde_json::Map<String, serde_json::Value>, keys: &[&str]) -> Option<f64> {
+    for k in keys {
+        if let Some(v) = obj.get(*k).and_then(|v| v.as_f64()) {
+            return Some(v);
+        }
+    }
+    None
+}
+
+fn price_tokens(model: &str, inp: i64, out: i64, cache_read: i64, cache_write: i64) -> f64 {
+    if model == "apple/system" {
+        return 0.0;
+    }
+    if let Some(spec) = crate::agents::model_specs::find(model) {
+        if crate::agents::model_specs::is_priced(&spec) {
+            return spec.calculate_cost(inp, out, cache_read, cache_write);
+        } else {
+            return 0.0;
+        }
+    }
+    crate::agents::pricing::calculate_cost(model, inp, out, cache_read, cache_write)
+}
+
+/// Extracts usage and cost from an assistant message.
+///
+/// Looks first for a terminal eventwire `result` line in `raw_stream`. If none is found or
+/// `raw_stream` is absent, falls back to estimating token counts from the message content length
+/// and pricing with the session/turn model.
+pub fn extract_message_usage(msg: &ChatMessage, session_model: &str) -> ChatTurnUsage {
+    if msg.role != "assistant" {
+        return ChatTurnUsage::default();
+    }
+
+    let model = msg
+        .model_id
+        .as_deref()
+        .filter(|m| !m.trim().is_empty())
+        .unwrap_or(session_model);
+
+    // 1. Try reading the eventwire result line from raw_stream
+    if let Some(ref stream) = msg.raw_stream {
+        let mut last_usage: Option<ChatTurnUsage> = None;
+        for line in stream.lines() {
+            let trimmed = line.trim();
+            if trimmed.is_empty() {
+                continue;
+            }
+            if let Ok(val) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                if val.get("kind").and_then(|k| k.as_str()) == Some("result") {
+                    if let Some(usage_obj) = val.get("usage").and_then(|u| u.as_object()) {
+                        let inp = get_usage_i64(
+                            usage_obj,
+                            &["input_tokens", "inputTokens", "prompt_tokens", "promptTokens"],
+                        );
+                        let out = get_usage_i64(
+                            usage_obj,
+                            &[
+                                "output_tokens",
+                                "outputTokens",
+                                "completion_tokens",
+                                "completionTokens",
+                            ],
+                        );
+                        let cache_read = get_usage_i64(
+                            usage_obj,
+                            &[
+                                "cache_read_tokens",
+                                "cacheReadTokens",
+                                "cached_input_tokens",
+                                "cache_read_input_tokens",
+                            ],
+                        );
+                        let cache_write = get_usage_i64(
+                            usage_obj,
+                            &[
+                                "cache_write_tokens",
+                                "cacheWriteTokens",
+                                "cache_creation_input_tokens",
+                                "cache_write_input_tokens",
+                            ],
+                        );
+                        let total_tokens = inp + out;
+
+                        let cost_usd = get_usage_f64(
+                            usage_obj,
+                            &["cost_usd", "costUSD", "total_cost_usd", "cost", "total_cost"],
+                        );
+                        let cost_source = usage_obj
+                            .get("cost_source")
+                            .or_else(|| usage_obj.get("costSource"))
+                            .and_then(|s| s.as_str());
+
+                        let (final_cost, final_source) = match (cost_usd, cost_source) {
+                            (Some(c), Some(s)) => (c, s),
+                            (Some(c), None) => {
+                                if c > 0.0 || model == "apple/system" {
+                                    (c, "agent")
+                                } else {
+                                    (c, "estimated")
+                                }
+                            }
+                            (None, Some(s)) => {
+                                let calculated = price_tokens(model, inp, out, cache_read, cache_write);
+                                (calculated, s)
+                            }
+                            (None, None) => {
+                                if total_tokens > 0 {
+                                    let calculated = price_tokens(model, inp, out, cache_read, cache_write);
+                                    let src = if model == "apple/system" {
+                                        "agent"
+                                    } else {
+                                        "estimated"
+                                    };
+                                    (calculated, src)
+                                } else {
+                                    (0.0, "agent")
+                                }
+                            }
+                        };
+
+                        let (api_cost, api_tokens, subsidized_cost, subsidized_tokens) =
+                            if final_source == "estimated" {
+                                (0.0, 0, final_cost, total_tokens)
+                            } else {
+                                (final_cost, total_tokens, 0.0, 0)
+                            };
+
+                        last_usage = Some(ChatTurnUsage {
+                            cost: final_cost,
+                            tokens: total_tokens,
+                            api_cost,
+                            api_tokens,
+                            subsidized_cost,
+                            subsidized_tokens,
+                        });
+                    }
+                }
+            }
+        }
+
+        if let Some(u) = last_usage {
+            if u.tokens > 0 || u.cost > 0.0 {
+                return u;
+            }
+        }
+    }
+
+    // 2. Fallback: estimate from content length if text exists
+    if !msg.content.trim().is_empty() {
+        let estimated_tokens = (msg.content.len() as f64 / 4.0).round() as i64;
+        if estimated_tokens > 0 {
+            if model == "apple/system" {
+                return ChatTurnUsage {
+                    cost: 0.0,
+                    tokens: estimated_tokens,
+                    api_cost: 0.0,
+                    api_tokens: estimated_tokens,
+                    subsidized_cost: 0.0,
+                    subsidized_tokens: 0,
+                };
+            }
+
+            let cost = price_tokens(model, 0, estimated_tokens, 0, 0);
+            return ChatTurnUsage {
+                cost,
+                tokens: estimated_tokens,
+                api_cost: 0.0,
+                api_tokens: 0,
+                subsidized_cost: cost,
+                subsidized_tokens: estimated_tokens,
+            };
+        }
+    }
+
+    ChatTurnUsage::default()
+}
+
+/// Merges chat usage from all stored chat sessions into the dashboard activity stats.
+///
+/// This augments `stats.daily_costs` and `stats.months` so the dashboard forecast and historical
+/// charts reflect spend from interactive chats alongside job/plan runs. Also updates
+/// `stats.daily_data_start` if the earliest chat turn is older than the current plan data start.
+pub fn merge_chat_costs(tendril_home: &Path, stats: &mut DashboardActivityStats) {
+    let sessions = match load_all_sessions(tendril_home) {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    if sessions.is_empty() {
+        return;
+    }
+
+    let today = Utc::now().date_naive();
+    let daily_cutoff_str = window_start(today).format("%Y-%m-%d").to_string();
+
+    let mut daily_map: BTreeMap<String, DashboardDailyCost> = BTreeMap::new();
+    for dc in std::mem::take(&mut stats.daily_costs) {
+        daily_map.insert(dc.date.clone(), dc);
+    }
+
+    let mut earliest_chat_date: Option<String> = None;
+
+    for session in &sessions {
+        for msg in &session.messages {
+            if msg.role != "assistant" {
+                continue;
+            }
+            let usage = extract_message_usage(msg, &session.model_id);
+            if usage.tokens == 0 && usage.cost == 0.0 {
+                continue;
+            }
+
+            let msg_date = msg.timestamp.date_naive();
+            let date_str = msg_date.format("%Y-%m-%d").to_string();
+
+            earliest_chat_date = match earliest_chat_date {
+                Some(existing) if existing < date_str => Some(existing),
+                _ => Some(date_str.clone()),
+            };
+
+            if date_str >= daily_cutoff_str {
+                let entry = daily_map
+                    .entry(date_str.clone())
+                    .or_insert_with(|| DashboardDailyCost {
+                        date: date_str,
+                        cost: 0.0,
+                        tokens: 0,
+                        api_cost: 0.0,
+                        api_tokens: 0,
+                        subsidized_cost: 0.0,
+                        subsidized_tokens: 0,
+                    });
+                entry.cost += usage.cost;
+                entry.tokens += usage.tokens;
+                entry.api_cost += usage.api_cost;
+                entry.api_tokens += usage.api_tokens;
+                entry.subsidized_cost += usage.subsidized_cost;
+                entry.subsidized_tokens += usage.subsidized_tokens;
+            }
+
+            let year = msg_date.year();
+            let month = msg_date.month();
+            if let Some(m_stat) = stats
+                .months
+                .iter_mut()
+                .find(|m| m.year == year && m.month == month)
+            {
+                m_stat.cost += usage.cost;
+                m_stat.tokens += usage.tokens;
+            }
+        }
+    }
+
+    stats.daily_costs = daily_map.into_values().collect();
+
+    if let Some(chat_earliest) = earliest_chat_date {
+        let chat_start_clamped = if chat_earliest > daily_cutoff_str {
+            chat_earliest
+        } else {
+            daily_cutoff_str
+        };
+        stats.daily_data_start = match stats.daily_data_start.take() {
+            Some(existing) => {
+                if chat_start_clamped < existing {
+                    Some(chat_start_clamped)
+                } else {
+                    Some(existing)
+                }
+            }
+            None => Some(chat_start_clamped),
+        };
+    }
+}
+
+/// Merges chat usage into the agent cost breakdown.
+pub fn merge_chat_agent_costs(
+    tendril_home: &Path,
+    breakdown: &mut Vec<AgentCostBreakdown>,
+    days: i64,
+) {
+    let sessions = match load_all_sessions(tendril_home) {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    if sessions.is_empty() {
+        return;
+    }
+
+    let cutoff = (Utc::now().date_naive() - chrono::Duration::days(days - 1))
+        .format("%Y-%m-%d")
+        .to_string();
+
+    let mut agent_map: HashMap<String, (f64, i64)> = HashMap::new();
+
+    for session in &sessions {
+        for msg in &session.messages {
+            if msg.role != "assistant" {
+                continue;
+            }
+            let date_str = msg.timestamp.date_naive().format("%Y-%m-%d").to_string();
+            if date_str < cutoff {
+                continue;
+            }
+            let usage = extract_message_usage(msg, &session.model_id);
+            if usage.tokens == 0 && usage.cost == 0.0 {
+                continue;
+            }
+            let agent = msg
+                .agent_id
+                .as_deref()
+                .filter(|a| !a.trim().is_empty())
+                .unwrap_or_else(|| {
+                    if !session.agent_id.trim().is_empty() {
+                        &session.agent_id
+                    } else {
+                        "Unknown"
+                    }
+                });
+            let entry = agent_map.entry(agent.to_string()).or_insert((0.0, 0));
+            entry.0 += usage.cost;
+            entry.1 += usage.tokens;
+        }
+    }
+
+    for (agent, (cost, tokens)) in agent_map {
+        if let Some(existing) = breakdown.iter_mut().find(|b| b.agent == agent) {
+            existing.cost += cost;
+            existing.tokens += tokens;
+        } else {
+            breakdown.push(AgentCostBreakdown {
+                agent,
+                cost,
+                tokens,
+                plan_count: 0,
+            });
+        }
+    }
+
+    breakdown.sort_by(|a, b| {
+        b.cost
+            .partial_cmp(&a.cost)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+}
+

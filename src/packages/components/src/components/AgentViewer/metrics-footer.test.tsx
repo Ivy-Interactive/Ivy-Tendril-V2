@@ -108,8 +108,8 @@ describe("the agent viewer's metrics footer", () => {
     const tokens = screen.getByTestId("agent-metrics-tokens");
     expect(tokens).toHaveAttribute("data-estimated", "false");
     expect(tokens).not.toHaveTextContent("~");
-    // 648,779 reported, cache included — the estimate from 4000 characters would have said 1k.
-    expect(tokens).toHaveTextContent("648.8k");
+    // 4,320 reported (120 input + 4200 output), excluding cache — the estimate from 4000 characters would have said 1k.
+    expect(tokens).toHaveTextContent("4.3k");
   });
 
   it("labels a billed cost differently from one it priced itself", () => {

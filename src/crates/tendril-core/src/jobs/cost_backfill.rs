@@ -66,41 +66,53 @@ pub fn run_pass(tendril_home: &Path) -> BackfillReport {
     };
 
     for mut job in jobs.into_iter().filter(is_candidate) {
-        let model = job.model.clone().unwrap_or_default();
+        let mut modified = false;
 
-        // The same path `extract_and_record_usage` uses, so a backfilled figure and a freshly
-        // estimated one agree to the last cent. `try_` rather than `calculate_cost`: a `None` is
-        // precisely "no price list entry" — the original's unpriced case — and going straight to
-        // `calculate_cost` would invent a figure at its hardcoded 3.00/15.00 fallback for a model
-        // nobody has prices for and stamp it `estimated`, which is the corruption this service
-        // exists to undo.
-        //
-        // It also covers the case that sent the user here: a models.dev row for a model the catalog
-        // lists but publishes no `cost` block for parses to a card of zeros, which priced a real
-        // 1.25M-token Opus 5 run at $0.00 and stamped it `estimated`. That is the same invented
-        // figure wearing a different mask, so it is the same refusal.
-        let Some(cost) = pricing::try_calculate_cost(
-            &model,
-            job.input_tokens.unwrap_or(0),
-            job.output_tokens.unwrap_or(0),
-            job.cache_read_tokens.unwrap_or(0),
-            job.cache_write_tokens.unwrap_or(0),
-        ) else {
-            report.unpriced += 1;
-            continue;
-        };
-
-        job.cost = Some(cost);
-        job.cost_source = Some("estimated".to_string());
-
-        if let Err(e) = insert_job(&conn, &job) {
-            report.failed += 1;
-            tracing::debug!("Failed to backfill cost for job {}: {}", job.id, e);
-            continue;
+        // Correct headline tokens if breakdown is present (excluding cache tokens, matching V1)
+        if job.input_tokens.is_some() || job.output_tokens.is_some() {
+            let correct_tokens = job.input_tokens.unwrap_or(0) + job.output_tokens.unwrap_or(0);
+            if job.tokens != Some(correct_tokens) {
+                job.tokens = Some(correct_tokens);
+                modified = true;
+            }
         }
 
-        update_costs_csv(Path::new(&job.plan_file), &job.job_type, cost, &model);
-        report.filled += 1;
+        // Resolve model if missing
+        if job.model.as_deref().map(str::trim).unwrap_or("").is_empty() {
+            if let Some(default_model) = crate::agents::catalog::default_model_for(&job.provider) {
+                job.model = Some(default_model);
+                modified = true;
+            }
+        }
+
+        let model = job.model.clone().unwrap_or_default();
+
+        if job.cost_source.as_deref() != Some("agent") && !model.is_empty() {
+            if let Some(cost) = pricing::try_calculate_cost(
+                &model,
+                job.input_tokens.unwrap_or(0),
+                job.output_tokens.unwrap_or(0),
+                job.cache_read_tokens.unwrap_or(0),
+                job.cache_write_tokens.unwrap_or(0),
+            ) {
+                if job.cost != Some(cost) || job.cost_source.as_deref() != Some("estimated") {
+                    job.cost = Some(cost);
+                    job.cost_source = Some("estimated".to_string());
+                    update_costs_csv(Path::new(&job.plan_file), &job.job_type, cost, &model);
+                    modified = true;
+                    report.filled += 1;
+                }
+            } else {
+                report.unpriced += 1;
+            }
+        }
+
+        if modified {
+            if let Err(e) = insert_job(&conn, &job) {
+                report.failed += 1;
+                tracing::debug!("Failed to backfill cost for job {}: {}", job.id, e);
+            }
+        }
     }
 
     if !report.is_empty() {
@@ -122,16 +134,23 @@ pub fn run_pass(tendril_home: &Path) -> BackfillReport {
 /// to zero anyway. An `agent` cost source is never touched whatever its value: that figure came from
 /// a bill.
 pub fn is_candidate(job: &JobItem) -> bool {
+    let has_breakdown = job.input_tokens.is_some() || job.output_tokens.is_some();
+    let tokens_wrong = has_breakdown
+        && job.tokens != Some(job.input_tokens.unwrap_or(0) + job.output_tokens.unwrap_or(0));
     let unpriced = job.cost.is_none_or(|c| c == 0.0);
+    let is_estimated = job.cost_source.as_deref() == Some("estimated");
+    let model_missing = job.model.as_deref().map(str::trim).unwrap_or("").is_empty();
     let tokens = job.input_tokens.unwrap_or(0) > 0
         || job.output_tokens.unwrap_or(0) > 0
         || job.cache_read_tokens.unwrap_or(0) > 0
         || job.cache_write_tokens.unwrap_or(0) > 0;
 
-    unpriced
-        && job.cost_source.as_deref() != Some("agent")
-        && job.model.as_deref().is_some_and(|m| !m.trim().is_empty())
-        && tokens
+    tokens_wrong
+        || ((unpriced || is_estimated || model_missing)
+            && job.cost_source.as_deref() != Some("agent")
+            && (job.model.as_deref().is_some_and(|m| !m.trim().is_empty())
+                || crate::agents::catalog::default_model_for(&job.provider).is_some())
+            && tokens)
 }
 
 /// Writes the estimate into the plan folder's `costs.csv` as well.

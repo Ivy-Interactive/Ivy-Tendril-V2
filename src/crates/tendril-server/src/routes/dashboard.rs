@@ -48,7 +48,8 @@ pub async fn get_activity(
     let months = query.months.unwrap_or(24);
     match open_database(&state.db_path) {
         Ok(conn) => match tendril_core::db::get_activity_stats(&conn, months) {
-            Ok(stats) => {
+            Ok(mut stats) => {
+                tendril_core::db::merge_chat_costs(&state.tendril_home, &mut stats);
                 let forecast = forecast::project(&stats.daily_costs, Utc::now().date_naive());
                 (
                     StatusCode::OK,
@@ -134,7 +135,10 @@ pub async fn get_agent_costs(
     let days = query.days.unwrap_or(30);
     match open_database(&state.db_path) {
         Ok(conn) => match tendril_core::db::get_agent_cost_breakdown(&conn, days) {
-            Ok(breakdown) => (StatusCode::OK, Json(json!(breakdown))),
+            Ok(mut breakdown) => {
+                tendril_core::db::merge_chat_agent_costs(&state.tendril_home, &mut breakdown, days);
+                (StatusCode::OK, Json(json!(breakdown)))
+            }
             Err(e) => (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 Json(json!({ "error": format!("Failed to get agent cost breakdown: {}", e) })),

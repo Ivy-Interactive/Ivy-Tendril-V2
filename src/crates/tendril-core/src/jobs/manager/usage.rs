@@ -150,7 +150,7 @@ pub fn extract_and_record_usage(tendril_home: &Path, job: &mut JobItem) {
                                     .or_else(|| usage.get("reasoning_output_tokens"))
                                     .and_then(|n| n.as_i64());
 
-                                let total_tok = in_tok + out_tok + cache_read_tok + cache_write_tok;
+                                let total_tok = in_tok + out_tok;
 
                                 job.input_tokens = Some(in_tok);
                                 job.output_tokens = Some(out_tok);
@@ -189,17 +189,28 @@ pub fn extract_and_record_usage(tendril_home: &Path, job: &mut JobItem) {
                                     job.cost = Some(cost);
                                     job.cost_source = Some("agent".to_string());
                                 } else if job.cost.is_none() {
-                                    let model_name =
-                                        job.model.as_deref().unwrap_or("claude-3-5-sonnet");
-                                    let calculated = crate::agents::pricing::calculate_cost(
-                                        model_name,
-                                        in_tok,
-                                        out_tok,
-                                        cache_read_tok,
-                                        cache_write_tok,
-                                    );
-                                    job.cost = Some(calculated);
-                                    job.cost_source = Some("estimated".to_string());
+                                    let default_model =
+                                        crate::agents::catalog::default_model_for(&job.provider);
+                                    let model_name = job
+                                        .model
+                                        .clone()
+                                        .or(default_model)
+                                        .unwrap_or_else(|| "claude-3-5-sonnet".to_string());
+                                    if job.model.is_none() {
+                                        job.model = Some(model_name.clone());
+                                    }
+                                    if let Some(calculated) =
+                                        crate::agents::pricing::try_calculate_cost(
+                                            &model_name,
+                                            in_tok,
+                                            out_tok,
+                                            cache_read_tok,
+                                            cache_write_tok,
+                                        )
+                                    {
+                                        job.cost = Some(calculated);
+                                        job.cost_source = Some("estimated".to_string());
+                                    }
                                 }
                             }
                         }

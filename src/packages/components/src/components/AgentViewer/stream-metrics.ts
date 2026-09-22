@@ -113,17 +113,10 @@ export class StreamMetricsAccumulator {
         // let a re-reported result double the run's tokens and its bill.
         const usage = wire.usage;
         if (usage) {
-          // Every token the run was charged for, cache included. V1's viewer summed input and output
-          // only, which on a Claude run hides most of the bill: a 648k-token run reads as 4k when
-          // 640k of it was a cache read. This is the same total `jobs::manager` records for the job
-          // row, so the footer and the Jobs table cannot disagree about the same run.
+          // Input + output tokens only, excluding cache buckets (matching V1 and job.tokens total).
           this.reported =
             (usage.input_tokens ?? 0) +
-            (usage.output_tokens ?? 0) +
-            (usage.cache_read_tokens ?? 0) +
-            (usage.cache_write_tokens ?? 0);
-          // A reported zero is a real claim — a subscription run is billed nothing — but it is not a
-          // cost worth a line in the footer, and V1's `ResultSummary` hides it for the same reason.
+            (usage.output_tokens ?? 0);
           this.costUsd = usage.cost_usd != null && usage.cost_usd > 0 ? usage.cost_usd : undefined;
           this.costEstimated = usage.cost_source === "estimated";
         }

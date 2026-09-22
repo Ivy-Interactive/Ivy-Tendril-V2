@@ -141,6 +141,7 @@ impl ChatExecutionManager {
             .insert(session_id.to_string(), cancel_tx);
 
         let agent_to_use_clone = agent_to_use.clone();
+        let model_to_use_for_runner = model_to_use.clone();
         let mgr = Arc::clone(self);
         let s_id = session_id.to_string();
         let persist_interval = self.persist_interval;
@@ -150,6 +151,7 @@ impl ChatExecutionManager {
         // Spawn async runner task
         tokio::spawn(async move {
             let mut current_prompt = initial_prompt;
+            let current_model = model_to_use_for_runner;
             // Only the turn that was injected is an event: a prompt dequeued afterwards is the user's.
             let mut current_role = role;
             let mut current_history = history_before;
@@ -241,6 +243,7 @@ impl ChatExecutionManager {
                 // One per run: Antigravity identifies a tool step by `step_index`, so tying its
                 // `ACTIVE` and `DONE` halves together is state that lives for the length of the turn.
                 let mut normalizer = EventWireNormalizer::new();
+                normalizer.remember_model(Some(&current_model));
                 let mut is_dirty = false;
                 let mut persist_ticker = tokio::time::interval(persist_interval);
                 persist_ticker.tick().await; // consume initial tick
@@ -379,6 +382,65 @@ impl ChatExecutionManager {
                         outcome.synthetic_tool_output(),
                         true,
                     ));
+
+                    let has_result = raw_stream_lines.iter().any(|line| {
+                        serde_json::from_str::<serde_json::Value>(line.trim())
+                            .ok()
+                            .and_then(|v| {
+                                v.get("kind")
+                                    .and_then(|k| k.as_str())
+                                    .map(|k| k == "result")
+                            })
+                            .unwrap_or(false)
+                    });
+
+                    if !has_result {
+                        let estimated_tokens = (buf.text.len() as f64 / 4.0).round() as i64;
+                        let (estimated_cost, cost_source) = if current_model == "apple/system" {
+                            (0.0, "agent")
+                        } else if let Some(spec) = crate::agents::model_specs::find(&current_model)
+                        {
+                            if crate::agents::model_specs::is_priced(&spec) {
+                                (spec.calculate_cost(0, estimated_tokens, 0, 0), "estimated")
+                            } else {
+                                (0.0, "agent")
+                            }
+                        } else {
+                            (
+                                crate::agents::pricing::calculate_cost(
+                                    &current_model,
+                                    0,
+                                    estimated_tokens,
+                                    0,
+                                    0,
+                                ),
+                                "estimated",
+                            )
+                        };
+
+                        let synthetic_result = serde_json::json!({
+                            "kind": "result",
+                            "timestamp": Utc::now().to_rfc3339(),
+                            "is_success": outcome.is_success(),
+                            "usage": {
+                                "input_tokens": 0,
+                                "output_tokens": estimated_tokens,
+                                "cache_read_tokens": 0,
+                                "cache_write_tokens": 0,
+                                "reasoning_tokens": 0,
+                                "cost_usd": estimated_cost,
+                                "cost_source": cost_source,
+                                "model": current_model,
+                            }
+                        });
+                        let synthetic_line = synthetic_result.to_string();
+                        raw_stream_lines.push(synthetic_line.clone());
+                        let _ = mgr.event_tx.send(ChatEvent::StreamEvent {
+                            session_id: s_id.clone(),
+                            message_id: current_assistant_msg_id.clone(),
+                            line: synthetic_line,
+                        });
+                    }
 
                     // Final message update & persistence
                     mgr.finalize_message(

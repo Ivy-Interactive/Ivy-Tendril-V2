@@ -56,7 +56,7 @@ impl TurnOutcome {
     /// `IsSuccess` from the event and only borrows the exit code); the exit code is the answer only
     /// when the agent emitted no such event. `Some(0)` specifically, not "not an error": a `None`
     /// code means the process died from a signal, which is not a success.
-    fn is_success(&self) -> bool {
+    pub(super) fn is_success(&self) -> bool {
         if self.launch_error.is_some() {
             return false;
         }

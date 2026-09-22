@@ -37,6 +37,12 @@ pub struct EventWireNormalizer {
     /// model can still be priced. Every provider announces its model at the start of a run and most
     /// of them never mention it again.
     model: Option<String>,
+    opencode_input_tokens: i64,
+    opencode_output_tokens: i64,
+    opencode_cache_read_tokens: i64,
+    opencode_cache_write_tokens: i64,
+    opencode_reasoning_tokens: i64,
+    opencode_cost: Option<f64>,
 }
 
 impl EventWireNormalizer {
@@ -250,7 +256,7 @@ impl EventWireNormalizer {
 
     /// Keeps the first model a run names. First rather than last because that is the model the turn
     /// was launched on; a later mention is a sub-agent's or a fallback's.
-    fn remember_model(&mut self, model: Option<&str>) {
+    pub fn remember_model(&mut self, model: Option<&str>) {
         if self.model.is_some() {
             return;
         }
@@ -410,6 +416,8 @@ impl EventWireNormalizer {
                 },
             },
 
+            "step_finish" => self.opencode_step_finish(value),
+
             // Cursor. `{"type":"thinking","subtype":"delta"|"completed","text":…}` -- the deltas
             // carry the reasoning a token at a time and the `completed` line carries no text at
             // all, so it closes the block rather than adding to it.
@@ -422,6 +430,67 @@ impl EventWireNormalizer {
             // Not a shape any provider Tendril launches is known to emit. Kept verbatim.
             _ => vec![raw.to_string()],
         }
+    }
+
+    fn opencode_step_finish(&mut self, value: &Value) -> Vec<String> {
+        let part = value.get("part");
+        if let Some(cost) = part.and_then(|p| p.get("cost")).and_then(|c| c.as_f64()) {
+            let current = self.opencode_cost.unwrap_or(0.0);
+            self.opencode_cost = Some(current + cost);
+        }
+
+        if let Some(tokens) = part.and_then(|p| p.get("tokens")) {
+            if let Some(inp) = tokens.get("input").and_then(|i| i.as_i64()) {
+                self.opencode_input_tokens += inp;
+            }
+            if let Some(out) = tokens.get("output").and_then(|o| o.as_i64()) {
+                self.opencode_output_tokens += out;
+            }
+            if let Some(reasoning) = tokens.get("reasoning").and_then(|r| r.as_i64()) {
+                self.opencode_reasoning_tokens += reasoning;
+            }
+            let cache = tokens.get("cache");
+            if let Some(read) = cache.and_then(|c| c.get("read")).and_then(|r| r.as_i64()) {
+                self.opencode_cache_read_tokens += read;
+            }
+            if let Some(write) = cache.and_then(|c| c.get("write")).and_then(|w| w.as_i64()) {
+                self.opencode_cache_write_tokens += write;
+            }
+        }
+
+        let reason = part
+            .and_then(|p| p.get("reason"))
+            .and_then(|r| r.as_str())
+            .unwrap_or("stop");
+
+        // Only "tool-calls" is an intermediate step; every other reason ends generation
+        if reason == "tool-calls" {
+            return Vec::new();
+        }
+
+        let facts = UsageFacts {
+            input_tokens: self.opencode_input_tokens,
+            output_tokens: self.opencode_output_tokens,
+            cache_read_tokens: self.opencode_cache_read_tokens,
+            cache_write_tokens: self.opencode_cache_write_tokens,
+            reasoning_tokens: self.opencode_reasoning_tokens,
+            cost_usd: self.opencode_cost,
+            model: self.model.clone(),
+        };
+
+        let is_error = reason == "error";
+        vec![result_event(
+            None,
+            if is_error {
+                Some("OpenCode reported an error")
+            } else {
+                None
+            },
+            !is_error,
+            None,
+            None,
+            usage_value(&facts, self.model.as_deref()),
+        )]
     }
 }
 
@@ -822,28 +891,50 @@ fn usage_value(facts: &UsageFacts, fallback_model: Option<&str>) -> Option<Value
     map.insert("reasoning_tokens".into(), json!(facts.reasoning_tokens));
 
     if let Some(cost) = facts.cost_usd {
-        map.insert("cost_usd".into(), json!(cost));
-        map.insert("cost_source".into(), json!("agent"));
+        if cost > 0.0 {
+            map.insert("cost_usd".into(), json!(cost));
+            map.insert("cost_source".into(), json!("agent"));
+        } else if let Some(spec) = model.and_then(model_specs::find) {
+            if spec.model_id == "apple/system" {
+                map.insert("cost_usd".into(), json!(0.0));
+                map.insert("cost_source".into(), json!("agent"));
+            } else if model_specs::is_priced(&spec) {
+                // Subscription / subsidized run: price the tokens at list rates
+                map.insert(
+                    "cost_usd".into(),
+                    json!(spec.calculate_cost(
+                        facts.input_tokens,
+                        facts.output_tokens,
+                        facts.cache_read_tokens,
+                        facts.cache_write_tokens,
+                    )),
+                );
+                map.insert("cost_source".into(), json!("estimated"));
+            } else {
+                map.insert("cost_usd".into(), json!(0.0));
+                map.insert("cost_source".into(), json!("agent"));
+            }
+        } else {
+            map.insert("cost_usd".into(), json!(cost));
+            map.insert("cost_source".into(), json!("agent"));
+        }
     } else if facts.billable_tokens() > 0 {
-        // `is_priced` rather than a bare `find`: models.dev lists a model under every provider that
-        // resells it, and one that publishes no `cost` block parses to a rate card of zeros. Pricing
-        // against that emits `cost_usd: 0.0` stamped `estimated`, which the viewer renders as
-        // "$0.00" — "this run was free" — for a run that cost real money. Omitting the key leaves it
-        // at "—", the honest claim, and matches what `cost_backfill` refuses to guess at.
-        if let Some(spec) = model
-            .and_then(model_specs::find)
-            .filter(model_specs::is_priced)
-        {
-            map.insert(
-                "cost_usd".into(),
-                json!(spec.calculate_cost(
-                    facts.input_tokens,
-                    facts.output_tokens,
-                    facts.cache_read_tokens,
-                    facts.cache_write_tokens,
-                )),
-            );
-            map.insert("cost_source".into(), json!("estimated"));
+        if let Some(spec) = model.and_then(model_specs::find) {
+            if spec.model_id == "apple/system" {
+                map.insert("cost_usd".into(), json!(0.0));
+                map.insert("cost_source".into(), json!("agent"));
+            } else if model_specs::is_priced(&spec) {
+                map.insert(
+                    "cost_usd".into(),
+                    json!(spec.calculate_cost(
+                        facts.input_tokens,
+                        facts.output_tokens,
+                        facts.cache_read_tokens,
+                        facts.cache_write_tokens,
+                    )),
+                );
+                map.insert("cost_source".into(), json!("estimated"));
+            }
         }
     }
 
@@ -1576,6 +1667,68 @@ mod tests {
             false,
         );
         assert!(usage_of(&zeros[0]).is_none());
+    }
+
+    #[test]
+    fn opencode_step_finish_accumulates_and_emits_terminal_result() {
+        let mut n = EventWireNormalizer::new();
+        n.remember_model(Some("claude-3-5-sonnet"));
+
+        // Intermediate tool-calls step should produce no events
+        let intermediate = n.normalize(
+            r#"{"type":"step_finish","part":{"reason":"tool-calls","cost":0.005,"tokens":{"input":1000,"output":200}}}"#,
+            false,
+        );
+        assert!(intermediate.is_empty());
+
+        // Terminal stop step accumulates previous tokens and cost
+        let done = n.normalize(
+            r#"{"type":"step_finish","part":{"reason":"stop","cost":0.010,"tokens":{"input":2000,"output":300}}}"#,
+            false,
+        );
+        assert_eq!(done.len(), 1);
+        let usage = usage_of(&done[0]).expect("opencode usage");
+        assert_eq!(num(&usage, "input_tokens"), 3000);
+        assert_eq!(num(&usage, "output_tokens"), 500);
+        assert!((usage.get("cost_usd").and_then(|c| c.as_f64()).unwrap() - 0.015).abs() < 1e-6);
+        assert_eq!(usage.get("cost_source").and_then(|s| s.as_str()), Some("agent"));
+    }
+
+    #[test]
+    fn apple_system_on_device_reports_zero_cost() {
+        let mut n = EventWireNormalizer::new();
+        n.remember_model(Some("apple/system"));
+
+        let done = n.normalize(
+            r#"{"type":"step_finish","part":{"reason":"stop","cost":0.0,"tokens":{"input":43,"output":20}}}"#,
+            false,
+        );
+        assert_eq!(done.len(), 1);
+        let usage = usage_of(&done[0]).expect("apple usage");
+        assert_eq!(num(&usage, "input_tokens"), 43);
+        assert_eq!(num(&usage, "output_tokens"), 20);
+        assert_eq!(usage.get("cost_usd").and_then(|c| c.as_f64()), Some(0.0));
+        assert_eq!(usage.get("cost_source").and_then(|s| s.as_str()), Some("agent"));
+    }
+
+    #[test]
+    fn subsidized_zero_cost_run_on_priced_model_is_estimated() {
+        let mut n = EventWireNormalizer::new();
+        n.normalize(
+            r#"{"type":"system","subtype":"init","session_id":"s1","model":"claude-3-5-sonnet"}"#,
+            false,
+        );
+
+        // Claude on subscription: reports 0 cost
+        let done = n.normalize(
+            r#"{"type":"result","subtype":"success","is_error":false,"result":"Done.",
+                "usage":{"input_tokens":1000,"output_tokens":2000,"cost_usd":0.0}}"#,
+            false,
+        );
+        let usage = usage_of(&done[0]).expect("usage");
+        assert_eq!(usage.get("cost_source").and_then(|s| s.as_str()), Some("estimated"));
+        let expected = crate::agents::pricing::calculate_cost("claude-3-5-sonnet", 1000, 2000, 0, 0);
+        assert_eq!(usage.get("cost_usd").and_then(|c| c.as_f64()), Some(expected));
     }
 
     #[test]

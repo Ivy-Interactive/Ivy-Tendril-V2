@@ -112,7 +112,7 @@ async fn test_job_completion_cost_extraction() {
     let finished_job = map.get(&job_id).expect("job in map");
 
     assert_eq!(finished_job.status, JobStatus::Completed);
-    assert_eq!(finished_job.tokens, Some(18000)); // 10000 + 2000 + 5000 + 1000
+    assert_eq!(finished_job.tokens, Some(12000)); // 10000 + 2000 (excludes cache tokens, matching V1)
     assert_eq!(finished_job.input_tokens, Some(10000));
     assert_eq!(finished_job.output_tokens, Some(2000));
     assert_eq!(finished_job.cache_read_tokens, Some(5000));
@@ -129,7 +129,7 @@ async fn test_job_completion_cost_extraction() {
     assert_eq!(records.len(), 1);
     assert_eq!(records[0].plan_id, 42);
     assert_eq!(records[0].promptware, "ExecutePlan");
-    assert_eq!(records[0].tokens, 18000);
+    assert_eq!(records[0].tokens, 12000);
     // Compared to the precision `costs.csv` stores, not to the float itself. The row above was seeded
     // with a `FolderPath` that does not exist, but `finish_job` now mirrors the plan it just moved
     // into the `Plans` table, so `FolderPath` is the real folder by the time usage is recorded — and

@@ -253,9 +253,15 @@ pub(super) fn spawn_runner(
         let id_for_output = job_id.clone();
         let jobs_for_output = jobs_map.clone();
 
+        let resolved_model = job.model.clone().or_else(|| launch_config.model.clone());
+        if job.model.is_none() && resolved_model.is_some() {
+            job.model = resolved_model.clone();
+        }
+
         // Stateful, and held by the `FnMut` closure rather than shared: Antigravity ties a tool call's
         // two halves together by `step_index`, so the normalizer has to remember the open ones.
         let mut eventwire = EventWireNormalizer::new();
+        eventwire.remember_model(resolved_model.as_deref());
 
         let run_res = run_agent_process_with_grace(
             spec,

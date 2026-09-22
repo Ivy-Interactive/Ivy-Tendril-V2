@@ -1,6 +1,8 @@
 use chrono::{Duration, Utc};
 use std::path::PathBuf;
 use std::sync::Arc;
+use tendril_core::chat::models::{ChatMessage, ChatSession};
+use tendril_core::chat::storage::save_session;
 use tendril_core::config::{get_database_path, MasterGuard};
 use tendril_core::db::{insert_cost, open_database};
 use tendril_server::{create_router, AppState};
@@ -399,3 +401,117 @@ async fn test_costs_routes_filtering() {
     let arr = json.as_array().expect("series is array");
     assert!(arr.is_empty());
 }
+
+#[tokio::test]
+async fn test_dashboard_activity_includes_chat_costs() {
+    let server = start_test_server().await;
+    let client = reqwest::Client::new();
+
+    let db_path = get_database_path(&server.tendril_home);
+    let conn = open_database(&db_path).expect("open database");
+
+    let now = Utc::now();
+    let today_date_str = now.date_naive().format("%Y-%m-%d").to_string();
+
+    let now_str = now.to_rfc3339();
+    conn.execute(
+        &format!(
+            "INSERT INTO Plans (
+                Id, Title, Project, Level, State, FolderPath, FolderName,
+                YamlRaw, RevisionCount, LatestRevisionContent, Created, Updated
+            ) VALUES (1, 'Plan 1', 'TestProject', 'Feature', 'Completed', '/path/to/plan', '00001-Plan', '', 1, '', '{now_str}', '{now_str}')"
+        ),
+        [],
+    )
+    .expect("insert plan");
+
+    conn.execute(
+        &format!(
+            "INSERT INTO Costs (PlanId, Promptware, Tokens, Cost, LogTimestamp, CostSource, Agent)
+            VALUES (1, 'CreatePlan', 1000, 0.10, '{now_str}', 'agent', 'claude')"
+        ),
+        [],
+    )
+    .expect("insert cost");
+
+    // 2. Add a chat session with an assistant message
+    let session = ChatSession {
+        id: "chat-sess-1".to_string(),
+        title: "Chat Session 1".to_string(),
+        created_at: now,
+        updated_at: now,
+        agent_id: "apple-fm".to_string(),
+        model_id: "apple/system".to_string(),
+        messages: vec![
+            ChatMessage {
+                id: "msg-1".to_string(),
+                role: "assistant".to_string(),
+                content: "Local response".to_string(),
+                timestamp: now,
+                agent_id: Some("apple-fm".to_string()),
+                model_id: Some("apple/system".to_string()),
+                raw_stream: Some(
+                    r#"{"kind":"result","usage":{"input_tokens":50,"output_tokens":50,"cache_read_tokens":0,"cache_write_tokens":0,"reasoning_tokens":0,"cost_usd":0.0,"cost_source":"agent"}}"#
+                        .to_string(),
+                ),
+                effort: None,
+            },
+            ChatMessage {
+                id: "msg-2".to_string(),
+                role: "assistant".to_string(),
+                content: "Subsidized response".to_string(),
+                timestamp: now,
+                agent_id: Some("claude".to_string()),
+                model_id: Some("claude-3-7-sonnet".to_string()),
+                raw_stream: Some(
+                    r#"{"kind":"result","usage":{"input_tokens":500,"output_tokens":500,"cache_read_tokens":0,"cache_write_tokens":0,"reasoning_tokens":0,"cost_usd":0.02,"cost_source":"estimated"}}"#
+                        .to_string(),
+                ),
+                effort: None,
+            },
+        ],
+        effort: None,
+        spawned_job_ids: Vec::new(),
+        plan_folder_name: None,
+    };
+    save_session(&server.tendril_home, &session).expect("save chat session");
+
+    // 3. GET /api/dashboard/activity
+    let resp = client
+        .get(format!(
+            "http://127.0.0.1:{}/api/dashboard/activity",
+            server.port
+        ))
+        .header("Authorization", format!("Bearer {}", server.secret))
+        .send()
+        .await
+        .unwrap();
+    assert_eq!(resp.status(), reqwest::StatusCode::OK);
+
+    let json: serde_json::Value = resp.json().await.unwrap();
+    let daily_costs = json["dailyCosts"].as_array().expect("dailyCosts array");
+    assert_eq!(daily_costs.len(), 1);
+
+    let today_cost = &daily_costs[0];
+    assert_eq!(today_cost["date"].as_str().unwrap(), today_date_str);
+
+    // Plan cost (0.10) + Chat subsidized cost (0.02) = 0.12
+    let cost = today_cost["cost"].as_f64().unwrap();
+    assert!((cost - 0.12).abs() < 1e-6);
+
+    // Plan tokens (1000) + Chat apple/system (100) + Chat claude (1000) = 2100
+    let tokens = today_cost["tokens"].as_i64().unwrap();
+    assert_eq!(tokens, 2100);
+
+    // API cost is 0.10, Subsidized cost is 0.02
+    assert!((today_cost["apiCost"].as_f64().unwrap() - 0.10).abs() < 1e-6);
+    assert!((today_cost["subsidizedCost"].as_f64().unwrap() - 0.02).abs() < 1e-6);
+
+    // Forecast projection includes chat spend
+    let forecast = &json["forecast"];
+    let total_spend = forecast["totalSpend"].as_f64().unwrap();
+    assert!((total_spend - 0.12).abs() < 1e-6);
+    let total_subsidized = forecast["totalSubsidizedSpend"].as_f64().unwrap();
+    assert!((total_subsidized - 0.02).abs() < 1e-6);
+}
+

@@ -100,8 +100,8 @@ describe("deriveStreamMetrics", () => {
         },
       },
     ]);
-    // Input and output alone would read 4,320 for a run that spent 648,779.
-    expect(metrics.tokens).toBe(648_779);
+    // Input and output alone (matching V1; cache buckets are carried separately).
+    expect(metrics.tokens).toBe(4320);
     expect(metrics.tokensEstimated).toBe(false);
   });
 
@@ -246,7 +246,7 @@ describe("EventWireStreamParser.metrics", () => {
     for (const wire of wires) parser.pushLine(line(wire));
 
     expect(parser.metrics).toEqual(deriveStreamMetrics(wires));
-    expect(parser.metrics.tokens).toBe(18);
+    expect(parser.metrics.tokens).toBe(15);
   });
 
   it("hands back the same object while nothing has changed", () => {

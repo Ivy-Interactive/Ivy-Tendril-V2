@@ -8,9 +8,12 @@
 use chrono::{Datelike, Duration, NaiveDate, Utc};
 use rusqlite::Connection;
 use std::path::PathBuf;
+use tendril_core::chat::models::{ChatMessage, ChatSession};
+use tendril_core::chat::storage::save_session;
 use tendril_core::db::{
-    get_activity_stats, get_agent_cost_breakdown, get_recent_merged_prs, get_recent_plan_costs,
-    get_shipped_features_by_day, open_database, DAILY_TREND_WINDOW_DAYS,
+    extract_message_usage, get_activity_stats, get_agent_cost_breakdown, get_recent_merged_prs,
+    get_recent_plan_costs, get_shipped_features_by_day, merge_chat_agent_costs, merge_chat_costs,
+    open_database, ChatTurnUsage, DAILY_TREND_WINDOW_DAYS,
 };
 
 struct TempDir(PathBuf);
@@ -569,3 +572,358 @@ fn agent_cost_breakdown_orders_by_cost_desc() {
     );
     assert_eq!(breakdown[1].plan_count, 1);
 }
+
+// --- merge_chat_costs & extract_message_usage --------------------------------------------------
+
+#[test]
+fn extract_message_usage_handles_direct_billed_agent() {
+    let msg = ChatMessage {
+        id: "msg-1".to_string(),
+        role: "assistant".to_string(),
+        content: "Done".to_string(),
+        timestamp: Utc::now(),
+        agent_id: Some("claude".to_string()),
+        model_id: Some("claude-3-7-sonnet".to_string()),
+        raw_stream: Some(
+            r#"{"kind":"result","usage":{"input_tokens":1000,"output_tokens":500,"cache_read_tokens":0,"cache_write_tokens":0,"reasoning_tokens":0,"cost_usd":0.05,"cost_source":"agent"}}"#
+                .to_string(),
+        ),
+        effort: None,
+    };
+
+    let usage = extract_message_usage(&msg, "claude-3-7-sonnet");
+    assert_eq!(
+        usage,
+        ChatTurnUsage {
+            cost: 0.05,
+            tokens: 1500,
+            api_cost: 0.05,
+            api_tokens: 1500,
+            subsidized_cost: 0.0,
+            subsidized_tokens: 0,
+        }
+    );
+}
+
+#[test]
+fn extract_message_usage_handles_subsidized_estimated() {
+    let msg = ChatMessage {
+        id: "msg-2".to_string(),
+        role: "assistant".to_string(),
+        content: "Here is your plan".to_string(),
+        timestamp: Utc::now(),
+        agent_id: Some("claude".to_string()),
+        model_id: Some("claude-3-7-sonnet".to_string()),
+        raw_stream: Some(
+            r#"{"kind":"result","usage":{"input_tokens":200,"output_tokens":100,"cache_read_tokens":0,"cache_write_tokens":0,"reasoning_tokens":0,"cost_usd":0.0021,"cost_source":"estimated"}}"#
+                .to_string(),
+        ),
+        effort: None,
+    };
+
+    let usage = extract_message_usage(&msg, "claude-3-7-sonnet");
+    assert_eq!(
+        usage,
+        ChatTurnUsage {
+            cost: 0.0021,
+            tokens: 300,
+            api_cost: 0.0,
+            api_tokens: 0,
+            subsidized_cost: 0.0021,
+            subsidized_tokens: 300,
+        }
+    );
+}
+
+#[test]
+fn extract_message_usage_handles_apple_system_free() {
+    let msg = ChatMessage {
+        id: "msg-3".to_string(),
+        role: "assistant".to_string(),
+        content: "Apple FM local response".to_string(),
+        timestamp: Utc::now(),
+        agent_id: Some("apple-fm".to_string()),
+        model_id: Some("apple/system".to_string()),
+        raw_stream: Some(
+            r#"{"kind":"result","usage":{"input_tokens":15,"output_tokens":35,"cache_read_tokens":0,"cache_write_tokens":0,"reasoning_tokens":0,"cost_usd":0.0,"cost_source":"agent"}}"#
+                .to_string(),
+        ),
+        effort: None,
+    };
+
+    let usage = extract_message_usage(&msg, "apple/system");
+    assert_eq!(
+        usage,
+        ChatTurnUsage {
+            cost: 0.0,
+            tokens: 50,
+            api_cost: 0.0,
+            api_tokens: 50,
+            subsidized_cost: 0.0,
+            subsidized_tokens: 0,
+        }
+    );
+}
+
+#[test]
+fn extract_message_usage_handles_missing_raw_stream_fallback() {
+    let msg = ChatMessage {
+        id: "msg-4".to_string(),
+        role: "assistant".to_string(),
+        content: "12345678".to_string(), // 8 chars -> 2 tokens
+        timestamp: Utc::now(),
+        agent_id: Some("apple-fm".to_string()),
+        model_id: Some("apple/system".to_string()),
+        raw_stream: None,
+        effort: None,
+    };
+
+    let usage = extract_message_usage(&msg, "apple/system");
+    assert_eq!(
+        usage,
+        ChatTurnUsage {
+            cost: 0.0,
+            tokens: 2,
+            api_cost: 0.0,
+            api_tokens: 2,
+            subsidized_cost: 0.0,
+            subsidized_tokens: 0,
+        }
+    );
+}
+
+#[test]
+fn extract_message_usage_skips_user_message() {
+    let msg = ChatMessage {
+        id: "msg-user".to_string(),
+        role: "user".to_string(),
+        content: "What can you do?".to_string(),
+        timestamp: Utc::now(),
+        agent_id: None,
+        model_id: None,
+        raw_stream: None,
+        effort: None,
+    };
+
+    let usage = extract_message_usage(&msg, "apple/system");
+    assert_eq!(usage, ChatTurnUsage::default());
+}
+
+#[test]
+fn merge_chat_costs_into_empty_activity() {
+    let (temp_dir, conn) = setup_test_db();
+    let mut stats = get_activity_stats(&conn, 24).expect("get activity stats");
+    assert!(stats.daily_costs.is_empty());
+    assert!(stats.daily_data_start.is_none());
+
+    let now = Utc::now();
+    let today_str = now.date_naive().format("%Y-%m-%d").to_string();
+
+    let session = ChatSession {
+        id: "session-1".to_string(),
+        title: "Chat 1".to_string(),
+        created_at: now,
+        updated_at: now,
+        agent_id: "claude".to_string(),
+        model_id: "claude-3-7-sonnet".to_string(),
+        messages: vec![
+            ChatMessage {
+                id: "u-1".to_string(),
+                role: "user".to_string(),
+                content: "Hi".to_string(),
+                timestamp: now,
+                agent_id: None,
+                model_id: None,
+                raw_stream: None,
+                effort: None,
+            },
+            ChatMessage {
+                id: "a-1".to_string(),
+                role: "assistant".to_string(),
+                content: "Hello!".to_string(),
+                timestamp: now,
+                agent_id: Some("claude".to_string()),
+                model_id: Some("claude-3-7-sonnet".to_string()),
+                raw_stream: Some(
+                    r#"{"kind":"result","usage":{"input_tokens":100,"output_tokens":50,"cache_read_tokens":0,"cache_write_tokens":0,"reasoning_tokens":0,"cost_usd":0.0015,"cost_source":"estimated"}}"#
+                        .to_string(),
+                ),
+                effort: None,
+            },
+        ],
+        effort: None,
+        spawned_job_ids: Vec::new(),
+        plan_folder_name: None,
+    };
+
+    save_session(temp_dir.path(), &session).expect("save session");
+
+    merge_chat_costs(temp_dir.path(), &mut stats);
+
+    assert_eq!(stats.daily_costs.len(), 1);
+    let day_entry = &stats.daily_costs[0];
+    assert_eq!(day_entry.date, today_str);
+    assert_eq!(day_entry.cost, 0.0015);
+    assert_eq!(day_entry.tokens, 150);
+    assert_eq!(day_entry.api_cost, 0.0);
+    assert_eq!(day_entry.api_tokens, 0);
+    assert_eq!(day_entry.subsidized_cost, 0.0015);
+    assert_eq!(day_entry.subsidized_tokens, 150);
+
+    assert_eq!(stats.daily_data_start, Some(today_str));
+
+    // Also check current month has the merged cost & tokens
+    let cur_month = stats
+        .months
+        .iter()
+        .find(|m| m.year == now.year() && m.month == now.month())
+        .expect("current month");
+    assert_eq!(cur_month.cost, 0.0015);
+    assert_eq!(cur_month.tokens, 150);
+}
+
+#[test]
+fn merge_chat_costs_combines_with_plan_costs() {
+    let (temp_dir, conn) = setup_test_db();
+    let day = days_ago(2);
+
+    insert_plan(&conn, 1, "Plan One", "Completed", &day, &day, None);
+    insert_cost(
+        &conn,
+        1,
+        500,
+        Some(0.05),
+        Some(&day),
+        Some("agent"),
+        Some("claude"),
+    );
+
+    let mut stats = get_activity_stats(&conn, 24).expect("get activity stats");
+    assert_eq!(stats.daily_costs.len(), 1);
+    assert_eq!(stats.daily_costs[0].cost, 0.05);
+    assert_eq!(stats.daily_costs[0].tokens, 500);
+    assert_eq!(stats.daily_costs[0].api_cost, 0.05);
+
+    let target_date = NaiveDate::parse_from_str(&day, "%Y-%m-%d").unwrap();
+    let msg_time = target_date.and_hms_opt(12, 0, 0).unwrap().and_utc();
+
+    let session = ChatSession {
+        id: "session-2".to_string(),
+        title: "Chat 2".to_string(),
+        created_at: msg_time,
+        updated_at: msg_time,
+        agent_id: "claude".to_string(),
+        model_id: "claude-3-7-sonnet".to_string(),
+        messages: vec![ChatMessage {
+            id: "a-2".to_string(),
+            role: "assistant".to_string(),
+            content: "Response".to_string(),
+            timestamp: msg_time,
+            agent_id: Some("claude".to_string()),
+            model_id: Some("claude-3-7-sonnet".to_string()),
+            raw_stream: Some(
+                r#"{"kind":"result","usage":{"input_tokens":200,"output_tokens":100,"cache_read_tokens":0,"cache_write_tokens":0,"reasoning_tokens":0,"cost_usd":0.01,"cost_source":"estimated"}}"#
+                    .to_string(),
+            ),
+            effort: None,
+        }],
+        effort: None,
+        spawned_job_ids: Vec::new(),
+        plan_folder_name: None,
+    };
+
+    save_session(temp_dir.path(), &session).expect("save session");
+
+    merge_chat_costs(temp_dir.path(), &mut stats);
+
+    assert_eq!(stats.daily_costs.len(), 1);
+    let day_entry = &stats.daily_costs[0];
+    assert_eq!(day_entry.date, day);
+    assert!((day_entry.cost - 0.06).abs() < 1e-6);
+    assert_eq!(day_entry.tokens, 800);
+    assert_eq!(day_entry.api_cost, 0.05);
+    assert_eq!(day_entry.api_tokens, 500);
+    assert_eq!(day_entry.subsidized_cost, 0.01);
+    assert_eq!(day_entry.subsidized_tokens, 300);
+}
+
+#[test]
+fn merge_chat_agent_costs_merges_and_sorts() {
+    let (temp_dir, conn) = setup_test_db();
+    let day = days_ago(1);
+
+    insert_plan(&conn, 1, "Plan One", "Completed", &day, &day, None);
+    insert_cost(
+        &conn,
+        1,
+        100,
+        Some(1.0),
+        Some(&day),
+        Some("agent"),
+        Some("existing-agent"),
+    );
+
+    let mut breakdown = get_agent_cost_breakdown(&conn, 30).expect("agent costs");
+    assert_eq!(breakdown.len(), 1);
+    assert_eq!(breakdown[0].agent, "existing-agent");
+    assert_eq!(breakdown[0].cost, 1.0);
+
+    let now = Utc::now();
+    let session = ChatSession {
+        id: "session-agent".to_string(),
+        title: "Agent Chat".to_string(),
+        created_at: now,
+        updated_at: now,
+        agent_id: "apple-fm".to_string(),
+        model_id: "apple/system".to_string(),
+        messages: vec![
+            ChatMessage {
+                id: "msg-fm".to_string(),
+                role: "assistant".to_string(),
+                content: "Local".to_string(),
+                timestamp: now,
+                agent_id: Some("apple-fm".to_string()),
+                model_id: Some("apple/system".to_string()),
+                raw_stream: Some(
+                    r#"{"kind":"result","usage":{"input_tokens":10,"output_tokens":20,"cache_read_tokens":0,"cache_write_tokens":0,"reasoning_tokens":0,"cost_usd":0.0,"cost_source":"agent"}}"#
+                        .to_string(),
+                ),
+                effort: None,
+            },
+            ChatMessage {
+                id: "msg-existing".to_string(),
+                role: "assistant".to_string(),
+                content: "Cloud".to_string(),
+                timestamp: now,
+                agent_id: Some("existing-agent".to_string()),
+                model_id: Some("claude-3-7-sonnet".to_string()),
+                raw_stream: Some(
+                    r#"{"kind":"result","usage":{"input_tokens":500,"output_tokens":250,"cache_read_tokens":0,"cache_write_tokens":0,"reasoning_tokens":0,"cost_usd":2.5,"cost_source":"agent"}}"#
+                        .to_string(),
+                ),
+                effort: None,
+            },
+        ],
+        effort: None,
+        spawned_job_ids: Vec::new(),
+        plan_folder_name: None,
+    };
+
+    save_session(temp_dir.path(), &session).expect("save session");
+
+    merge_chat_agent_costs(temp_dir.path(), &mut breakdown, 30);
+
+    let agents: Vec<&str> = breakdown.iter().map(|b| b.agent.as_str()).collect();
+    assert_eq!(agents, vec!["existing-agent", "apple-fm"]);
+
+    assert_eq!(breakdown[0].agent, "existing-agent");
+    assert_eq!(breakdown[0].cost, 3.5);
+    assert_eq!(breakdown[0].tokens, 850);
+    assert_eq!(breakdown[0].plan_count, 1);
+
+    assert_eq!(breakdown[1].agent, "apple-fm");
+    assert_eq!(breakdown[1].cost, 0.0);
+    assert_eq!(breakdown[1].tokens, 30);
+    assert_eq!(breakdown[1].plan_count, 0);
+}
+
