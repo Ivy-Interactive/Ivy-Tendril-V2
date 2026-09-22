@@ -1,6 +1,11 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { act, render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { JobDebugSheet, buildJobDebugFields, formatJobDebugDetails, type JobDebugField } from "@ivy-interactive/components/dialogs";
+import {
+  JobDebugSheet,
+  buildJobDebugFields,
+  formatJobDebugDetails,
+  type JobDebugField,
+} from "@ivy-interactive/components/dialogs";
 import { JobsView } from "../src/views/JobsView";
 import { jobsStore } from "../src/state/jobsStore";
 import { resetTableQueryTransport, setTableQueryTransport } from "../src/api/tableQuery";
