@@ -1020,7 +1020,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 <div
                   ref={inputRowRef}
                   data-multiline={multiline}
-                  className={`flex min-h-8 items-end gap-3 ${multiline ? "flex-wrap" : ""}`}
+                  className={`flex min-h-8 items-center gap-3 ${multiline ? "flex-wrap" : ""}`}
                 >
                   <input
                     ref={fileInputRef}
