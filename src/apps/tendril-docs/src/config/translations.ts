@@ -14,6 +14,7 @@ export interface UiTranslations {
   startFromIntroduction: string;
   untranslatedTitle: string;
   untranslatedDescription: string;
+  documentationSections: string;
 }
 
 export const TRANSLATIONS: Record<SiteLocale, UiTranslations> = {
@@ -32,6 +33,7 @@ export const TRANSLATIONS: Record<SiteLocale, UiTranslations> = {
     untranslatedTitle: "This page is not yet translated",
     untranslatedDescription:
       "You are viewing the English version of this article. A translated version is not yet available for your selected language.",
+    documentationSections: "Documentation sections",
   },
   de: {
     onThisPage: "Auf dieser Seite",
@@ -48,6 +50,7 @@ export const TRANSLATIONS: Record<SiteLocale, UiTranslations> = {
     untranslatedTitle: "Diese Seite ist noch nicht übersetzt",
     untranslatedDescription:
       "Sie sehen die englische Version dieses Artikels. Für die ausgewählte Sprache ist noch keine Übersetzung verfügbar.",
+    documentationSections: "Dokumentationsabschnitte",
   },
   ja: {
     onThisPage: "目次",
@@ -64,6 +67,7 @@ export const TRANSLATIONS: Record<SiteLocale, UiTranslations> = {
     untranslatedTitle: "このページはまだ翻訳されていません",
     untranslatedDescription:
       "この記事の英語版を表示しています。選択した言語の翻訳版はまだ利用できません。",
+    documentationSections: "ドキュメントセクション",
   },
   es: {
     onThisPage: "En esta página",
@@ -80,6 +84,7 @@ export const TRANSLATIONS: Record<SiteLocale, UiTranslations> = {
     untranslatedTitle: "Esta página aún no está traducida",
     untranslatedDescription:
       "Estás viendo la versión en inglés de este artículo. Aún no hay una versión traducida disponible para el idioma seleccionado.",
+    documentationSections: "Secciones de la documentación",
   },
   fr: {
     onThisPage: "Sur cette page",
@@ -96,6 +101,7 @@ export const TRANSLATIONS: Record<SiteLocale, UiTranslations> = {
     untranslatedTitle: "Cette page n'est pas encore traduite",
     untranslatedDescription:
       "Vous consultez la version anglaise de cet article. Aucune traduction n'est encore disponible pour la langue sélectionnée.",
+    documentationSections: "Sections de la documentation",
   },
   pt: {
     onThisPage: "Nesta página",
@@ -112,6 +118,7 @@ export const TRANSLATIONS: Record<SiteLocale, UiTranslations> = {
     untranslatedTitle: "Esta página ainda não foi traduzida",
     untranslatedDescription:
       "Você está visualizando a versão em inglês deste artigo. Uma versão traduzida ainda não está disponível para o idioma selecionado.",
+    documentationSections: "Seções da documentação",
   },
   zh: {
     onThisPage: "本页导读",
@@ -127,6 +134,7 @@ export const TRANSLATIONS: Record<SiteLocale, UiTranslations> = {
     startFromIntroduction: "从介绍开始",
     untranslatedTitle: "此页面尚未翻译",
     untranslatedDescription: "您正在查看本文的英文版本。所选语言的翻译版本尚不可用。",
+    documentationSections: "文档章节",
   },
   ru: {
     onThisPage: "На этой странице",
@@ -143,6 +151,7 @@ export const TRANSLATIONS: Record<SiteLocale, UiTranslations> = {
     untranslatedTitle: "Эта страница еще не переведена",
     untranslatedDescription:
       "Вы просматриваете английскую версию этой статьи. Перевод для выбранного языка пока недоступен.",
+    documentationSections: "Разделы документации",
   },
   sv: {
     onThisPage: "På den här sidan",
@@ -159,6 +168,7 @@ export const TRANSLATIONS: Record<SiteLocale, UiTranslations> = {
     untranslatedTitle: "Den här sidan är inte översatt ännu",
     untranslatedDescription:
       "Du visar den engelska versionen av den här artikeln. En översatt version är ännu inte tillgänglig för det valda språket.",
+    documentationSections: "Dokumentationsavsnitt",
   },
   hi: {
     onThisPage: "इस पृष्ठ पर",
@@ -175,6 +185,7 @@ export const TRANSLATIONS: Record<SiteLocale, UiTranslations> = {
     untranslatedTitle: "यह पृष्ठ अभी अनुवादित नहीं है",
     untranslatedDescription:
       "आप इस लेख का अंग्रेजी संस्करण देख रहे हैं। आपकी चुनी गई भाषा के लिए अनुवादित संस्करण अभी उपलब्ध नहीं है।",
+    documentationSections: "दस्तावेज़ अनुभाग",
   },
 };
 

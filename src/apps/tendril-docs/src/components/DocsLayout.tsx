@@ -127,8 +127,8 @@ export function DocsLayout({
   const t = getTranslations(activeLocaleCode);
 
   const localizedSections = useMemo(
-    () => localizeNavTree(sections, activeLocaleCode),
-    [sections, activeLocaleCode],
+    () => localizeNavTree(sections, activeLocaleCode, lookupPage),
+    [sections, activeLocaleCode, lookupPage],
   );
 
   const rawHomeRoute = flattenNavRoutes(sections)[0] ?? defaultHomeRoute;
@@ -303,6 +303,7 @@ export function DocsLayout({
               sections={localizedSections}
               activeRoute={effectiveRoute}
               onNavigate={() => setDrawerOpen(false)}
+              navLabel={t.documentationSections}
             />
           </div>
         </div>

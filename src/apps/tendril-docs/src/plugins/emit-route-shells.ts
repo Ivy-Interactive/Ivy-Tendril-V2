@@ -10,7 +10,7 @@
  * In dev the same route list drives a middleware that rewrites deep links to the shell, because
  * Vite's HTML fallback only fires for URLs ending in `/` or `.html`.
  */
-import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import type { Plugin } from "vite";
 import {
@@ -23,12 +23,14 @@ import {
 } from "../config/locales.config";
 import { getTranslations } from "../config/translations";
 import { buildNavTree, flattenNavRoutes } from "../lib/nav";
-import { parsePages } from "../lib/page";
+import { parsePage, parsePages } from "../lib/page";
 import { ROUTE_BASE } from "../lib/slug";
 
 export interface EmitRouteShellsOptions {
   /** Absolute path to the `content/` directory. */
   contentDir: string;
+  /** Absolute path to the `locales/` directory. Optional. */
+  localesDir?: string;
   /** Vite `base`, e.g. `/docs/`. Defaults to `${ROUTE_BASE}/`. */
   base?: string;
 }
@@ -142,6 +144,9 @@ export function emitRouteShells(options: EmitRouteShellsOptions): Plugin {
 
       const files = readContentFiles(options.contentDir);
       const pages = parsePages(files);
+      const localesDir =
+        options.localesDir ?? path.resolve(path.dirname(options.contentDir), "locales");
+      const hasLocales = existsSync(localesDir);
       const homeRoute = routes[0] ?? `${ROUTE_BASE}/gettingstarted/introduction`;
 
       // 1. Emit shells for all 10 locales across every route
@@ -153,7 +158,23 @@ export function emitRouteShells(options: EmitRouteShellsOptions): Plugin {
           const target = path.join(outDir, fileName);
           mkdirSync(path.dirname(target), { recursive: true });
 
-          const page = [...pages.values()].find((p) => p.route === baseRoute);
+          const basePage = [...pages.values()].find((p) => p.route === baseRoute);
+          let page = basePage;
+          let isTranslated = false;
+
+          if (basePage && locale.code !== DEFAULT_LOCALE && hasLocales) {
+            const locFilePath = path.join(localesDir, locale.code, basePage.contentPath);
+            if (existsSync(locFilePath)) {
+              try {
+                const locRaw = readFileSync(locFilePath, "utf8");
+                page = parsePage(basePage.contentPath, locRaw);
+                isTranslated = true;
+              } catch {
+                // fall back to basePage
+              }
+            }
+          }
+
           if (page) {
             const pageTitle = `${page.title} · Tendril Docs`;
             const pageDesc = page.description || page.title;
@@ -169,7 +190,7 @@ export function emitRouteShells(options: EmitRouteShellsOptions): Plugin {
             ].join("\n");
 
             const fallbackNoticeHtml =
-              locale.code !== DEFAULT_LOCALE
+              locale.code !== DEFAULT_LOCALE && !isTranslated
                 ? `<div role="note" aria-label="${escapeHtml(t.untranslatedTitle)}" style="margin-bottom:1.5rem;padding:1rem;border:1px solid #e5e7eb;border-radius:0.5rem;background:#f9fafb"><strong style="display:block;color:#111827">${escapeHtml(t.untranslatedTitle)}</strong><span style="font-size:0.875rem;color:#6b7280">${escapeHtml(t.untranslatedDescription)}</span></div>`
                 : "";
 

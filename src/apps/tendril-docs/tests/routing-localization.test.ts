@@ -52,6 +52,32 @@ describe("Routing localization", () => {
     expect(deNav[1].pages[0].route).toBe("/de/docs/concepts/plans");
   });
 
+  it("localizes section and page titles when lookupPage is provided", () => {
+    const lookup = (route: string) => {
+      if (route === "/de/docs/gettingstarted") return { title: "Erste Schritte" };
+      if (route === "/de/docs/gettingstarted/introduction") return { title: "Einführung" };
+      if (route === "/de/docs/concepts") return { title: "Konzepte" };
+      if (route === "/de/docs/concepts/plans") return { title: "Pläne" };
+      return undefined;
+    };
+    const deNav = localizeNavTree(sampleNav, "de", lookup);
+    expect(deNav[0].title).toBe("Erste Schritte");
+    expect(deNav[0].pages[0].title).toBe("Einführung");
+    expect(deNav[1].title).toBe("Konzepte");
+    expect(deNav[1].pages[0].title).toBe("Pläne");
+  });
+
+  it("falls back to authored titles when translated page is not in lookup", () => {
+    const partialLookup = (route: string) => {
+      if (route === "/es/docs/gettingstarted") return { title: "Primeros pasos" };
+      return undefined;
+    };
+    const esNav = localizeNavTree(sampleNav, "es", partialLookup);
+    expect(esNav[0].title).toBe("Primeros pasos");
+    expect(esNav[0].pages[0].title).toBe("Introduction");
+    expect(esNav[1].title).toBe("Concepts");
+  });
+
   it("routeForPath supports optional locale parameter", () => {
     expect(routeForPath("01_GettingStarted/01_Introduction.md")).toBe(
       "/docs/gettingstarted/introduction",

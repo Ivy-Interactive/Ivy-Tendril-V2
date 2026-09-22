@@ -12,7 +12,7 @@ import {
   localizePath,
   type SiteLocale,
 } from "./config/locales.config";
-import { buildNavTree, flattenNavRoutes, type NavSection } from "./lib/nav";
+import { buildNavTree, flattenNavRoutes, localizeNavTree, type NavSection } from "./lib/nav";
 import { parsePage, parsePages, type DocPage } from "./lib/page";
 import { normalizeRoute, ROUTE_BASE, splitLocale } from "./lib/slug";
 
@@ -99,6 +99,8 @@ const pagesByRoute = new Map<string, DocPage>(
 
 /** Localized pages indexed by localized route (e.g. `/de/docs/gettingstarted/introduction`). */
 export const localizedPagesByRoute = new Map<string, DocPage>();
+/** Localized pages indexed by `${locale}:${contentPath}` (e.g. `es:01_GettingStarted/_Index.md`). */
+export const localizedPagesByPath = new Map<string, DocPage>();
 
 for (const [globKey, raw] of Object.entries(rawLocalePages)) {
   const parsed = stripLocalePrefix(globKey);
@@ -106,27 +108,35 @@ for (const [globKey, raw] of Object.entries(rawLocalePages)) {
   const { locale, contentPath } = parsed;
   const page = parsePage(contentPath, raw);
   const localizedRoute = localizePath(page.route, locale);
-  localizedPagesByRoute.set(localizedRoute, {
+  const model: DocPage = {
     ...page,
     route: localizedRoute,
     isFallback: false,
-  });
+  };
+  localizedPagesByRoute.set(localizedRoute, model);
+  localizedPagesByPath.set(`${locale}:${contentPath}`, model);
 }
 
-/** Looks a page up by route, tolerating a trailing slash, a query string, a fragment, or a locale prefix. */
-export function pageForRoute(route: string): DocPage | undefined {
+/** Looks a page up by route or contentPath, tolerating a trailing slash, a query string, a fragment, or a locale prefix. */
+export function pageForRoute(route: string, contentPath?: string): DocPage | undefined {
   const normalized = normalizeRoute(route);
 
   // 1. Direct match on localized page if present
   const locDirect = localizedPagesByRoute.get(normalized);
   if (locDirect) return locDirect;
 
+  // 1b. Match by locale and contentPath if provided
+  const { locale, path: cleanPath } = splitLocale(normalized);
+  if (contentPath && locale !== DEFAULT_LOCALE) {
+    const byPath = localizedPagesByPath.get(`${locale}:${contentPath}`);
+    if (byPath) return byPath;
+  }
+
   // 2. Direct match on English page if present (and route is English)
   const direct = pagesByRoute.get(normalized);
   if (direct) return direct;
 
-  // 3. Split locale prefix if present (e.g. /de/docs/concepts/plans -> { locale: 'de', path: '/docs/concepts/plans' })
-  const { locale, path: cleanPath } = splitLocale(normalized);
+  // 3. Resolve by localized route candidate
   const normalizedClean = normalizeRoute(cleanPath);
 
   if (locale !== DEFAULT_LOCALE) {
@@ -168,3 +178,9 @@ export function pageForRoute(route: string): DocPage | undefined {
 
 /** First page of the first section — where the base route and any unknown entry point land. */
 export const homeRoute: string = routes[0] ?? ROUTE_BASE;
+
+/** Pre-built localized navigation tree for the given locale. */
+export function getNavTreeForLocale(locale: string): NavSection[] {
+  if (locale === DEFAULT_LOCALE || !isSiteLocale(locale)) return navTree;
+  return localizeNavTree(navTree, locale, pageForRoute);
+}

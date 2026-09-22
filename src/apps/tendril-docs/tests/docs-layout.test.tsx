@@ -71,6 +71,29 @@ describe("DocsLayout", () => {
     );
   });
 
+  it("renders translated section and page titles in the sidebar when localized route is visited", async () => {
+    renderDocs("/es/docs/concepts/plans");
+    await screen.findByRole("heading", { level: 1, name: "Planes" });
+
+    const sidebar = screen.getByRole("navigation", { name: "Secciones de la documentación" });
+    expect(within(sidebar).getByRole("link", { name: "Primeros pasos" })).toHaveAttribute(
+      "href",
+      "/es/docs/gettingstarted",
+    );
+    expect(within(sidebar).getByRole("link", { name: "Conceptos" })).toHaveAttribute(
+      "href",
+      "/es/docs/concepts",
+    );
+    expect(within(sidebar).getByRole("link", { name: "Bienvenido a Ivy Tendril" })).toHaveAttribute(
+      "href",
+      "/es/docs/gettingstarted/introduction",
+    );
+    expect(within(sidebar).getByRole("link", { name: "Planes", current: "page" })).toHaveAttribute(
+      "href",
+      "/es/docs/concepts/plans",
+    );
+  });
+
   it("rewrites a relative .md link to its route before the DOM sees it", async () => {
     renderDocs("/docs/concepts/plans");
     await screen.findByRole("heading", { level: 1, name: "Plans" });

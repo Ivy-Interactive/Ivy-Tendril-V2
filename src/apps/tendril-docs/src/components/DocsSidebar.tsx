@@ -11,6 +11,8 @@ interface DocsSidebarProps {
   activeRoute: string;
   /** Called after a successful in-page navigation, so the mobile drawer can close itself. */
   onNavigate?: () => void;
+  /** Optional accessible navigation label. Defaults to "Documentation sections". */
+  navLabel?: string;
 }
 
 function NavLink({
@@ -143,9 +145,9 @@ function Section({
  * hand-maintained navigation manifest to drift out of sync, which is what `nav-structure.test.ts`
  * pins down.
  */
-export function DocsSidebar({ sections, activeRoute, onNavigate }: DocsSidebarProps) {
+export function DocsSidebar({ sections, activeRoute, onNavigate, navLabel }: DocsSidebarProps) {
   return (
-    <nav aria-label="Documentation sections" className="text-sm">
+    <nav aria-label={navLabel ?? "Documentation sections"} className="text-sm">
       <ul className="flex flex-col gap-3">
         {sections.map((section) => (
           <Section
