@@ -15,6 +15,7 @@ import {
 import { Plus } from "lucide-react";
 import { PlanMarkdown } from "@ivy-interactive/components/tendril";
 import { bridge } from "../api/bridge";
+import { i18n, useTranslation, type TFunction } from "../i18n";
 import { notificationsStore } from "../state/notificationsStore";
 import { uiStore } from "../state/uiStore";
 import { readAppearance } from "../state/appearance";
@@ -41,11 +42,10 @@ import {
   SettingsSection,
   SubSection,
   SelectField,
-  asOptions,
 } from "./settings/fields";
 import { asRecord, asString, parseLines } from "./settings/configValues";
 import { readLevels, readProjectEntries, readVerificationDefs } from "./settings/projectConfig";
-import { PROFILE_TIERS, readAgentEntries } from "./settings/codingAgents";
+import { PROFILE_TIERS, readAgentEntries, type ProfileTier } from "./settings/codingAgents";
 import { promptwaresApi, type PromptwareProgram } from "../api/promptwaresApi";
 import { ProjectSettingsView } from "./settings/ProjectSettingsView";
 import { AddProjectView } from "./settings/AddProjectView";
@@ -86,16 +86,33 @@ const NUMERIC_BOUNDS: Partial<Record<keyof SettingsForm, [number, number]>> = {
   maxConcurrentJobs: [1, 512],
 };
 
-/** `ConfigCommand.ParseBoundedInt`'s two refusals, verbatim. */
-function boundsError(key: keyof SettingsForm, value: unknown): string | null {
+/**
+ * `ConfigCommand.ParseBoundedInt`'s two refusals, verbatim in English. The key is the `config.yaml`
+ * key, never translated: it is what the operator would type into `tendril config set`.
+ */
+function boundsError(
+  key: keyof SettingsForm,
+  value: unknown,
+  t: TFunction<"settings">,
+): string | null {
   const bounds = NUMERIC_BOUNDS[key];
   if (!bounds) return null;
   const [min, max] = bounds;
   if (typeof value !== "number" || !Number.isInteger(value)) {
-    return `${key} must be an integer, got '${String(value)}'.`;
+    return t("shared.notInteger", { key, value: String(value) });
   }
-  if (value < min || value > max) return `${key} must be between ${min} and ${max}, got ${value}.`;
+  if (value < min || value > max) return t("shared.outOfRange", { key, min, max, value });
   return null;
+}
+
+/** Whether a profile name is one of the built-in tiers rather than an operator's own profile. */
+const isProfileTier = (name: string): name is ProfileTier =>
+  (PROFILE_TIERS as readonly string[]).includes(name);
+
+/** `serviceInfo.state`'s label, keyed by the raw value; a state this build does not know is shown raw. */
+function connectionStateLabel(state: string, t: TFunction<"settings">): string {
+  const key = `diagnostics.states.${state.charAt(0).toLowerCase()}${state.slice(1)}`;
+  return i18n.exists(`settings:${key}`) ? t(key as Parameters<typeof t>[0]) : state;
 }
 
 /**
@@ -207,6 +224,7 @@ const formOf = (cfg: TendrilConfig | null): SettingsForm => {
  * leaves it laid out as a block inside the settings column instead of a page inside a page.
  */
 const PromptwareProgramPane: React.FC<{ name: string }> = ({ name }) => {
+  const { t } = useTranslation("settings");
   const [program, setProgram] = React.useState<PromptwareProgram | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
@@ -245,21 +263,20 @@ const PromptwareProgramPane: React.FC<{ name: string }> = ({ name }) => {
 
   return (
     <SubSection
-      title="Prompt"
+      title={t("promptwares.program.title")}
       hint={
         program?.layer === "overlay"
-          ? "From your overlay directory, which replaces the shipped prompt."
-          : "The deployed prompt this agent runs. Read-only: change it from your overlay directory."
+          ? t("promptwares.program.hintOverlay")
+          : t("promptwares.program.hintDeployed")
       }
       testId="promptware-program"
     >
       {isDefaultKey ? (
         <p className="text-sm text-muted-foreground">
-          _default is the fallback applied to every agent rather than an agent of its own, so it has
-          no prompt. Select an agent to read one.
+          {t("promptwares.program.defaultKey", { key: DEFAULT_PROMPTWARE_KEY })}
         </p>
       ) : isLoading ? (
-        <p className="text-sm text-muted-foreground">Loading prompt...</p>
+        <p className="text-sm text-muted-foreground">{t("promptwares.program.loading")}</p>
       ) : error ? (
         <p className="text-sm text-muted-foreground">{error}</p>
       ) : program ? (
@@ -285,6 +302,7 @@ const PromptwaresCard: React.FC<{
   profileOptions: string[];
   onSave: (key: string, value: unknown) => Promise<void>;
 }> = ({ config, profileOptions, onSave }) => {
+  const { t } = useTranslation("settings");
   const entries = React.useMemo(() => readPromptwares(config), [config]);
   const [selected, setSelected] = React.useState<string>(DEFAULT_PROMPTWARE_KEY);
   const [draft, setDraft] = React.useState({ profile: "", allowed: "", denied: "" });
@@ -324,9 +342,9 @@ const PromptwaresCard: React.FC<{
     setError(null);
     try {
       await onSave("promptwares", { [key]: value });
-      notificationsStore.notifySuccess("Saved", "Agent saved");
+      notificationsStore.notifySuccess(t("shared.toastSaved"), t("promptwares.saved"));
     } catch (err) {
-      setError(`Failed to save agent: ${describeBridgeError(err)}`);
+      setError(t("promptwares.saveFailed", { error: describeBridgeError(err) }));
     } finally {
       setIsSaving(false);
     }
@@ -334,23 +352,23 @@ const PromptwaresCard: React.FC<{
 
   return (
     <SettingsSection
-      title="Workflow Agents"
-      hint="Read each agent's prompt, and configure the coding-agent profile and tool permissions it runs with."
+      title={t("promptwares.title")}
+      hint={t("promptwares.hint")}
       testId="promptwares-card"
     >
       <div className="max-w-170 space-y-4">
         <SelectField
           id="promptware-select"
-          label="Agent"
+          label={t("promptwares.agentLabel")}
           value={selected}
           options={known.map((key) => ({
             value: key,
-            label: key === DEFAULT_PROMPTWARE_KEY ? "_default (every agent)" : key,
+            label: key === DEFAULT_PROMPTWARE_KEY ? t("promptwares.defaultOption", { key }) : key,
           }))}
           hint={
             entries.some((entry) => entry.key === selected)
               ? undefined
-              : "Not configured yet. Saving creates the entry."
+              : t("promptwares.notConfigured")
           }
           onChange={setSelected}
         />
@@ -359,10 +377,18 @@ const PromptwaresCard: React.FC<{
 
         <SelectField
           id="promptware-profile-select"
-          label="Profile"
+          label={t("promptwares.profileLabel")}
           value={draft.profile === "" ? "default" : draft.profile}
-          options={[{ value: "default", label: "Default (unset)" }, ...asOptions(profileOptions)]}
-          hint="Last writer wins: _default, then this agent, then a per-plan or CLI override."
+          options={[
+            { value: "default", label: t("promptwares.profileDefault") },
+            // The value stays the tier id `config.yaml` stores; only a built-in tier's label is
+            // translated. A profile of the operator's own is shown by its name.
+            ...profileOptions.map((name) => ({
+              value: name,
+              label: isProfileTier(name) ? t(`promptwares.profileTiers.${name}`) : name,
+            })),
+          ]}
+          hint={t("promptwares.profileHint", { key: DEFAULT_PROMPTWARE_KEY })}
           onChange={(value) =>
             setDraft((prev) => ({ ...prev, profile: value === "default" ? "" : value }))
           }
@@ -370,19 +396,19 @@ const PromptwaresCard: React.FC<{
 
         <LinesField
           id="promptware-allowed-tools"
-          label="Allowed Tools"
+          label={t("promptwares.allowedLabel")}
           value={draft.allowed}
           placeholder={"Write(src/**)\nBash(pnpm *)"}
-          hint="Added on top of the base tool set, one rule per line. It never replaces it."
+          hint={t("promptwares.allowedHint")}
           onChange={(value) => setDraft((prev) => ({ ...prev, allowed: value }))}
         />
 
         <LinesField
           id="promptware-denied-tools"
-          label="Denied Tools"
+          label={t("promptwares.deniedLabel")}
           value={draft.denied}
           placeholder={"Write(.env)"}
-          hint="Subtracted from the merged allowlist, and unioned with _default rather than narrowing it."
+          hint={t("promptwares.deniedHint", { key: DEFAULT_PROMPTWARE_KEY })}
           onChange={(value) => setDraft((prev) => ({ ...prev, denied: value }))}
         />
 
@@ -401,7 +427,7 @@ const PromptwaresCard: React.FC<{
               })
             }
           >
-            {isSaving ? "Saving..." : "Save"}
+            {isSaving ? t("shared.saving") : t("common:actions.save")}
           </Button>
           <Button
             type="button"
@@ -416,19 +442,19 @@ const PromptwaresCard: React.FC<{
               })
             }
           >
-            Reset
+            {t("promptwares.reset")}
           </Button>
         </div>
 
         <div className="flex flex-wrap items-end gap-2 pt-2">
           <div className="space-y-1">
             <Label htmlFor="promptware-new-name" className="text-xs font-medium text-foreground">
-              Add Agent
+              {t("promptwares.addLabel")}
             </Label>
             <Input
               id="promptware-new-name"
               value={newName}
-              placeholder="Agent name (e.g. CreatePlan)..."
+              placeholder={t("promptwares.addPlaceholder", { example: "CreatePlan" })}
               onChange={(e) => setNewName(e.target.value)}
             />
           </div>
@@ -442,7 +468,7 @@ const PromptwaresCard: React.FC<{
               setNewName("");
             }}
           >
-            Add
+            {t("promptwares.add")}
           </Button>
         </div>
       </div>
@@ -455,6 +481,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   onRefreshHealth,
   initialSection,
 }) => {
+  const { t } = useTranslation("settings");
   // `SettingsApp.Build`'s two pieces of navigation state: which row is selected, and whether the
   // Projects row is expanded. `args?.Section ?? TagCodingAgent` is the initial selection.
   const [selected, setSelected] = useState<string>(initialSection ?? SettingsTag.CodingAgent);
@@ -530,7 +557,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   ) => {
     const changedKeys = keys.filter((key) => form[key] !== saved[key]);
     for (const key of changedKeys) {
-      const message = boundsError(key, form[key]);
+      const message = boundsError(key, form[key], t);
       if (message) {
         setError(section, message);
         return;
@@ -545,9 +572,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       }
       applyConfig(await bridge.getConfig());
       onSaved?.();
-      notificationsStore.notifySuccess("Saved", toastMessage);
+      notificationsStore.notifySuccess(t("shared.toastSaved"), toastMessage);
     } catch (err) {
-      setError(section, `Failed to save: ${describeBridgeError(err)}`);
+      setError(section, t("shared.saveFailed", { error: describeBridgeError(err) }));
     } finally {
       setSavingSection(null);
     }
@@ -565,9 +592,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     try {
       await onRefreshHealth();
       const elapsed = Date.now() - start;
-      setPingResult(`Pong! Response in ${elapsed}ms`);
+      setPingResult(t("diagnostics.pong", { elapsed }));
     } catch (err) {
-      setPingResult(`Ping failed: ${err instanceof Error ? err.message : String(err)}`);
+      setPingResult(
+        t("diagnostics.pingFailed", { error: err instanceof Error ? err.message : String(err) }),
+      );
     } finally {
       setIsPinging(false);
     }
@@ -577,7 +606,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const notificationsChanged = form.desktopNotifications !== saved.desktopNotifications;
   /** What config.yaml already holds outside the bounds the daemon documents, if anything. */
   const outOfBoundsOnDisk = (Object.keys(NUMERIC_BOUNDS) as (keyof SettingsForm)[])
-    .map((key) => boundsError(key, saved[key]))
+    .map((key) => boundsError(key, saved[key], t))
     .filter((message): message is string => message !== null);
 
   const advancedChanged =
@@ -595,7 +624,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   // `BetaHelper.IsBeta(tendrilArgs, config)`, minus the CLI flag V2 has no equivalent of. It gates
   // the Team Vault row, and V1's three per-project blocks.
   const isBeta = saved.beta;
-  const sections = React.useMemo(() => settingsSections(isBeta), [isBeta]);
+  const sections = React.useMemo(() => settingsSections(isBeta, t), [isBeta, t]);
 
   /**
    * `SettingsApp.Build`'s expandable-row handler: expanding jumps to the first project when the
@@ -682,11 +711,14 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
     setSelected(index >= 0 ? projectTag(index) : SettingsTag.Projects);
     if (outcome === "background") {
       notificationsStore.notifySuccess(
-        "Job Started",
-        `Created background job for project '${name}'`,
+        t("projectToasts.jobStartedTitle"),
+        t("projectToasts.backgroundJob", { name }),
       );
     } else {
-      notificationsStore.notifySuccess("Success", `Project '${name}' added successfully`);
+      notificationsStore.notifySuccess(
+        t("projectToasts.addedTitle"),
+        t("projectToasts.added", { name }),
+      );
     }
   };
 
@@ -719,10 +751,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   };
 
   const selectAfterRemove = (name: string) =>
-    selectAfterGone(name, "Removed", `Removed project '${name}'. Its files are still on disk.`);
+    selectAfterGone(name, t("projectToasts.removedTitle"), t("projectToasts.removed", { name }));
 
   const selectAfterDelete = (name: string) =>
-    selectAfterGone(name, "Deleted", `Deleted project '${name}' and its data`);
+    selectAfterGone(name, t("projectToasts.deletedTitle"), t("projectToasts.deleted", { name }));
 
   /**
    * `ConfigYamlUiHelper.OpenOrNavigate`, now taking its *navigate* arm.
@@ -763,15 +795,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const currentLabel = isEditingConfig
     ? "config.yaml"
     : isAddingProject
-      ? "Add Project"
-      : sectionLabel(selected, sections, projectNames);
+      ? t("nav.addProject")
+      : sectionLabel(selected, sections, projectNames, t);
 
   return (
     <div className="flex h-full min-h-0" data-testid="settings-view">
       {/* `new SidebarLayout(content, sidebar)`: the nested sidebar, hidden at the breakpoints where
           `sections.ShowOn(Breakpoint.Mobile, Breakpoint.Tablet)` swaps in the picker instead. */}
       <nav
-        aria-label="Configuration sections"
+        aria-label={t("nav.ariaLabel")}
         role="tablist"
         data-testid="settings-sidebar"
         className="hidden w-56 shrink-0 gap-1 overflow-y-auto border-r border-border p-2 md:flex md:flex-col"
@@ -812,7 +844,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                   ))}
                   {/* `SidebarListRow.BuildSubItem("Add Project", Icons.Plus, ...)`. */}
                   <SidebarSubItem
-                    label="Add Project"
+                    label={t("nav.addProject")}
                     icon={Plus}
                     selected={isAddingProject}
                     onClick={() => setIsAddingProject(true)}
@@ -840,7 +872,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             the selection. */}
         <SidebarRow
           icon={OpenConfigIcon}
-          label="Open config.yaml"
+          label={t("nav.openConfig")}
           selected={false}
           onClick={openConfigYaml}
           testId="settings-row-open-config"
@@ -863,7 +895,10 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             }
             onValueChange={selectSection}
           >
-            <SelectTrigger aria-label="Configuration section" data-testid="settings-mobile-picker">
+            <SelectTrigger
+              aria-label={t("nav.mobilePickerLabel")}
+              data-testid="settings-mobile-picker"
+            >
               <SelectValue placeholder={currentLabel} />
             </SelectTrigger>
             <SelectContent>
@@ -957,15 +992,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
               {on(SettingsTag.Plans) && (
                 <SettingsSection
-                  title="Plans"
-                  hint="Configure the default plan template used when creating new plans."
+                  title={t("plans.title")}
+                  hint={t("plans.hint")}
                   testId="plans-settings-card"
                 >
                   <form
                     className="max-w-120 space-y-4"
                     onSubmit={(e) => {
                       e.preventDefault();
-                      void saveSection("planTemplate", ["planTemplate"], "Plan template saved");
+                      void saveSection("planTemplate", ["planTemplate"], t("plans.saved"));
                     }}
                   >
                     <div className="space-y-1">
@@ -973,11 +1008,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         htmlFor="plan-template-input"
                         className="text-xs font-medium text-foreground"
                       >
-                        Plan Template
+                        {t("plans.templateLabel")}
                       </Label>
                       <Textarea
                         id="plan-template-input"
-                        placeholder="Plan template..."
+                        placeholder={t("plans.templatePlaceholder")}
                         value={form.planTemplate}
                         onChange={(e) => set("planTemplate", e.target.value)}
                         className="h-80 font-mono text-xs"
@@ -990,7 +1025,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       type="submit"
                       disabled={!planChanged || savingSection === "planTemplate"}
                     >
-                      {savingSection === "planTemplate" ? "Saving..." : "Save"}
+                      {savingSection === "planTemplate"
+                        ? t("shared.saving")
+                        : t("common:actions.save")}
                     </Button>
                   </form>
                 </SettingsSection>
@@ -1007,8 +1044,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               {/* `if (isBeta) rows.Add(("Team Vault", ...))`: gated, and labelled as V1 labels it. */}
               {isBeta && on(SettingsTag.Vault) && (
                 <SettingsSection
-                  title="Team Vault"
-                  hint="Share and synchronize Tendril projects, custom skills, MCP servers, and security rules across your team via a versioned Git repository."
+                  title={t("vaultSection.title")}
+                  hint={t("vaultSection.hint")}
                   testId="vault-card"
                 >
                   <VaultSettingsView tendrilHome={serviceInfo?.tendrilHome} />
@@ -1034,8 +1071,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
               {on(SettingsTag.Notifications) && (
                 <SettingsSection
-                  title="Notifications"
-                  hint="Configure how Tendril notifies you about job completions, failures, and other events."
+                  title={t("notifications.title")}
+                  hint={t("notifications.hint")}
                   testId="notifications-card"
                 >
                   <form
@@ -1047,7 +1084,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       void saveSection(
                         "desktopNotifications",
                         ["desktopNotifications"],
-                        "Notification settings saved",
+                        t("notifications.saved"),
                         () => notificationsStore.setDesktopNotifications(form.desktopNotifications),
                       );
                     }}
@@ -1064,7 +1101,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         htmlFor="desktop-notifications-switch"
                         className="text-xs font-medium text-foreground"
                       >
-                        Enable Desktop Notifications
+                        {t("notifications.desktopLabel")}
                       </Label>
                     </div>
 
@@ -1074,7 +1111,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                       type="submit"
                       disabled={!notificationsChanged || savingSection === "desktopNotifications"}
                     >
-                      {savingSection === "desktopNotifications" ? "Saving..." : "Save"}
+                      {savingSection === "desktopNotifications"
+                        ? t("shared.saving")
+                        : t("common:actions.save")}
                     </Button>
                   </form>
                 </SettingsSection>
@@ -1087,8 +1126,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               {on(SettingsTag.Advanced) && (
                 <>
                   <SettingsSection
-                    title="Advanced"
-                    hint="Configure timeouts and concurrency limits."
+                    title={t("advanced.title")}
+                    hint={t("advanced.hint")}
                     testId="advanced-settings-card"
                   >
                     {/* `noValidate`: `min`/`max` still drive the spinners, but an out-of-range value is refused
@@ -1101,42 +1140,46 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         void saveSection(
                           "advanced",
                           ["jobTimeout", "staleOutputTimeout", "maxConcurrentJobs", "beta"],
-                          "Settings saved and applied",
+                          t("advanced.saved"),
                         );
                       }}
                     >
-                      <h3 className="text-sm font-semibold text-foreground">Timeouts</h3>
+                      <h3 className="text-sm font-semibold text-foreground">
+                        {t("advanced.timeoutsHeading")}
+                      </h3>
                       {/* The bounds are `ConfigService.ValidateSettings`', not `AdvancedSetupView`'s: V1's own
               number input caps Job Timeout at 120 while its config service accepts up to 480, and a
               config.yaml holding 300 must stay editable here rather than be silently rejected. */}
                       <NumberField
                         id="job-timeout-input"
-                        label="Job Timeout"
+                        label={t("advanced.jobTimeout")}
                         value={form.jobTimeout}
                         min={NUMERIC_BOUNDS.jobTimeout![0]}
                         max={NUMERIC_BOUNDS.jobTimeout![1]}
-                        suffix="min"
+                        suffix={t("advanced.minutesSuffix")}
                         onChange={(value) => set("jobTimeout", value)}
                       />
                       <NumberField
                         id="stale-output-timeout-input"
-                        label="Stale Output Timeout"
+                        label={t("advanced.staleOutputTimeout")}
                         value={form.staleOutputTimeout}
                         min={NUMERIC_BOUNDS.staleOutputTimeout![0]}
                         max={NUMERIC_BOUNDS.staleOutputTimeout![1]}
-                        suffix="min"
+                        suffix={t("advanced.minutesSuffix")}
                         onChange={(value) => set("staleOutputTimeout", value)}
                       />
                       <NumberField
                         id="max-concurrent-jobs-input"
-                        label="Max Concurrent Jobs"
+                        label={t("advanced.maxConcurrentJobs")}
                         value={form.maxConcurrentJobs}
                         min={NUMERIC_BOUNDS.maxConcurrentJobs![0]}
                         max={NUMERIC_BOUNDS.maxConcurrentJobs![1]}
                         onChange={(value) => set("maxConcurrentJobs", value)}
                       />
 
-                      <h3 className="text-sm font-semibold text-foreground">Beta Features</h3>
+                      <h3 className="text-sm font-semibold text-foreground">
+                        {t("advanced.betaHeading")}
+                      </h3>
                       <div className="flex items-center gap-3">
                         <Switch
                           id="beta-switch"
@@ -1149,13 +1192,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                           htmlFor="beta-switch"
                           className="text-xs font-medium text-foreground"
                         >
-                          Opt-in to beta features
+                          {t("advanced.betaLabel")}
                         </Label>
                       </div>
 
-                      <p className="text-xs text-muted-foreground">
-                        A Tendril restart is required for changes to take effect.
-                      </p>
+                      <p className="text-xs text-muted-foreground">{t("advanced.restartNote")}</p>
 
                       {/* V1 clamps an out-of-range value on load and logs it; V2 keeps it and honours it, so the
               only place it can be pointed out is here. */}
@@ -1171,7 +1212,9 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         type="submit"
                         disabled={!advancedChanged || savingSection === "advanced"}
                       >
-                        {savingSection === "advanced" ? "Saving..." : "Save"}
+                        {savingSection === "advanced"
+                          ? t("shared.saving")
+                          : t("common:actions.save")}
                       </Button>
                     </form>
                   </SettingsSection>
@@ -1180,7 +1223,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
           than in the C# app. They are part of Advanced rather than a top-level row, because V1's
           sidebar has no row for them and an extra row is itself a structural divergence. */}
                   <SettingsSection
-                    title="Daemon Diagnostics"
+                    title={t("diagnostics.title")}
                     action={
                       <Button
                         type="button"
@@ -1189,7 +1232,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         disabled={isPinging}
                         onClick={handlePing}
                       >
-                        {isPinging ? "Pinging..." : "Test Latency (Ping)"}
+                        {isPinging ? t("diagnostics.pinging") : t("diagnostics.ping")}
                       </Button>
                     }
                   >
@@ -1201,25 +1244,28 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
                     <dl className="space-y-3 text-sm">
                       <div className="flex justify-between">
-                        <dt className="text-foreground">Connection State:</dt>
+                        <dt className="text-foreground">{t("diagnostics.connectionState")}</dt>
                         <dd className="font-semibold text-foreground">
-                          {serviceInfo?.state || "NotRunning"}
+                          {connectionStateLabel(serviceInfo?.state || "NotRunning", t)}
                         </dd>
                       </div>
                       <div className="flex justify-between">
-                        <dt className="text-foreground">Daemon Host & Port:</dt>
+                        <dt className="text-foreground">{t("diagnostics.hostPort")}</dt>
                         <dd className="font-mono text-xs text-muted-foreground">
-                          {serviceInfo?.host || "127.0.0.1"}:{serviceInfo?.port || "N/A"}
+                          {serviceInfo?.host || "127.0.0.1"}:
+                          {serviceInfo?.port || t("diagnostics.notAvailable")}
                         </dd>
                       </div>
                       <div className="flex justify-between">
-                        <dt className="text-foreground">Process PID:</dt>
+                        <dt className="text-foreground">{t("diagnostics.pid")}</dt>
                         <dd className="font-mono text-xs text-muted-foreground">
-                          {serviceInfo?.pid || "N/A"}
+                          {serviceInfo?.pid || t("diagnostics.notAvailable")}
                         </dd>
                       </div>
                       <div className="flex justify-between">
-                        <dt className="text-foreground">TENDRIL_HOME:</dt>
+                        <dt className="text-foreground">
+                          {t("diagnostics.tendrilHome", { name: "TENDRIL_HOME" })}
+                        </dt>
                         <dd
                           className="max-w-50 truncate font-mono text-xs text-muted-foreground"
                           title={serviceInfo?.tendrilHome}
@@ -1228,15 +1274,15 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                         </dd>
                       </div>
                       <div className="flex justify-between">
-                        <dt className="text-foreground">Security / Secret:</dt>
+                        <dt className="text-foreground">{t("diagnostics.secret")}</dt>
                         <dd className="font-mono text-xs text-success">
-                          Managed natively (hidden from webview storage)
+                          {t("diagnostics.secretValue")}
                         </dd>
                       </div>
                       <div className="flex justify-between">
-                        <dt className="text-foreground">Capabilities:</dt>
+                        <dt className="text-foreground">{t("diagnostics.capabilities")}</dt>
                         <dd className="text-xs text-muted-foreground">
-                          {serviceInfo?.capabilities?.join(", ") || "None reported"}
+                          {serviceInfo?.capabilities?.join(", ") || t("diagnostics.noCapabilities")}
                         </dd>
                       </div>
                     </dl>
@@ -1251,8 +1297,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
 
               {on(SettingsTag.Newsletter) && (
                 <SettingsSection
-                  title="Newsletter"
-                  hint="Subscribe to the Ivy & Tendril newsletter to receive updates, feature highlights, and release notes."
+                  title={t("newsletterSection.title")}
+                  hint={t("newsletterSection.hint")}
                   testId="newsletter-card"
                 >
                   <NewsletterSignup />

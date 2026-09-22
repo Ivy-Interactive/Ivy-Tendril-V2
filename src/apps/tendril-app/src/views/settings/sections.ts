@@ -13,6 +13,7 @@ import {
   Wand,
 } from "lucide-react";
 import type React from "react";
+import type { TFunction } from "../../i18n";
 
 /**
  * `Apps/Settings/SettingsApp.cs`'s section tags, verbatim. They are also the suffix an `activeNav`
@@ -68,16 +69,25 @@ export interface SettingsSection {
  *
  * `sections` is also what drives the `Breakpoint.Mobile`/`Tablet` `MobileItemPicker`, which is why
  * one list produces both presentations here too.
+ *
+ * The labels are translated with the `t` it is handed, so the list is built at render time and
+ * rebuilt when the language changes; the tags never are, because they are the deep links.
  */
-export function settingsSections(isBeta: boolean): SettingsSection[] {
+export function settingsSections(isBeta: boolean, t: TFunction<"settings">): SettingsSection[] {
   return [
-    { label: "Coding Agent", tag: SettingsTag.CodingAgent, icon: Bot },
-    { label: "Plans", tag: SettingsTag.Plans, icon: Feather },
-    { label: "Appearance", tag: SettingsTag.Appearance, icon: Sun },
-    { label: "Projects", tag: SettingsTag.Projects, icon: Folder, expandable: true },
+    { label: t("sections.codingAgent"), tag: SettingsTag.CodingAgent, icon: Bot },
+    { label: t("sections.plans"), tag: SettingsTag.Plans, icon: Feather },
+    { label: t("sections.appearance"), tag: SettingsTag.Appearance, icon: Sun },
+    { label: t("sections.projects"), tag: SettingsTag.Projects, icon: Folder, expandable: true },
     // `if (isBeta) sections.Add(("Team Vault", ...))` - the vault row is gated, not always present.
     ...(isBeta
-      ? [{ label: "Team Vault", tag: SettingsTag.Vault, icon: FolderGit2 } as SettingsSection]
+      ? [
+          {
+            label: t("sections.vault"),
+            tag: SettingsTag.Vault,
+            icon: FolderGit2,
+          } as SettingsSection,
+        ]
       : []),
     /**
      * "Workflow Agents" rather than plain "Agents": `promptwares` is what config, the API and the
@@ -86,12 +96,12 @@ export function settingsSections(isBeta: boolean): SettingsSection[] {
      * agent *runs on*. Two rows both reading "Agent" would be two different things under one word,
      * so the qualifier stays. The tag is untouched: it is the `settings:promptwares` deep link.
      */
-    { label: "Workflow Agents", tag: SettingsTag.Promptwares, icon: Wand },
-    { label: "Levels", tag: SettingsTag.Levels, icon: ListOrdered },
-    { label: "Notifications", tag: SettingsTag.Notifications, icon: Bell },
-    { label: "Security & Tunneling", tag: SettingsTag.Security, icon: Lock },
-    { label: "Advanced", tag: SettingsTag.Advanced, icon: Cog },
-    { label: "Newsletter", tag: SettingsTag.Newsletter, icon: Mail },
+    { label: t("sections.promptwares"), tag: SettingsTag.Promptwares, icon: Wand },
+    { label: t("sections.levels"), tag: SettingsTag.Levels, icon: ListOrdered },
+    { label: t("sections.notifications"), tag: SettingsTag.Notifications, icon: Bell },
+    { label: t("sections.security"), tag: SettingsTag.Security, icon: Lock },
+    { label: t("sections.advanced"), tag: SettingsTag.Advanced, icon: Cog },
+    { label: t("sections.newsletter"), tag: SettingsTag.Newsletter, icon: Mail },
   ];
 }
 
@@ -108,8 +118,9 @@ export function sectionLabel(
   tag: string,
   sections: SettingsSection[],
   projectNames: string[],
+  t: TFunction<"settings">,
 ): string {
   const index = projectIndexOf(tag);
-  if (index !== null) return projectNames[index] ?? "Configuration";
-  return sections.find((section) => section.tag === tag)?.label ?? "Configuration";
+  if (index !== null) return projectNames[index] ?? t("sections.fallback");
+  return sections.find((section) => section.tag === tag)?.label ?? t("sections.fallback");
 }

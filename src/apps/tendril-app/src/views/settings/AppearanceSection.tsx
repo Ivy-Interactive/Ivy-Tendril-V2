@@ -42,11 +42,14 @@ import { NativeSelectField, SaveError, SettingsSection, SubSection } from "./fie
  * rules: applied on the change, persisted to `config.yaml`'s `language`, rolled back if either fails.
  */
 
-/** V1's button row, with its icons (`Icons.Sun`, `Icons.Moon`, `Icons.SunMoon`) and its labels. */
-const THEME_MODES: { value: Theme; label: string; icon: React.ReactNode }[] = [
-  { value: "light", label: "Light", icon: <Sun className="size-4" aria-hidden="true" /> },
-  { value: "dark", label: "Dark", icon: <Moon className="size-4" aria-hidden="true" /> },
-  { value: "system", label: "System", icon: <SunMoon className="size-4" aria-hidden="true" /> },
+/**
+ * V1's button row, with its icons (`Icons.Sun`, `Icons.Moon`, `Icons.SunMoon`). Each label is
+ * `settings:appearance.themeMode.<value>`, looked up at render time.
+ */
+const THEME_MODES: { value: Theme; icon: React.ReactNode }[] = [
+  { value: "light", icon: <Sun className="size-4" aria-hidden="true" /> },
+  { value: "dark", icon: <Moon className="size-4" aria-hidden="true" /> },
+  { value: "system", icon: <SunMoon className="size-4" aria-hidden="true" /> },
 ];
 
 /**
@@ -99,20 +102,20 @@ export const AppearanceSection: React.FC<{
     setError(null);
     try {
       await onSaveRaw(key, value);
-      notificationsStore.notifySuccess("Saved", toast);
+      notificationsStore.notifySuccess(t("shared.toastSaved"), toast);
     } catch (err) {
       // The applied look is rolled back with the state: leaving the app in a theme config.yaml does
       // not hold would make the next restart look like the setting was lost.
       revert();
-      setError(`Failed to save: ${describeBridgeError(err)}`);
+      setError(t("shared.saveFailed", { error: describeBridgeError(err) }));
     }
   };
 
-  const chooseThemeMode = (mode: Theme, label: string) => {
+  const chooseThemeMode = (mode: Theme) => {
     const previous = themeMode;
     setThemeMode(mode);
     setThemeGlobal(mode);
-    void write("themeMode", mode, `Appearance set to ${label}`, () => {
+    void write("themeMode", mode, t("appearance.themeMode.saved", { context: mode }), () => {
       setThemeMode(previous);
       setThemeGlobal(previous);
     });
@@ -122,7 +125,7 @@ export const AppearanceSection: React.FC<{
     const previous = theme;
     setTheme(id);
     const applied = applyThemePreset(id);
-    void write("theme", applied.id, `Theme set to ${applied.name}`, () => {
+    void write("theme", applied.id, t("appearance.theme.saved", { name: applied.name }), () => {
       setTheme(previous);
       applyThemePreset(previous);
     });
@@ -134,7 +137,7 @@ export const AppearanceSection: React.FC<{
     void write(
       "sidebarOpen",
       open,
-      `Sidebar set to ${open ? "expanded" : "collapsed"} by default`,
+      t("appearance.sidebar.saved", { context: open ? "expanded" : "collapsed" }),
       () => setSidebarOpen(previous),
     );
   };
@@ -143,14 +146,14 @@ export const AppearanceSection: React.FC<{
    * `SetChatMode`, which is persist plus a toast and nothing else: V1 does not navigate or close tabs
    * here, so an open pane is left alone and the mode is read the next time Chat is opened.
    */
-  const chooseChatMode = (mode: ChatMode, label: string) => {
+  const chooseChatMode = (mode: ChatMode) => {
     const previous = chatMode;
     setChatMode(mode);
     // Published to the launcher as well as this pane's own state, the same optimism the theme
     // buttons above apply: the write plus its filesystem event is a round trip, and a new chat
     // started in between would otherwise open in the mode the user just changed away from.
     chatLauncher.setMode(mode);
-    void write("chatMode", mode, `Chat opens as ${label}`, () => {
+    void write("chatMode", mode, t("appearance.chatMode.saved", { context: mode }), () => {
       setChatMode(previous);
       chatLauncher.setMode(previous);
     });
@@ -196,8 +199,8 @@ export const AppearanceSection: React.FC<{
 
   return (
     <SettingsSection
-      title="Appearance"
-      hint="Choose how Tendril appears. System matches your OS setting."
+      title={t("appearance.title")}
+      hint={t("appearance.hint")}
       testId="appearance-card"
     >
       <div className="space-y-4">
@@ -208,30 +211,33 @@ export const AppearanceSection: React.FC<{
               type="button"
               variant={themeMode === mode.value ? "default" : "outline"}
               aria-pressed={themeMode === mode.value}
-              onClick={() => chooseThemeMode(mode.value, mode.label)}
+              onClick={() => chooseThemeMode(mode.value)}
             >
               {mode.icon}
-              {mode.label}
+              {t(`appearance.themeMode.${mode.value}`)}
             </Button>
           ))}
         </div>
 
         <SubSection
-          title="Theme"
-          hint="Choose a color scheme preset for Tendril."
+          title={t("appearance.theme.title")}
+          hint={t("appearance.theme.hint")}
           testId="theme-preset-block"
         >
           <div className="max-w-120 space-y-2">
             <NativeSelectField
               id="theme-preset-select"
-              label="Theme"
+              label={t("appearance.theme.label")}
               value={theme}
               options={THEME_PRESETS.map((preset) => ({
                 value: preset.id,
                 // V1 suffixes a vault theme with `(Vault: <name>)`; the shape is kept so a vault
                 // theme reads the same the moment vault themes exist in this build.
                 label: preset.isVaultTheme
-                  ? `${preset.name} (Vault: ${preset.vaultName || "Team"})`
+                  ? t("appearance.theme.vaultOption", {
+                      name: preset.name,
+                      vault: preset.vaultName || t("appearance.theme.vaultFallback"),
+                    })
                   : preset.name,
               }))}
               onChange={chooseTheme}
@@ -240,7 +246,7 @@ export const AppearanceSection: React.FC<{
               <Swatches colors={active.previewColors} />
               {active.isVaultTheme && (
                 <Badge variant="secondary" className="text-xs">
-                  Team Vault
+                  {t("appearance.theme.vaultBadge")}
                 </Badge>
               )}
             </div>
@@ -248,8 +254,8 @@ export const AppearanceSection: React.FC<{
         </SubSection>
 
         <SubSection
-          title="Main Sidebar"
-          hint="Choose the default state for the main sidebar for new client sessions."
+          title={t("appearance.sidebar.title")}
+          hint={t("appearance.sidebar.hint")}
           testId="sidebar-default-block"
         >
           <div className="flex flex-wrap gap-2">
@@ -260,7 +266,7 @@ export const AppearanceSection: React.FC<{
               onClick={() => chooseSidebar(true)}
             >
               <PanelLeftOpen className="size-4" aria-hidden="true" />
-              Expanded
+              {t("appearance.sidebar.expanded")}
             </Button>
             <Button
               type="button"
@@ -269,14 +275,14 @@ export const AppearanceSection: React.FC<{
               onClick={() => chooseSidebar(false)}
             >
               <PanelLeftClose className="size-4" aria-hidden="true" />
-              Collapsed
+              {t("appearance.sidebar.collapsed")}
             </Button>
           </div>
         </SubSection>
 
         <SubSection
-          title="Chat"
-          hint="Choose how the Chat button talks to your coding agent: the chat view, or the agent's own terminal."
+          title={t("appearance.chatMode.title")}
+          hint={t("appearance.chatMode.hint")}
           testId="chat-mode-block"
         >
           <div className="flex flex-wrap gap-2">
@@ -284,21 +290,21 @@ export const AppearanceSection: React.FC<{
               type="button"
               variant={chatMode === "chat" ? "default" : "outline"}
               aria-pressed={chatMode === "chat"}
-              onClick={() => chooseChatMode("chat", "chat")}
+              onClick={() => chooseChatMode("chat")}
               data-testid="chat-mode-chat"
             >
               <MessageCircle className="size-4" aria-hidden="true" />
-              Chat
+              {t("appearance.chatMode.chat")}
             </Button>
             <Button
               type="button"
               variant={chatMode === "terminal" ? "default" : "outline"}
               aria-pressed={chatMode === "terminal"}
-              onClick={() => chooseChatMode("terminal", "terminal")}
+              onClick={() => chooseChatMode("terminal")}
               data-testid="chat-mode-terminal"
             >
               <Terminal className="size-4" aria-hidden="true" />
-              Terminal
+              {t("appearance.chatMode.terminal")}
             </Button>
           </div>
         </SubSection>
@@ -334,10 +340,7 @@ export const AppearanceSection: React.FC<{
             a control that cannot do anything is worse than a sentence saying so. */}
         <Callout.Info data-testid="appearance-not-wired">
           <div className="space-y-1 text-xs">
-            <p>
-              Themes published by a Team Vault are not listed: the vault theme subsystem is not part
-              of this build, so only the shipped presets are offered.
-            </p>
+            <p>{t("appearance.vaultThemesNote")}</p>
           </div>
         </Callout.Info>
       </div>
