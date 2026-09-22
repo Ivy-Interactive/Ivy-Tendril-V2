@@ -29,7 +29,7 @@ import {
 } from '../lib/config.ts';
 import { captureEnv, memoryFreePercent, type EnvCapture } from '../lib/env.ts';
 import { createLogger, errorMessage, errorText, localIso } from '../lib/log.ts';
-import { freePort, installExitHandlers, isAlive, onInterrupt, setDefaultLogDir, stopAll } from '../lib/proc.ts';
+import { freePort, helperPids, installExitHandlers, isAlive, onInterrupt, setDefaultLogDir, stopAll } from '../lib/proc.ts';
 import { ProcStat, ensureProcstat } from '../lib/procstat.ts';
 import {
   APP_IDS,
@@ -329,6 +329,7 @@ function keepAwake(log: CommandContext['log']): ChildProcess | null {
     const c = spawn('/usr/bin/caffeinate', ['-d', '-i', '-m', '-s', '-w', String(process.pid)], { stdio: 'ignore' });
     c.on('error', (e) => log.warn(`caffeinate failed: ${errorMessage(e)}; the Mac may sleep during the run`));
     c.unref();
+    if (c.pid) helperPids.add(c.pid);
     return c;
   } catch (e) {
     log.warn(`caffeinate failed: ${errorMessage(e)}; the Mac may sleep during the run`);

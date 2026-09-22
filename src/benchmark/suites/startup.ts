@@ -21,6 +21,7 @@
 import { performance } from 'node:perf_hooks';
 import { TIMEOUTS, type DatasetName } from '../lib/config.ts';
 import { errorMessage, type Logger } from '../lib/log.ts';
+import { helperPids } from '../lib/proc.ts';
 import { Sampler, type ProcStat } from '../lib/procstat.ts';
 import { newSuiteResult, type AppId, type SuiteResult } from '../lib/results.ts';
 import type { AppAdapter, ServerHandle } from '../apps/types.ts';
@@ -64,7 +65,7 @@ function phaseMs(v: unknown): number | null {
 async function measuredStart(ps: ProcStat, app: AppAdapter, home: string, runDir: string, log: Logger): Promise<{ m: StartMeasure; server: ServerHandle }> {
   const sampler = new Sampler(
     ps,
-    async () => (await ps.children(process.pid)).filter((p) => p !== ps.helperPid).map((pid) => ({ role: String(pid), pid })),
+    async () => (await ps.children(process.pid)).filter((p) => p !== ps.helperPid && !helperPids.has(p)).map((pid) => ({ role: String(pid), pid })),
     { intervalMs: SAMPLE_MS, expandEveryMs: SAMPLE_MS, resetAtStart: false, log },
   );
   await sampler.start();

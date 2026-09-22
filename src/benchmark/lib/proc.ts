@@ -62,6 +62,9 @@ export function appEnv(home: string, paths: WorkspacePaths, extra: Record<string
 // Registry of everything we started (for guaranteed cleanup)
 
 const live = new Map<number, Spawned>();
+
+/** Children of the harness that are not part of any measurement (the caffeinate sleep guard). */
+export const helperPids = new Set<number>();
 const cleanups = new Set<() => Promise<void> | void>();
 
 /** Registers extra cleanup (a desktop app launched through `open`, a browser); returns an unregister. */
