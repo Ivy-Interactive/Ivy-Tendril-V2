@@ -868,6 +868,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                             wireframeBaseUrl={wireframeBaseUrl}
                             jobs={jobs}
                             threadMessages={messages}
+                            isLiveTurn={isGenerating && msg.id === latestMessage?.id}
                           />
                         </div>
                       );
@@ -885,6 +886,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         wireframeBaseUrl={wireframeBaseUrl}
                         jobs={jobs}
                         threadMessages={messages}
+                        isLiveTurn={isGenerating && msg.id === latestMessage?.id}
                       />
                     </div>
                   ))

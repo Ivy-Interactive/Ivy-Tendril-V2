@@ -1,7 +1,11 @@
 import "@testing-library/jest-dom/vitest";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { act, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { AgentMetricsFooter } from "./metrics-footer.tsx";
 import { AgentViewer } from "./AgentViewer.tsx";
 import { AGENT_VIEWER_VIRTUALIZATION_THRESHOLD } from "./use-agent-viewer-virtualization.ts";
 
@@ -197,6 +201,95 @@ describe("the agent viewer's metrics footer", () => {
       vi.advanceTimersByTime(60_000);
     });
     expect(screen.getByTestId("agent-metrics-elapsed")).toHaveTextContent("4s");
+  });
+
+  /**
+   * The labels read as words, not as a row of small caps, and each figure carries its own glyph. The
+   * icon is decorative - it repeats the label - so it must stay out of the accessibility tree.
+   */
+  it("labels the figures in sentence case, each with a muted decorative icon", () => {
+    const { container } = render(
+      <AgentViewer
+        id="labelled"
+        jsonLines={[
+          textLine(START, "hi"),
+          resultLine("2026-09-16T12:00:10.000Z", {
+            usage: { ...REPORTED_USAGE, cost_usd: 0.5, cost_source: "agent" },
+            duration_ms: 10_000,
+          }),
+        ]}
+        eventHandler={() => {}}
+        autoScroll={false}
+      />,
+    );
+
+    const footer = screen.getByTestId("agent-metrics-footer");
+    expect(footer).toHaveTextContent("Output time");
+    expect(footer).toHaveTextContent("Tokens");
+    expect(footer).toHaveTextContent("Cost");
+    // Not shouted, and not re-cased by CSS either: the rule that did that is gone.
+    expect(footer.textContent).not.toMatch(/OUTPUT TIME|TOKENS|COST/);
+
+    // One glyph per figure, hidden from assistive tech because the label already says it.
+    const icons = container.querySelectorAll(".aov-metric-icon");
+    expect(icons).toHaveLength(3);
+    for (const icon of icons) {
+      expect(icon).toHaveAttribute("aria-hidden", "true");
+    }
+    for (const testId of ["agent-metrics-elapsed", "agent-metrics-tokens", "agent-metrics-cost"]) {
+      expect(screen.getByTestId(testId).querySelector(".aov-metric-icon")).not.toBeNull();
+    }
+  });
+
+  /**
+   * The strip is mounted on its own as well as inside the viewer: the chat thread's `TurnMetrics`
+   * renders it under a message, with no `.aov-shell` anywhere above it. The palette has to travel
+   * with it, or every muted figure falls back to the body's full foreground.
+   */
+  describe("mounted outside the viewer shell", () => {
+    const css = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), "agent-output.css"),
+      "utf8",
+    );
+
+    it("declares the palette on the strip as well as the shell, in both themes", () => {
+      // The light block and its dark companion both have to name `.aov-metrics`, or the strip is
+      // muted in one theme and not the other.
+      const light = /(^|\})\s*:where\(\.aov-shell,\s*\.aov-metrics\)\s*\{([^}]*)\}/m.exec(css);
+      expect(light, "palette block should target .aov-metrics").not.toBeNull();
+      expect(light![2]).toContain("--aov-fg-muted");
+      expect(light![2]).toContain("--aov-fg-faint");
+      expect(light![2]).toContain("--aov-mono");
+
+      const dark = /\.dark\s+:where\(\.aov-shell,\s*\.aov-metrics\)\s*\{([^}]*)\}/.exec(css);
+      expect(dark, "dark palette block should target .aov-metrics").not.toBeNull();
+      expect(dark![1]).toContain("--aov-fg-muted");
+      expect(dark![1]).toContain("--aov-fg-faint");
+    });
+
+    it("still carries the class that palette hangs off when rendered standalone", () => {
+      const { container } = render(
+        <AgentMetricsFooter
+          metrics={{
+            startedAt: START,
+            endedAt: "2026-09-16T12:00:05.000Z",
+            durationMs: 5000,
+            tokens: 1200,
+            tokensEstimated: false,
+            costUsd: 0.25,
+            costEstimated: false,
+          }}
+          isComplete
+        />,
+      );
+
+      const strip = container.querySelector(".aov-metrics");
+      expect(strip).not.toBeNull();
+      // No shell above it — this is exactly how chat mounts it.
+      expect(strip!.closest(".aov-shell")).toBeNull();
+      expect(screen.getByTestId("agent-metrics-cost")).toHaveTextContent("$0.2500");
+      expect(container.querySelectorAll(".aov-metric-icon")).toHaveLength(3);
+    });
   });
 
   it("can be turned off", () => {

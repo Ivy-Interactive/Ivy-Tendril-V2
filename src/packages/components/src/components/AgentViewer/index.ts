@@ -4,6 +4,7 @@ export { ToolUseGroup } from "./tool-use-group.tsx";
 export { AnimatedStatus } from "./animated-status.tsx";
 export { ResultSummary } from "./result-summary.tsx";
 export { AgentMetricsFooter } from "./metrics-footer.tsx";
+export type { AgentMetricsFooterProps } from "./metrics-footer.tsx";
 export {
   deriveStreamMetrics,
   StreamMetricsAccumulator,
