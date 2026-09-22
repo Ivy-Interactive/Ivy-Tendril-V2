@@ -28,7 +28,8 @@ function detail(extra: Partial<JobDetail> = {}): JobDetail {
   };
 }
 
-const labels = (job: JobDetail) => buildJobDebugFields(job).map((field: JobDebugField) => field.label);
+const labels = (job: JobDetail) =>
+  buildJobDebugFields(job).map((field: JobDebugField) => field.label);
 
 afterEach(() => vi.restoreAllMocks());
 
@@ -106,7 +107,8 @@ describe("job debug fields", () => {
         jobRawLogPath: "/home/.tendril/Logs/Jobs/00158.raw.jsonl",
       }),
     );
-    const value = (label: string) => fields.find((field: JobDebugField) => field.label === label)?.value;
+    const value = (label: string) =>
+      fields.find((field: JobDebugField) => field.label === label)?.value;
 
     expect(value("Provider")).toBe("codex");
     expect(value("Arguments")).toBe("codex exec --json");
@@ -128,7 +130,8 @@ describe("job debug fields", () => {
         permissionDenials: ["Bash(rm -rf /)", "WebFetch(evil.example)"],
       }),
     );
-    const value = (label: string) => fields.find((field: JobDebugField) => field.label === label)?.value;
+    const value = (label: string) =>
+      fields.find((field: JobDebugField) => field.label === label)?.value;
 
     // V1 folds the message into the status rather than giving it a field of its own.
     expect(value("Status")).toBe("Completed: Verification passed");
@@ -140,7 +143,9 @@ describe("job debug fields", () => {
     expect(value("Tokens")).toBe("1,450,000");
     // One denial per line, which is why the field is multiline.
     expect(value("Permission Denials")).toBe("Bash(rm -rf /)\nWebFetch(evil.example)");
-    expect(fields.find((field: JobDebugField) => field.label === "Permission Denials")?.multiline).toBe(true);
+    expect(
+      fields.find((field: JobDebugField) => field.label === "Permission Denials")?.multiline,
+    ).toBe(true);
   });
 
   /**
@@ -165,7 +170,9 @@ describe("job debug fields", () => {
     const text = formatJobDebugDetails(fields);
 
     // `FormatCopyDetails`: `Label: value`, one per line, in the panel's order, nothing extra.
-    expect(text.split("\n")).toEqual(fields.map((field: JobDebugField) => `${field.label}: ${field.value}`));
+    expect(text.split("\n")).toEqual(
+      fields.map((field: JobDebugField) => `${field.label}: ${field.value}`),
+    );
     expect(text).toContain("Job Id: 00158");
     expect(text).toContain("Plan Id: 00638");
     // A field the panel dropped is absent from the paste too, rather than appearing as an empty line.

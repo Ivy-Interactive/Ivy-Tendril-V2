@@ -12,8 +12,6 @@ import { formatPlanId, normalizePlanState, parseProjects, planRowBadges } from "
 import { useLevelColors } from "../../components/LevelBadge";
 import type { LevelColors } from "../../utils/levelColor";
 
-
-
 /**
  * `ReviewApp.BuildRowBadges`' verification rule, which the Review arm below shares with
  * `ReviewView`: Verified only once every gate has run and none of them failed
