@@ -1,0 +1,1150 @@
+{
+  "suite": "cli",
+  "runId": "20260922-235629-quick",
+  "profile": "quick",
+  "startedAt": "2026-09-22T23:56:48.781+02:00",
+  "finishedAt": "2026-09-22T23:57:19.678+02:00",
+  "env": {
+    "loadavgStart": [
+      4.42333984375,
+      7.14794921875,
+      7.63818359375
+    ],
+    "loadavgEnd": [
+      8.77001953125,
+      7.91748046875,
+      7.8984375
+    ],
+    "loadSamples": [
+      4.42333984375,
+      5.99072265625,
+      5.9111328125,
+      5.837890625,
+      6.5712890625,
+      7.966796875,
+      8.77001953125,
+      8.77001953125
+    ],
+    "quietWaitMs": 0
+  },
+  "metrics": [
+    {
+      "suite": "cli",
+      "scenario": "--version",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "wall_ms",
+      "unit": "ms",
+      "samples": [
+        171.673,
+        168.882,
+        195.151,
+        176.154,
+        204.162
+      ],
+      "better": "lower",
+      "meta": {
+        "argv": "Ivy.Tendril --version",
+        "source": "nothing on disk beyond config.yaml: builds the CLI service container and ConfigService, then prints the assembly version",
+        "talksToServer": false,
+        "serverRunning": false,
+        "homeState": "synced: one start/stop of the app server on the restored template",
+        "warmupRuns": 1,
+        "warmupWallMs": [
+          185.119
+        ],
+        "stdoutBytes": 19,
+        "spawnMsMedian": 1.036,
+        "maxRssBytesMedian": 84656128,
+        "bin": "/Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "--version",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        54.0788,
+        53.907,
+        54.0476,
+        53.907,
+        54.0007
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "lifetime max phys_footprint of the command process"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "--version",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "cpu_s",
+      "unit": "cpu_s",
+      "samples": [
+        0.160968,
+        0.158587,
+        0.182556,
+        0.165121,
+        0.190818
+      ],
+      "better": "lower",
+      "meta": {
+        "childCpuSMedian": 0.001259
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "--version",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "wall_ms",
+      "unit": "ms",
+      "samples": [
+        4.294,
+        5.635,
+        6.673,
+        5.394,
+        6.689
+      ],
+      "better": "lower",
+      "meta": {
+        "argv": "tendril --version",
+        "source": "nothing: clap prints the version before any command code runs",
+        "talksToServer": false,
+        "serverRunning": false,
+        "homeState": "synced: one start/stop of the app server on the restored template",
+        "warmupRuns": 1,
+        "warmupWallMs": [
+          5.001
+        ],
+        "stdoutBytes": 14,
+        "spawnMsMedian": 0.329,
+        "maxRssBytesMedian": 10043392,
+        "bin": "~/Desktop/tendril-benchmark/ivy-tendril-v2/target/release/tendril"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "--version",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        4.0317,
+        4.0161,
+        4.0317,
+        4.0786,
+        4.0786
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "lifetime max phys_footprint of the command process"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "--version",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "cpu_s",
+      "unit": "cpu_s",
+      "samples": [
+        0.003074,
+        0.004326,
+        0.005222,
+        0.00407,
+        0.005154
+      ],
+      "better": "lower",
+      "meta": {
+        "childCpuSMedian": 0
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan list",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "wall_ms",
+      "unit": "ms",
+      "samples": [
+        170.111,
+        170.279,
+        187.409,
+        170.132,
+        187.948
+      ],
+      "better": "lower",
+      "meta": {
+        "argv": "Ivy.Tendril plan list",
+        "source": "scans every Plans/*/plan.yaml (line scan of 4 fields)",
+        "talksToServer": false,
+        "serverRunning": false,
+        "homeState": "synced: one start/stop of the app server on the restored template",
+        "warmupRuns": 1,
+        "warmupWallMs": [
+          169.998
+        ],
+        "stdoutBytes": 3432,
+        "rows": 50,
+        "spawnMsMedian": 0.995,
+        "maxRssBytesMedian": 83394560,
+        "bin": "/Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan list",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        52.5007,
+        52.3444,
+        52.5632,
+        52.2663,
+        52.4695
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "lifetime max phys_footprint of the command process"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan list",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "cpu_s",
+      "unit": "cpu_s",
+      "samples": [
+        0.159795,
+        0.159083,
+        0.176365,
+        0.161575,
+        0.175705
+      ],
+      "better": "lower",
+      "meta": {
+        "childCpuSMedian": 0.001193
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan list",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "wall_ms",
+      "unit": "ms",
+      "samples": [
+        5.457,
+        7.916,
+        8.717,
+        7.68,
+        8.481
+      ],
+      "better": "lower",
+      "meta": {
+        "argv": "tendril plan list",
+        "source": "SQLite tendril.db (filled by the daemon)",
+        "talksToServer": false,
+        "serverRunning": false,
+        "homeState": "synced: one start/stop of the app server on the restored template",
+        "warmupRuns": 1,
+        "warmupWallMs": [
+          6.534
+        ],
+        "stdoutBytes": 4280,
+        "rows": 50,
+        "spawnMsMedian": 0.366,
+        "maxRssBytesMedian": 14712832,
+        "bin": "~/Desktop/tendril-benchmark/ivy-tendril-v2/target/release/tendril"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan list",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        5.6255,
+        5.6255,
+        5.6255,
+        5.5786,
+        5.6255
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "lifetime max phys_footprint of the command process"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan list",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "cpu_s",
+      "unit": "cpu_s",
+      "samples": [
+        0.004936,
+        0.006628,
+        0.007614,
+        0.006415,
+        0.00768
+      ],
+      "better": "lower",
+      "meta": {
+        "childCpuSMedian": 0
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan list (disk scan)",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "wall_ms",
+      "unit": "ms",
+      "samples": [
+        170.778,
+        171.036,
+        176.142,
+        168.241,
+        181.238
+      ],
+      "better": "lower",
+      "meta": {
+        "argv": "Ivy.Tendril plan list --plans-dir <home>/Plans",
+        "source": "scans every Plans/*/plan.yaml (line scan of 4 fields)",
+        "talksToServer": false,
+        "serverRunning": false,
+        "homeState": "synced: one start/stop of the app server on the restored template",
+        "warmupRuns": 1,
+        "warmupWallMs": [
+          173.826
+        ],
+        "stdoutBytes": 3432,
+        "rows": 50,
+        "spawnMsMedian": 0.993,
+        "maxRssBytesMedian": 83394560,
+        "bin": "/Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan list (disk scan)",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        52.5632,
+        52.657,
+        52.4538,
+        52.4226,
+        52.4226
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "lifetime max phys_footprint of the command process"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan list (disk scan)",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "cpu_s",
+      "unit": "cpu_s",
+      "samples": [
+        0.159088,
+        0.160139,
+        0.165194,
+        0.159516,
+        0.167098
+      ],
+      "better": "lower",
+      "meta": {
+        "childCpuSMedian": 0.001171
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan list (disk scan)",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "wall_ms",
+      "unit": "ms",
+      "samples": [
+        9.165,
+        12.455,
+        13.357,
+        10.537,
+        10.186
+      ],
+      "better": "lower",
+      "meta": {
+        "argv": "tendril plan list --plans-dir <home>/Plans",
+        "source": "scans every Plans/*/plan.yaml (full parse into PlanFile)",
+        "talksToServer": false,
+        "serverRunning": false,
+        "homeState": "synced: one start/stop of the app server on the restored template",
+        "warmupRuns": 1,
+        "warmupWallMs": [
+          10.834
+        ],
+        "stdoutBytes": 4280,
+        "rows": 50,
+        "spawnMsMedian": 0.341,
+        "maxRssBytesMedian": 13287424,
+        "bin": "~/Desktop/tendril-benchmark/ivy-tendril-v2/target/release/tendril"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan list (disk scan)",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        5.3443,
+        5.3286,
+        5.3443,
+        5.3911,
+        5.3599
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "lifetime max phys_footprint of the command process"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan list (disk scan)",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "cpu_s",
+      "unit": "cpu_s",
+      "samples": [
+        0.007735,
+        0.010222,
+        0.011374,
+        0.009573,
+        0.008931
+      ],
+      "better": "lower",
+      "meta": {
+        "childCpuSMedian": 0
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan get",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "wall_ms",
+      "unit": "ms",
+      "samples": [
+        175.839,
+        174.013,
+        195.607,
+        179.649,
+        199.611
+      ],
+      "better": "lower",
+      "meta": {
+        "argv": "Ivy.Tendril plan get 00025",
+        "source": "Plans/<00025 folder>/plan.yaml (parsed, re-serialised)",
+        "talksToServer": false,
+        "serverRunning": false,
+        "homeState": "synced: one start/stop of the app server on the restored template",
+        "warmupRuns": 1,
+        "warmupWallMs": [
+          177.658
+        ],
+        "stdoutBytes": 512,
+        "spawnMsMedian": 0.994,
+        "maxRssBytesMedian": 83394560,
+        "bin": "/Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan get",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        52.2195,
+        52.3757,
+        52.3757,
+        52.4382,
+        52.2663
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "lifetime max phys_footprint of the command process"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan get",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "cpu_s",
+      "unit": "cpu_s",
+      "samples": [
+        0.165459,
+        0.168104,
+        0.18668,
+        0.167928,
+        0.187756
+      ],
+      "better": "lower",
+      "meta": {
+        "childCpuSMedian": 0.001201
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan get",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "wall_ms",
+      "unit": "ms",
+      "samples": [
+        4.345,
+        6.54,
+        7.596,
+        6.371,
+        7.796
+      ],
+      "better": "lower",
+      "meta": {
+        "argv": "tendril plan get 00025",
+        "source": "Plans/<00025 folder>/plan.yaml (parsed, printed raw)",
+        "talksToServer": false,
+        "serverRunning": false,
+        "homeState": "synced: one start/stop of the app server on the restored template",
+        "warmupRuns": 1,
+        "warmupWallMs": [
+          5.609
+        ],
+        "stdoutBytes": 432,
+        "spawnMsMedian": 0.354,
+        "maxRssBytesMedian": 12255232,
+        "bin": "~/Desktop/tendril-benchmark/ivy-tendril-v2/target/release/tendril"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan get",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        4.4068,
+        4.4693,
+        4.4536,
+        4.4068,
+        4.4693
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "lifetime max phys_footprint of the command process"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan get",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "cpu_s",
+      "unit": "cpu_s",
+      "samples": [
+        0.004128,
+        0.005475,
+        0.006589,
+        0.005076,
+        0.006569
+      ],
+      "better": "lower",
+      "meta": {
+        "childCpuSMedian": 0
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "--version",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "wall_ms",
+      "unit": "ms",
+      "samples": [
+        176.651,
+        175.071,
+        196.457,
+        176.257,
+        199.86
+      ],
+      "better": "lower",
+      "meta": {
+        "argv": "Ivy.Tendril --version",
+        "source": "nothing on disk beyond config.yaml: builds the CLI service container and ConfigService, then prints the assembly version",
+        "talksToServer": false,
+        "serverRunning": false,
+        "homeState": "synced: one start/stop of the app server on the restored template",
+        "warmupRuns": 1,
+        "warmupWallMs": [
+          211.612
+        ],
+        "stdoutBytes": 19,
+        "spawnMsMedian": 1.013,
+        "maxRssBytesMedian": 84721664,
+        "bin": "/Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "--version",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        54.0788,
+        54.0632,
+        54.1101,
+        54.1882,
+        54.032
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "lifetime max phys_footprint of the command process"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "--version",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "cpu_s",
+      "unit": "cpu_s",
+      "samples": [
+        0.165502,
+        0.165905,
+        0.187225,
+        0.164084,
+        0.187025
+      ],
+      "better": "lower",
+      "meta": {
+        "childCpuSMedian": 0.001217
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "--version",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "wall_ms",
+      "unit": "ms",
+      "samples": [
+        4.434,
+        5.589,
+        6.599,
+        5.825,
+        6.256
+      ],
+      "better": "lower",
+      "meta": {
+        "argv": "tendril --version",
+        "source": "nothing: clap prints the version before any command code runs",
+        "talksToServer": false,
+        "serverRunning": false,
+        "homeState": "synced: one start/stop of the app server on the restored template",
+        "warmupRuns": 1,
+        "warmupWallMs": [
+          4.786
+        ],
+        "stdoutBytes": 14,
+        "spawnMsMedian": 0.327,
+        "maxRssBytesMedian": 10059776,
+        "bin": "~/Desktop/tendril-benchmark/ivy-tendril-v2/target/release/tendril"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "--version",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        4.0474,
+        4.0474,
+        4.0786,
+        4.0161,
+        4.0786
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "lifetime max phys_footprint of the command process"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "--version",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "cpu_s",
+      "unit": "cpu_s",
+      "samples": [
+        0.003216,
+        0.004285,
+        0.005307,
+        0.004281,
+        0.005014
+      ],
+      "better": "lower",
+      "meta": {
+        "childCpuSMedian": 0
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan list",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "wall_ms",
+      "unit": "ms",
+      "samples": [
+        208.704,
+        208.044,
+        215.038,
+        208.626,
+        220.833
+      ],
+      "better": "lower",
+      "meta": {
+        "argv": "Ivy.Tendril plan list",
+        "source": "scans every Plans/*/plan.yaml (line scan of 4 fields)",
+        "talksToServer": false,
+        "serverRunning": false,
+        "homeState": "synced: one start/stop of the app server on the restored template",
+        "warmupRuns": 1,
+        "warmupWallMs": [
+          214.926
+        ],
+        "stdoutBytes": 104206,
+        "rows": 1500,
+        "spawnMsMedian": 1.037,
+        "maxRssBytesMedian": 89997312,
+        "bin": "/Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan list",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        58.5788,
+        58.4851,
+        58.6414,
+        58.6101,
+        58.3913
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "lifetime max phys_footprint of the command process"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan list",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "cpu_s",
+      "unit": "cpu_s",
+      "samples": [
+        0.198978,
+        0.198204,
+        0.206748,
+        0.197945,
+        0.209259
+      ],
+      "better": "lower",
+      "meta": {
+        "childCpuSMedian": 0.001196
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan list",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "wall_ms",
+      "unit": "ms",
+      "samples": [
+        13.661,
+        16.767,
+        19.22,
+        16.998,
+        18.976
+      ],
+      "better": "lower",
+      "meta": {
+        "argv": "tendril plan list",
+        "source": "SQLite tendril.db (filled by the daemon)",
+        "talksToServer": false,
+        "serverRunning": false,
+        "homeState": "synced: one start/stop of the app server on the restored template",
+        "warmupRuns": 1,
+        "warmupWallMs": [
+          13.806
+        ],
+        "stdoutBytes": 127202,
+        "rows": 1500,
+        "spawnMsMedian": 0.385,
+        "maxRssBytesMedian": 34521088,
+        "bin": "~/Desktop/tendril-benchmark/ivy-tendril-v2/target/release/tendril"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan list",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        24.5787,
+        24.5318,
+        24.5318,
+        24.5162,
+        24.5162
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "lifetime max phys_footprint of the command process"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan list",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "cpu_s",
+      "unit": "cpu_s",
+      "samples": [
+        0.012444,
+        0.015532,
+        0.017757,
+        0.015422,
+        0.017258
+      ],
+      "better": "lower",
+      "meta": {
+        "childCpuSMedian": 0
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan list (disk scan)",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "wall_ms",
+      "unit": "ms",
+      "samples": [
+        210.905,
+        211.339,
+        209.975,
+        210.795,
+        215.344
+      ],
+      "better": "lower",
+      "meta": {
+        "argv": "Ivy.Tendril plan list --plans-dir <home>/Plans",
+        "source": "scans every Plans/*/plan.yaml (line scan of 4 fields)",
+        "talksToServer": false,
+        "serverRunning": false,
+        "homeState": "synced: one start/stop of the app server on the restored template",
+        "warmupRuns": 1,
+        "warmupWallMs": [
+          211.94
+        ],
+        "stdoutBytes": 104206,
+        "rows": 1500,
+        "spawnMsMedian": 1.01,
+        "maxRssBytesMedian": 90128384,
+        "bin": "/Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan list (disk scan)",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        58.5476,
+        58.8913,
+        58.6726,
+        58.7976,
+        58.7351
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "lifetime max phys_footprint of the command process"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan list (disk scan)",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "cpu_s",
+      "unit": "cpu_s",
+      "samples": [
+        0.1997,
+        0.201034,
+        0.201284,
+        0.199167,
+        0.202423
+      ],
+      "better": "lower",
+      "meta": {
+        "childCpuSMedian": 0.001201
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan list (disk scan)",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "wall_ms",
+      "unit": "ms",
+      "samples": [
+        120.778,
+        124.697,
+        126.281,
+        128.381,
+        124.371
+      ],
+      "better": "lower",
+      "meta": {
+        "argv": "tendril plan list --plans-dir <home>/Plans",
+        "source": "scans every Plans/*/plan.yaml (full parse into PlanFile)",
+        "talksToServer": false,
+        "serverRunning": false,
+        "homeState": "synced: one start/stop of the app server on the restored template",
+        "warmupRuns": 1,
+        "warmupWallMs": [
+          124.656
+        ],
+        "stdoutBytes": 127202,
+        "rows": 1500,
+        "spawnMsMedian": 0.36,
+        "maxRssBytesMedian": 32161792,
+        "bin": "~/Desktop/tendril-benchmark/ivy-tendril-v2/target/release/tendril"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan list (disk scan)",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        23.438,
+        23.3599,
+        23.3443,
+        23.3755,
+        23.3443
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "lifetime max phys_footprint of the command process"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan list (disk scan)",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "cpu_s",
+      "unit": "cpu_s",
+      "samples": [
+        0.119457,
+        0.122614,
+        0.123562,
+        0.125931,
+        0.122502
+      ],
+      "better": "lower",
+      "meta": {
+        "childCpuSMedian": 0
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan get",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "wall_ms",
+      "unit": "ms",
+      "samples": [
+        181.534,
+        179.639,
+        199.908,
+        181.93,
+        199.529
+      ],
+      "better": "lower",
+      "meta": {
+        "argv": "Ivy.Tendril plan get 00750",
+        "source": "Plans/<00750 folder>/plan.yaml (parsed, re-serialised)",
+        "talksToServer": false,
+        "serverRunning": false,
+        "homeState": "synced: one start/stop of the app server on the restored template",
+        "warmupRuns": 1,
+        "warmupWallMs": [
+          179.921
+        ],
+        "stdoutBytes": 518,
+        "spawnMsMedian": 1.031,
+        "maxRssBytesMedian": 83558400,
+        "bin": "/Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan get",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        52.4226,
+        52.5633,
+        52.5632,
+        52.5163,
+        52.4069
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "lifetime max phys_footprint of the command process"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan get",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "cpu_s",
+      "unit": "cpu_s",
+      "samples": [
+        0.170783,
+        0.17033,
+        0.191178,
+        0.171099,
+        0.187602
+      ],
+      "better": "lower",
+      "meta": {
+        "childCpuSMedian": 0.001239
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan get",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "wall_ms",
+      "unit": "ms",
+      "samples": [
+        4.888,
+        6.707,
+        8.087,
+        6.461,
+        7.691
+      ],
+      "better": "lower",
+      "meta": {
+        "argv": "tendril plan get 00750",
+        "source": "Plans/<00750 folder>/plan.yaml (parsed, printed raw)",
+        "talksToServer": false,
+        "serverRunning": false,
+        "homeState": "synced: one start/stop of the app server on the restored template",
+        "warmupRuns": 1,
+        "warmupWallMs": [
+          5.845
+        ],
+        "stdoutBytes": 438,
+        "spawnMsMedian": 0.344,
+        "maxRssBytesMedian": 12320768,
+        "bin": "~/Desktop/tendril-benchmark/ivy-tendril-v2/target/release/tendril"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan get",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        4.5318,
+        4.5474,
+        4.5161,
+        4.5005,
+        4.4849
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "lifetime max phys_footprint of the command process"
+      }
+    },
+    {
+      "suite": "cli",
+      "scenario": "plan get",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "cpu_s",
+      "unit": "cpu_s",
+      "samples": [
+        0.004199,
+        0.005547,
+        0.006877,
+        0.00541,
+        0.006416
+      ],
+      "better": "lower",
+      "meta": {
+        "childCpuSMedian": 0
+      }
+    }
+  ],
+  "series": [],
+  "notes": [
+    "measured with builds/bin/cliexec: wall = posix_spawn to exit; peak = the command process's lifetime max phys_footprint (its children, such as V1's short-lived which probes, are not included); cpu = user + system of the process plus the children it reaped (childCpuSMedian in meta)",
+    "user CLI symlinks unchanged (/usr/local/bin/tendril -> absent, ~/.local/bin/tendril -> /Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril)"
+  ],
+  "failures": []
+}

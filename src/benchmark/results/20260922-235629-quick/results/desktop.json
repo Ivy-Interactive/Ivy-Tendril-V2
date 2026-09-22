@@ -1,0 +1,6398 @@
+{
+  "suite": "desktop",
+  "runId": "20260922-235629-quick",
+  "profile": "quick",
+  "startedAt": "2026-09-23T00:38:51.596+02:00",
+  "finishedAt": "2026-09-23T00:42:24.472+02:00",
+  "env": {
+    "loadavgStart": [
+      2.31689453125,
+      3.75146484375,
+      5.40625
+    ],
+    "loadavgEnd": [
+      1.37744140625,
+      2.5537109375,
+      4.52197265625
+    ],
+    "loadSamples": [
+      2.31689453125,
+      2.29150390625,
+      2.10791015625,
+      2.09912109375,
+      2.2509765625,
+      2.150390625,
+      1.97802734375,
+      1.9794921875,
+      1.90087890625,
+      1.82861328125,
+      1.76220703125,
+      1.70068359375,
+      1.64453125,
+      1.8330078125,
+      1.68603515625,
+      1.55078125,
+      1.58642578125,
+      1.5390625,
+      1.41552734375,
+      1.7021484375,
+      1.6455078125,
+      1.59375,
+      1.5458984375,
+      1.501953125,
+      1.46142578125,
+      1.82470703125,
+      1.75830078125,
+      1.697265625,
+      1.64111328125,
+      1.58935546875,
+      1.5419921875,
+      1.57861328125,
+      1.5322265625,
+      1.4892578125,
+      1.36962890625,
+      1.33984375,
+      1.232421875,
+      1.45361328125,
+      1.4169921875,
+      1.38330078125,
+      1.2724609375,
+      1.41064453125,
+      1.37744140625,
+      1.37744140625
+    ],
+    "quietWaitMs": 0
+  },
+  "metrics": [
+    {
+      "suite": "desktop",
+      "scenario": "launch",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "app_process_ms",
+      "unit": "ms",
+      "samples": [
+        18.4,
+        19.5,
+        18.7
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "launch command (open -n -F) to the kernel start time of the app process",
+        "note": "V1: the server runs inside the app process, so this is also its cold launch",
+        "pidSeenMs": [
+          47,
+          62,
+          56
+        ]
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "launch",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "webcontent_spawn_ms",
+      "unit": "ms",
+      "samples": [
+        1159.8,
+        1187.7,
+        1179.5
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "launch command to the kernel start time of the first WebKit WebContent process the app is responsible for",
+        "note": "V1: the server runs inside the app process, so this is also its cold launch",
+        "allWebContentStartsMs": [
+          [
+            1159.8,
+            1432.9,
+            1463
+          ],
+          [
+            1187.7,
+            1470.1,
+            1500.2
+          ],
+          [
+            1179.5,
+            1429.1,
+            1459.5
+          ]
+        ]
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "launch",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "window_visible_ms",
+      "unit": "ms",
+      "samples": [
+        1222.3,
+        1250,
+        1252
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "launch command to the first poll that sees an on-screen layer-0 window of the app larger than 200x200 pt",
+        "note": "V1: the server runs inside the app process, so this is also its cold launch; process milestone, not content: V1 shows its window only after its in-process server answers, Tauri shows V2 window before the page has loaded",
+        "resolutionMs": 25,
+        "windowFirstPt": [
+          {
+            "w": 810,
+            "h": 566
+          },
+          {
+            "w": 810,
+            "h": 566
+          },
+          {
+            "w": 810,
+            "h": 566
+          }
+        ],
+        "windowPolls": [
+          48,
+          49,
+          49
+        ]
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "launch",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "cpu_s_to_15s",
+      "unit": "cpu_s",
+      "samples": [
+        3.974,
+        3.952,
+        3.768
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "CPU seconds the process set used from the first sample (just after the launch command) to +15 s",
+        "note": "V1: the server runs inside the app process, so this is also its cold launch"
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "cold-launch",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "app_process_ms",
+      "unit": "ms",
+      "samples": [
+        18.4,
+        19.5,
+        18.7
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "app process start, from the launch command (V1 has no separate backend process)"
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "cold-launch",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "webcontent_spawn_ms",
+      "unit": "ms",
+      "samples": [
+        1159.8,
+        1187.7,
+        1179.5
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "first WebContent process start, from the launch command (V1 has no separate backend process)"
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "cold-launch",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "window_visible_ms",
+      "unit": "ms",
+      "samples": [
+        1222.3,
+        1250,
+        1252
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "app window on screen, from the launch command (V1 has no separate backend process)",
+        "note": "process milestone, not content: V1 shows its window only after its in-process server answers, Tauri shows V2 window before the page has loaded"
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "cold-launch",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "cpu_s_to_15s",
+      "unit": "cpu_s",
+      "samples": [
+        3.974,
+        3.952,
+        3.768
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "CPU seconds of the whole process set from the launch command (V1 has no separate backend process) to 15 s after the launch command",
+        "backendCpuBeforeLaunchS": [
+          0,
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "steady-state",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "footprint_15s_mib",
+      "unit": "MiB",
+      "samples": [
+        327.13,
+        325.66,
+        326.38
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "phys_footprint summed over the process set at +15 s after the launch command",
+        "byRole": {
+          "app": [
+            187.9,
+            186.7,
+            186.9
+          ],
+          "webkit-gpu": [
+            15.3,
+            15.1,
+            15.5
+          ],
+          "webkit-networking": [
+            8.8,
+            8.7,
+            8.8
+          ],
+          "webkit-webcontent": [
+            115.1,
+            115.1,
+            115.2
+          ]
+        }
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "steady-state",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "footprint_end_mib",
+      "unit": "MiB",
+      "samples": [
+        354.08,
+        351.65,
+        353.54
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "phys_footprint summed over the process set at the end of the window",
+        "byRole": {
+          "app": [
+            214.9,
+            212.7,
+            214.2
+          ],
+          "webkit-gpu": [
+            15.3,
+            15.1,
+            15.5
+          ],
+          "webkit-networking": [
+            8.8,
+            8.7,
+            8.7
+          ],
+          "webkit-webcontent": [
+            115.1,
+            115.1,
+            115.2
+          ]
+        },
+        "processCount": {
+          "app": [
+            1,
+            1,
+            1
+          ],
+          "webkit-gpu": [
+            1,
+            1,
+            1
+          ],
+          "webkit-networking": [
+            1,
+            1,
+            1
+          ],
+          "webkit-webcontent": [
+            3,
+            3,
+            3
+          ]
+        },
+        "windowEndPt": [
+          [
+            {
+              "w": 810,
+              "h": 566
+            }
+          ],
+          [
+            {
+              "w": 810,
+              "h": 566
+            }
+          ],
+          [
+            {
+              "w": 810,
+              "h": 566
+            }
+          ]
+        ],
+        "screenLocked": [
+          true,
+          true,
+          true
+        ],
+        "processes": [
+          [
+            {
+              "role": "app",
+              "name": "Ivy.Tendril",
+              "pid": 27238,
+              "footprintMiB": 214.9
+            },
+            {
+              "role": "webkit-gpu",
+              "name": "com.apple.WebKit.GPU",
+              "pid": 27561,
+              "footprintMiB": 15.3
+            },
+            {
+              "role": "webkit-networking",
+              "name": "com.apple.WebKit.Networking",
+              "pid": 27563,
+              "footprintMiB": 8.8
+            },
+            {
+              "role": "webkit-webcontent",
+              "name": "com.apple.WebKit.WebContent",
+              "pid": 27565,
+              "footprintMiB": 96.3
+            },
+            {
+              "role": "webkit-webcontent",
+              "name": "com.apple.WebKit.WebContent",
+              "pid": 27562,
+              "footprintMiB": 11.3
+            },
+            {
+              "role": "webkit-webcontent",
+              "name": "com.apple.WebKit.WebContent",
+              "pid": 27566,
+              "footprintMiB": 7.4
+            }
+          ],
+          [
+            {
+              "role": "app",
+              "name": "Ivy.Tendril",
+              "pid": 27729,
+              "footprintMiB": 212.7
+            },
+            {
+              "role": "webkit-gpu",
+              "name": "com.apple.WebKit.GPU",
+              "pid": 28046,
+              "footprintMiB": 15.1
+            },
+            {
+              "role": "webkit-networking",
+              "name": "com.apple.WebKit.Networking",
+              "pid": 28048,
+              "footprintMiB": 8.7
+            },
+            {
+              "role": "webkit-webcontent",
+              "name": "com.apple.WebKit.WebContent",
+              "pid": 28051,
+              "footprintMiB": 96.3
+            },
+            {
+              "role": "webkit-webcontent",
+              "name": "com.apple.WebKit.WebContent",
+              "pid": 28047,
+              "footprintMiB": 11.4
+            },
+            {
+              "role": "webkit-webcontent",
+              "name": "com.apple.WebKit.WebContent",
+              "pid": 28053,
+              "footprintMiB": 7.5
+            }
+          ],
+          [
+            {
+              "role": "app",
+              "name": "Ivy.Tendril",
+              "pid": 28086,
+              "footprintMiB": 214.2
+            },
+            {
+              "role": "webkit-gpu",
+              "name": "com.apple.WebKit.GPU",
+              "pid": 28421,
+              "footprintMiB": 15.5
+            },
+            {
+              "role": "webkit-networking",
+              "name": "com.apple.WebKit.Networking",
+              "pid": 28423,
+              "footprintMiB": 8.7
+            },
+            {
+              "role": "webkit-webcontent",
+              "name": "com.apple.WebKit.WebContent",
+              "pid": 28427,
+              "footprintMiB": 96.6
+            },
+            {
+              "role": "webkit-webcontent",
+              "name": "com.apple.WebKit.WebContent",
+              "pid": 28422,
+              "footprintMiB": 11.2
+            },
+            {
+              "role": "webkit-webcontent",
+              "name": "com.apple.WebKit.WebContent",
+              "pid": 28428,
+              "footprintMiB": 7.4
+            }
+          ]
+        ],
+        "durationSec": [
+          30.01,
+          30.01,
+          30.01
+        ],
+        "samplerOffsetSec": [
+          0.052,
+          0.067,
+          0.062
+        ]
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "steady-state",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "footprint_mean_mib",
+      "unit": "MiB",
+      "samples": [
+        350.91,
+        348.46,
+        349.73
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "mean of the whole-tree footprint samples from +15 s to the end"
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "steady-state",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        811.97,
+        808.93,
+        810.68
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "sum of per-process interval-max phys_footprint over the window (upper bound on the simultaneous peak)",
+        "byRole": {
+          "app": [
+            215.3,
+            213,
+            214.2
+          ],
+          "webkit-gpu": [
+            252.4,
+            253.4,
+            252.6
+          ],
+          "webkit-networking": [
+            42.3,
+            42.8,
+            45.1
+          ],
+          "webkit-webcontent": [
+            302,
+            299.9,
+            298.8
+          ]
+        }
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "steady-state",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "rss_end_mib",
+      "unit": "MiB",
+      "samples": [
+        765.94,
+        763.06,
+        756.73
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "resident size summed over the process set at the end (context only: double-counts shared pages)"
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "steady-state",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "cpu_percent_mean",
+      "unit": "percent",
+      "samples": [
+        5.965,
+        6.353,
+        6.509
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "CPU time of the process set from +15 s to the end, as percent of one core",
+        "byRole": {
+          "app": [
+            5.9,
+            6.29,
+            6.49
+          ],
+          "webkit-gpu": [
+            0,
+            0,
+            0
+          ],
+          "webkit-networking": [
+            0.06,
+            0.06,
+            0.02
+          ],
+          "webkit-webcontent": [
+            0,
+            0,
+            0
+          ]
+        }
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "steady-state",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "idle_wakeups_per_s",
+      "unit": "count",
+      "samples": [
+        140.27,
+        138.81,
+        139.49
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "package idle + interrupt wakeups of the process set per second, from +15 s to the end"
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "launch",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "app_process_ms",
+      "unit": "ms",
+      "samples": [
+        19.9,
+        14.9,
+        17.1
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "launch command (open -n -F) to the kernel start time of the app process",
+        "note": "V2: its daemon was started and healthy before the launch command; its startup is not included here (see cold-launch)",
+        "pidSeenMs": [
+          65,
+          45,
+          62
+        ]
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "launch",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "webcontent_spawn_ms",
+      "unit": "ms",
+      "samples": [
+        209.5,
+        196.7,
+        207.8
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "launch command to the kernel start time of the first WebKit WebContent process the app is responsible for",
+        "note": "V2: its daemon was started and healthy before the launch command; its startup is not included here (see cold-launch)",
+        "allWebContentStartsMs": [
+          [
+            209.5
+          ],
+          [
+            196.7
+          ],
+          [
+            207.8
+          ]
+        ]
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "launch",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "window_visible_ms",
+      "unit": "ms",
+      "samples": [
+        271.8,
+        256.3,
+        247.1
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "launch command to the first poll that sees an on-screen layer-0 window of the app larger than 200x200 pt",
+        "note": "V2: its daemon was started and healthy before the launch command; its startup is not included here (see cold-launch); process milestone, not content: V1 shows its window only after its in-process server answers, Tauri shows V2 window before the page has loaded",
+        "resolutionMs": 25,
+        "windowFirstPt": [
+          {
+            "w": 1152,
+            "h": 721
+          },
+          {
+            "w": 1152,
+            "h": 721
+          },
+          {
+            "w": 1152,
+            "h": 721
+          }
+        ],
+        "windowPolls": [
+          16,
+          16,
+          15
+        ]
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "launch",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "cpu_s_to_15s",
+      "unit": "cpu_s",
+      "samples": [
+        1.301,
+        1.092,
+        1.302
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "CPU seconds the process set used from the first sample (just after the launch command) to +15 s",
+        "note": "V2: its daemon was started and healthy before the launch command; its startup is not included here (see cold-launch)"
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "cold-launch",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "backend_ready_ms",
+      "unit": "ms",
+      "samples": [
+        122,
+        136,
+        122
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "daemon spawn to its first 200 from /api/health (it answers only after its initial sync); the app is launched right after",
+        "v2Only": true
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "cold-launch",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "app_process_ms",
+      "unit": "ms",
+      "samples": [
+        142.7,
+        151.9,
+        140.5
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "app process start, from the spawn of the V2 daemon (tendril serve), which the app needs before it can start"
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "cold-launch",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "webcontent_spawn_ms",
+      "unit": "ms",
+      "samples": [
+        332.3,
+        333.7,
+        331.2
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "first WebContent process start, from the spawn of the V2 daemon (tendril serve), which the app needs before it can start"
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "cold-launch",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "window_visible_ms",
+      "unit": "ms",
+      "samples": [
+        394.6,
+        393.3,
+        370.5
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "app window on screen, from the spawn of the V2 daemon (tendril serve), which the app needs before it can start",
+        "note": "process milestone, not content: V1 shows its window only after its in-process server answers, Tauri shows V2 window before the page has loaded"
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "cold-launch",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "cpu_s_to_15s",
+      "unit": "cpu_s",
+      "samples": [
+        1.392,
+        1.202,
+        1.413
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "CPU seconds of the whole process set from the spawn of the V2 daemon (tendril serve), which the app needs before it can start to 15 s after the launch command",
+        "backendCpuBeforeLaunchS": [
+          0.0904,
+          0.11,
+          0.111
+        ]
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "steady-state",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "footprint_15s_mib",
+      "unit": "MiB",
+      "samples": [
+        185.25,
+        185.25,
+        183.58
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "phys_footprint summed over the process set at +15 s after the launch command",
+        "byRole": {
+          "app": [
+            41.1,
+            40.5,
+            40.7
+          ],
+          "daemon": [
+            40.6,
+            41,
+            41
+          ],
+          "webkit-gpu": [
+            21.7,
+            22,
+            21.4
+          ],
+          "webkit-networking": [
+            6.4,
+            6.4,
+            6.4
+          ],
+          "webkit-webcontent": [
+            75.4,
+            75.3,
+            74
+          ]
+        }
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "steady-state",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "footprint_end_mib",
+      "unit": "MiB",
+      "samples": [
+        178.36,
+        178.52,
+        177.11
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "phys_footprint summed over the process set at the end of the window",
+        "byRole": {
+          "app": [
+            41.1,
+            40.5,
+            40.7
+          ],
+          "daemon": [
+            40.7,
+            41.1,
+            41
+          ],
+          "webkit-gpu": [
+            14.8,
+            15.2,
+            14.9
+          ],
+          "webkit-networking": [
+            6.4,
+            6.4,
+            6.4
+          ],
+          "webkit-webcontent": [
+            75.4,
+            75.3,
+            74
+          ]
+        },
+        "processCount": {
+          "app": [
+            1,
+            1,
+            1
+          ],
+          "daemon": [
+            1,
+            1,
+            1
+          ],
+          "webkit-gpu": [
+            1,
+            1,
+            1
+          ],
+          "webkit-networking": [
+            1,
+            1,
+            1
+          ],
+          "webkit-webcontent": [
+            1,
+            1,
+            1
+          ]
+        },
+        "windowEndPt": [
+          [
+            {
+              "w": 1152,
+              "h": 721
+            }
+          ],
+          [
+            {
+              "w": 1152,
+              "h": 721
+            }
+          ],
+          [
+            {
+              "w": 1152,
+              "h": 721
+            }
+          ]
+        ],
+        "screenLocked": [
+          true,
+          true,
+          true
+        ],
+        "processes": [
+          [
+            {
+              "role": "app",
+              "name": "tendril-app",
+              "pid": 27621,
+              "footprintMiB": 41.1
+            },
+            {
+              "role": "daemon",
+              "name": "tendril",
+              "pid": 27603,
+              "footprintMiB": 40.7
+            },
+            {
+              "role": "webkit-gpu",
+              "name": "com.apple.WebKit.GPU",
+              "pid": 27625,
+              "footprintMiB": 14.8
+            },
+            {
+              "role": "webkit-networking",
+              "name": "com.apple.WebKit.Networking",
+              "pid": 27627,
+              "footprintMiB": 6.4
+            },
+            {
+              "role": "webkit-webcontent",
+              "name": "com.apple.WebKit.WebContent",
+              "pid": 27626,
+              "footprintMiB": 75.4
+            }
+          ],
+          [
+            {
+              "role": "app",
+              "name": "tendril-app",
+              "pid": 27685,
+              "footprintMiB": 40.5
+            },
+            {
+              "role": "daemon",
+              "name": "tendril",
+              "pid": 27667,
+              "footprintMiB": 41.1
+            },
+            {
+              "role": "webkit-gpu",
+              "name": "com.apple.WebKit.GPU",
+              "pid": 27689,
+              "footprintMiB": 15.2
+            },
+            {
+              "role": "webkit-networking",
+              "name": "com.apple.WebKit.Networking",
+              "pid": 27691,
+              "footprintMiB": 6.4
+            },
+            {
+              "role": "webkit-webcontent",
+              "name": "com.apple.WebKit.WebContent",
+              "pid": 27690,
+              "footprintMiB": 75.3
+            }
+          ],
+          [
+            {
+              "role": "app",
+              "name": "tendril-app",
+              "pid": 28480,
+              "footprintMiB": 40.7
+            },
+            {
+              "role": "daemon",
+              "name": "tendril",
+              "pid": 28462,
+              "footprintMiB": 41
+            },
+            {
+              "role": "webkit-gpu",
+              "name": "com.apple.WebKit.GPU",
+              "pid": 28484,
+              "footprintMiB": 14.9
+            },
+            {
+              "role": "webkit-networking",
+              "name": "com.apple.WebKit.Networking",
+              "pid": 28486,
+              "footprintMiB": 6.4
+            },
+            {
+              "role": "webkit-webcontent",
+              "name": "com.apple.WebKit.WebContent",
+              "pid": 28485,
+              "footprintMiB": 74
+            }
+          ]
+        ],
+        "durationSec": [
+          30.01,
+          30.01,
+          30.01
+        ],
+        "samplerOffsetSec": [
+          0.074,
+          0.054,
+          0.07
+        ]
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "steady-state",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "footprint_mean_mib",
+      "unit": "MiB",
+      "samples": [
+        178.78,
+        178.92,
+        177.49
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "mean of the whole-tree footprint samples from +15 s to the end"
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "steady-state",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        475.75,
+        478.21,
+        476.38
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "sum of per-process interval-max phys_footprint over the window (upper bound on the simultaneous peak)",
+        "byRole": {
+          "app": [
+            44.1,
+            43.5,
+            43.5
+          ],
+          "daemon": [
+            40.7,
+            41.2,
+            41.1
+          ],
+          "webkit-gpu": [
+            252.2,
+            252.9,
+            251.8
+          ],
+          "webkit-networking": [
+            8.4,
+            8.3,
+            8.6
+          ],
+          "webkit-webcontent": [
+            130.4,
+            132.3,
+            131.2
+          ]
+        }
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "steady-state",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "rss_end_mib",
+      "unit": "MiB",
+      "samples": [
+        345.88,
+        337.36,
+        346.83
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "resident size summed over the process set at the end (context only: double-counts shared pages)"
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "steady-state",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "cpu_percent_mean",
+      "unit": "percent",
+      "samples": [
+        0.215,
+        0.229,
+        0.207
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "CPU time of the process set from +15 s to the end, as percent of one core",
+        "byRole": {
+          "app": [
+            0.04,
+            0.05,
+            0.04
+          ],
+          "daemon": [
+            0.17,
+            0.18,
+            0.16
+          ],
+          "webkit-gpu": [
+            0,
+            0,
+            0
+          ],
+          "webkit-networking": [
+            0,
+            0,
+            0
+          ],
+          "webkit-webcontent": [
+            0,
+            0,
+            0
+          ]
+        }
+      }
+    },
+    {
+      "suite": "desktop",
+      "scenario": "steady-state",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "idle_wakeups_per_s",
+      "unit": "count",
+      "samples": [
+        2.21,
+        2.14,
+        2.08
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "package idle + interrupt wakeups of the process set per second, from +15 s to the end"
+      }
+    }
+  ],
+  "series": [
+    {
+      "app": "v1",
+      "dataset": "small",
+      "scenario": "steady-state#1",
+      "name": "footprint_mib",
+      "unit": "MiB",
+      "points": [
+        [
+          0.052,
+          3.03
+        ],
+        [
+          1.058,
+          121.83
+        ],
+        [
+          2.055,
+          720.36
+        ],
+        [
+          3.062,
+          634.49
+        ],
+        [
+          4.064,
+          384.99
+        ],
+        [
+          5.064,
+          333.71
+        ],
+        [
+          6.059,
+          332.83
+        ],
+        [
+          7.064,
+          334.33
+        ],
+        [
+          8.059,
+          333.83
+        ],
+        [
+          9.063,
+          333.72
+        ],
+        [
+          10.058,
+          333.66
+        ],
+        [
+          11.063,
+          333.41
+        ],
+        [
+          12.063,
+          333.07
+        ],
+        [
+          13.058,
+          332.94
+        ],
+        [
+          14.064,
+          327.05
+        ],
+        [
+          15.063,
+          327.13
+        ],
+        [
+          16.059,
+          328.33
+        ],
+        [
+          17.057,
+          354.4
+        ],
+        [
+          18.063,
+          354.43
+        ],
+        [
+          19.058,
+          354.43
+        ],
+        [
+          20.065,
+          354.43
+        ],
+        [
+          21.059,
+          354.38
+        ],
+        [
+          22.063,
+          354.11
+        ],
+        [
+          23.063,
+          354.13
+        ],
+        [
+          24.059,
+          354.13
+        ],
+        [
+          25.063,
+          354.13
+        ],
+        [
+          26.064,
+          354.13
+        ],
+        [
+          27.064,
+          354.08
+        ],
+        [
+          28.057,
+          354.08
+        ],
+        [
+          29.063,
+          354.08
+        ],
+        [
+          30.013,
+          354.08
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "small",
+      "scenario": "steady-state#1",
+      "name": "footprint_mib:app",
+      "unit": "MiB",
+      "points": [
+        [
+          0.052,
+          3.03
+        ],
+        [
+          1.058,
+          121.83
+        ],
+        [
+          2.055,
+          174.52
+        ],
+        [
+          3.062,
+          186.61
+        ],
+        [
+          4.064,
+          186.1
+        ],
+        [
+          5.064,
+          186.11
+        ],
+        [
+          6.059,
+          186.13
+        ],
+        [
+          7.064,
+          187.91
+        ],
+        [
+          8.059,
+          187.85
+        ],
+        [
+          9.063,
+          187.85
+        ],
+        [
+          10.058,
+          187.86
+        ],
+        [
+          11.063,
+          187.89
+        ],
+        [
+          12.063,
+          187.85
+        ],
+        [
+          13.058,
+          187.86
+        ],
+        [
+          14.064,
+          187.86
+        ],
+        [
+          15.063,
+          187.94
+        ],
+        [
+          16.059,
+          189.14
+        ],
+        [
+          17.057,
+          215.2
+        ],
+        [
+          18.063,
+          215.2
+        ],
+        [
+          19.058,
+          215.2
+        ],
+        [
+          20.065,
+          215.2
+        ],
+        [
+          21.059,
+          215.17
+        ],
+        [
+          22.063,
+          214.91
+        ],
+        [
+          23.063,
+          214.92
+        ],
+        [
+          24.059,
+          214.92
+        ],
+        [
+          25.063,
+          214.92
+        ],
+        [
+          26.064,
+          214.92
+        ],
+        [
+          27.064,
+          214.88
+        ],
+        [
+          28.057,
+          214.88
+        ],
+        [
+          29.063,
+          214.94
+        ],
+        [
+          30.013,
+          214.94
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "small",
+      "scenario": "steady-state#1",
+      "name": "footprint_mib:webkit-gpu",
+      "unit": "MiB",
+      "points": [
+        [
+          0.052,
+          0
+        ],
+        [
+          1.058,
+          0
+        ],
+        [
+          2.055,
+          246.14
+        ],
+        [
+          3.062,
+          250.95
+        ],
+        [
+          4.064,
+          25.41
+        ],
+        [
+          5.064,
+          22.5
+        ],
+        [
+          6.059,
+          22.33
+        ],
+        [
+          7.064,
+          22.27
+        ],
+        [
+          8.059,
+          21.94
+        ],
+        [
+          9.063,
+          21.89
+        ],
+        [
+          10.058,
+          21.83
+        ],
+        [
+          11.063,
+          21.55
+        ],
+        [
+          12.063,
+          21.3
+        ],
+        [
+          13.058,
+          21.17
+        ],
+        [
+          14.064,
+          15.3
+        ],
+        [
+          15.063,
+          15.3
+        ],
+        [
+          16.059,
+          15.3
+        ],
+        [
+          17.057,
+          15.3
+        ],
+        [
+          18.063,
+          15.3
+        ],
+        [
+          19.058,
+          15.3
+        ],
+        [
+          20.065,
+          15.3
+        ],
+        [
+          21.059,
+          15.28
+        ],
+        [
+          22.063,
+          15.28
+        ],
+        [
+          23.063,
+          15.28
+        ],
+        [
+          24.059,
+          15.28
+        ],
+        [
+          25.063,
+          15.28
+        ],
+        [
+          26.064,
+          15.28
+        ],
+        [
+          27.064,
+          15.28
+        ],
+        [
+          28.057,
+          15.28
+        ],
+        [
+          29.063,
+          15.28
+        ],
+        [
+          30.013,
+          15.28
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "small",
+      "scenario": "steady-state#1",
+      "name": "footprint_mib:webkit-networking",
+      "unit": "MiB",
+      "points": [
+        [
+          0.052,
+          0
+        ],
+        [
+          1.058,
+          0
+        ],
+        [
+          2.055,
+          21.3
+        ],
+        [
+          3.062,
+          10.53
+        ],
+        [
+          4.064,
+          9.42
+        ],
+        [
+          5.064,
+          9.13
+        ],
+        [
+          6.059,
+          9.13
+        ],
+        [
+          7.064,
+          9
+        ],
+        [
+          8.059,
+          8.94
+        ],
+        [
+          9.063,
+          8.89
+        ],
+        [
+          10.058,
+          8.89
+        ],
+        [
+          11.063,
+          8.89
+        ],
+        [
+          12.063,
+          8.84
+        ],
+        [
+          13.058,
+          8.83
+        ],
+        [
+          14.064,
+          8.83
+        ],
+        [
+          15.063,
+          8.83
+        ],
+        [
+          16.059,
+          8.83
+        ],
+        [
+          17.057,
+          8.83
+        ],
+        [
+          18.063,
+          8.86
+        ],
+        [
+          19.058,
+          8.86
+        ],
+        [
+          20.065,
+          8.86
+        ],
+        [
+          21.059,
+          8.86
+        ],
+        [
+          22.063,
+          8.86
+        ],
+        [
+          23.063,
+          8.86
+        ],
+        [
+          24.059,
+          8.86
+        ],
+        [
+          25.063,
+          8.86
+        ],
+        [
+          26.064,
+          8.86
+        ],
+        [
+          27.064,
+          8.86
+        ],
+        [
+          28.057,
+          8.86
+        ],
+        [
+          29.063,
+          8.8
+        ],
+        [
+          30.013,
+          8.8
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "small",
+      "scenario": "steady-state#1",
+      "name": "footprint_mib:webkit-webcontent",
+      "unit": "MiB",
+      "points": [
+        [
+          0.052,
+          0
+        ],
+        [
+          1.058,
+          0
+        ],
+        [
+          2.055,
+          278.41
+        ],
+        [
+          3.062,
+          186.39
+        ],
+        [
+          4.064,
+          164.06
+        ],
+        [
+          5.064,
+          115.97
+        ],
+        [
+          6.059,
+          115.25
+        ],
+        [
+          7.064,
+          115.16
+        ],
+        [
+          8.059,
+          115.11
+        ],
+        [
+          9.063,
+          115.1
+        ],
+        [
+          10.058,
+          115.08
+        ],
+        [
+          11.063,
+          115.08
+        ],
+        [
+          12.063,
+          115.08
+        ],
+        [
+          13.058,
+          115.08
+        ],
+        [
+          14.064,
+          115.06
+        ],
+        [
+          15.063,
+          115.06
+        ],
+        [
+          16.059,
+          115.06
+        ],
+        [
+          17.057,
+          115.06
+        ],
+        [
+          18.063,
+          115.06
+        ],
+        [
+          19.058,
+          115.06
+        ],
+        [
+          20.065,
+          115.06
+        ],
+        [
+          21.059,
+          115.06
+        ],
+        [
+          22.063,
+          115.06
+        ],
+        [
+          23.063,
+          115.06
+        ],
+        [
+          24.059,
+          115.06
+        ],
+        [
+          25.063,
+          115.06
+        ],
+        [
+          26.064,
+          115.06
+        ],
+        [
+          27.064,
+          115.06
+        ],
+        [
+          28.057,
+          115.06
+        ],
+        [
+          29.063,
+          115.06
+        ],
+        [
+          30.013,
+          115.06
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "small",
+      "scenario": "steady-state#1",
+      "name": "cpu_percent",
+      "unit": "percent",
+      "points": [
+        [
+          1.058,
+          67.59
+        ],
+        [
+          2.055,
+          150.35
+        ],
+        [
+          3.062,
+          84.45
+        ],
+        [
+          4.064,
+          7.31
+        ],
+        [
+          5.064,
+          18.11
+        ],
+        [
+          6.059,
+          6.64
+        ],
+        [
+          7.064,
+          26.87
+        ],
+        [
+          8.059,
+          3.99
+        ],
+        [
+          9.063,
+          4.17
+        ],
+        [
+          10.058,
+          4.64
+        ],
+        [
+          11.063,
+          3.86
+        ],
+        [
+          12.063,
+          4.61
+        ],
+        [
+          13.058,
+          4.1
+        ],
+        [
+          14.064,
+          3.85
+        ],
+        [
+          15.063,
+          4.94
+        ],
+        [
+          16.059,
+          5.3
+        ],
+        [
+          17.057,
+          31.94
+        ],
+        [
+          18.063,
+          4.2
+        ],
+        [
+          19.058,
+          3.6
+        ],
+        [
+          20.065,
+          3.73
+        ],
+        [
+          21.059,
+          5.08
+        ],
+        [
+          22.063,
+          4.13
+        ],
+        [
+          23.063,
+          4.08
+        ],
+        [
+          24.059,
+          3.65
+        ],
+        [
+          25.063,
+          3.83
+        ],
+        [
+          26.064,
+          4.65
+        ],
+        [
+          27.064,
+          3.73
+        ],
+        [
+          28.057,
+          3.6
+        ],
+        [
+          29.063,
+          4.24
+        ],
+        [
+          30.013,
+          3.68
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "small",
+      "scenario": "steady-state#2",
+      "name": "footprint_mib",
+      "unit": "MiB",
+      "points": [
+        [
+          0.067,
+          1.88
+        ],
+        [
+          1.074,
+          121.61
+        ],
+        [
+          2.076,
+          720.11
+        ],
+        [
+          3.069,
+          636.72
+        ],
+        [
+          4.079,
+          386.22
+        ],
+        [
+          5.075,
+          333.16
+        ],
+        [
+          6.079,
+          332.65
+        ],
+        [
+          7.074,
+          333.26
+        ],
+        [
+          8.077,
+          332.58
+        ],
+        [
+          9.079,
+          332.43
+        ],
+        [
+          10.073,
+          332.35
+        ],
+        [
+          11.079,
+          332.07
+        ],
+        [
+          12.08,
+          331.77
+        ],
+        [
+          13.073,
+          331.55
+        ],
+        [
+          14.08,
+          325.66
+        ],
+        [
+          15.074,
+          325.66
+        ],
+        [
+          16.079,
+          325.66
+        ],
+        [
+          17.08,
+          351.82
+        ],
+        [
+          18.075,
+          351.86
+        ],
+        [
+          19.079,
+          351.86
+        ],
+        [
+          20.079,
+          351.85
+        ],
+        [
+          21.072,
+          351.82
+        ],
+        [
+          22.079,
+          351.66
+        ],
+        [
+          23.073,
+          351.66
+        ],
+        [
+          24.077,
+          351.66
+        ],
+        [
+          25.078,
+          351.66
+        ],
+        [
+          26.08,
+          351.66
+        ],
+        [
+          27.074,
+          351.61
+        ],
+        [
+          28.076,
+          351.61
+        ],
+        [
+          29.078,
+          351.65
+        ],
+        [
+          30.009,
+          351.65
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "small",
+      "scenario": "steady-state#2",
+      "name": "footprint_mib:app",
+      "unit": "MiB",
+      "points": [
+        [
+          0.067,
+          1.88
+        ],
+        [
+          1.074,
+          121.61
+        ],
+        [
+          2.076,
+          174.28
+        ],
+        [
+          3.069,
+          186.08
+        ],
+        [
+          4.079,
+          185.6
+        ],
+        [
+          5.075,
+          185.64
+        ],
+        [
+          6.079,
+          185.67
+        ],
+        [
+          7.074,
+          187
+        ],
+        [
+          8.077,
+          186.75
+        ],
+        [
+          9.079,
+          186.75
+        ],
+        [
+          10.073,
+          186.75
+        ],
+        [
+          11.079,
+          186.75
+        ],
+        [
+          12.08,
+          186.74
+        ],
+        [
+          13.073,
+          186.74
+        ],
+        [
+          14.08,
+          186.74
+        ],
+        [
+          15.074,
+          186.74
+        ],
+        [
+          16.079,
+          186.74
+        ],
+        [
+          17.08,
+          212.89
+        ],
+        [
+          18.075,
+          212.89
+        ],
+        [
+          19.079,
+          212.89
+        ],
+        [
+          20.079,
+          212.89
+        ],
+        [
+          21.072,
+          212.88
+        ],
+        [
+          22.079,
+          212.72
+        ],
+        [
+          23.073,
+          212.72
+        ],
+        [
+          24.077,
+          212.72
+        ],
+        [
+          25.078,
+          212.72
+        ],
+        [
+          26.08,
+          212.72
+        ],
+        [
+          27.074,
+          212.67
+        ],
+        [
+          28.076,
+          212.67
+        ],
+        [
+          29.078,
+          212.7
+        ],
+        [
+          30.009,
+          212.7
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "small",
+      "scenario": "steady-state#2",
+      "name": "footprint_mib:webkit-gpu",
+      "unit": "MiB",
+      "points": [
+        [
+          0.067,
+          0
+        ],
+        [
+          1.074,
+          0
+        ],
+        [
+          2.076,
+          245.41
+        ],
+        [
+          3.069,
+          252.36
+        ],
+        [
+          4.079,
+          25.59
+        ],
+        [
+          5.075,
+          22.52
+        ],
+        [
+          6.079,
+          22.39
+        ],
+        [
+          7.074,
+          22.08
+        ],
+        [
+          8.077,
+          21.8
+        ],
+        [
+          9.079,
+          21.77
+        ],
+        [
+          10.073,
+          21.74
+        ],
+        [
+          11.079,
+          21.45
+        ],
+        [
+          12.08,
+          21.2
+        ],
+        [
+          13.073,
+          20.95
+        ],
+        [
+          14.08,
+          15.08
+        ],
+        [
+          15.074,
+          15.08
+        ],
+        [
+          16.079,
+          15.08
+        ],
+        [
+          17.08,
+          15.08
+        ],
+        [
+          18.075,
+          15.08
+        ],
+        [
+          19.079,
+          15.08
+        ],
+        [
+          20.079,
+          15.08
+        ],
+        [
+          21.072,
+          15.06
+        ],
+        [
+          22.079,
+          15.06
+        ],
+        [
+          23.073,
+          15.06
+        ],
+        [
+          24.077,
+          15.06
+        ],
+        [
+          25.078,
+          15.06
+        ],
+        [
+          26.08,
+          15.06
+        ],
+        [
+          27.074,
+          15.06
+        ],
+        [
+          28.076,
+          15.06
+        ],
+        [
+          29.078,
+          15.06
+        ],
+        [
+          30.009,
+          15.06
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "small",
+      "scenario": "steady-state#2",
+      "name": "footprint_mib:webkit-networking",
+      "unit": "MiB",
+      "points": [
+        [
+          0.067,
+          0
+        ],
+        [
+          1.074,
+          0
+        ],
+        [
+          2.076,
+          21.56
+        ],
+        [
+          3.069,
+          10.36
+        ],
+        [
+          4.079,
+          9.19
+        ],
+        [
+          5.075,
+          8.89
+        ],
+        [
+          6.079,
+          8.89
+        ],
+        [
+          7.074,
+          8.84
+        ],
+        [
+          8.077,
+          8.75
+        ],
+        [
+          9.079,
+          8.7
+        ],
+        [
+          10.073,
+          8.7
+        ],
+        [
+          11.079,
+          8.7
+        ],
+        [
+          12.08,
+          8.67
+        ],
+        [
+          13.073,
+          8.7
+        ],
+        [
+          14.08,
+          8.7
+        ],
+        [
+          15.074,
+          8.7
+        ],
+        [
+          16.079,
+          8.7
+        ],
+        [
+          17.08,
+          8.7
+        ],
+        [
+          18.075,
+          8.75
+        ],
+        [
+          19.079,
+          8.75
+        ],
+        [
+          20.079,
+          8.73
+        ],
+        [
+          21.072,
+          8.73
+        ],
+        [
+          22.079,
+          8.73
+        ],
+        [
+          23.073,
+          8.73
+        ],
+        [
+          24.077,
+          8.73
+        ],
+        [
+          25.078,
+          8.73
+        ],
+        [
+          26.08,
+          8.73
+        ],
+        [
+          27.074,
+          8.73
+        ],
+        [
+          28.076,
+          8.73
+        ],
+        [
+          29.078,
+          8.73
+        ],
+        [
+          30.009,
+          8.73
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "small",
+      "scenario": "steady-state#2",
+      "name": "footprint_mib:webkit-webcontent",
+      "unit": "MiB",
+      "points": [
+        [
+          0.067,
+          0
+        ],
+        [
+          1.074,
+          0
+        ],
+        [
+          2.076,
+          278.86
+        ],
+        [
+          3.069,
+          187.92
+        ],
+        [
+          4.079,
+          165.85
+        ],
+        [
+          5.075,
+          116.11
+        ],
+        [
+          6.079,
+          115.69
+        ],
+        [
+          7.074,
+          115.33
+        ],
+        [
+          8.077,
+          115.28
+        ],
+        [
+          9.079,
+          115.21
+        ],
+        [
+          10.073,
+          115.16
+        ],
+        [
+          11.079,
+          115.16
+        ],
+        [
+          12.08,
+          115.16
+        ],
+        [
+          13.073,
+          115.16
+        ],
+        [
+          14.08,
+          115.14
+        ],
+        [
+          15.074,
+          115.14
+        ],
+        [
+          16.079,
+          115.14
+        ],
+        [
+          17.08,
+          115.14
+        ],
+        [
+          18.075,
+          115.14
+        ],
+        [
+          19.079,
+          115.14
+        ],
+        [
+          20.079,
+          115.14
+        ],
+        [
+          21.072,
+          115.14
+        ],
+        [
+          22.079,
+          115.14
+        ],
+        [
+          23.073,
+          115.14
+        ],
+        [
+          24.077,
+          115.14
+        ],
+        [
+          25.078,
+          115.14
+        ],
+        [
+          26.08,
+          115.14
+        ],
+        [
+          27.074,
+          115.14
+        ],
+        [
+          28.076,
+          115.14
+        ],
+        [
+          29.078,
+          115.14
+        ],
+        [
+          30.009,
+          115.14
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "small",
+      "scenario": "steady-state#2",
+      "name": "cpu_percent",
+      "unit": "percent",
+      "points": [
+        [
+          1.074,
+          67.01
+        ],
+        [
+          2.076,
+          148.5
+        ],
+        [
+          3.069,
+          84.38
+        ],
+        [
+          4.079,
+          8.21
+        ],
+        [
+          5.075,
+          15.72
+        ],
+        [
+          6.079,
+          5.39
+        ],
+        [
+          7.074,
+          27.18
+        ],
+        [
+          8.077,
+          4.27
+        ],
+        [
+          9.079,
+          4.52
+        ],
+        [
+          10.073,
+          4.83
+        ],
+        [
+          11.079,
+          4.42
+        ],
+        [
+          12.08,
+          4.52
+        ],
+        [
+          13.073,
+          5.17
+        ],
+        [
+          14.08,
+          4.48
+        ],
+        [
+          15.074,
+          4.65
+        ],
+        [
+          16.079,
+          4.33
+        ],
+        [
+          17.08,
+          32.8
+        ],
+        [
+          18.075,
+          4.63
+        ],
+        [
+          19.079,
+          3.99
+        ],
+        [
+          20.079,
+          4.19
+        ],
+        [
+          21.072,
+          5.31
+        ],
+        [
+          22.079,
+          4.39
+        ],
+        [
+          23.073,
+          4.82
+        ],
+        [
+          24.077,
+          4.32
+        ],
+        [
+          25.078,
+          5.15
+        ],
+        [
+          26.08,
+          3.9
+        ],
+        [
+          27.074,
+          4.23
+        ],
+        [
+          28.076,
+          4.13
+        ],
+        [
+          29.078,
+          4.88
+        ],
+        [
+          30.009,
+          4.05
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "small",
+      "scenario": "steady-state#3",
+      "name": "footprint_mib",
+      "unit": "MiB",
+      "points": [
+        [
+          0.062,
+          1.44
+        ],
+        [
+          1.065,
+          121.05
+        ],
+        [
+          2.072,
+          726.52
+        ],
+        [
+          3.068,
+          635.26
+        ],
+        [
+          4.073,
+          386.15
+        ],
+        [
+          5.069,
+          334.05
+        ],
+        [
+          6.074,
+          333.05
+        ],
+        [
+          7.068,
+          334.18
+        ],
+        [
+          8.071,
+          333.52
+        ],
+        [
+          9.068,
+          333.3
+        ],
+        [
+          10.073,
+          333.26
+        ],
+        [
+          11.074,
+          333.01
+        ],
+        [
+          12.067,
+          332.66
+        ],
+        [
+          13.074,
+          332.4
+        ],
+        [
+          14.069,
+          326.38
+        ],
+        [
+          15.073,
+          326.38
+        ],
+        [
+          16.069,
+          326.38
+        ],
+        [
+          17.073,
+          352.55
+        ],
+        [
+          18.075,
+          352.47
+        ],
+        [
+          19.069,
+          352.47
+        ],
+        [
+          20.074,
+          353.05
+        ],
+        [
+          21.074,
+          353.04
+        ],
+        [
+          22.074,
+          352.86
+        ],
+        [
+          23.074,
+          352.86
+        ],
+        [
+          24.066,
+          352.9
+        ],
+        [
+          25.073,
+          352.9
+        ],
+        [
+          26.075,
+          353.55
+        ],
+        [
+          27.069,
+          353.51
+        ],
+        [
+          28.073,
+          353.58
+        ],
+        [
+          29.074,
+          353.58
+        ],
+        [
+          30.013,
+          353.54
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "small",
+      "scenario": "steady-state#3",
+      "name": "footprint_mib:app",
+      "unit": "MiB",
+      "points": [
+        [
+          0.062,
+          1.44
+        ],
+        [
+          1.065,
+          121.05
+        ],
+        [
+          2.072,
+          176.02
+        ],
+        [
+          3.068,
+          185.86
+        ],
+        [
+          4.073,
+          185.56
+        ],
+        [
+          5.069,
+          185.5
+        ],
+        [
+          6.074,
+          185.52
+        ],
+        [
+          7.068,
+          186.95
+        ],
+        [
+          8.071,
+          186.91
+        ],
+        [
+          9.068,
+          186.91
+        ],
+        [
+          10.073,
+          186.91
+        ],
+        [
+          11.074,
+          186.91
+        ],
+        [
+          12.067,
+          186.88
+        ],
+        [
+          13.074,
+          186.88
+        ],
+        [
+          14.069,
+          186.88
+        ],
+        [
+          15.073,
+          186.88
+        ],
+        [
+          16.069,
+          186.88
+        ],
+        [
+          17.073,
+          213.05
+        ],
+        [
+          18.075,
+          213.05
+        ],
+        [
+          19.069,
+          213.05
+        ],
+        [
+          20.074,
+          213.63
+        ],
+        [
+          21.074,
+          213.63
+        ],
+        [
+          22.074,
+          213.45
+        ],
+        [
+          23.074,
+          213.47
+        ],
+        [
+          24.066,
+          213.47
+        ],
+        [
+          25.073,
+          213.47
+        ],
+        [
+          26.075,
+          214.13
+        ],
+        [
+          27.069,
+          214.08
+        ],
+        [
+          28.073,
+          214.16
+        ],
+        [
+          29.074,
+          214.16
+        ],
+        [
+          30.013,
+          214.16
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "small",
+      "scenario": "steady-state#3",
+      "name": "footprint_mib:webkit-gpu",
+      "unit": "MiB",
+      "points": [
+        [
+          0.062,
+          0
+        ],
+        [
+          1.065,
+          0
+        ],
+        [
+          2.072,
+          249.56
+        ],
+        [
+          3.068,
+          251.72
+        ],
+        [
+          4.073,
+          26.11
+        ],
+        [
+          5.069,
+          23.16
+        ],
+        [
+          6.074,
+          22.99
+        ],
+        [
+          7.068,
+          22.88
+        ],
+        [
+          8.071,
+          22.44
+        ],
+        [
+          9.068,
+          22.27
+        ],
+        [
+          10.073,
+          22.24
+        ],
+        [
+          11.074,
+          21.99
+        ],
+        [
+          12.067,
+          21.74
+        ],
+        [
+          13.074,
+          21.49
+        ],
+        [
+          14.069,
+          15.49
+        ],
+        [
+          15.073,
+          15.49
+        ],
+        [
+          16.069,
+          15.49
+        ],
+        [
+          17.073,
+          15.49
+        ],
+        [
+          18.075,
+          15.49
+        ],
+        [
+          19.069,
+          15.49
+        ],
+        [
+          20.074,
+          15.49
+        ],
+        [
+          21.074,
+          15.47
+        ],
+        [
+          22.074,
+          15.47
+        ],
+        [
+          23.074,
+          15.47
+        ],
+        [
+          24.066,
+          15.47
+        ],
+        [
+          25.073,
+          15.47
+        ],
+        [
+          26.075,
+          15.47
+        ],
+        [
+          27.069,
+          15.47
+        ],
+        [
+          28.073,
+          15.47
+        ],
+        [
+          29.074,
+          15.47
+        ],
+        [
+          30.013,
+          15.47
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "small",
+      "scenario": "steady-state#3",
+      "name": "footprint_mib:webkit-networking",
+      "unit": "MiB",
+      "points": [
+        [
+          0.062,
+          0
+        ],
+        [
+          1.065,
+          0
+        ],
+        [
+          2.072,
+          21.55
+        ],
+        [
+          3.068,
+          10.39
+        ],
+        [
+          4.073,
+          9.39
+        ],
+        [
+          5.069,
+          9.14
+        ],
+        [
+          6.074,
+          9.13
+        ],
+        [
+          7.068,
+          9.03
+        ],
+        [
+          8.071,
+          8.91
+        ],
+        [
+          9.068,
+          8.88
+        ],
+        [
+          10.073,
+          8.88
+        ],
+        [
+          11.074,
+          8.88
+        ],
+        [
+          12.067,
+          8.81
+        ],
+        [
+          13.074,
+          8.8
+        ],
+        [
+          14.069,
+          8.8
+        ],
+        [
+          15.073,
+          8.8
+        ],
+        [
+          16.069,
+          8.8
+        ],
+        [
+          17.073,
+          8.8
+        ],
+        [
+          18.075,
+          8.72
+        ],
+        [
+          19.069,
+          8.72
+        ],
+        [
+          20.074,
+          8.72
+        ],
+        [
+          21.074,
+          8.72
+        ],
+        [
+          22.074,
+          8.72
+        ],
+        [
+          23.074,
+          8.7
+        ],
+        [
+          24.066,
+          8.73
+        ],
+        [
+          25.073,
+          8.73
+        ],
+        [
+          26.075,
+          8.73
+        ],
+        [
+          27.069,
+          8.73
+        ],
+        [
+          28.073,
+          8.73
+        ],
+        [
+          29.074,
+          8.73
+        ],
+        [
+          30.013,
+          8.69
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "small",
+      "scenario": "steady-state#3",
+      "name": "footprint_mib:webkit-webcontent",
+      "unit": "MiB",
+      "points": [
+        [
+          0.062,
+          0
+        ],
+        [
+          1.065,
+          0
+        ],
+        [
+          2.072,
+          279.39
+        ],
+        [
+          3.068,
+          187.28
+        ],
+        [
+          4.073,
+          165.08
+        ],
+        [
+          5.069,
+          116.25
+        ],
+        [
+          6.074,
+          115.42
+        ],
+        [
+          7.068,
+          115.31
+        ],
+        [
+          8.071,
+          115.27
+        ],
+        [
+          9.068,
+          115.25
+        ],
+        [
+          10.073,
+          115.24
+        ],
+        [
+          11.074,
+          115.24
+        ],
+        [
+          12.067,
+          115.24
+        ],
+        [
+          13.074,
+          115.24
+        ],
+        [
+          14.069,
+          115.22
+        ],
+        [
+          15.073,
+          115.22
+        ],
+        [
+          16.069,
+          115.22
+        ],
+        [
+          17.073,
+          115.22
+        ],
+        [
+          18.075,
+          115.22
+        ],
+        [
+          19.069,
+          115.22
+        ],
+        [
+          20.074,
+          115.22
+        ],
+        [
+          21.074,
+          115.22
+        ],
+        [
+          22.074,
+          115.22
+        ],
+        [
+          23.074,
+          115.22
+        ],
+        [
+          24.066,
+          115.22
+        ],
+        [
+          25.073,
+          115.22
+        ],
+        [
+          26.075,
+          115.22
+        ],
+        [
+          27.069,
+          115.22
+        ],
+        [
+          28.073,
+          115.22
+        ],
+        [
+          29.074,
+          115.22
+        ],
+        [
+          30.013,
+          115.22
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "small",
+      "scenario": "steady-state#3",
+      "name": "cpu_percent",
+      "unit": "percent",
+      "points": [
+        [
+          1.065,
+          67.22
+        ],
+        [
+          2.072,
+          136.88
+        ],
+        [
+          3.068,
+          72.71
+        ],
+        [
+          4.073,
+          7.55
+        ],
+        [
+          5.069,
+          16.39
+        ],
+        [
+          6.074,
+          5.98
+        ],
+        [
+          7.068,
+          29.15
+        ],
+        [
+          8.071,
+          4.82
+        ],
+        [
+          9.068,
+          4.99
+        ],
+        [
+          10.073,
+          5.07
+        ],
+        [
+          11.074,
+          4.43
+        ],
+        [
+          12.067,
+          4.86
+        ],
+        [
+          13.074,
+          5.17
+        ],
+        [
+          14.069,
+          5.11
+        ],
+        [
+          15.073,
+          4.32
+        ],
+        [
+          16.069,
+          4.53
+        ],
+        [
+          17.073,
+          29.87
+        ],
+        [
+          18.075,
+          4.08
+        ],
+        [
+          19.069,
+          4.01
+        ],
+        [
+          20.074,
+          6.94
+        ],
+        [
+          21.074,
+          5.44
+        ],
+        [
+          22.074,
+          4.3
+        ],
+        [
+          23.074,
+          5.41
+        ],
+        [
+          24.066,
+          4.73
+        ],
+        [
+          25.073,
+          4.49
+        ],
+        [
+          26.075,
+          5.57
+        ],
+        [
+          27.069,
+          4.13
+        ],
+        [
+          28.073,
+          4.74
+        ],
+        [
+          29.074,
+          3.97
+        ],
+        [
+          30.013,
+          5.24
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "small",
+      "scenario": "steady-state#1",
+      "name": "footprint_mib",
+      "unit": "MiB",
+      "points": [
+        [
+          0.074,
+          11.8
+        ],
+        [
+          1.078,
+          455.99
+        ],
+        [
+          2.079,
+          459.69
+        ],
+        [
+          3.085,
+          207.8
+        ],
+        [
+          4.085,
+          186.74
+        ],
+        [
+          5.086,
+          185.47
+        ],
+        [
+          6.082,
+          416.11
+        ],
+        [
+          7.086,
+          186.83
+        ],
+        [
+          8.081,
+          186.8
+        ],
+        [
+          9.086,
+          186.79
+        ],
+        [
+          10.081,
+          186.57
+        ],
+        [
+          11.085,
+          186.08
+        ],
+        [
+          12.087,
+          186.02
+        ],
+        [
+          13.078,
+          185.75
+        ],
+        [
+          14.086,
+          185.5
+        ],
+        [
+          15.086,
+          185.25
+        ],
+        [
+          16.087,
+          178.38
+        ],
+        [
+          17.081,
+          178.38
+        ],
+        [
+          18.087,
+          178.41
+        ],
+        [
+          19.081,
+          178.41
+        ],
+        [
+          20.087,
+          178.41
+        ],
+        [
+          21.081,
+          178.38
+        ],
+        [
+          22.086,
+          178.35
+        ],
+        [
+          23.081,
+          178.3
+        ],
+        [
+          24.086,
+          178.3
+        ],
+        [
+          25.087,
+          178.3
+        ],
+        [
+          26.079,
+          178.3
+        ],
+        [
+          27.086,
+          178.3
+        ],
+        [
+          28.086,
+          178.3
+        ],
+        [
+          29.081,
+          178.3
+        ],
+        [
+          30.014,
+          178.36
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "small",
+      "scenario": "steady-state#1",
+      "name": "footprint_mib:app",
+      "unit": "MiB",
+      "points": [
+        [
+          0.074,
+          2.3
+        ],
+        [
+          1.078,
+          43.27
+        ],
+        [
+          2.079,
+          42.16
+        ],
+        [
+          3.085,
+          41.34
+        ],
+        [
+          4.085,
+          41.34
+        ],
+        [
+          5.086,
+          41.34
+        ],
+        [
+          6.082,
+          41.25
+        ],
+        [
+          7.086,
+          41.13
+        ],
+        [
+          8.081,
+          41.13
+        ],
+        [
+          9.086,
+          41.13
+        ],
+        [
+          10.081,
+          41.13
+        ],
+        [
+          11.085,
+          41.13
+        ],
+        [
+          12.087,
+          41.13
+        ],
+        [
+          13.078,
+          41.13
+        ],
+        [
+          14.086,
+          41.13
+        ],
+        [
+          15.086,
+          41.13
+        ],
+        [
+          16.087,
+          41.13
+        ],
+        [
+          17.081,
+          41.13
+        ],
+        [
+          18.087,
+          41.16
+        ],
+        [
+          19.081,
+          41.16
+        ],
+        [
+          20.087,
+          41.16
+        ],
+        [
+          21.081,
+          41.13
+        ],
+        [
+          22.086,
+          41.13
+        ],
+        [
+          23.081,
+          41.08
+        ],
+        [
+          24.086,
+          41.08
+        ],
+        [
+          25.087,
+          41.08
+        ],
+        [
+          26.079,
+          41.08
+        ],
+        [
+          27.086,
+          41.08
+        ],
+        [
+          28.086,
+          41.08
+        ],
+        [
+          29.081,
+          41.08
+        ],
+        [
+          30.014,
+          41.08
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "small",
+      "scenario": "steady-state#1",
+      "name": "footprint_mib:daemon",
+      "unit": "MiB",
+      "points": [
+        [
+          0.074,
+          9.5
+        ],
+        [
+          1.078,
+          40.67
+        ],
+        [
+          2.079,
+          40.7
+        ],
+        [
+          3.085,
+          40.7
+        ],
+        [
+          4.085,
+          40.7
+        ],
+        [
+          5.086,
+          40.7
+        ],
+        [
+          6.082,
+          40.67
+        ],
+        [
+          7.086,
+          40.67
+        ],
+        [
+          8.081,
+          40.67
+        ],
+        [
+          9.086,
+          40.67
+        ],
+        [
+          10.081,
+          40.63
+        ],
+        [
+          11.085,
+          40.63
+        ],
+        [
+          12.087,
+          40.63
+        ],
+        [
+          13.078,
+          40.63
+        ],
+        [
+          14.086,
+          40.63
+        ],
+        [
+          15.086,
+          40.63
+        ],
+        [
+          16.087,
+          40.63
+        ],
+        [
+          17.081,
+          40.63
+        ],
+        [
+          18.087,
+          40.63
+        ],
+        [
+          19.081,
+          40.63
+        ],
+        [
+          20.087,
+          40.63
+        ],
+        [
+          21.081,
+          40.63
+        ],
+        [
+          22.086,
+          40.63
+        ],
+        [
+          23.081,
+          40.63
+        ],
+        [
+          24.086,
+          40.63
+        ],
+        [
+          25.087,
+          40.63
+        ],
+        [
+          26.079,
+          40.63
+        ],
+        [
+          27.086,
+          40.63
+        ],
+        [
+          28.086,
+          40.63
+        ],
+        [
+          29.081,
+          40.63
+        ],
+        [
+          30.014,
+          40.69
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "small",
+      "scenario": "steady-state#1",
+      "name": "footprint_mib:webkit-gpu",
+      "unit": "MiB",
+      "points": [
+        [
+          0.074,
+          0
+        ],
+        [
+          1.078,
+          250.5
+        ],
+        [
+          2.079,
+          250.63
+        ],
+        [
+          3.085,
+          23.14
+        ],
+        [
+          4.085,
+          22.89
+        ],
+        [
+          5.086,
+          22.03
+        ],
+        [
+          6.082,
+          251.47
+        ],
+        [
+          7.086,
+          23.11
+        ],
+        [
+          8.081,
+          23.11
+        ],
+        [
+          9.086,
+          23.09
+        ],
+        [
+          10.081,
+          22.92
+        ],
+        [
+          11.085,
+          22.49
+        ],
+        [
+          12.087,
+          22.45
+        ],
+        [
+          13.078,
+          22.19
+        ],
+        [
+          14.086,
+          21.94
+        ],
+        [
+          15.086,
+          21.69
+        ],
+        [
+          16.087,
+          14.81
+        ],
+        [
+          17.081,
+          14.81
+        ],
+        [
+          18.087,
+          14.81
+        ],
+        [
+          19.081,
+          14.81
+        ],
+        [
+          20.087,
+          14.81
+        ],
+        [
+          21.081,
+          14.81
+        ],
+        [
+          22.086,
+          14.8
+        ],
+        [
+          23.081,
+          14.8
+        ],
+        [
+          24.086,
+          14.8
+        ],
+        [
+          25.087,
+          14.8
+        ],
+        [
+          26.079,
+          14.8
+        ],
+        [
+          27.086,
+          14.8
+        ],
+        [
+          28.086,
+          14.8
+        ],
+        [
+          29.081,
+          14.8
+        ],
+        [
+          30.014,
+          14.8
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "small",
+      "scenario": "steady-state#1",
+      "name": "footprint_mib:webkit-networking",
+      "unit": "MiB",
+      "points": [
+        [
+          0.074,
+          0
+        ],
+        [
+          1.078,
+          8
+        ],
+        [
+          2.079,
+          6.72
+        ],
+        [
+          3.085,
+          6.72
+        ],
+        [
+          4.085,
+          6.72
+        ],
+        [
+          5.086,
+          6.72
+        ],
+        [
+          6.082,
+          6.56
+        ],
+        [
+          7.086,
+          6.52
+        ],
+        [
+          8.081,
+          6.52
+        ],
+        [
+          9.086,
+          6.52
+        ],
+        [
+          10.081,
+          6.52
+        ],
+        [
+          11.085,
+          6.47
+        ],
+        [
+          12.087,
+          6.44
+        ],
+        [
+          13.078,
+          6.44
+        ],
+        [
+          14.086,
+          6.44
+        ],
+        [
+          15.086,
+          6.44
+        ],
+        [
+          16.087,
+          6.44
+        ],
+        [
+          17.081,
+          6.44
+        ],
+        [
+          18.087,
+          6.44
+        ],
+        [
+          19.081,
+          6.44
+        ],
+        [
+          20.087,
+          6.44
+        ],
+        [
+          21.081,
+          6.44
+        ],
+        [
+          22.086,
+          6.42
+        ],
+        [
+          23.081,
+          6.42
+        ],
+        [
+          24.086,
+          6.42
+        ],
+        [
+          25.087,
+          6.42
+        ],
+        [
+          26.079,
+          6.42
+        ],
+        [
+          27.086,
+          6.42
+        ],
+        [
+          28.086,
+          6.42
+        ],
+        [
+          29.081,
+          6.42
+        ],
+        [
+          30.014,
+          6.42
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "small",
+      "scenario": "steady-state#1",
+      "name": "footprint_mib:webkit-webcontent",
+      "unit": "MiB",
+      "points": [
+        [
+          0.074,
+          0
+        ],
+        [
+          1.078,
+          113.55
+        ],
+        [
+          2.079,
+          119.49
+        ],
+        [
+          3.085,
+          95.89
+        ],
+        [
+          4.085,
+          75.08
+        ],
+        [
+          5.086,
+          74.67
+        ],
+        [
+          6.082,
+          76.16
+        ],
+        [
+          7.086,
+          75.41
+        ],
+        [
+          8.081,
+          75.38
+        ],
+        [
+          9.086,
+          75.38
+        ],
+        [
+          10.081,
+          75.38
+        ],
+        [
+          11.085,
+          75.38
+        ],
+        [
+          12.087,
+          75.38
+        ],
+        [
+          13.078,
+          75.38
+        ],
+        [
+          14.086,
+          75.38
+        ],
+        [
+          15.086,
+          75.38
+        ],
+        [
+          16.087,
+          75.38
+        ],
+        [
+          17.081,
+          75.38
+        ],
+        [
+          18.087,
+          75.38
+        ],
+        [
+          19.081,
+          75.38
+        ],
+        [
+          20.087,
+          75.38
+        ],
+        [
+          21.081,
+          75.38
+        ],
+        [
+          22.086,
+          75.38
+        ],
+        [
+          23.081,
+          75.38
+        ],
+        [
+          24.086,
+          75.38
+        ],
+        [
+          25.087,
+          75.38
+        ],
+        [
+          26.079,
+          75.38
+        ],
+        [
+          27.086,
+          75.38
+        ],
+        [
+          28.086,
+          75.38
+        ],
+        [
+          29.081,
+          75.38
+        ],
+        [
+          30.014,
+          75.38
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "small",
+      "scenario": "steady-state#1",
+      "name": "cpu_percent",
+      "unit": "percent",
+      "points": [
+        [
+          1.078,
+          85.86
+        ],
+        [
+          2.079,
+          11.58
+        ],
+        [
+          3.085,
+          0.6
+        ],
+        [
+          4.085,
+          9.88
+        ],
+        [
+          5.086,
+          0.43
+        ],
+        [
+          6.082,
+          15.72
+        ],
+        [
+          7.086,
+          2.34
+        ],
+        [
+          8.081,
+          0.23
+        ],
+        [
+          9.086,
+          0.47
+        ],
+        [
+          10.081,
+          0.23
+        ],
+        [
+          11.085,
+          0.2
+        ],
+        [
+          12.087,
+          0.02
+        ],
+        [
+          13.078,
+          0.01
+        ],
+        [
+          14.086,
+          0.01
+        ],
+        [
+          15.086,
+          0
+        ],
+        [
+          16.087,
+          0.62
+        ],
+        [
+          17.081,
+          0.01
+        ],
+        [
+          18.087,
+          0.03
+        ],
+        [
+          19.081,
+          0
+        ],
+        [
+          20.087,
+          0.01
+        ],
+        [
+          21.081,
+          0.03
+        ],
+        [
+          22.086,
+          0.01
+        ],
+        [
+          23.081,
+          0.01
+        ],
+        [
+          24.086,
+          0
+        ],
+        [
+          25.087,
+          0
+        ],
+        [
+          26.079,
+          0.01
+        ],
+        [
+          27.086,
+          0
+        ],
+        [
+          28.086,
+          0
+        ],
+        [
+          29.081,
+          0.01
+        ],
+        [
+          30.014,
+          2.65
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "small",
+      "scenario": "steady-state#2",
+      "name": "footprint_mib",
+      "unit": "MiB",
+      "points": [
+        [
+          0.054,
+          41.13
+        ],
+        [
+          1.063,
+          476.88
+        ],
+        [
+          2.059,
+          459.68
+        ],
+        [
+          3.063,
+          208.82
+        ],
+        [
+          4.06,
+          187.57
+        ],
+        [
+          5.064,
+          186.39
+        ],
+        [
+          6.061,
+          416.35
+        ],
+        [
+          7.064,
+          187.04
+        ],
+        [
+          8.059,
+          187.04
+        ],
+        [
+          9.065,
+          187.04
+        ],
+        [
+          10.058,
+          186.99
+        ],
+        [
+          11.064,
+          186.14
+        ],
+        [
+          12.065,
+          186
+        ],
+        [
+          13.065,
+          185.75
+        ],
+        [
+          14.058,
+          185.5
+        ],
+        [
+          15.065,
+          185.25
+        ],
+        [
+          16.063,
+          178.5
+        ],
+        [
+          17.06,
+          178.5
+        ],
+        [
+          18.062,
+          178.54
+        ],
+        [
+          19.066,
+          178.54
+        ],
+        [
+          20.061,
+          178.52
+        ],
+        [
+          21.065,
+          178.5
+        ],
+        [
+          22.06,
+          178.47
+        ],
+        [
+          23.061,
+          178.47
+        ],
+        [
+          24.064,
+          178.47
+        ],
+        [
+          25.057,
+          178.47
+        ],
+        [
+          26.061,
+          178.47
+        ],
+        [
+          27.068,
+          178.47
+        ],
+        [
+          28.06,
+          178.47
+        ],
+        [
+          29.061,
+          178.47
+        ],
+        [
+          30.013,
+          178.52
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "small",
+      "scenario": "steady-state#2",
+      "name": "footprint_mib:app",
+      "unit": "MiB",
+      "points": [
+        [
+          0.054,
+          2.42
+        ],
+        [
+          1.063,
+          42.81
+        ],
+        [
+          2.059,
+          41.08
+        ],
+        [
+          3.063,
+          40.72
+        ],
+        [
+          4.06,
+          40.69
+        ],
+        [
+          5.064,
+          40.69
+        ],
+        [
+          6.061,
+          40.64
+        ],
+        [
+          7.064,
+          40.59
+        ],
+        [
+          8.059,
+          40.59
+        ],
+        [
+          9.065,
+          40.59
+        ],
+        [
+          10.058,
+          40.59
+        ],
+        [
+          11.064,
+          40.55
+        ],
+        [
+          12.065,
+          40.55
+        ],
+        [
+          13.065,
+          40.55
+        ],
+        [
+          14.058,
+          40.55
+        ],
+        [
+          15.065,
+          40.55
+        ],
+        [
+          16.063,
+          40.55
+        ],
+        [
+          17.06,
+          40.55
+        ],
+        [
+          18.062,
+          40.58
+        ],
+        [
+          19.066,
+          40.58
+        ],
+        [
+          20.061,
+          40.56
+        ],
+        [
+          21.065,
+          40.55
+        ],
+        [
+          22.06,
+          40.55
+        ],
+        [
+          23.061,
+          40.55
+        ],
+        [
+          24.064,
+          40.55
+        ],
+        [
+          25.057,
+          40.55
+        ],
+        [
+          26.061,
+          40.55
+        ],
+        [
+          27.068,
+          40.55
+        ],
+        [
+          28.06,
+          40.55
+        ],
+        [
+          29.061,
+          40.55
+        ],
+        [
+          30.013,
+          40.55
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "small",
+      "scenario": "steady-state#2",
+      "name": "footprint_mib:daemon",
+      "unit": "MiB",
+      "points": [
+        [
+          0.054,
+          38.7
+        ],
+        [
+          1.063,
+          41.14
+        ],
+        [
+          2.059,
+          41.14
+        ],
+        [
+          3.063,
+          41.14
+        ],
+        [
+          4.06,
+          41.14
+        ],
+        [
+          5.064,
+          41.14
+        ],
+        [
+          6.061,
+          41.09
+        ],
+        [
+          7.064,
+          41.09
+        ],
+        [
+          8.059,
+          41.09
+        ],
+        [
+          9.065,
+          41.09
+        ],
+        [
+          10.058,
+          41.05
+        ],
+        [
+          11.064,
+          41.05
+        ],
+        [
+          12.065,
+          41.05
+        ],
+        [
+          13.065,
+          41.05
+        ],
+        [
+          14.058,
+          41.05
+        ],
+        [
+          15.065,
+          41.05
+        ],
+        [
+          16.063,
+          41.05
+        ],
+        [
+          17.06,
+          41.05
+        ],
+        [
+          18.062,
+          41.05
+        ],
+        [
+          19.066,
+          41.05
+        ],
+        [
+          20.061,
+          41.05
+        ],
+        [
+          21.065,
+          41.05
+        ],
+        [
+          22.06,
+          41.05
+        ],
+        [
+          23.061,
+          41.05
+        ],
+        [
+          24.064,
+          41.05
+        ],
+        [
+          25.057,
+          41.05
+        ],
+        [
+          26.061,
+          41.05
+        ],
+        [
+          27.068,
+          41.05
+        ],
+        [
+          28.06,
+          41.05
+        ],
+        [
+          29.061,
+          41.05
+        ],
+        [
+          30.013,
+          41.09
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "small",
+      "scenario": "steady-state#2",
+      "name": "footprint_mib:webkit-gpu",
+      "unit": "MiB",
+      "points": [
+        [
+          0.054,
+          0
+        ],
+        [
+          1.063,
+          252.77
+        ],
+        [
+          2.059,
+          251.69
+        ],
+        [
+          3.063,
+          24.33
+        ],
+        [
+          4.06,
+          24.14
+        ],
+        [
+          5.064,
+          23.3
+        ],
+        [
+          6.061,
+          251.97
+        ],
+        [
+          7.064,
+          23.59
+        ],
+        [
+          8.059,
+          23.59
+        ],
+        [
+          9.065,
+          23.59
+        ],
+        [
+          10.058,
+          23.59
+        ],
+        [
+          11.064,
+          22.81
+        ],
+        [
+          12.065,
+          22.7
+        ],
+        [
+          13.065,
+          22.45
+        ],
+        [
+          14.058,
+          22.2
+        ],
+        [
+          15.065,
+          21.95
+        ],
+        [
+          16.063,
+          15.2
+        ],
+        [
+          17.06,
+          15.2
+        ],
+        [
+          18.062,
+          15.2
+        ],
+        [
+          19.066,
+          15.2
+        ],
+        [
+          20.061,
+          15.2
+        ],
+        [
+          21.065,
+          15.2
+        ],
+        [
+          22.06,
+          15.19
+        ],
+        [
+          23.061,
+          15.19
+        ],
+        [
+          24.064,
+          15.19
+        ],
+        [
+          25.057,
+          15.19
+        ],
+        [
+          26.061,
+          15.19
+        ],
+        [
+          27.068,
+          15.19
+        ],
+        [
+          28.06,
+          15.19
+        ],
+        [
+          29.061,
+          15.19
+        ],
+        [
+          30.013,
+          15.19
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "small",
+      "scenario": "steady-state#2",
+      "name": "footprint_mib:webkit-networking",
+      "unit": "MiB",
+      "points": [
+        [
+          0.054,
+          0
+        ],
+        [
+          1.063,
+          7.95
+        ],
+        [
+          2.059,
+          6.69
+        ],
+        [
+          3.063,
+          6.66
+        ],
+        [
+          4.06,
+          6.66
+        ],
+        [
+          5.064,
+          6.66
+        ],
+        [
+          6.061,
+          6.47
+        ],
+        [
+          7.064,
+          6.47
+        ],
+        [
+          8.059,
+          6.47
+        ],
+        [
+          9.065,
+          6.47
+        ],
+        [
+          10.058,
+          6.47
+        ],
+        [
+          11.064,
+          6.45
+        ],
+        [
+          12.065,
+          6.42
+        ],
+        [
+          13.065,
+          6.42
+        ],
+        [
+          14.058,
+          6.42
+        ],
+        [
+          15.065,
+          6.42
+        ],
+        [
+          16.063,
+          6.42
+        ],
+        [
+          17.06,
+          6.42
+        ],
+        [
+          18.062,
+          6.42
+        ],
+        [
+          19.066,
+          6.42
+        ],
+        [
+          20.061,
+          6.42
+        ],
+        [
+          21.065,
+          6.42
+        ],
+        [
+          22.06,
+          6.41
+        ],
+        [
+          23.061,
+          6.41
+        ],
+        [
+          24.064,
+          6.41
+        ],
+        [
+          25.057,
+          6.41
+        ],
+        [
+          26.061,
+          6.41
+        ],
+        [
+          27.068,
+          6.41
+        ],
+        [
+          28.06,
+          6.41
+        ],
+        [
+          29.061,
+          6.41
+        ],
+        [
+          30.013,
+          6.41
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "small",
+      "scenario": "steady-state#2",
+      "name": "footprint_mib:webkit-webcontent",
+      "unit": "MiB",
+      "points": [
+        [
+          0.054,
+          0
+        ],
+        [
+          1.063,
+          132.2
+        ],
+        [
+          2.059,
+          119.08
+        ],
+        [
+          3.063,
+          95.97
+        ],
+        [
+          4.06,
+          74.94
+        ],
+        [
+          5.064,
+          74.61
+        ],
+        [
+          6.061,
+          76.17
+        ],
+        [
+          7.064,
+          75.28
+        ],
+        [
+          8.059,
+          75.28
+        ],
+        [
+          9.065,
+          75.28
+        ],
+        [
+          10.058,
+          75.28
+        ],
+        [
+          11.064,
+          75.28
+        ],
+        [
+          12.065,
+          75.28
+        ],
+        [
+          13.065,
+          75.28
+        ],
+        [
+          14.058,
+          75.28
+        ],
+        [
+          15.065,
+          75.28
+        ],
+        [
+          16.063,
+          75.28
+        ],
+        [
+          17.06,
+          75.28
+        ],
+        [
+          18.062,
+          75.28
+        ],
+        [
+          19.066,
+          75.28
+        ],
+        [
+          20.061,
+          75.28
+        ],
+        [
+          21.065,
+          75.28
+        ],
+        [
+          22.06,
+          75.28
+        ],
+        [
+          23.061,
+          75.28
+        ],
+        [
+          24.064,
+          75.28
+        ],
+        [
+          25.057,
+          75.28
+        ],
+        [
+          26.061,
+          75.28
+        ],
+        [
+          27.068,
+          75.28
+        ],
+        [
+          28.06,
+          75.28
+        ],
+        [
+          29.061,
+          75.28
+        ],
+        [
+          30.013,
+          75.28
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "small",
+      "scenario": "steady-state#2",
+      "name": "cpu_percent",
+      "unit": "percent",
+      "points": [
+        [
+          1.063,
+          72.96
+        ],
+        [
+          2.059,
+          2.43
+        ],
+        [
+          3.063,
+          0.58
+        ],
+        [
+          4.06,
+          10.1
+        ],
+        [
+          5.064,
+          0.42
+        ],
+        [
+          6.061,
+          17.84
+        ],
+        [
+          7.064,
+          1.42
+        ],
+        [
+          8.059,
+          0.16
+        ],
+        [
+          9.065,
+          0.46
+        ],
+        [
+          10.058,
+          0.22
+        ],
+        [
+          11.064,
+          0.23
+        ],
+        [
+          12.065,
+          0.03
+        ],
+        [
+          13.065,
+          0
+        ],
+        [
+          14.058,
+          0.01
+        ],
+        [
+          15.065,
+          0
+        ],
+        [
+          16.063,
+          0.67
+        ],
+        [
+          17.06,
+          0.01
+        ],
+        [
+          18.062,
+          0.03
+        ],
+        [
+          19.066,
+          0
+        ],
+        [
+          20.061,
+          0.01
+        ],
+        [
+          21.065,
+          0.04
+        ],
+        [
+          22.06,
+          0.01
+        ],
+        [
+          23.061,
+          0.01
+        ],
+        [
+          24.064,
+          0
+        ],
+        [
+          25.057,
+          0
+        ],
+        [
+          26.061,
+          0.01
+        ],
+        [
+          27.068,
+          0
+        ],
+        [
+          28.06,
+          0
+        ],
+        [
+          29.061,
+          0.01
+        ],
+        [
+          30.013,
+          2.76
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "small",
+      "scenario": "steady-state#3",
+      "name": "footprint_mib",
+      "unit": "MiB",
+      "points": [
+        [
+          0.07,
+          41.2
+        ],
+        [
+          1.081,
+          455.39
+        ],
+        [
+          2.082,
+          454.27
+        ],
+        [
+          3.083,
+          207.47
+        ],
+        [
+          4.077,
+          185.68
+        ],
+        [
+          5.082,
+          184.5
+        ],
+        [
+          6.082,
+          414.52
+        ],
+        [
+          7.078,
+          185.05
+        ],
+        [
+          8.081,
+          185.02
+        ],
+        [
+          9.078,
+          185.02
+        ],
+        [
+          10.083,
+          184.97
+        ],
+        [
+          11.073,
+          184.52
+        ],
+        [
+          12.081,
+          184.44
+        ],
+        [
+          13.083,
+          184.08
+        ],
+        [
+          14.076,
+          183.83
+        ],
+        [
+          15.082,
+          183.58
+        ],
+        [
+          16.077,
+          177.13
+        ],
+        [
+          17.081,
+          177.13
+        ],
+        [
+          18.083,
+          177.13
+        ],
+        [
+          19.083,
+          177.13
+        ],
+        [
+          20.077,
+          177.13
+        ],
+        [
+          21.082,
+          177.1
+        ],
+        [
+          22.077,
+          177.07
+        ],
+        [
+          23.082,
+          177.05
+        ],
+        [
+          24.077,
+          177.05
+        ],
+        [
+          25.082,
+          177.05
+        ],
+        [
+          26.083,
+          177.05
+        ],
+        [
+          27.083,
+          177.05
+        ],
+        [
+          28.078,
+          177.05
+        ],
+        [
+          29.083,
+          177.05
+        ],
+        [
+          30.013,
+          177.11
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "small",
+      "scenario": "steady-state#3",
+      "name": "footprint_mib:app",
+      "unit": "MiB",
+      "points": [
+        [
+          0.07,
+          2.52
+        ],
+        [
+          1.081,
+          42.78
+        ],
+        [
+          2.082,
+          41.31
+        ],
+        [
+          3.083,
+          40.94
+        ],
+        [
+          4.077,
+          40.91
+        ],
+        [
+          5.082,
+          40.91
+        ],
+        [
+          6.082,
+          40.84
+        ],
+        [
+          7.078,
+          40.7
+        ],
+        [
+          8.081,
+          40.7
+        ],
+        [
+          9.078,
+          40.7
+        ],
+        [
+          10.083,
+          40.7
+        ],
+        [
+          11.073,
+          40.7
+        ],
+        [
+          12.081,
+          40.7
+        ],
+        [
+          13.083,
+          40.7
+        ],
+        [
+          14.076,
+          40.7
+        ],
+        [
+          15.082,
+          40.7
+        ],
+        [
+          16.077,
+          40.75
+        ],
+        [
+          17.081,
+          40.75
+        ],
+        [
+          18.083,
+          40.75
+        ],
+        [
+          19.083,
+          40.75
+        ],
+        [
+          20.077,
+          40.75
+        ],
+        [
+          21.082,
+          40.72
+        ],
+        [
+          22.077,
+          40.72
+        ],
+        [
+          23.082,
+          40.7
+        ],
+        [
+          24.077,
+          40.7
+        ],
+        [
+          25.082,
+          40.7
+        ],
+        [
+          26.083,
+          40.7
+        ],
+        [
+          27.083,
+          40.7
+        ],
+        [
+          28.078,
+          40.7
+        ],
+        [
+          29.083,
+          40.7
+        ],
+        [
+          30.013,
+          40.7
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "small",
+      "scenario": "steady-state#3",
+      "name": "footprint_mib:daemon",
+      "unit": "MiB",
+      "points": [
+        [
+          0.07,
+          38.69
+        ],
+        [
+          1.081,
+          41.09
+        ],
+        [
+          2.082,
+          41.09
+        ],
+        [
+          3.083,
+          41.09
+        ],
+        [
+          4.077,
+          41.09
+        ],
+        [
+          5.082,
+          41.03
+        ],
+        [
+          6.082,
+          41.03
+        ],
+        [
+          7.078,
+          41.03
+        ],
+        [
+          8.081,
+          41.03
+        ],
+        [
+          9.078,
+          41.03
+        ],
+        [
+          10.083,
+          40.99
+        ],
+        [
+          11.073,
+          40.99
+        ],
+        [
+          12.081,
+          40.99
+        ],
+        [
+          13.083,
+          40.99
+        ],
+        [
+          14.076,
+          40.99
+        ],
+        [
+          15.082,
+          40.99
+        ],
+        [
+          16.077,
+          40.99
+        ],
+        [
+          17.081,
+          40.99
+        ],
+        [
+          18.083,
+          40.99
+        ],
+        [
+          19.083,
+          40.99
+        ],
+        [
+          20.077,
+          40.99
+        ],
+        [
+          21.082,
+          40.99
+        ],
+        [
+          22.077,
+          40.99
+        ],
+        [
+          23.082,
+          40.99
+        ],
+        [
+          24.077,
+          40.99
+        ],
+        [
+          25.082,
+          40.99
+        ],
+        [
+          26.083,
+          40.99
+        ],
+        [
+          27.083,
+          40.99
+        ],
+        [
+          28.078,
+          40.99
+        ],
+        [
+          29.083,
+          40.99
+        ],
+        [
+          30.013,
+          41.05
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "small",
+      "scenario": "steady-state#3",
+      "name": "footprint_mib:webkit-gpu",
+      "unit": "MiB",
+      "points": [
+        [
+          0.07,
+          0
+        ],
+        [
+          1.081,
+          250.39
+        ],
+        [
+          2.082,
+          250.84
+        ],
+        [
+          3.083,
+          23.49
+        ],
+        [
+          4.077,
+          23.17
+        ],
+        [
+          5.082,
+          22.36
+        ],
+        [
+          6.082,
+          251.09
+        ],
+        [
+          7.078,
+          22.78
+        ],
+        [
+          8.081,
+          22.75
+        ],
+        [
+          9.078,
+          22.75
+        ],
+        [
+          10.083,
+          22.75
+        ],
+        [
+          11.073,
+          22.34
+        ],
+        [
+          12.081,
+          22.27
+        ],
+        [
+          13.083,
+          21.91
+        ],
+        [
+          14.076,
+          21.66
+        ],
+        [
+          15.082,
+          21.41
+        ],
+        [
+          16.077,
+          14.91
+        ],
+        [
+          17.081,
+          14.91
+        ],
+        [
+          18.083,
+          14.91
+        ],
+        [
+          19.083,
+          14.91
+        ],
+        [
+          20.077,
+          14.91
+        ],
+        [
+          21.082,
+          14.91
+        ],
+        [
+          22.077,
+          14.89
+        ],
+        [
+          23.082,
+          14.89
+        ],
+        [
+          24.077,
+          14.89
+        ],
+        [
+          25.082,
+          14.89
+        ],
+        [
+          26.083,
+          14.89
+        ],
+        [
+          27.083,
+          14.89
+        ],
+        [
+          28.078,
+          14.89
+        ],
+        [
+          29.083,
+          14.89
+        ],
+        [
+          30.013,
+          14.89
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "small",
+      "scenario": "steady-state#3",
+      "name": "footprint_mib:webkit-networking",
+      "unit": "MiB",
+      "points": [
+        [
+          0.07,
+          0
+        ],
+        [
+          1.081,
+          8.25
+        ],
+        [
+          2.082,
+          6.69
+        ],
+        [
+          3.083,
+          6.69
+        ],
+        [
+          4.077,
+          6.69
+        ],
+        [
+          5.082,
+          6.69
+        ],
+        [
+          6.082,
+          6.52
+        ],
+        [
+          7.078,
+          6.48
+        ],
+        [
+          8.081,
+          6.48
+        ],
+        [
+          9.078,
+          6.48
+        ],
+        [
+          10.083,
+          6.48
+        ],
+        [
+          11.073,
+          6.44
+        ],
+        [
+          12.081,
+          6.44
+        ],
+        [
+          13.083,
+          6.44
+        ],
+        [
+          14.076,
+          6.44
+        ],
+        [
+          15.082,
+          6.44
+        ],
+        [
+          16.077,
+          6.44
+        ],
+        [
+          17.081,
+          6.44
+        ],
+        [
+          18.083,
+          6.44
+        ],
+        [
+          19.083,
+          6.44
+        ],
+        [
+          20.077,
+          6.44
+        ],
+        [
+          21.082,
+          6.44
+        ],
+        [
+          22.077,
+          6.42
+        ],
+        [
+          23.082,
+          6.42
+        ],
+        [
+          24.077,
+          6.42
+        ],
+        [
+          25.082,
+          6.42
+        ],
+        [
+          26.083,
+          6.42
+        ],
+        [
+          27.083,
+          6.42
+        ],
+        [
+          28.078,
+          6.42
+        ],
+        [
+          29.083,
+          6.42
+        ],
+        [
+          30.013,
+          6.42
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "small",
+      "scenario": "steady-state#3",
+      "name": "footprint_mib:webkit-webcontent",
+      "unit": "MiB",
+      "points": [
+        [
+          0.07,
+          0
+        ],
+        [
+          1.081,
+          112.88
+        ],
+        [
+          2.082,
+          114.33
+        ],
+        [
+          3.083,
+          95.27
+        ],
+        [
+          4.077,
+          73.81
+        ],
+        [
+          5.082,
+          73.52
+        ],
+        [
+          6.082,
+          75.03
+        ],
+        [
+          7.078,
+          74.05
+        ],
+        [
+          8.081,
+          74.05
+        ],
+        [
+          9.078,
+          74.05
+        ],
+        [
+          10.083,
+          74.05
+        ],
+        [
+          11.073,
+          74.05
+        ],
+        [
+          12.081,
+          74.05
+        ],
+        [
+          13.083,
+          74.05
+        ],
+        [
+          14.076,
+          74.05
+        ],
+        [
+          15.082,
+          74.05
+        ],
+        [
+          16.077,
+          74.05
+        ],
+        [
+          17.081,
+          74.05
+        ],
+        [
+          18.083,
+          74.05
+        ],
+        [
+          19.083,
+          74.05
+        ],
+        [
+          20.077,
+          74.05
+        ],
+        [
+          21.082,
+          74.05
+        ],
+        [
+          22.077,
+          74.05
+        ],
+        [
+          23.082,
+          74.05
+        ],
+        [
+          24.077,
+          74.05
+        ],
+        [
+          25.082,
+          74.05
+        ],
+        [
+          26.083,
+          74.05
+        ],
+        [
+          27.083,
+          74.05
+        ],
+        [
+          28.078,
+          74.05
+        ],
+        [
+          29.083,
+          74.05
+        ],
+        [
+          30.013,
+          74.05
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "small",
+      "scenario": "steady-state#3",
+      "name": "cpu_percent",
+      "unit": "percent",
+      "points": [
+        [
+          1.081,
+          83.59
+        ],
+        [
+          2.082,
+          11.64
+        ],
+        [
+          3.083,
+          0.57
+        ],
+        [
+          4.077,
+          10.34
+        ],
+        [
+          5.082,
+          0.48
+        ],
+        [
+          6.082,
+          16.94
+        ],
+        [
+          7.078,
+          2.32
+        ],
+        [
+          8.081,
+          0.27
+        ],
+        [
+          9.078,
+          0.44
+        ],
+        [
+          10.083,
+          0.21
+        ],
+        [
+          11.073,
+          0.23
+        ],
+        [
+          12.081,
+          0.02
+        ],
+        [
+          13.083,
+          0.01
+        ],
+        [
+          14.076,
+          0.01
+        ],
+        [
+          15.082,
+          0
+        ],
+        [
+          16.077,
+          0.62
+        ],
+        [
+          17.081,
+          0.01
+        ],
+        [
+          18.083,
+          0.02
+        ],
+        [
+          19.083,
+          0
+        ],
+        [
+          20.077,
+          0.01
+        ],
+        [
+          21.082,
+          0.05
+        ],
+        [
+          22.077,
+          0.01
+        ],
+        [
+          23.082,
+          0.02
+        ],
+        [
+          24.077,
+          0
+        ],
+        [
+          25.082,
+          0
+        ],
+        [
+          26.083,
+          0.01
+        ],
+        [
+          27.083,
+          0
+        ],
+        [
+          28.078,
+          0
+        ],
+        [
+          29.083,
+          0.01
+        ],
+        [
+          30.013,
+          2.52
+        ]
+      ]
+    }
+  ],
+  "notes": [
+    "Each launch: pristine home restored outside ~/Desktop (~/Library/Caches/tendril-benchmark/<runId>/homes), 1 discarded warmup launch(es) per app and dataset (quit 15 s after launch), then 3 measured launch(es) of 30 s interleaved ABBA. Process set sampled every 1000 ms: the app and its descendants, the WebKit XPC processes whose responsible pid is the app, and (V2) the daemon the adapter started before the app. CPU and wakeups are averaged from +15 s to the end. Windows are kept visible (no open -g); other windows on screen may occlude them.",
+    "V1 desktop app: /Applications/Ivy Tendril.app (build-info.json v1.desktopApp, version 1.2.4), launched with open -n -F --args --desktop --port <free> and IVY_TLS=0 (the shipped app uses TLS); quit with SIGINT (SIGTERM does not exit it).",
+    "V2 desktop app: ~/Desktop/tendril-benchmark/artifacts/v2/Tendril.app (build-info.json v2.appPath), launched with open -n -F and TENDRIL_SKIP_SERVICE_PROVISION=1, TENDRIL_SKIP_SERVICE_AUTOSTART=1 after its daemon (tendril serve) answered /api/health; the daemon is part of the measured set (role daemon).",
+    "warmup v1/small: window at 1250 ms, footprint 327 MiB after 15 s (discarded)",
+    "warmup v2/small: window at 237 ms, footprint 185 MiB after 15 s (discarded)",
+    "window sizes observed at the end of each measured run (points; 2x pixels on a Retina display): V1 810x566 pt (3x); V2 1152x721 pt (3x). V1 has the smaller window (55% of the other's area), so its WebKit backing stores are smaller. Each app opens at its own default size; resizing from outside needs Accessibility access, which is not granted.",
+    "WARNING: the screen was locked during 6 of 6 measured run(s) (v1/small run 1, v2/small run 1, v2/small run 2, v1/small run 2, v1/small run 3, v2/small run 3). The lock screen occludes the app windows (WebKit throttles occluded views) and new windows came up at 90% size, so memory and CPU are not representative of an app in use. Rerun with the screen unlocked."
+  ],
+  "failures": []
+}

@@ -1,0 +1,1412 @@
+{
+  "runId": "20260922-235629-quick",
+  "profile": "quick",
+  "createdAt": "2026-09-22T23:56:29.704+02:00",
+  "updatedAt": "2026-09-23T00:42:24.474+02:00",
+  "status": "complete",
+  "suitesRequested": [
+    "size",
+    "cli",
+    "startup",
+    "idle",
+    "api",
+    "ui",
+    "network",
+    "desktop"
+  ],
+  "datasets": [
+    "empty",
+    "small",
+    "large"
+  ],
+  "apps": [
+    "v1",
+    "v2"
+  ],
+  "pins": {
+    "v1Ref": "v1.2.4",
+    "v1Sha": "f6b1de3dc299a4153d44e08409fe3aa6390f542b",
+    "v2Ref": "2959bbb30050948c3e54bedc99323fc331f9ddf1",
+    "v2Sha": "2959bbb30050948c3e54bedc99323fc331f9ddf1"
+  },
+  "env": {
+    "capturedAt": "2026-09-22T23:56:31.193+02:00",
+    "hostname": "<redacted>",
+    "machine": {
+      "model": "Mac16,5",
+      "cpu": "Apple M4 Max",
+      "logicalCpus": 16,
+      "physicalCpus": 16,
+      "perfCores": 12,
+      "efficiencyCores": 4,
+      "memBytes": 51539607552,
+      "pageSize": 16384
+    },
+    "os": {
+      "productName": "macOS",
+      "productVersion": "27.0",
+      "buildVersion": "26A428",
+      "kernel": "27.0.0",
+      "arch": "arm64"
+    },
+    "power": {
+      "source": "AC Power",
+      "raw": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=35127395)\t100%; charged; 0:00 remaining present: true",
+      "lowPowerMode": null,
+      "powerMode": "2"
+    },
+    "thermal": {
+      "warning": false,
+      "raw": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded"
+    },
+    "loadavg": [
+      5.02001953125,
+      7.396484375,
+      7.7333984375
+    ],
+    "uptime": "23:56  up 2 days, 12:17, 4 users, load averages: 5.02 7.40 7.73",
+    "memoryPressure": {
+      "freePercent": 91,
+      "raw": "The system has 51539607552 (3145728 pages with a page size of 16384).\nSystem-wide memory free percentage: 91%"
+    },
+    "topProcesses": [
+      {
+        "pid": 1098,
+        "cpu": 97.2,
+        "rssKiB": 63488,
+        "command": "duetexpertd"
+      },
+      {
+        "pid": 6151,
+        "cpu": 14.8,
+        "rssKiB": 30080,
+        "command": "XprotectService"
+      },
+      {
+        "pid": 7903,
+        "cpu": 9.5,
+        "rssKiB": 124432,
+        "command": "node"
+      },
+      {
+        "pid": 737,
+        "cpu": 6.7,
+        "rssKiB": 54240,
+        "command": "coreaudiod"
+      },
+      {
+        "pid": 561,
+        "cpu": 4.7,
+        "rssKiB": 26368,
+        "command": "xprotectd"
+      },
+      {
+        "pid": 688,
+        "cpu": 4.3,
+        "rssKiB": 156000,
+        "command": "syspolicyd"
+      },
+      {
+        "pid": 2298,
+        "cpu": 3.5,
+        "rssKiB": 201664,
+        "command": "Terminal"
+      },
+      {
+        "pid": 836,
+        "cpu": 2.5,
+        "rssKiB": 889808,
+        "command": "mds_stores"
+      },
+      {
+        "pid": 521,
+        "cpu": 2,
+        "rssKiB": 70656,
+        "command": "logd"
+      },
+      {
+        "pid": 7596,
+        "cpu": 1.6,
+        "rssKiB": 26640,
+        "command": "mdworker_shared"
+      },
+      {
+        "pid": 550,
+        "cpu": 1.5,
+        "rssKiB": 78288,
+        "command": "mds"
+      },
+      {
+        "pid": 562,
+        "cpu": 1.4,
+        "rssKiB": 21872,
+        "command": "opendirectoryd"
+      }
+    ],
+    "tools": {
+      "node": "v26.0.0",
+      "pnpm": "11.25.0",
+      "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+      "cargo": "cargo 1.98.1 (797e8a9bc 2026-08-05)",
+      "dotnet": "10.0.203",
+      "dotnetRuntimes": "Microsoft.AspNetCore.App 10.0.7 [/usr/local/share/dotnet/shared/Microsoft.AspNetCore.App]\nMicrosoft.NETCore.App 10.0.7 [/usr/local/share/dotnet/shared/Microsoft.NETCore.App]",
+      "git": "git version 2.54.0 (Apple Git-157)",
+      "cc": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+      "gh": "gh version 2.91.0 (2026-04-22)",
+      "brotli": "brotli 1.2.0",
+      "gzip": "Apple gzip 487.0.1",
+      "xcodeSelect": "/Applications/Xcode.app/Contents/Developer"
+    },
+    "playwright": {
+      "version": "1.63.0",
+      "chromium": {
+        "revision": "1243",
+        "version": "153.0.8010.12"
+      },
+      "headlessShell": {
+        "revision": "1243",
+        "version": "153.0.8010.12"
+      }
+    },
+    "apps": {
+      "v1": {
+        "ref": "v1.2.4",
+        "expectedSha": "f6b1de3dc299a4153d44e08409fe3aa6390f542b",
+        "cloneSha": "f6b1de3dc299a4153d44e08409fe3aa6390f542b",
+        "cloneDirty": 0,
+        "binaries": [
+          {
+            "path": "~/Desktop/tendril-benchmark/builds/v1-publish/Ivy.Tendril",
+            "exists": true,
+            "bytes": 165963484,
+            "version": "1.2.4",
+            "frameworks": [
+              {
+                "name": "Microsoft.NETCore.App",
+                "version": "10.0.7"
+              },
+              {
+                "name": "Microsoft.AspNetCore.App",
+                "version": "10.0.7"
+              }
+            ],
+            "appBundleVersion": null
+          },
+          {
+            "path": "~/Desktop/tendril-benchmark/artifacts/v1/pkg-expanded/1.pkg/Payload/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril",
+            "exists": true,
+            "bytes": 165830496,
+            "version": "1.2.4",
+            "frameworks": [
+              {
+                "name": "Microsoft.NETCore.App",
+                "version": "10.0.12"
+              },
+              {
+                "name": "Microsoft.AspNetCore.App",
+                "version": "10.0.12"
+              }
+            ],
+            "appBundleVersion": "1.2.4"
+          },
+          {
+            "path": "/Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril",
+            "exists": true,
+            "bytes": 165830496,
+            "version": "1.2.4",
+            "frameworks": [
+              {
+                "name": "Microsoft.NETCore.App",
+                "version": "10.0.12"
+              },
+              {
+                "name": "Microsoft.AspNetCore.App",
+                "version": "10.0.12"
+              }
+            ],
+            "appBundleVersion": "1.2.4"
+          }
+        ]
+      },
+      "v2": {
+        "ref": "2959bbb30050948c3e54bedc99323fc331f9ddf1",
+        "cloneSha": "2959bbb30050948c3e54bedc99323fc331f9ddf1",
+        "cloneDirty": 0,
+        "bin": "~/Desktop/tendril-benchmark/ivy-tendril-v2/target/release/tendril",
+        "binBytes": 39740624,
+        "version": "tendril 0.1.0",
+        "distPresent": true
+      }
+    },
+    "harness": {
+      "node": "v26.0.0",
+      "pid": 7903,
+      "argv": [
+        "run",
+        "--profile",
+        "quick",
+        "--suite",
+        "all"
+      ],
+      "benchSha": "3bc969805d885820d4c7b0641d55391623050311",
+      "benchDirty": 0
+    },
+    "scrubbedVarsPresent": [
+      "TENDRIL_HOME"
+    ]
+  },
+  "buildInfo": {
+    "schemaVersion": 1,
+    "generatedAt": "2026-09-22T18:02:42.237+02:00",
+    "workspace": "~/Desktop/tendril-benchmark",
+    "harness": {
+      "repo": "~/Desktop/ivy-tendril-v2-benchmark",
+      "sha": "986ac62cd46f2581c146d589ed95d8cd8b08975a",
+      "benchmarkDirty": 1
+    },
+    "pins": {
+      "v1Ref": "v1.2.4",
+      "v1Sha": "f6b1de3dc299a4153d44e08409fe3aa6390f542b",
+      "v2Ref": "2959bbb30050948c3e54bedc99323fc331f9ddf1",
+      "v2Sha": "2959bbb30050948c3e54bedc99323fc331f9ddf1"
+    },
+    "tools": {
+      "node": "v26.0.0",
+      "pnpm": "11.25.0",
+      "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+      "cargo": "cargo 1.98.1 (797e8a9bc 2026-08-05)",
+      "rustup": "rustup 1.29.1 (d95a37b6a 2026-08-13)",
+      "dotnetSdk": "10.0.203",
+      "pwsh": "PowerShell 7.6.3",
+      "gh": "gh version 2.91.0 (2026-04-22)",
+      "git": "git version 2.54.0 (Apple Git-157)",
+      "cc": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+      "xcode": "Xcode 27.0",
+      "tauriCli": "tauri-cli 2.11.4",
+      "macos": "27.0 (26A428)",
+      "arch": "arm64"
+    },
+    "scrubbedBuildVars": [],
+    "v1": {
+      "clone": {
+        "dir": "~/Desktop/tendril-benchmark/ivy-tendril-v1",
+        "repo": "https://github.com/Ivy-Interactive/Ivy-Tendril.git",
+        "origin": "https://github.com/Ivy-Interactive/Ivy-Tendril.git",
+        "ref": "v1.2.4",
+        "sha": "f6b1de3dc299a4153d44e08409fe3aa6390f542b",
+        "cloned": false,
+        "fetched": false,
+        "checkedOut": false,
+        "headBefore": "f6b1de3dc299a4153d44e08409fe3aa6390f542b",
+        "commitDate": "2026-09-14T13:16:02+02:00",
+        "subject": "Merge pull request #2703 from Ivy-Interactive/feature/claude-code-usage",
+        "modified": [],
+        "untracked": [],
+        "untrackedCount": 0
+      },
+      "publish": {
+        "dir": "~/Desktop/tendril-benchmark/builds/v1-publish",
+        "bin": "~/Desktop/tendril-benchmark/builds/v1-publish/Ivy.Tendril",
+        "bytes": 165963484,
+        "sha256": "63d540ea6f32c72c74e596a255c8e11cbdfded6bdebbe26ba413edc09c924377",
+        "version": "1.2.4",
+        "frameworks": [
+          {
+            "name": "Microsoft.NETCore.App",
+            "version": "10.0.7"
+          },
+          {
+            "name": "Microsoft.AspNetCore.App",
+            "version": "10.0.7"
+          }
+        ],
+        "commitId": "f6b1de3dc299a4153d44e08409fe3aa6390f542b",
+        "dotnetSdk": "10.0.203",
+        "command": [
+          "dotnet",
+          "publish",
+          "src/Ivy.Tendril/Ivy.Tendril.csproj",
+          "-c",
+          "Release",
+          "-r",
+          "osx-arm64",
+          "-o",
+          "~/Desktop/tendril-benchmark/builds/v1-publish",
+          "-p:PublishSingleFile=true",
+          "-p:ReadyToRun=false",
+          "-p:Version=1.2.4",
+          "-p:Publishing=true",
+          "-p:CommitId=f6b1de3dc299a4153d44e08409fe3aa6390f542b",
+          "--self-contained",
+          "true"
+        ],
+        "buildFlags": {
+          "configuration": "Release",
+          "runtime": "osx-arm64",
+          "PublishSingleFile": true,
+          "ReadyToRun": false,
+          "Version": "1.2.4",
+          "Publishing": true,
+          "CommitId": "f6b1de3dc299a4153d44e08409fe3aa6390f542b",
+          "selfContained": true
+        },
+        "siblingIvyFramework": false,
+        "files": [
+          {
+            "file": "Ivy.Tendril",
+            "bytes": 165963484
+          },
+          {
+            "file": "Ivy.Tendril.Agents.pdb",
+            "bytes": 195320
+          },
+          {
+            "file": "Ivy.Tendril.Widgets.pdb",
+            "bytes": 89592
+          },
+          {
+            "file": "Ivy.Tendril.pdb",
+            "bytes": 714840
+          },
+          {
+            "file": "example.config.yaml",
+            "bytes": 11287
+          },
+          {
+            "file": "libMonoPosixHelper.dylib",
+            "bytes": 535888
+          },
+          {
+            "file": "libe_sqlite3.dylib",
+            "bytes": 1661152
+          },
+          {
+            "file": "libporta_pty.dylib",
+            "bytes": 34464
+          },
+          {
+            "file": "librustino_native.dylib",
+            "bytes": 3127552
+          },
+          {
+            "file": "librustserver.dylib",
+            "bytes": 572768
+          }
+        ]
+      },
+      "releasePkg": {
+        "asset": "IvyTendril-1.2.4-osx-arm64.pkg",
+        "tag": "v1.2.4",
+        "repo": "Ivy-Interactive/Ivy-Tendril",
+        "url": "https://github.com/Ivy-Interactive/Ivy-Tendril/releases/download/v1.2.4/IvyTendril-1.2.4-osx-arm64.pkg",
+        "publishedAt": "2026-09-14T11:29:47Z",
+        "pkg": "~/Desktop/tendril-benchmark/artifacts/v1/IvyTendril-1.2.4-osx-arm64.pkg",
+        "bytes": 388890560,
+        "githubSize": 388890560,
+        "sha256": "c1f26218234fea9ab4b8a0bbb1776c67a0663aced1f25c53b0d89d5546ebfddb",
+        "githubDigest": "sha256:c1f26218234fea9ab4b8a0bbb1776c67a0663aced1f25c53b0d89d5546ebfddb",
+        "digestVerified": true,
+        "downloaded": true,
+        "quarantined": false,
+        "expandedDir": "~/Desktop/tendril-benchmark/artifacts/v1/pkg-expanded",
+        "components": [
+          "1.pkg",
+          "Distribution"
+        ],
+        "app": "~/Desktop/tendril-benchmark/artifacts/v1/pkg-expanded/1.pkg/Payload/Ivy Tendril.app",
+        "appBin": "~/Desktop/tendril-benchmark/artifacts/v1/pkg-expanded/1.pkg/Payload/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril",
+        "appVersion": "1.2.4",
+        "appBundleId": "com.ivy.tendril",
+        "appBinBytes": 165830496,
+        "appBinSha256": "9039d8488f38eb6d37ba2d1b67fc55690c507e424ec8277c6bda2d1ad0054816",
+        "appTotals": {
+          "bytes": 1167911573,
+          "files": 5534,
+          "symlinks": 1,
+          "dirs": 831
+        }
+      },
+      "selection": {
+        "candidates": {
+          "pkg-app": {
+            "bin": "~/Desktop/tendril-benchmark/artifacts/v1/pkg-expanded/1.pkg/Payload/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril",
+            "app": "~/Desktop/tendril-benchmark/artifacts/v1/pkg-expanded/1.pkg/Payload/Ivy Tendril.app",
+            "bytes": 165830496,
+            "sha256": "9039d8488f38eb6d37ba2d1b67fc55690c507e424ec8277c6bda2d1ad0054816",
+            "version": "1.2.4",
+            "frameworks": [
+              {
+                "name": "Microsoft.NETCore.App",
+                "version": "10.0.12"
+              },
+              {
+                "name": "Microsoft.AspNetCore.App",
+                "version": "10.0.12"
+              }
+            ],
+            "appBundleVersion": "1.2.4",
+            "identicalToReleasePkg": true,
+            "cliSymlinkEffect": {
+              "effect": "would-modify",
+              "detail": "would re-point ~/.local/bin/tendril (now /Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril) at ~/Desktop/tendril-benchmark/artifacts/v1/pkg-expanded/1.pkg/Payload/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril"
+            },
+            "smoke": {
+              "ok": true,
+              "httpReadyMs": 4877,
+              "dataReadyMs": 4855,
+              "ping": "pong",
+              "masterScheme": "http",
+              "masterPort": 59608,
+              "port": 59608,
+              "exit": {
+                "code": 0,
+                "signal": null
+              },
+              "stopMs": 98,
+              "forcedKill": false,
+              "homeOverride": true,
+              "symlinksChanged": [],
+              "logs": {
+                "stdout": "~/Desktop/tendril-benchmark/logs/setup/v1-select-pkg-app.stdout.log",
+                "stderr": "~/Desktop/tendril-benchmark/logs/setup/v1-select-pkg-app.stderr.log"
+              }
+            }
+          },
+          "installed-app": {
+            "bin": "/Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril",
+            "app": "/Applications/Ivy Tendril.app",
+            "bytes": 165830496,
+            "sha256": "9039d8488f38eb6d37ba2d1b67fc55690c507e424ec8277c6bda2d1ad0054816",
+            "version": "1.2.4",
+            "frameworks": [
+              {
+                "name": "Microsoft.NETCore.App",
+                "version": "10.0.12"
+              },
+              {
+                "name": "Microsoft.AspNetCore.App",
+                "version": "10.0.12"
+              }
+            ],
+            "appBundleVersion": "1.2.4",
+            "identicalToReleasePkg": true,
+            "cliSymlinkEffect": {
+              "effect": "noop",
+              "detail": "~/.local/bin/tendril already points at this binary"
+            },
+            "smoke": {
+              "ok": true,
+              "httpReadyMs": 3491,
+              "dataReadyMs": 3296,
+              "ping": "pong",
+              "masterScheme": "http",
+              "masterPort": 60055,
+              "port": 60055,
+              "exit": {
+                "code": 0,
+                "signal": null
+              },
+              "stopMs": 100,
+              "forcedKill": false,
+              "homeOverride": false,
+              "symlinksChanged": [],
+              "logs": {
+                "stdout": "~/Desktop/tendril-benchmark/logs/setup/v1-select-installed-app.stdout.log",
+                "stderr": "~/Desktop/tendril-benchmark/logs/setup/v1-select-installed-app.stderr.log"
+              }
+            }
+          },
+          "publish": {
+            "bin": "~/Desktop/tendril-benchmark/builds/v1-publish/Ivy.Tendril",
+            "app": null,
+            "bytes": 165963484,
+            "sha256": "63d540ea6f32c72c74e596a255c8e11cbdfded6bdebbe26ba413edc09c924377",
+            "version": "1.2.4",
+            "frameworks": [
+              {
+                "name": "Microsoft.NETCore.App",
+                "version": "10.0.7"
+              },
+              {
+                "name": "Microsoft.AspNetCore.App",
+                "version": "10.0.7"
+              }
+            ],
+            "appBundleVersion": null,
+            "identicalToReleasePkg": false,
+            "cliSymlinkEffect": {
+              "effect": "none",
+              "detail": "not inside a .app bundle: EnsureCliSymlink returns immediately"
+            },
+            "smoke": {
+              "ok": true,
+              "httpReadyMs": 3292,
+              "dataReadyMs": 3196,
+              "ping": "pong",
+              "masterScheme": "http",
+              "masterPort": 60451,
+              "port": 60451,
+              "exit": {
+                "code": 0,
+                "signal": null
+              },
+              "stopMs": 44,
+              "forcedKill": false,
+              "homeOverride": false,
+              "symlinksChanged": [],
+              "logs": {
+                "stdout": "~/Desktop/tendril-benchmark/logs/setup/v1-select-publish.stdout.log",
+                "stderr": "~/Desktop/tendril-benchmark/logs/setup/v1-select-publish.stderr.log"
+              }
+            }
+          }
+        },
+        "server": {
+          "bin": "/Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril",
+          "app": "/Applications/Ivy Tendril.app",
+          "source": "installed-app",
+          "sha256": "9039d8488f38eb6d37ba2d1b67fc55690c507e424ec8277c6bda2d1ad0054816",
+          "version": "1.2.4",
+          "frameworks": [
+            {
+              "name": "Microsoft.NETCore.App",
+              "version": "10.0.12"
+            },
+            {
+              "name": "Microsoft.AspNetCore.App",
+              "version": "10.0.12"
+            }
+          ],
+          "reason": "byte-identical to the v1.2.4 release pkg payload, runs, and is already the target of the user tendril symlink (running the expanded pkg copy would re-point it)"
+        },
+        "desktop": {
+          "app": "/Applications/Ivy Tendril.app",
+          "bin": "/Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril",
+          "sha256": "9039d8488f38eb6d37ba2d1b67fc55690c507e424ec8277c6bda2d1ad0054816",
+          "source": "installed-app",
+          "reason": "the installed app is byte-identical to the release pkg payload and already the user tendril symlink target"
+        },
+        "cliLinks": [
+          {
+            "path": "/usr/local/bin/tendril",
+            "kind": "missing",
+            "target": null
+          },
+          {
+            "path": "~/.local/bin/tendril",
+            "kind": "symlink",
+            "target": "/Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril"
+          }
+        ]
+      },
+      "serverBin": "/Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril",
+      "serverSource": "installed-app",
+      "serverSha256": "9039d8488f38eb6d37ba2d1b67fc55690c507e424ec8277c6bda2d1ad0054816",
+      "desktopApp": "/Applications/Ivy Tendril.app"
+    },
+    "v2": {
+      "clone": {
+        "dir": "~/Desktop/tendril-benchmark/ivy-tendril-v2",
+        "repo": "https://github.com/Ivy-Interactive/Ivy-Tendril-V2.git",
+        "origin": "https://github.com/Ivy-Interactive/Ivy-Tendril-V2.git",
+        "ref": "2959bbb30050948c3e54bedc99323fc331f9ddf1",
+        "sha": "2959bbb30050948c3e54bedc99323fc331f9ddf1",
+        "cloned": false,
+        "fetched": false,
+        "checkedOut": false,
+        "headBefore": "2959bbb30050948c3e54bedc99323fc331f9ddf1",
+        "commitDate": "2026-09-22T15:01:24+02:00",
+        "subject": "fix(docs): resolve language switcher in safari and fix cross-origin redirects on staging",
+        "modified": [],
+        "untracked": [],
+        "untrackedCount": 0
+      },
+      "deps": {
+        "pnpm": "11.25.0",
+        "lockSha256": "dd22341b3caa88eed290d7603a79af384d2ea2d6812d026b0253ae4c7640de82",
+        "command": [
+          "pnpm",
+          "install",
+          "--frozen-lockfile"
+        ]
+      },
+      "wireframe": {
+        "artifacts": "~/Desktop/tendril-benchmark/ivy-tendril-v2/src/crates/tendril-wireframe/artifacts",
+        "files": 129,
+        "bytes": 3944268,
+        "digest": "cf6854ac665fb7be35cc37b60b943f3e7f380afa9953ffb3c045fb154f77482c"
+      },
+      "frontend": {
+        "dir": "~/Desktop/tendril-benchmark/ivy-tendril-v2/src/apps/tendril-app/dist",
+        "files": 176,
+        "bytes": 11683623,
+        "digest": "4c401322558c31cf8a581bdc43869c883255755ca54c17b9f7291c8d9eb1d0a6",
+        "entry": "/assets/index-DjhdIZR8.js",
+        "indexHtmlSha256": "64a967bec69d880dcde7df844775bbb23b95ed9a9db4c0428de3c977ea1dc6db",
+        "reactProductionBuild": true,
+        "nodeEnv": "production"
+      },
+      "cli": {
+        "bin": "~/Desktop/tendril-benchmark/ivy-tendril-v2/target/release/tendril",
+        "bytes": 39740624,
+        "sha256": "1a2b2e2e9ee0346baa4cb571fd911ea3d47a914848bd3441898d30a276e2b06e",
+        "version": "tendril 0.1.0",
+        "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+        "cargo": "cargo 1.98.1 (797e8a9bc 2026-08-05)",
+        "command": [
+          "cargo",
+          "build",
+          "--release",
+          "--bin",
+          "tendril"
+        ],
+        "profile": "release (Cargo defaults; the workspace defines no [profile.release])"
+      },
+      "sidecars": {
+        "triple": "aarch64-apple-darwin",
+        "dir": "~/Desktop/tendril-benchmark/ivy-tendril-v2/src/apps/tendril-app/src-tauri/binaries",
+        "tendril": {
+          "path": "~/Desktop/tendril-benchmark/ivy-tendril-v2/src/apps/tendril-app/src-tauri/binaries/tendril-aarch64-apple-darwin",
+          "bytes": 39740624,
+          "sha256": "1a2b2e2e9ee0346baa4cb571fd911ea3d47a914848bd3441898d30a276e2b06e",
+          "sameAsCli": true
+        },
+        "opencode": {
+          "path": "~/Desktop/tendril-benchmark/ivy-tendril-v2/src/apps/tendril-app/src-tauri/binaries/opencode-aarch64-apple-darwin",
+          "bytes": 144470498,
+          "sha256": "16c960ba77421da11b53e785f359b73f328a86118b48feb4af143db5d9afb198",
+          "version": "v1.18.31"
+        }
+      },
+      "app": {
+        "app": "~/Desktop/tendril-benchmark/artifacts/v2/Tendril.app",
+        "bundleId": "com.spacecorps.tendril.app",
+        "version": "0.1.0",
+        "minimumSystemVersion": "10.13",
+        "totals": {
+          "bytes": 212966758,
+          "files": 5,
+          "symlinks": 0,
+          "dirs": 3
+        },
+        "macos": {
+          "opencode": {
+            "bytes": 144470498,
+            "sha256": "16c960ba77421da11b53e785f359b73f328a86118b48feb4af143db5d9afb198"
+          },
+          "tendril": {
+            "bytes": 39740624,
+            "sha256": "1a2b2e2e9ee0346baa4cb571fd911ea3d47a914848bd3441898d30a276e2b06e"
+          },
+          "tendril-app": {
+            "bytes": 28688736,
+            "sha256": "04eb539c312875d3939f21370d8ea0599fb1450d0bc16c788bea2bce2e80dd89"
+          }
+        },
+        "sidecarTendrilMatches": true,
+        "sidecarOpencodeMatches": true,
+        "embedsDistEntry": true,
+        "distEntry": "index-DjhdIZR8.js",
+        "codesign": [
+          "Identifier=tendril_app-248950b89dc8a7e5",
+          "Format=app bundle with Mach-O thin (arm64)",
+          "CodeDirectory v=20400 size=222520 flags=0x20002(adhoc,linker-signed) hashes=6950+0 location=embedded",
+          "Signature=adhoc"
+        ],
+        "buildPath": "~/Desktop/tendril-benchmark/ivy-tendril-v2/target/release/bundle/macos/Tendril.app",
+        "tauriCli": "tauri-cli 2.11.4",
+        "command": [
+          "pnpm",
+          "--filter",
+          "@ivy-interactive/tendril-app",
+          "exec",
+          "tauri",
+          "build",
+          "--bundles",
+          "app,dmg",
+          "--no-sign"
+        ],
+        "env": {
+          "CI": "true",
+          "NODE_ENV": "production"
+        },
+        "exit": 0,
+        "dmg": {
+          "kind": "tauri",
+          "path": "~/Desktop/tendril-benchmark/artifacts/v2/Tendril_0.1.0_aarch64.dmg",
+          "buildPath": "~/Desktop/tendril-benchmark/ivy-tendril-v2/target/release/bundle/dmg/Tendril_0.1.0_aarch64.dmg",
+          "bytes": 71233006,
+          "sha256": "19728d23dc2947994564b90e4c40ce0b3f1e9348a5c3b5a0a222fe68337d9b76",
+          "format": "Format: UDZO"
+        },
+        "dmgError": null,
+        "dist": {
+          "dir": "~/Desktop/tendril-benchmark/ivy-tendril-v2/src/apps/tendril-app/dist",
+          "files": 176,
+          "bytes": 11683623,
+          "digest": "4c401322558c31cf8a581bdc43869c883255755ca54c17b9f7291c8d9eb1d0a6",
+          "entry": "/assets/index-DjhdIZR8.js",
+          "indexHtmlSha256": "64a967bec69d880dcde7df844775bbb23b95ed9a9db4c0428de3c977ea1dc6db",
+          "reactProductionBuild": true
+        },
+        "distRebuiltDifferently": false
+      },
+      "shim": {
+        "dir": "~/Desktop/tendril-benchmark/builds/v2-shim",
+        "bin": "~/Desktop/tendril-benchmark/builds/v2-shim/target/release/v2shim",
+        "bytes": 23006032,
+        "sha256": "f39aff3d5831beb6a444de24da80fa8a4b148657b7feda126d3fdbee03eafa1c",
+        "source": "9dc721bb2ccf3c0ddf3c78539a9f09051fc13bd994204cd856adfddea2ad5850",
+        "initScript": "~/Desktop/ivy-tendril-v2-benchmark/src/benchmark/v2-shim/init.js",
+        "initScriptSha256": "42ad2d63bdffab6d5a16786264927c35d0f3ad58cc789f58ae749777219b87c3",
+        "linkedAgainst": "~/Desktop/tendril-benchmark/ivy-tendril-v2/src/apps/tendril-app/src-tauri",
+        "registeredCommands": 134,
+        "stubbedCommands": [
+          "cmd_subscribe_job_events",
+          "cmd_execute_review_action"
+        ],
+        "lockMismatches": [],
+        "lockAdded": [
+          "v2shim 0.0.0"
+        ],
+        "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+        "command": [
+          "cargo",
+          "build",
+          "--release"
+        ],
+        "usage": "~/Desktop/tendril-benchmark/builds/v2-shim/target/release/v2shim <dist> <port> --home <tendril-home>   (ready line on stdout: \"shim listening on http://127.0.0.1:<port>\")"
+      },
+      "bin": "~/Desktop/tendril-benchmark/ivy-tendril-v2/target/release/tendril",
+      "dist": "~/Desktop/tendril-benchmark/ivy-tendril-v2/src/apps/tendril-app/dist",
+      "shimBin": "~/Desktop/tendril-benchmark/builds/v2-shim/target/release/v2shim",
+      "shimInit": "~/Desktop/ivy-tendril-v2-benchmark/src/benchmark/v2-shim/init.js",
+      "appPath": "~/Desktop/tendril-benchmark/artifacts/v2/Tendril.app",
+      "dmgPath": "~/Desktop/tendril-benchmark/artifacts/v2/Tendril_0.1.0_aarch64.dmg"
+    },
+    "procstat": {
+      "bin": "~/Desktop/tendril-benchmark/builds/bin/procstat",
+      "bytes": 36720,
+      "source": "~/Desktop/ivy-tendril-v2-benchmark/src/benchmark/native/procstat.c",
+      "sourceSha256": "743824df917f227ba65961e7d02ac8be3701bd332f698d6d7dd41a0f3e3cdd14",
+      "cc": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+      "command": [
+        "cc",
+        "-O2",
+        "-Wall",
+        "-o",
+        "~/Desktop/tendril-benchmark/builds/bin/procstat",
+        "~/Desktop/ivy-tendril-v2-benchmark/src/benchmark/native/procstat.c",
+        "-framework",
+        "CoreGraphics",
+        "-framework",
+        "CoreFoundation"
+      ]
+    },
+    "smoke": {
+      "home": "/var/folders/d_/cwj4gnj56clfb4r_qyddp_sm0000gn/T/tendril-bench-smoke-w3sNRY/home",
+      "daemon": {
+        "pid": 73991,
+        "port": 63024,
+        "healthMs": 59
+      },
+      "shim": {
+        "pid": 74008,
+        "url": "http://127.0.0.1:63027",
+        "readyMs": 55,
+        "health": {
+          "bridges": "ws+changes",
+          "dist": "~/Desktop/tendril-benchmark/ivy-tendril-v2/src/apps/tendril-app/dist",
+          "home": "<tmp>",
+          "listening": 11,
+          "master": {
+            "host": "127.0.0.1",
+            "pid": 73991,
+            "port": 63024,
+            "scheme": "http"
+          },
+          "ok": true,
+          "pid": 74008,
+          "registered": 134,
+          "stubbed": [
+            "cmd_subscribe_job_events",
+            "cmd_execute_review_action"
+          ],
+          "tendrilAppDir": "~/Desktop/tendril-benchmark/ivy-tendril-v2/src/apps/tendril-app/src-tauri"
+        }
+      },
+      "ui": {
+        "chromium": "153.0.8010.12",
+        "shellVisibleMs": 113,
+        "contentReadyMs": 434,
+        "contentText": "Smoke Draft Two",
+        "url": "http://127.0.0.1:63027/plan-00002?planId=00002",
+        "dashboardMs": 364,
+        "pushPutStatus": 200,
+        "pushMs": 529,
+        "pushBadge": {
+          "before": "Plans 2",
+          "after": "Plans 1"
+        },
+        "ipcCalls": 46,
+        "ipcTransports": [
+          "ws"
+        ],
+        "ipcFailures": {
+          "cmd_list_all_recommendations: Command cmd_list_all_recommendations not found": 1
+        },
+        "pageErrors": [],
+        "screenshot": "~/Desktop/tendril-benchmark/logs/setup/smoke-v2-ui.png"
+      },
+      "desktop": {
+        "app": "~/Desktop/tendril-benchmark/artifacts/v2/Tendril.app",
+        "pid": 74044,
+        "processMs": 78,
+        "windowMs": 345,
+        "window": {
+          "w": 1264,
+          "h": 790
+        },
+        "connectionsToDaemon": 2,
+        "children": [],
+        "spawnedDaemons": [],
+        "webkitProcesses": [
+          "com.apple.WebKit.Networking[74052]",
+          "com.apple.WebKit.WebContent[74051]",
+          "com.apple.WebKit.GPU[74050]"
+        ],
+        "homeBinCreated": false,
+        "launchAgentChanged": false,
+        "masterPidIsOurDaemon": true,
+        "adopted": true,
+        "ok": true,
+        "quitMs": 51,
+        "logs": {
+          "stdout": "~/Desktop/tendril-benchmark/logs/setup/smoke-v2-app.stdout.log",
+          "stderr": "~/Desktop/tendril-benchmark/logs/setup/smoke-v2-app.stderr.log"
+        }
+      },
+      "ok": true
+    },
+    "steps": {
+      "v1-clone": {
+        "status": "not-run",
+        "at": "2026-09-22T18:02:06.893+02:00",
+        "durationMs": 642,
+        "log": "~/Desktop/tendril-benchmark/logs/setup/v1-clone.log",
+        "commands": [],
+        "notes": [],
+        "builtAt": "2026-09-22T18:02:07.534+02:00",
+        "buildDurationMs": 642
+      },
+      "v2-clone": {
+        "status": "not-run",
+        "at": "2026-09-22T18:02:07.535+02:00",
+        "durationMs": 393,
+        "log": "~/Desktop/tendril-benchmark/logs/setup/v2-clone.log",
+        "commands": [],
+        "notes": [],
+        "builtAt": "2026-09-22T18:02:07.927+02:00",
+        "buildDurationMs": 392
+      },
+      "procstat": {
+        "status": "built",
+        "at": "2026-09-22T18:02:35.981+02:00",
+        "durationMs": 1235,
+        "log": "~/Desktop/tendril-benchmark/logs/setup/procstat.log",
+        "commands": [
+          {
+            "cmd": "cc",
+            "args": [
+              "-O2",
+              "-Wall",
+              "-o",
+              "~/Desktop/tendril-benchmark/builds/bin/procstat.tmp-76444",
+              "~/Desktop/ivy-tendril-v2-benchmark/src/benchmark/native/procstat.c",
+              "-framework",
+              "CoreGraphics",
+              "-framework",
+              "CoreFoundation"
+            ],
+            "cwd": "~/Desktop/ivy-tendril-v2-benchmark/src/benchmark",
+            "exit": 0,
+            "signal": null,
+            "ms": 747
+          }
+        ],
+        "notes": [],
+        "builtAt": "2026-09-22T18:02:37.216+02:00",
+        "buildDurationMs": 1235
+      },
+      "v1-publish": {
+        "status": "not-run",
+        "at": "2026-09-22T18:02:08.054+02:00",
+        "durationMs": 675,
+        "log": "~/Desktop/tendril-benchmark/logs/setup/v1-publish.log",
+        "commands": [],
+        "notes": [],
+        "builtAt": "2026-09-22T17:39:18.628+02:00",
+        "buildDurationMs": 27084
+      },
+      "v1-pkg": {
+        "status": "not-run",
+        "at": "2026-09-22T18:02:08.729+02:00",
+        "durationMs": 0,
+        "log": "~/Desktop/tendril-benchmark/logs/setup/v1-pkg.log",
+        "commands": [],
+        "notes": [],
+        "builtAt": "2026-09-22T17:39:56.767+02:00",
+        "buildDurationMs": 38138
+      },
+      "v2-deps": {
+        "status": "not-run",
+        "at": "2026-09-22T18:02:08.729+02:00",
+        "durationMs": 2680,
+        "log": "~/Desktop/tendril-benchmark/logs/setup/v2-deps.log",
+        "commands": [],
+        "notes": [],
+        "builtAt": "2026-09-22T17:40:06.835+02:00",
+        "buildDurationMs": 10067
+      },
+      "v2-wireframe": {
+        "status": "not-run",
+        "at": "2026-09-22T18:02:11.409+02:00",
+        "durationMs": 16,
+        "log": "~/Desktop/tendril-benchmark/logs/setup/v2-wireframe.log",
+        "commands": [],
+        "notes": [],
+        "builtAt": "2026-09-22T17:40:10.459+02:00",
+        "buildDurationMs": 3623
+      },
+      "v2-frontend": {
+        "status": "not-run",
+        "at": "2026-09-22T18:02:11.425+02:00",
+        "durationMs": 45,
+        "log": "~/Desktop/tendril-benchmark/logs/setup/v2-frontend.log",
+        "commands": [],
+        "notes": [],
+        "builtAt": "2026-09-22T17:40:40.788+02:00",
+        "buildDurationMs": 30328
+      },
+      "v2-cli": {
+        "status": "not-run",
+        "at": "2026-09-22T18:02:11.469+02:00",
+        "durationMs": 252,
+        "log": "~/Desktop/tendril-benchmark/logs/setup/v2-cli.log",
+        "commands": [],
+        "notes": [],
+        "builtAt": "2026-09-22T17:44:29.095+02:00",
+        "buildDurationMs": 228303
+      },
+      "v2-sidecars": {
+        "status": "not-run",
+        "at": "2026-09-22T18:02:11.721+02:00",
+        "durationMs": 762,
+        "log": "~/Desktop/tendril-benchmark/logs/setup/v2-sidecars.log",
+        "commands": [],
+        "notes": [],
+        "builtAt": "2026-09-22T17:44:35.255+02:00",
+        "buildDurationMs": 6159
+      },
+      "v2-app": {
+        "status": "not-run",
+        "at": "2026-09-22T18:02:12.483+02:00",
+        "durationMs": 227,
+        "log": "~/Desktop/tendril-benchmark/logs/setup/v2-app.log",
+        "commands": [],
+        "notes": [],
+        "builtAt": "2026-09-22T17:48:54.937+02:00",
+        "buildDurationMs": 259678
+      },
+      "v2-shim": {
+        "status": "not-run",
+        "at": "2026-09-22T18:02:12.710+02:00",
+        "durationMs": 860,
+        "log": "~/Desktop/tendril-benchmark/logs/setup/v2-shim.log",
+        "commands": [],
+        "notes": [],
+        "builtAt": "2026-09-22T17:53:02.323+02:00",
+        "buildDurationMs": 247382
+      },
+      "v1-select": {
+        "status": "not-run",
+        "at": "2026-09-22T18:02:13.570+02:00",
+        "durationMs": 9250,
+        "log": "~/Desktop/tendril-benchmark/logs/setup/v1-select.log",
+        "commands": [],
+        "notes": [],
+        "builtAt": "2026-09-22T17:53:22.364+02:00",
+        "buildDurationMs": 19904
+      },
+      "smoke": {
+        "status": "not-run",
+        "at": "2026-09-22T18:01:40.494+02:00",
+        "durationMs": 8383,
+        "log": "~/Desktop/tendril-benchmark/logs/setup/smoke.log",
+        "commands": [],
+        "notes": [],
+        "builtAt": "2026-09-22T18:01:48.876+02:00",
+        "buildDurationMs": 8382
+      }
+    },
+    "artifacts": {
+      "v1ServerBin": "/Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril",
+      "v1ServerSource": "installed-app",
+      "v1ServerSha256": "9039d8488f38eb6d37ba2d1b67fc55690c507e424ec8277c6bda2d1ad0054816",
+      "v1DesktopApp": "/Applications/Ivy Tendril.app",
+      "v1PublishBin": "~/Desktop/tendril-benchmark/builds/v1-publish/Ivy.Tendril",
+      "v1Pkg": "~/Desktop/tendril-benchmark/artifacts/v1/IvyTendril-1.2.4-osx-arm64.pkg",
+      "v1PkgApp": "~/Desktop/tendril-benchmark/artifacts/v1/pkg-expanded/1.pkg/Payload/Ivy Tendril.app",
+      "v2Bin": "~/Desktop/tendril-benchmark/ivy-tendril-v2/target/release/tendril",
+      "v2Dist": "~/Desktop/tendril-benchmark/ivy-tendril-v2/src/apps/tendril-app/dist",
+      "v2App": "~/Desktop/tendril-benchmark/artifacts/v2/Tendril.app",
+      "v2Dmg": "~/Desktop/tendril-benchmark/artifacts/v2/Tendril_0.1.0_aarch64.dmg",
+      "v2DmgKind": "tauri",
+      "v2ShimBin": "~/Desktop/tendril-benchmark/builds/v2-shim/target/release/v2shim",
+      "v2ShimInit": "~/Desktop/ivy-tendril-v2-benchmark/src/benchmark/v2-shim/init.js",
+      "procstat": "~/Desktop/tendril-benchmark/builds/bin/procstat"
+    }
+  },
+  "options": {
+    "quietLoad": 0,
+    "quietTimeoutSec": 600,
+    "datasetOverride": null,
+    "apps": [
+      "v1",
+      "v2"
+    ],
+    "knobs": {
+      "name": "quick",
+      "serverDatasets": [
+        "empty",
+        "small",
+        "large"
+      ],
+      "desktopDatasets": [
+        "small"
+      ],
+      "cliDatasets": [
+        "small",
+        "large"
+      ],
+      "startup": {
+        "firstStartRuns": 3,
+        "warmRuns": 3
+      },
+      "idle": {
+        "runs": 2,
+        "settleSec": 20,
+        "durationSec": 10
+      },
+      "api": {
+        "instances": 3,
+        "seqWarmup": 100,
+        "seqSamples": 30,
+        "concurrency": [
+          1,
+          8
+        ],
+        "concurrencyDurationSec": 2,
+        "maxLatencySamples": 3000
+      },
+      "ui": {
+        "instances": 1,
+        "coldLoads": 3,
+        "navCycles": 3,
+        "pushSamples": 3,
+        "fsPushSamples": 3,
+        "navUnderLoadCycles": 2
+      },
+      "desktop": {
+        "warmupRuns": 1,
+        "runs": 3,
+        "durationSec": 30
+      },
+      "cli": {
+        "warmup": 1,
+        "runs": 5
+      },
+      "network": {
+        "coldLoads": 3,
+        "pushSamples": 3,
+        "idleWindows": 1,
+        "idleWindowSec": 20,
+        "sessions": 1,
+        "sessionPushes": 2,
+        "desktopIdleSec": 30,
+        "realHostSec": 30
+      }
+    },
+    "keptAwake": true
+  },
+  "invocations": [
+    {
+      "argv": [
+        "run",
+        "--profile",
+        "quick",
+        "--suite",
+        "all"
+      ],
+      "startedAt": "2026-09-22T23:56:29.704+02:00",
+      "status": "complete",
+      "suites": [
+        "size",
+        "cli",
+        "startup",
+        "idle",
+        "api",
+        "ui",
+        "network",
+        "desktop"
+      ],
+      "env": {
+        "capturedAt": "2026-09-22T23:56:31.193+02:00",
+        "hostname": "<redacted>",
+        "machine": {
+          "model": "Mac16,5",
+          "cpu": "Apple M4 Max",
+          "logicalCpus": 16,
+          "physicalCpus": 16,
+          "perfCores": 12,
+          "efficiencyCores": 4,
+          "memBytes": 51539607552,
+          "pageSize": 16384
+        },
+        "os": {
+          "productName": "macOS",
+          "productVersion": "27.0",
+          "buildVersion": "26A428",
+          "kernel": "27.0.0",
+          "arch": "arm64"
+        },
+        "power": {
+          "source": "AC Power",
+          "raw": "Now drawing from 'AC Power'\n -InternalBattery-0 (id=35127395)\t100%; charged; 0:00 remaining present: true",
+          "lowPowerMode": null,
+          "powerMode": "2"
+        },
+        "thermal": {
+          "warning": false,
+          "raw": "Note: No thermal warning level has been recorded\nNote: No performance warning level has been recorded\nNote: No CPU power status has been recorded"
+        },
+        "loadavg": [
+          5.02001953125,
+          7.396484375,
+          7.7333984375
+        ],
+        "uptime": "23:56  up 2 days, 12:17, 4 users, load averages: 5.02 7.40 7.73",
+        "memoryPressure": {
+          "freePercent": 91,
+          "raw": "The system has 51539607552 (3145728 pages with a page size of 16384).\nSystem-wide memory free percentage: 91%"
+        },
+        "topProcesses": [
+          {
+            "pid": 1098,
+            "cpu": 97.2,
+            "rssKiB": 63488,
+            "command": "duetexpertd"
+          },
+          {
+            "pid": 6151,
+            "cpu": 14.8,
+            "rssKiB": 30080,
+            "command": "XprotectService"
+          },
+          {
+            "pid": 7903,
+            "cpu": 9.5,
+            "rssKiB": 124432,
+            "command": "node"
+          },
+          {
+            "pid": 737,
+            "cpu": 6.7,
+            "rssKiB": 54240,
+            "command": "coreaudiod"
+          },
+          {
+            "pid": 561,
+            "cpu": 4.7,
+            "rssKiB": 26368,
+            "command": "xprotectd"
+          },
+          {
+            "pid": 688,
+            "cpu": 4.3,
+            "rssKiB": 156000,
+            "command": "syspolicyd"
+          },
+          {
+            "pid": 2298,
+            "cpu": 3.5,
+            "rssKiB": 201664,
+            "command": "Terminal"
+          },
+          {
+            "pid": 836,
+            "cpu": 2.5,
+            "rssKiB": 889808,
+            "command": "mds_stores"
+          },
+          {
+            "pid": 521,
+            "cpu": 2,
+            "rssKiB": 70656,
+            "command": "logd"
+          },
+          {
+            "pid": 7596,
+            "cpu": 1.6,
+            "rssKiB": 26640,
+            "command": "mdworker_shared"
+          },
+          {
+            "pid": 550,
+            "cpu": 1.5,
+            "rssKiB": 78288,
+            "command": "mds"
+          },
+          {
+            "pid": 562,
+            "cpu": 1.4,
+            "rssKiB": 21872,
+            "command": "opendirectoryd"
+          }
+        ],
+        "tools": {
+          "node": "v26.0.0",
+          "pnpm": "11.25.0",
+          "rustc": "rustc 1.98.1 (48a229cea 2026-09-01)",
+          "cargo": "cargo 1.98.1 (797e8a9bc 2026-08-05)",
+          "dotnet": "10.0.203",
+          "dotnetRuntimes": "Microsoft.AspNetCore.App 10.0.7 [/usr/local/share/dotnet/shared/Microsoft.AspNetCore.App]\nMicrosoft.NETCore.App 10.0.7 [/usr/local/share/dotnet/shared/Microsoft.NETCore.App]",
+          "git": "git version 2.54.0 (Apple Git-157)",
+          "cc": "Apple clang version 21.0.0 (clang-2100.3.34.2)",
+          "gh": "gh version 2.91.0 (2026-04-22)",
+          "brotli": "brotli 1.2.0",
+          "gzip": "Apple gzip 487.0.1",
+          "xcodeSelect": "/Applications/Xcode.app/Contents/Developer"
+        },
+        "playwright": {
+          "version": "1.63.0",
+          "chromium": {
+            "revision": "1243",
+            "version": "153.0.8010.12"
+          },
+          "headlessShell": {
+            "revision": "1243",
+            "version": "153.0.8010.12"
+          }
+        },
+        "apps": {
+          "v1": {
+            "ref": "v1.2.4",
+            "expectedSha": "f6b1de3dc299a4153d44e08409fe3aa6390f542b",
+            "cloneSha": "f6b1de3dc299a4153d44e08409fe3aa6390f542b",
+            "cloneDirty": 0,
+            "binaries": [
+              {
+                "path": "~/Desktop/tendril-benchmark/builds/v1-publish/Ivy.Tendril",
+                "exists": true,
+                "bytes": 165963484,
+                "version": "1.2.4",
+                "frameworks": [
+                  {
+                    "name": "Microsoft.NETCore.App",
+                    "version": "10.0.7"
+                  },
+                  {
+                    "name": "Microsoft.AspNetCore.App",
+                    "version": "10.0.7"
+                  }
+                ],
+                "appBundleVersion": null
+              },
+              {
+                "path": "~/Desktop/tendril-benchmark/artifacts/v1/pkg-expanded/1.pkg/Payload/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril",
+                "exists": true,
+                "bytes": 165830496,
+                "version": "1.2.4",
+                "frameworks": [
+                  {
+                    "name": "Microsoft.NETCore.App",
+                    "version": "10.0.12"
+                  },
+                  {
+                    "name": "Microsoft.AspNetCore.App",
+                    "version": "10.0.12"
+                  }
+                ],
+                "appBundleVersion": "1.2.4"
+              },
+              {
+                "path": "/Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril",
+                "exists": true,
+                "bytes": 165830496,
+                "version": "1.2.4",
+                "frameworks": [
+                  {
+                    "name": "Microsoft.NETCore.App",
+                    "version": "10.0.12"
+                  },
+                  {
+                    "name": "Microsoft.AspNetCore.App",
+                    "version": "10.0.12"
+                  }
+                ],
+                "appBundleVersion": "1.2.4"
+              }
+            ]
+          },
+          "v2": {
+            "ref": "2959bbb30050948c3e54bedc99323fc331f9ddf1",
+            "cloneSha": "2959bbb30050948c3e54bedc99323fc331f9ddf1",
+            "cloneDirty": 0,
+            "bin": "~/Desktop/tendril-benchmark/ivy-tendril-v2/target/release/tendril",
+            "binBytes": 39740624,
+            "version": "tendril 0.1.0",
+            "distPresent": true
+          }
+        },
+        "harness": {
+          "node": "v26.0.0",
+          "pid": 7903,
+          "argv": [
+            "run",
+            "--profile",
+            "quick",
+            "--suite",
+            "all"
+          ],
+          "benchSha": "3bc969805d885820d4c7b0641d55391623050311",
+          "benchDirty": 0
+        },
+        "scrubbedVarsPresent": [
+          "TENDRIL_HOME"
+        ]
+      },
+      "finishedAt": "2026-09-23T00:42:24.474+02:00",
+      "suiteStatus": {
+        "size": "ok",
+        "cli": "ok",
+        "startup": "ok",
+        "idle": "ok",
+        "api": "ok",
+        "ui": "ok",
+        "network": "ok",
+        "desktop": "ok"
+      }
+    }
+  ],
+  "suiteStatus": {
+    "size": "ok",
+    "cli": "ok",
+    "startup": "ok",
+    "idle": "ok",
+    "api": "ok",
+    "ui": "ok",
+    "network": "ok",
+    "desktop": "ok"
+  }
+}

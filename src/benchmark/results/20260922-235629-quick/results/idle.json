@@ -1,0 +1,4493 @@
+{
+  "suite": "idle",
+  "runId": "20260922-235629-quick",
+  "profile": "quick",
+  "startedAt": "2026-09-22T23:59:05.405+02:00",
+  "finishedAt": "2026-09-23T00:05:44.763+02:00",
+  "env": {
+    "loadavgStart": [
+      19.71728515625,
+      12.10302734375,
+      9.5400390625
+    ],
+    "loadavgEnd": [
+      21.69384765625,
+      15.25146484375,
+      11.71875
+    ],
+    "loadSamples": [
+      19.71728515625,
+      19.41943359375,
+      20.0263671875,
+      20.82470703125,
+      21.71923828125,
+      21.58154296875,
+      20.97412109375,
+      21.45654296875,
+      22.140625,
+      22.529296875,
+      22.00634765625,
+      22.48583984375,
+      23.16748046875,
+      23.39404296875,
+      23.6826171875,
+      22.6669921875,
+      22.853515625,
+      21.34375,
+      19.95458984375,
+      18.8369140625,
+      17.408203125,
+      16.09423828125,
+      14.88525390625,
+      13.77294921875,
+      12.830078125,
+      11.88232421875,
+      11.0107421875,
+      10.208984375,
+      9.47119140625,
+      8.87255859375,
+      8.24169921875,
+      7.74169921875,
+      7.28173828125,
+      6.7783203125,
+      6.3154296875,
+      6.1298828125,
+      5.71875,
+      5.4208984375,
+      5.146484375,
+      4.89404296875,
+      4.662109375,
+      4.52880859375,
+      4.326171875,
+      4.1396484375,
+      4.12841796875,
+      4.11767578125,
+      3.94775390625,
+      3.79150390625,
+      3.72802734375,
+      3.58935546875,
+      5.4638671875,
+      6.78759765625,
+      9.04638671875,
+      9.76318359375,
+      11.22314453125,
+      13.046875,
+      13.923828125,
+      13.369140625,
+      15.18115234375,
+      15.08642578125,
+      15.3994140625,
+      16.80859375,
+      17.94482421875,
+      19.390625,
+      19.99951171875,
+      18.87841796875,
+      19.9287109375,
+      18.81298828125,
+      19.62841796875,
+      20.69873046875,
+      21.5234375,
+      20.5205078125,
+      21.359375,
+      20.20947265625,
+      20.8330078125,
+      21.40673828125,
+      21.4541015625,
+      21.49755859375,
+      20.89697265625,
+      21.14501953125,
+      21.69384765625
+    ],
+    "quietWaitMs": 0
+  },
+  "metrics": [
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v1",
+      "dataset": "empty",
+      "metric": "footprint_mean_mib",
+      "unit": "MiB",
+      "samples": [
+        149.606,
+        149.738
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 20,
+        "windowSec": [
+          10.01,
+          10.01
+        ],
+        "samplePeriodMs": 1000,
+        "tree": "Ivy.Tendril --web (server incl. server-side UI) plus descendants",
+        "runs": [
+          {
+            "points": 32,
+            "maxProcesses": 1,
+            "processNames": [
+              "Ivy.Tendril"
+            ],
+            "readyMs": 1111.7
+          },
+          {
+            "points": 32,
+            "maxProcesses": 1,
+            "processNames": [
+              "Ivy.Tendril"
+            ],
+            "readyMs": 1123.4
+          }
+        ]
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v1",
+      "dataset": "empty",
+      "metric": "footprint_window_start_mib",
+      "unit": "MiB",
+      "samples": [
+        149.579,
+        149.767
+      ],
+      "better": "lower",
+      "meta": {
+        "atSec": 20
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v1",
+      "dataset": "empty",
+      "metric": "footprint_end_mib",
+      "unit": "MiB",
+      "samples": [
+        149.892,
+        149.751
+      ],
+      "better": "lower"
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v1",
+      "dataset": "empty",
+      "metric": "peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        149.892,
+        149.767
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "sum of per-process interval max phys_footprint over the idle window (reset when it opens)"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "settling",
+      "app": "v1",
+      "dataset": "empty",
+      "metric": "settling_cpu_s",
+      "unit": "cpu_s",
+      "samples": [
+        0.5634,
+        0.5192
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 0,
+        "toSec": 20,
+        "definition": "CPU seconds of the server tree from ready until the idle window opens (one-off post-start work)"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "settling",
+      "app": "v1",
+      "dataset": "empty",
+      "metric": "settling_peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        149.454,
+        149.767
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 0,
+        "toSec": 20,
+        "definition": "sum of per-process interval max phys_footprint from ready until the idle window opens"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v1",
+      "dataset": "empty",
+      "metric": "cpu_percent_mean",
+      "unit": "percent",
+      "samples": [
+        0.5822,
+        0.4776
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 20,
+        "windowSec": [
+          10.01,
+          10.01
+        ],
+        "samplePeriodMs": 1000,
+        "tree": "Ivy.Tendril --web (server incl. server-side UI) plus descendants",
+        "definition": "CPU time over the window / window length, percent of one core"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v1",
+      "dataset": "empty",
+      "metric": "idle_wakeups_per_s",
+      "unit": "count",
+      "samples": [
+        5.494,
+        5.598
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 20,
+        "windowSec": [
+          10.01,
+          10.01
+        ],
+        "samplePeriodMs": 1000,
+        "tree": "Ivy.Tendril --web (server incl. server-side UI) plus descendants",
+        "definition": "pkg_idle_wkups + interrupt_wkups per second"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v1",
+      "dataset": "empty",
+      "metric": "rss_mib",
+      "unit": "MiB",
+      "samples": [
+        202.762,
+        202.893
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 20,
+        "windowSec": [
+          10.01,
+          10.01
+        ],
+        "samplePeriodMs": 1000,
+        "tree": "Ivy.Tendril --web (server incl. server-side UI) plus descendants",
+        "definition": "mean resident size over the window (context only: counts shared pages)"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "footprint_mean_mib",
+      "unit": "MiB",
+      "samples": [
+        36.774,
+        36.696
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 20,
+        "windowSec": [
+          10.01,
+          10.02
+        ],
+        "samplePeriodMs": 1000,
+        "tree": "tendril serve (daemon only; the tendril-app host is not running) plus descendants",
+        "runs": [
+          {
+            "points": 32,
+            "maxProcesses": 1,
+            "processNames": [
+              "tendril"
+            ],
+            "readyMs": 20.8
+          },
+          {
+            "points": 32,
+            "maxProcesses": 1,
+            "processNames": [
+              "tendril"
+            ],
+            "readyMs": 25
+          }
+        ]
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "footprint_window_start_mib",
+      "unit": "MiB",
+      "samples": [
+        36.766,
+        36.688
+      ],
+      "better": "lower",
+      "meta": {
+        "atSec": 20
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "footprint_end_mib",
+      "unit": "MiB",
+      "samples": [
+        36.813,
+        36.735
+      ],
+      "better": "lower"
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        36.813,
+        36.735
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "sum of per-process interval max phys_footprint over the idle window (reset when it opens)"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "settling",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "settling_cpu_s",
+      "unit": "cpu_s",
+      "samples": [
+        0.0585,
+        0.0416
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 0,
+        "toSec": 20,
+        "definition": "CPU seconds of the server tree from ready until the idle window opens (one-off post-start work)"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "settling",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "settling_peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        36.923,
+        36.844
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 0,
+        "toSec": 20,
+        "definition": "sum of per-process interval max phys_footprint from ready until the idle window opens"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "cpu_percent_mean",
+      "unit": "percent",
+      "samples": [
+        0.0313,
+        0.072
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 20,
+        "windowSec": [
+          10.01,
+          10.02
+        ],
+        "samplePeriodMs": 1000,
+        "tree": "tendril serve (daemon only; the tendril-app host is not running) plus descendants",
+        "definition": "CPU time over the window / window length, percent of one core"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "idle_wakeups_per_s",
+      "unit": "count",
+      "samples": [
+        0.4,
+        0.5
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 20,
+        "windowSec": [
+          10.01,
+          10.02
+        ],
+        "samplePeriodMs": 1000,
+        "tree": "tendril serve (daemon only; the tendril-app host is not running) plus descendants",
+        "definition": "pkg_idle_wkups + interrupt_wkups per second"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "rss_mib",
+      "unit": "MiB",
+      "samples": [
+        54.143,
+        54.065
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 20,
+        "windowSec": [
+          10.01,
+          10.02
+        ],
+        "samplePeriodMs": 1000,
+        "tree": "tendril serve (daemon only; the tendril-app host is not running) plus descendants",
+        "definition": "mean resident size over the window (context only: counts shared pages)"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "footprint_mean_mib",
+      "unit": "MiB",
+      "samples": [
+        155.69,
+        155.395
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 20,
+        "windowSec": [
+          10.01,
+          10.01
+        ],
+        "samplePeriodMs": 1000,
+        "tree": "Ivy.Tendril --web (server incl. server-side UI) plus descendants",
+        "runs": [
+          {
+            "points": 32,
+            "maxProcesses": 1,
+            "processNames": [
+              "Ivy.Tendril"
+            ],
+            "readyMs": 1151.8
+          },
+          {
+            "points": 32,
+            "maxProcesses": 1,
+            "processNames": [
+              "Ivy.Tendril"
+            ],
+            "readyMs": 1177.3
+          }
+        ]
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "footprint_window_start_mib",
+      "unit": "MiB",
+      "samples": [
+        155.735,
+        155.454
+      ],
+      "better": "lower",
+      "meta": {
+        "atSec": 20
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "footprint_end_mib",
+      "unit": "MiB",
+      "samples": [
+        155.72,
+        155.438
+      ],
+      "better": "lower"
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        155.782,
+        155.485
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "sum of per-process interval max phys_footprint over the idle window (reset when it opens)"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "settling",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "settling_cpu_s",
+      "unit": "cpu_s",
+      "samples": [
+        0.7109,
+        0.731
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 0,
+        "toSec": 20,
+        "definition": "CPU seconds of the server tree from ready until the idle window opens (one-off post-start work)"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "settling",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "settling_peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        155.345,
+        155.063
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 0,
+        "toSec": 20,
+        "definition": "sum of per-process interval max phys_footprint from ready until the idle window opens"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "cpu_percent_mean",
+      "unit": "percent",
+      "samples": [
+        0.4915,
+        0.514
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 20,
+        "windowSec": [
+          10.01,
+          10.01
+        ],
+        "samplePeriodMs": 1000,
+        "tree": "Ivy.Tendril --web (server incl. server-side UI) plus descendants",
+        "definition": "CPU time over the window / window length, percent of one core"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "idle_wakeups_per_s",
+      "unit": "count",
+      "samples": [
+        6.094,
+        6.097
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 20,
+        "windowSec": [
+          10.01,
+          10.01
+        ],
+        "samplePeriodMs": 1000,
+        "tree": "Ivy.Tendril --web (server incl. server-side UI) plus descendants",
+        "definition": "pkg_idle_wkups + interrupt_wkups per second"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "rss_mib",
+      "unit": "MiB",
+      "samples": [
+        209.533,
+        209.238
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 20,
+        "windowSec": [
+          10.01,
+          10.01
+        ],
+        "samplePeriodMs": 1000,
+        "tree": "Ivy.Tendril --web (server incl. server-side UI) plus descendants",
+        "definition": "mean resident size over the window (context only: counts shared pages)"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "footprint_mean_mib",
+      "unit": "MiB",
+      "samples": [
+        38.764,
+        38.665
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 20,
+        "windowSec": [
+          10.01,
+          10.01
+        ],
+        "samplePeriodMs": 1000,
+        "tree": "tendril serve (daemon only; the tendril-app host is not running) plus descendants",
+        "runs": [
+          {
+            "points": 32,
+            "maxProcesses": 1,
+            "processNames": [
+              "tendril"
+            ],
+            "readyMs": 148.2
+          },
+          {
+            "points": 32,
+            "maxProcesses": 1,
+            "processNames": [
+              "tendril"
+            ],
+            "readyMs": 133.1
+          }
+        ]
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "footprint_window_start_mib",
+      "unit": "MiB",
+      "samples": [
+        38.735,
+        38.641
+      ],
+      "better": "lower",
+      "meta": {
+        "atSec": 20
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "footprint_end_mib",
+      "unit": "MiB",
+      "samples": [
+        38.907,
+        38.782
+      ],
+      "better": "lower"
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        38.923,
+        38.844
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "sum of per-process interval max phys_footprint over the idle window (reset when it opens)"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "settling",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "settling_cpu_s",
+      "unit": "cpu_s",
+      "samples": [
+        0.0168,
+        0.0151
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 0,
+        "toSec": 20,
+        "definition": "CPU seconds of the server tree from ready until the idle window opens (one-off post-start work)"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "settling",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "settling_peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        38.891,
+        38.813
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 0,
+        "toSec": 20,
+        "definition": "sum of per-process interval max phys_footprint from ready until the idle window opens"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "cpu_percent_mean",
+      "unit": "percent",
+      "samples": [
+        0.2453,
+        0.2429
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 20,
+        "windowSec": [
+          10.01,
+          10.01
+        ],
+        "samplePeriodMs": 1000,
+        "tree": "tendril serve (daemon only; the tendril-app host is not running) plus descendants",
+        "definition": "CPU time over the window / window length, percent of one core"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "idle_wakeups_per_s",
+      "unit": "count",
+      "samples": [
+        0.599,
+        0.6
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 20,
+        "windowSec": [
+          10.01,
+          10.01
+        ],
+        "samplePeriodMs": 1000,
+        "tree": "tendril serve (daemon only; the tendril-app host is not running) plus descendants",
+        "definition": "pkg_idle_wkups + interrupt_wkups per second"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "rss_mib",
+      "unit": "MiB",
+      "samples": [
+        57.177,
+        57.078
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 20,
+        "windowSec": [
+          10.01,
+          10.01
+        ],
+        "samplePeriodMs": 1000,
+        "tree": "tendril serve (daemon only; the tendril-app host is not running) plus descendants",
+        "definition": "mean resident size over the window (context only: counts shared pages)"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "footprint_mean_mib",
+      "unit": "MiB",
+      "samples": [
+        218.442,
+        217.096
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 20,
+        "windowSec": [
+          10,
+          10.01
+        ],
+        "samplePeriodMs": 1000,
+        "tree": "Ivy.Tendril --web (server incl. server-side UI) plus descendants",
+        "runs": [
+          {
+            "points": 32,
+            "maxProcesses": 1,
+            "processNames": [
+              "Ivy.Tendril"
+            ],
+            "readyMs": 2251.1
+          },
+          {
+            "points": 32,
+            "maxProcesses": 1,
+            "processNames": [
+              "Ivy.Tendril"
+            ],
+            "readyMs": 2290.3
+          }
+        ]
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "footprint_window_start_mib",
+      "unit": "MiB",
+      "samples": [
+        224.11,
+        221.11
+      ],
+      "better": "lower",
+      "meta": {
+        "atSec": 20
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "footprint_end_mib",
+      "unit": "MiB",
+      "samples": [
+        190.142,
+        196.485
+      ],
+      "better": "lower"
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        225.314,
+        222.767
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "sum of per-process interval max phys_footprint over the idle window (reset when it opens)"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "settling",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "settling_cpu_s",
+      "unit": "cpu_s",
+      "samples": [
+        0.8882,
+        0.8884
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 0,
+        "toSec": 20,
+        "definition": "CPU seconds of the server tree from ready until the idle window opens (one-off post-start work)"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "settling",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "settling_peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        224.157,
+        221.157
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 0,
+        "toSec": 20,
+        "definition": "sum of per-process interval max phys_footprint from ready until the idle window opens"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "cpu_percent_mean",
+      "unit": "percent",
+      "samples": [
+        7.1299,
+        6.6595
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 20,
+        "windowSec": [
+          10,
+          10.01
+        ],
+        "samplePeriodMs": 1000,
+        "tree": "Ivy.Tendril --web (server incl. server-side UI) plus descendants",
+        "definition": "CPU time over the window / window length, percent of one core"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "idle_wakeups_per_s",
+      "unit": "count",
+      "samples": [
+        7.297,
+        6.797
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 20,
+        "windowSec": [
+          10,
+          10.01
+        ],
+        "samplePeriodMs": 1000,
+        "tree": "Ivy.Tendril --web (server incl. server-side UI) plus descendants",
+        "definition": "pkg_idle_wkups + interrupt_wkups per second"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "rss_mib",
+      "unit": "MiB",
+      "samples": [
+        272.254,
+        270.957
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 20,
+        "windowSec": [
+          10,
+          10.01
+        ],
+        "samplePeriodMs": 1000,
+        "tree": "Ivy.Tendril --web (server incl. server-side UI) plus descendants",
+        "definition": "mean resident size over the window (context only: counts shared pages)"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "footprint_mean_mib",
+      "unit": "MiB",
+      "samples": [
+        32.579,
+        32.462
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 20,
+        "windowSec": [
+          10,
+          10.01
+        ],
+        "samplePeriodMs": 1000,
+        "tree": "tendril serve (daemon only; the tendril-app host is not running) plus descendants",
+        "runs": [
+          {
+            "points": 32,
+            "maxProcesses": 1,
+            "processNames": [
+              "tendril"
+            ],
+            "readyMs": 7477
+          },
+          {
+            "points": 32,
+            "maxProcesses": 1,
+            "processNames": [
+              "tendril"
+            ],
+            "readyMs": 7607.1
+          }
+        ]
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "footprint_window_start_mib",
+      "unit": "MiB",
+      "samples": [
+        42.485,
+        43.423
+      ],
+      "better": "lower",
+      "meta": {
+        "atSec": 20
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "footprint_end_mib",
+      "unit": "MiB",
+      "samples": [
+        30.673,
+        28.938
+      ],
+      "better": "lower"
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        42.516,
+        43.579
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "sum of per-process interval max phys_footprint over the idle window (reset when it opens)"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "settling",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "settling_cpu_s",
+      "unit": "cpu_s",
+      "samples": [
+        0.0428,
+        0.0515
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 0,
+        "toSec": 20,
+        "definition": "CPU seconds of the server tree from ready until the idle window opens (one-off post-start work)"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "settling",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "settling_peak_footprint_mib",
+      "unit": "MiB",
+      "samples": [
+        42.673,
+        43.548
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 0,
+        "toSec": 20,
+        "definition": "sum of per-process interval max phys_footprint from ready until the idle window opens"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "cpu_percent_mean",
+      "unit": "percent",
+      "samples": [
+        11.8228,
+        10.6907
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 20,
+        "windowSec": [
+          10,
+          10.01
+        ],
+        "samplePeriodMs": 1000,
+        "tree": "tendril serve (daemon only; the tendril-app host is not running) plus descendants",
+        "definition": "CPU time over the window / window length, percent of one core"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "idle_wakeups_per_s",
+      "unit": "count",
+      "samples": [
+        2.223,
+        1.699
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 20,
+        "windowSec": [
+          10,
+          10.01
+        ],
+        "samplePeriodMs": 1000,
+        "tree": "tendril serve (daemon only; the tendril-app host is not running) plus descendants",
+        "definition": "pkg_idle_wkups + interrupt_wkups per second"
+      }
+    },
+    {
+      "suite": "idle",
+      "scenario": "idle",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "rss_mib",
+      "unit": "MiB",
+      "samples": [
+        57.436,
+        58.646
+      ],
+      "better": "lower",
+      "meta": {
+        "fromSec": 20,
+        "windowSec": [
+          10,
+          10.01
+        ],
+        "samplePeriodMs": 1000,
+        "tree": "tendril serve (daemon only; the tendril-app host is not running) plus descendants",
+        "definition": "mean resident size over the window (context only: counts shared pages)"
+      }
+    }
+  ],
+  "series": [
+    {
+      "app": "v1",
+      "dataset": "empty",
+      "scenario": "idle",
+      "name": "footprint_mib",
+      "unit": "MiB",
+      "points": [
+        [
+          0,
+          118.36
+        ],
+        [
+          1.007,
+          121.391
+        ],
+        [
+          2.001,
+          121.391
+        ],
+        [
+          3.007,
+          121.391
+        ],
+        [
+          4.008,
+          121.391
+        ],
+        [
+          5.002,
+          121.516
+        ],
+        [
+          6.007,
+          121.501
+        ],
+        [
+          7.001,
+          121.548
+        ],
+        [
+          8.005,
+          121.548
+        ],
+        [
+          9.007,
+          121.548
+        ],
+        [
+          10.001,
+          121.782
+        ],
+        [
+          11.007,
+          121.782
+        ],
+        [
+          12.001,
+          121.782
+        ],
+        [
+          13.007,
+          121.782
+        ],
+        [
+          14.001,
+          121.798
+        ],
+        [
+          15.007,
+          121.954
+        ],
+        [
+          16.001,
+          149.454
+        ],
+        [
+          17.006,
+          149.454
+        ],
+        [
+          18.007,
+          149.454
+        ],
+        [
+          19.008,
+          149.454
+        ],
+        [
+          20.001,
+          149.579
+        ],
+        [
+          21.007,
+          149.532
+        ],
+        [
+          22,
+          149.532
+        ],
+        [
+          23.004,
+          149.548
+        ],
+        [
+          24.006,
+          149.548
+        ],
+        [
+          25.007,
+          149.548
+        ],
+        [
+          26,
+          149.548
+        ],
+        [
+          27.007,
+          149.548
+        ],
+        [
+          28,
+          149.548
+        ],
+        [
+          29.007,
+          149.563
+        ],
+        [
+          30.008,
+          149.892
+        ],
+        [
+          30.012,
+          149.892
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "empty",
+      "scenario": "idle",
+      "name": "cpu_percent",
+      "unit": "percent",
+      "points": [
+        [
+          1.007,
+          13.238
+        ],
+        [
+          2.001,
+          1.072
+        ],
+        [
+          3.007,
+          1.001
+        ],
+        [
+          4.008,
+          0.569
+        ],
+        [
+          5.002,
+          1.096
+        ],
+        [
+          6.007,
+          0.363
+        ],
+        [
+          7.001,
+          1.872
+        ],
+        [
+          8.005,
+          0.842
+        ],
+        [
+          9.007,
+          0.752
+        ],
+        [
+          10.001,
+          1.152
+        ],
+        [
+          11.007,
+          0.786
+        ],
+        [
+          12.001,
+          0.194
+        ],
+        [
+          13.007,
+          0.178
+        ],
+        [
+          14.001,
+          0.502
+        ],
+        [
+          15.007,
+          2.913
+        ],
+        [
+          16.001,
+          29.376
+        ],
+        [
+          17.006,
+          0.188
+        ],
+        [
+          18.007,
+          0.211
+        ],
+        [
+          19.008,
+          0.116
+        ],
+        [
+          20.001,
+          1.086
+        ],
+        [
+          21.007,
+          0.253
+        ],
+        [
+          22,
+          0.175
+        ],
+        [
+          23.004,
+          0.296
+        ],
+        [
+          24.006,
+          0.222
+        ],
+        [
+          25.007,
+          0.324
+        ],
+        [
+          26,
+          0.228
+        ],
+        [
+          27.007,
+          0.499
+        ],
+        [
+          28,
+          0.275
+        ],
+        [
+          29.007,
+          0.586
+        ],
+        [
+          30.008,
+          2.933
+        ],
+        [
+          30.012,
+          6.831
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "empty",
+      "scenario": "idle",
+      "name": "footprint_mib",
+      "unit": "MiB",
+      "points": [
+        [
+          0,
+          118.516
+        ],
+        [
+          0.999,
+          121.563
+        ],
+        [
+          2.006,
+          121.579
+        ],
+        [
+          3,
+          121.579
+        ],
+        [
+          4.006,
+          121.579
+        ],
+        [
+          5.006,
+          121.673
+        ],
+        [
+          5.999,
+          121.688
+        ],
+        [
+          7.006,
+          121.688
+        ],
+        [
+          8.006,
+          122.048
+        ],
+        [
+          9.007,
+          122.048
+        ],
+        [
+          10.007,
+          122.235
+        ],
+        [
+          11,
+          122.235
+        ],
+        [
+          12.006,
+          122.235
+        ],
+        [
+          13.006,
+          122.235
+        ],
+        [
+          14.007,
+          122.235
+        ],
+        [
+          15.001,
+          122.407
+        ],
+        [
+          16.004,
+          149.767
+        ],
+        [
+          16.999,
+          149.767
+        ],
+        [
+          18.005,
+          149.767
+        ],
+        [
+          19.006,
+          149.767
+        ],
+        [
+          20.007,
+          149.767
+        ],
+        [
+          21,
+          149.72
+        ],
+        [
+          22.006,
+          149.72
+        ],
+        [
+          23.001,
+          149.735
+        ],
+        [
+          24.008,
+          149.735
+        ],
+        [
+          25.001,
+          149.735
+        ],
+        [
+          26.006,
+          149.735
+        ],
+        [
+          27.004,
+          149.735
+        ],
+        [
+          28.008,
+          149.735
+        ],
+        [
+          29,
+          149.735
+        ],
+        [
+          30.006,
+          149.751
+        ],
+        [
+          30.012,
+          149.751
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "empty",
+      "scenario": "idle",
+      "name": "cpu_percent",
+      "unit": "percent",
+      "points": [
+        [
+          0.999,
+          12.812
+        ],
+        [
+          2.006,
+          0.617
+        ],
+        [
+          3,
+          1.031
+        ],
+        [
+          4.006,
+          0.43
+        ],
+        [
+          5.006,
+          0.989
+        ],
+        [
+          5.999,
+          0.569
+        ],
+        [
+          7.006,
+          0.133
+        ],
+        [
+          8.006,
+          2.391
+        ],
+        [
+          9.007,
+          0.592
+        ],
+        [
+          10.007,
+          1.414
+        ],
+        [
+          11,
+          0.615
+        ],
+        [
+          12.006,
+          0.154
+        ],
+        [
+          13.006,
+          0.118
+        ],
+        [
+          14.007,
+          0.455
+        ],
+        [
+          15.001,
+          1.438
+        ],
+        [
+          16.004,
+          27.44
+        ],
+        [
+          16.999,
+          0.419
+        ],
+        [
+          18.005,
+          0.117
+        ],
+        [
+          19.006,
+          0.113
+        ],
+        [
+          20.007,
+          1.508
+        ],
+        [
+          21,
+          0.119
+        ],
+        [
+          22.006,
+          0.099
+        ],
+        [
+          23.001,
+          0.196
+        ],
+        [
+          24.008,
+          0.157
+        ],
+        [
+          25.001,
+          0.243
+        ],
+        [
+          26.006,
+          0.153
+        ],
+        [
+          27.004,
+          0.33
+        ],
+        [
+          28.008,
+          0.166
+        ],
+        [
+          29,
+          0.433
+        ],
+        [
+          30.006,
+          2.853
+        ],
+        [
+          30.012,
+          2.676
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "empty",
+      "scenario": "idle",
+      "name": "footprint_mib",
+      "unit": "MiB",
+      "points": [
+        [
+          0,
+          7.579
+        ],
+        [
+          1.007,
+          36.86
+        ],
+        [
+          2.005,
+          36.86
+        ],
+        [
+          3.001,
+          36.86
+        ],
+        [
+          4.007,
+          36.86
+        ],
+        [
+          5.001,
+          36.86
+        ],
+        [
+          6.007,
+          36.813
+        ],
+        [
+          7.001,
+          36.813
+        ],
+        [
+          8.007,
+          36.813
+        ],
+        [
+          9.001,
+          36.813
+        ],
+        [
+          10.007,
+          36.766
+        ],
+        [
+          11,
+          36.766
+        ],
+        [
+          12.006,
+          36.766
+        ],
+        [
+          13.006,
+          36.766
+        ],
+        [
+          14.001,
+          36.766
+        ],
+        [
+          15.007,
+          36.766
+        ],
+        [
+          16.007,
+          36.766
+        ],
+        [
+          17.001,
+          36.766
+        ],
+        [
+          18.007,
+          36.766
+        ],
+        [
+          19.001,
+          36.766
+        ],
+        [
+          20.007,
+          36.766
+        ],
+        [
+          21.001,
+          36.766
+        ],
+        [
+          22.007,
+          36.766
+        ],
+        [
+          23.001,
+          36.766
+        ],
+        [
+          24.003,
+          36.766
+        ],
+        [
+          24.999,
+          36.766
+        ],
+        [
+          26.003,
+          36.766
+        ],
+        [
+          27,
+          36.766
+        ],
+        [
+          28.002,
+          36.766
+        ],
+        [
+          29.003,
+          36.766
+        ],
+        [
+          30.001,
+          36.813
+        ],
+        [
+          30.013,
+          36.813
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "empty",
+      "scenario": "idle",
+      "name": "cpu_percent",
+      "unit": "percent",
+      "points": [
+        [
+          1.007,
+          5.782
+        ],
+        [
+          2.005,
+          0
+        ],
+        [
+          3.001,
+          0
+        ],
+        [
+          4.007,
+          0
+        ],
+        [
+          5.001,
+          0
+        ],
+        [
+          6.007,
+          0.005
+        ],
+        [
+          7.001,
+          0
+        ],
+        [
+          8.007,
+          0
+        ],
+        [
+          9.001,
+          0
+        ],
+        [
+          10.007,
+          0.024
+        ],
+        [
+          11,
+          0
+        ],
+        [
+          12.006,
+          0
+        ],
+        [
+          13.006,
+          0
+        ],
+        [
+          14.001,
+          0
+        ],
+        [
+          15.007,
+          0
+        ],
+        [
+          16.007,
+          0
+        ],
+        [
+          17.001,
+          0
+        ],
+        [
+          18.007,
+          0
+        ],
+        [
+          19.001,
+          0
+        ],
+        [
+          20.007,
+          0
+        ],
+        [
+          21.001,
+          0
+        ],
+        [
+          22.007,
+          0
+        ],
+        [
+          23.001,
+          0
+        ],
+        [
+          24.003,
+          0
+        ],
+        [
+          24.999,
+          0
+        ],
+        [
+          26.003,
+          0
+        ],
+        [
+          27,
+          0
+        ],
+        [
+          28.002,
+          0
+        ],
+        [
+          29.003,
+          0.003
+        ],
+        [
+          30.001,
+          0.311
+        ],
+        [
+          30.013,
+          0
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "empty",
+      "scenario": "idle",
+      "name": "footprint_mib",
+      "unit": "MiB",
+      "points": [
+        [
+          0,
+          7.594
+        ],
+        [
+          1.003,
+          36.782
+        ],
+        [
+          2.007,
+          36.782
+        ],
+        [
+          3.007,
+          36.782
+        ],
+        [
+          4.001,
+          36.782
+        ],
+        [
+          5.007,
+          36.782
+        ],
+        [
+          6.005,
+          36.735
+        ],
+        [
+          7,
+          36.735
+        ],
+        [
+          8.008,
+          36.735
+        ],
+        [
+          9.007,
+          36.735
+        ],
+        [
+          10.001,
+          36.688
+        ],
+        [
+          11.007,
+          36.688
+        ],
+        [
+          12.008,
+          36.688
+        ],
+        [
+          13.007,
+          36.688
+        ],
+        [
+          14,
+          36.688
+        ],
+        [
+          15.005,
+          36.688
+        ],
+        [
+          16.007,
+          36.688
+        ],
+        [
+          17.008,
+          36.688
+        ],
+        [
+          18.002,
+          36.688
+        ],
+        [
+          19.008,
+          36.688
+        ],
+        [
+          20.008,
+          36.688
+        ],
+        [
+          21.001,
+          36.688
+        ],
+        [
+          22.003,
+          36.688
+        ],
+        [
+          23.008,
+          36.688
+        ],
+        [
+          24.001,
+          36.688
+        ],
+        [
+          25.007,
+          36.688
+        ],
+        [
+          26.003,
+          36.688
+        ],
+        [
+          27.008,
+          36.688
+        ],
+        [
+          28.002,
+          36.688
+        ],
+        [
+          29.007,
+          36.688
+        ],
+        [
+          30.001,
+          36.735
+        ],
+        [
+          30.016,
+          36.735
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "empty",
+      "scenario": "idle",
+      "name": "cpu_percent",
+      "unit": "percent",
+      "points": [
+        [
+          1.003,
+          4.115
+        ],
+        [
+          2.007,
+          0
+        ],
+        [
+          3.007,
+          0
+        ],
+        [
+          4.001,
+          0
+        ],
+        [
+          5.007,
+          0
+        ],
+        [
+          6.005,
+          0.006
+        ],
+        [
+          7,
+          0
+        ],
+        [
+          8.008,
+          0
+        ],
+        [
+          9.007,
+          0.003
+        ],
+        [
+          10.001,
+          0.024
+        ],
+        [
+          11.007,
+          0
+        ],
+        [
+          12.008,
+          0
+        ],
+        [
+          13.007,
+          0
+        ],
+        [
+          14,
+          0
+        ],
+        [
+          15.005,
+          0
+        ],
+        [
+          16.007,
+          0
+        ],
+        [
+          17.008,
+          0
+        ],
+        [
+          18.002,
+          0
+        ],
+        [
+          19.008,
+          0
+        ],
+        [
+          20.008,
+          0
+        ],
+        [
+          21.001,
+          0
+        ],
+        [
+          22.003,
+          0
+        ],
+        [
+          23.008,
+          0
+        ],
+        [
+          24.001,
+          0
+        ],
+        [
+          25.007,
+          0
+        ],
+        [
+          26.003,
+          0
+        ],
+        [
+          27.008,
+          0
+        ],
+        [
+          28.002,
+          0
+        ],
+        [
+          29.007,
+          0.004
+        ],
+        [
+          30.001,
+          0.721
+        ],
+        [
+          30.016,
+          0
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "small",
+      "scenario": "idle",
+      "name": "footprint_mib",
+      "unit": "MiB",
+      "points": [
+        [
+          0,
+          123.563
+        ],
+        [
+          1.008,
+          127.11
+        ],
+        [
+          2,
+          127.126
+        ],
+        [
+          3.004,
+          127.126
+        ],
+        [
+          4.004,
+          127.126
+        ],
+        [
+          5.001,
+          127.345
+        ],
+        [
+          6.008,
+          128.016
+        ],
+        [
+          7.001,
+          128.016
+        ],
+        [
+          8.006,
+          128.063
+        ],
+        [
+          9,
+          128.063
+        ],
+        [
+          10.008,
+          128.079
+        ],
+        [
+          11.008,
+          128.079
+        ],
+        [
+          12,
+          128.079
+        ],
+        [
+          13.008,
+          128.079
+        ],
+        [
+          14,
+          128.079
+        ],
+        [
+          15.003,
+          128.892
+        ],
+        [
+          16,
+          155.345
+        ],
+        [
+          17.008,
+          155.345
+        ],
+        [
+          18.001,
+          155.345
+        ],
+        [
+          19.007,
+          155.345
+        ],
+        [
+          20.001,
+          155.735
+        ],
+        [
+          21.007,
+          155.688
+        ],
+        [
+          22.007,
+          155.688
+        ],
+        [
+          23.007,
+          155.688
+        ],
+        [
+          23.999,
+          155.657
+        ],
+        [
+          25.005,
+          155.657
+        ],
+        [
+          26.007,
+          155.657
+        ],
+        [
+          27.001,
+          155.688
+        ],
+        [
+          28.006,
+          155.688
+        ],
+        [
+          29.006,
+          155.688
+        ],
+        [
+          30.007,
+          155.72
+        ],
+        [
+          30.011,
+          155.72
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "small",
+      "scenario": "idle",
+      "name": "cpu_percent",
+      "unit": "percent",
+      "points": [
+        [
+          1.008,
+          18.45
+        ],
+        [
+          2,
+          0.843
+        ],
+        [
+          3.004,
+          1.047
+        ],
+        [
+          4.004,
+          0.424
+        ],
+        [
+          5.001,
+          4.921
+        ],
+        [
+          6.008,
+          11.978
+        ],
+        [
+          7.001,
+          0.192
+        ],
+        [
+          8.006,
+          2.011
+        ],
+        [
+          9,
+          1.46
+        ],
+        [
+          10.008,
+          0.58
+        ],
+        [
+          11.008,
+          0.844
+        ],
+        [
+          12,
+          0.125
+        ],
+        [
+          13.008,
+          0.127
+        ],
+        [
+          14,
+          0.113
+        ],
+        [
+          15.003,
+          5.473
+        ],
+        [
+          16,
+          22.013
+        ],
+        [
+          17.008,
+          0.115
+        ],
+        [
+          18.001,
+          0.112
+        ],
+        [
+          19.007,
+          0.108
+        ],
+        [
+          20.001,
+          1.735
+        ],
+        [
+          21.007,
+          0.109
+        ],
+        [
+          22.007,
+          0.108
+        ],
+        [
+          23.007,
+          0.114
+        ],
+        [
+          23.999,
+          0.135
+        ],
+        [
+          25.005,
+          0.104
+        ],
+        [
+          26.007,
+          0.108
+        ],
+        [
+          27.001,
+          0.45
+        ],
+        [
+          28.006,
+          0.122
+        ],
+        [
+          29.006,
+          0.466
+        ],
+        [
+          30.007,
+          3.203
+        ],
+        [
+          30.011,
+          0
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "small",
+      "scenario": "idle",
+      "name": "footprint_mib",
+      "unit": "MiB",
+      "points": [
+        [
+          0,
+          123.391
+        ],
+        [
+          1.008,
+          126.86
+        ],
+        [
+          2.008,
+          126.891
+        ],
+        [
+          3.001,
+          126.907
+        ],
+        [
+          4.007,
+          126.907
+        ],
+        [
+          4.999,
+          127.079
+        ],
+        [
+          6.007,
+          127.782
+        ],
+        [
+          7.007,
+          127.782
+        ],
+        [
+          8.001,
+          127.813
+        ],
+        [
+          9.007,
+          127.813
+        ],
+        [
+          10.001,
+          127.813
+        ],
+        [
+          11.007,
+          127.813
+        ],
+        [
+          12.007,
+          127.813
+        ],
+        [
+          13.001,
+          127.813
+        ],
+        [
+          14.007,
+          127.813
+        ],
+        [
+          15.004,
+          128.673
+        ],
+        [
+          16.001,
+          155.063
+        ],
+        [
+          17.005,
+          155.063
+        ],
+        [
+          18,
+          155.063
+        ],
+        [
+          19.006,
+          155.063
+        ],
+        [
+          20.007,
+          155.454
+        ],
+        [
+          21.005,
+          155.407
+        ],
+        [
+          22.001,
+          155.407
+        ],
+        [
+          23.006,
+          155.407
+        ],
+        [
+          24.001,
+          155.36
+        ],
+        [
+          25.007,
+          155.36
+        ],
+        [
+          26,
+          155.36
+        ],
+        [
+          27.007,
+          155.36
+        ],
+        [
+          28,
+          155.36
+        ],
+        [
+          29.007,
+          155.392
+        ],
+        [
+          30.008,
+          155.438
+        ],
+        [
+          30.012,
+          155.438
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "small",
+      "scenario": "idle",
+      "name": "cpu_percent",
+      "unit": "percent",
+      "points": [
+        [
+          1.008,
+          17.561
+        ],
+        [
+          2.008,
+          0.777
+        ],
+        [
+          3.001,
+          1.061
+        ],
+        [
+          4.007,
+          0.499
+        ],
+        [
+          4.999,
+          4.609
+        ],
+        [
+          6.007,
+          11.322
+        ],
+        [
+          7.007,
+          0.154
+        ],
+        [
+          8.001,
+          2.211
+        ],
+        [
+          9.007,
+          1.618
+        ],
+        [
+          10.001,
+          0.394
+        ],
+        [
+          11.007,
+          0.913
+        ],
+        [
+          12.007,
+          0.153
+        ],
+        [
+          13.001,
+          0.147
+        ],
+        [
+          14.007,
+          0.34
+        ],
+        [
+          15.004,
+          4.95
+        ],
+        [
+          16.001,
+          26.037
+        ],
+        [
+          17.005,
+          0.106
+        ],
+        [
+          18,
+          0.065
+        ],
+        [
+          19.006,
+          0.103
+        ],
+        [
+          20.007,
+          1.839
+        ],
+        [
+          21.005,
+          0.145
+        ],
+        [
+          22.001,
+          0.13
+        ],
+        [
+          23.006,
+          0.161
+        ],
+        [
+          24.001,
+          0.198
+        ],
+        [
+          25.007,
+          0.152
+        ],
+        [
+          26,
+          0.172
+        ],
+        [
+          27.007,
+          0.142
+        ],
+        [
+          28,
+          0.159
+        ],
+        [
+          29.007,
+          0.51
+        ],
+        [
+          30.008,
+          3.372
+        ],
+        [
+          30.012,
+          0
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "small",
+      "scenario": "idle",
+      "name": "footprint_mib",
+      "unit": "MiB",
+      "points": [
+        [
+          0,
+          13.626
+        ],
+        [
+          1.008,
+          38.829
+        ],
+        [
+          2.001,
+          38.829
+        ],
+        [
+          3.007,
+          38.829
+        ],
+        [
+          3.999,
+          38.829
+        ],
+        [
+          5.006,
+          38.782
+        ],
+        [
+          6.004,
+          38.782
+        ],
+        [
+          7.007,
+          38.782
+        ],
+        [
+          8.008,
+          38.782
+        ],
+        [
+          9.008,
+          38.782
+        ],
+        [
+          10.001,
+          38.735
+        ],
+        [
+          11.007,
+          38.735
+        ],
+        [
+          11.999,
+          38.735
+        ],
+        [
+          13.005,
+          38.735
+        ],
+        [
+          14.007,
+          38.735
+        ],
+        [
+          15.001,
+          38.735
+        ],
+        [
+          16.007,
+          38.735
+        ],
+        [
+          17.001,
+          38.735
+        ],
+        [
+          18.005,
+          38.735
+        ],
+        [
+          19.007,
+          38.735
+        ],
+        [
+          20.001,
+          38.735
+        ],
+        [
+          21.007,
+          38.735
+        ],
+        [
+          22.007,
+          38.735
+        ],
+        [
+          22.999,
+          38.735
+        ],
+        [
+          24.007,
+          38.735
+        ],
+        [
+          25.008,
+          38.735
+        ],
+        [
+          26.001,
+          38.735
+        ],
+        [
+          27.007,
+          38.735
+        ],
+        [
+          28.007,
+          38.735
+        ],
+        [
+          29.001,
+          38.735
+        ],
+        [
+          30.007,
+          38.907
+        ],
+        [
+          30.012,
+          38.907
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "small",
+      "scenario": "idle",
+      "name": "cpu_percent",
+      "unit": "percent",
+      "points": [
+        [
+          1.008,
+          1.632
+        ],
+        [
+          2.001,
+          0
+        ],
+        [
+          3.007,
+          0
+        ],
+        [
+          3.999,
+          0
+        ],
+        [
+          5.006,
+          0.013
+        ],
+        [
+          6.004,
+          0
+        ],
+        [
+          7.007,
+          0
+        ],
+        [
+          8.008,
+          0
+        ],
+        [
+          9.008,
+          0.003
+        ],
+        [
+          10.001,
+          0.021
+        ],
+        [
+          11.007,
+          0
+        ],
+        [
+          11.999,
+          0
+        ],
+        [
+          13.005,
+          0
+        ],
+        [
+          14.007,
+          0
+        ],
+        [
+          15.001,
+          0
+        ],
+        [
+          16.007,
+          0
+        ],
+        [
+          17.001,
+          0
+        ],
+        [
+          18.005,
+          0
+        ],
+        [
+          19.007,
+          0
+        ],
+        [
+          20.001,
+          0
+        ],
+        [
+          21.007,
+          0
+        ],
+        [
+          22.007,
+          0
+        ],
+        [
+          22.999,
+          0
+        ],
+        [
+          24.007,
+          0
+        ],
+        [
+          25.008,
+          0
+        ],
+        [
+          26.001,
+          0
+        ],
+        [
+          27.007,
+          0
+        ],
+        [
+          28.007,
+          0
+        ],
+        [
+          29.001,
+          0.003
+        ],
+        [
+          30.007,
+          2.436
+        ],
+        [
+          30.012,
+          0
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "small",
+      "scenario": "idle",
+      "name": "footprint_mib",
+      "unit": "MiB",
+      "points": [
+        [
+          0,
+          15.563
+        ],
+        [
+          1.008,
+          38.751
+        ],
+        [
+          2.001,
+          38.751
+        ],
+        [
+          3.007,
+          38.751
+        ],
+        [
+          4.007,
+          38.751
+        ],
+        [
+          5.001,
+          38.751
+        ],
+        [
+          6.005,
+          38.688
+        ],
+        [
+          7.007,
+          38.688
+        ],
+        [
+          8.001,
+          38.688
+        ],
+        [
+          9.006,
+          38.688
+        ],
+        [
+          10.007,
+          38.673
+        ],
+        [
+          11.001,
+          38.641
+        ],
+        [
+          12.007,
+          38.641
+        ],
+        [
+          13.007,
+          38.641
+        ],
+        [
+          14.007,
+          38.641
+        ],
+        [
+          15,
+          38.641
+        ],
+        [
+          16.007,
+          38.641
+        ],
+        [
+          17.001,
+          38.641
+        ],
+        [
+          18.007,
+          38.641
+        ],
+        [
+          18.999,
+          38.641
+        ],
+        [
+          20.007,
+          38.641
+        ],
+        [
+          21.001,
+          38.641
+        ],
+        [
+          22.007,
+          38.641
+        ],
+        [
+          23.006,
+          38.641
+        ],
+        [
+          24.006,
+          38.641
+        ],
+        [
+          25.001,
+          38.641
+        ],
+        [
+          26.007,
+          38.641
+        ],
+        [
+          27.007,
+          38.641
+        ],
+        [
+          28.001,
+          38.641
+        ],
+        [
+          29.007,
+          38.641
+        ],
+        [
+          30,
+          38.782
+        ],
+        [
+          30.015,
+          38.782
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "small",
+      "scenario": "idle",
+      "name": "cpu_percent",
+      "unit": "percent",
+      "points": [
+        [
+          1.008,
+          1.462
+        ],
+        [
+          2.001,
+          0
+        ],
+        [
+          3.007,
+          0
+        ],
+        [
+          4.007,
+          0
+        ],
+        [
+          5.001,
+          0
+        ],
+        [
+          6.005,
+          0.018
+        ],
+        [
+          7.007,
+          0
+        ],
+        [
+          8.001,
+          0
+        ],
+        [
+          9.006,
+          0
+        ],
+        [
+          10.007,
+          0.011
+        ],
+        [
+          11.001,
+          0.01
+        ],
+        [
+          12.007,
+          0
+        ],
+        [
+          13.007,
+          0
+        ],
+        [
+          14.007,
+          0
+        ],
+        [
+          15,
+          0
+        ],
+        [
+          16.007,
+          0
+        ],
+        [
+          17.001,
+          0
+        ],
+        [
+          18.007,
+          0
+        ],
+        [
+          18.999,
+          0
+        ],
+        [
+          20.007,
+          0
+        ],
+        [
+          21.001,
+          0
+        ],
+        [
+          22.007,
+          0
+        ],
+        [
+          23.006,
+          0
+        ],
+        [
+          24.006,
+          0
+        ],
+        [
+          25.001,
+          0
+        ],
+        [
+          26.007,
+          0
+        ],
+        [
+          27.007,
+          0
+        ],
+        [
+          28.001,
+          0
+        ],
+        [
+          29.007,
+          0.003
+        ],
+        [
+          30,
+          2.442
+        ],
+        [
+          30.015,
+          0
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "large",
+      "scenario": "idle",
+      "name": "footprint_mib",
+      "unit": "MiB",
+      "points": [
+        [
+          0,
+          163.032
+        ],
+        [
+          1.008,
+          165.188
+        ],
+        [
+          2.001,
+          165.188
+        ],
+        [
+          3.007,
+          165.188
+        ],
+        [
+          4.001,
+          165.188
+        ],
+        [
+          5.006,
+          197.142
+        ],
+        [
+          6.007,
+          197.142
+        ],
+        [
+          7.008,
+          197.142
+        ],
+        [
+          8.001,
+          197.157
+        ],
+        [
+          9.007,
+          197.188
+        ],
+        [
+          10,
+          197.188
+        ],
+        [
+          11.006,
+          197.188
+        ],
+        [
+          12.007,
+          197.188
+        ],
+        [
+          13,
+          197.188
+        ],
+        [
+          14.007,
+          197.188
+        ],
+        [
+          15.008,
+          224.017
+        ],
+        [
+          16.002,
+          224.017
+        ],
+        [
+          17.007,
+          224.017
+        ],
+        [
+          18.007,
+          224.017
+        ],
+        [
+          19.007,
+          224.157
+        ],
+        [
+          20,
+          224.11
+        ],
+        [
+          21.006,
+          224.11
+        ],
+        [
+          22.001,
+          224.11
+        ],
+        [
+          23.008,
+          224.11
+        ],
+        [
+          24,
+          224.079
+        ],
+        [
+          25.004,
+          224.126
+        ],
+        [
+          26.006,
+          224.126
+        ],
+        [
+          26.999,
+          224.126
+        ],
+        [
+          28.006,
+          224.126
+        ],
+        [
+          29.006,
+          224.001
+        ],
+        [
+          30.003,
+          190.142
+        ],
+        [
+          30.004,
+          190.142
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "large",
+      "scenario": "idle",
+      "name": "cpu_percent",
+      "unit": "percent",
+      "points": [
+        [
+          1.008,
+          27.386
+        ],
+        [
+          2.001,
+          0.308
+        ],
+        [
+          3.007,
+          0.805
+        ],
+        [
+          4.001,
+          0.111
+        ],
+        [
+          5.006,
+          25.187
+        ],
+        [
+          6.007,
+          0.226
+        ],
+        [
+          7.008,
+          0.724
+        ],
+        [
+          8.001,
+          2.353
+        ],
+        [
+          9.007,
+          1.8
+        ],
+        [
+          10,
+          0.824
+        ],
+        [
+          11.006,
+          0.529
+        ],
+        [
+          12.007,
+          0.591
+        ],
+        [
+          13,
+          0.471
+        ],
+        [
+          14.007,
+          0.472
+        ],
+        [
+          15.008,
+          23.955
+        ],
+        [
+          16.002,
+          0.109
+        ],
+        [
+          17.007,
+          0.23
+        ],
+        [
+          18.007,
+          0.256
+        ],
+        [
+          19.007,
+          2.137
+        ],
+        [
+          20,
+          0.179
+        ],
+        [
+          21.006,
+          0.227
+        ],
+        [
+          22.001,
+          0.161
+        ],
+        [
+          23.008,
+          0.176
+        ],
+        [
+          24,
+          0.133
+        ],
+        [
+          25.004,
+          0.444
+        ],
+        [
+          26.006,
+          0.211
+        ],
+        [
+          26.999,
+          0.901
+        ],
+        [
+          28.006,
+          0.683
+        ],
+        [
+          29.006,
+          2.222
+        ],
+        [
+          30.003,
+          66.337
+        ],
+        [
+          30.004,
+          11.105
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "large",
+      "scenario": "idle",
+      "name": "footprint_mib",
+      "unit": "MiB",
+      "points": [
+        [
+          0,
+          159.704
+        ],
+        [
+          1.008,
+          161.704
+        ],
+        [
+          2.008,
+          161.704
+        ],
+        [
+          3.001,
+          161.704
+        ],
+        [
+          4.006,
+          161.782
+        ],
+        [
+          5.001,
+          191.657
+        ],
+        [
+          6.005,
+          191.657
+        ],
+        [
+          7.008,
+          191.657
+        ],
+        [
+          8,
+          191.688
+        ],
+        [
+          9.008,
+          191.704
+        ],
+        [
+          10.002,
+          191.704
+        ],
+        [
+          11.007,
+          191.704
+        ],
+        [
+          12.001,
+          191.704
+        ],
+        [
+          13.008,
+          191.767
+        ],
+        [
+          14.001,
+          191.767
+        ],
+        [
+          15.007,
+          221.157
+        ],
+        [
+          16.008,
+          221.157
+        ],
+        [
+          17.001,
+          221.157
+        ],
+        [
+          18.005,
+          221.157
+        ],
+        [
+          19.007,
+          221.157
+        ],
+        [
+          20.001,
+          221.11
+        ],
+        [
+          21.006,
+          221.11
+        ],
+        [
+          22.007,
+          221.11
+        ],
+        [
+          23.004,
+          221.11
+        ],
+        [
+          24.001,
+          221.11
+        ],
+        [
+          25.007,
+          221.11
+        ],
+        [
+          26.001,
+          221.11
+        ],
+        [
+          27.005,
+          221.485
+        ],
+        [
+          28.001,
+          221.485
+        ],
+        [
+          29.007,
+          221.439
+        ],
+        [
+          30.001,
+          196.485
+        ],
+        [
+          30.005,
+          196.485
+        ]
+      ]
+    },
+    {
+      "app": "v1",
+      "dataset": "large",
+      "scenario": "idle",
+      "name": "cpu_percent",
+      "unit": "percent",
+      "points": [
+        [
+          1.008,
+          20.315
+        ],
+        [
+          2.008,
+          0.673
+        ],
+        [
+          3.001,
+          0.49
+        ],
+        [
+          4.006,
+          2.043
+        ],
+        [
+          5.001,
+          23.303
+        ],
+        [
+          6.005,
+          0.576
+        ],
+        [
+          7.008,
+          1.025
+        ],
+        [
+          8,
+          3.359
+        ],
+        [
+          9.008,
+          0.593
+        ],
+        [
+          10.002,
+          0.964
+        ],
+        [
+          11.007,
+          0.532
+        ],
+        [
+          12.001,
+          0.408
+        ],
+        [
+          13.008,
+          0.54
+        ],
+        [
+          14.001,
+          0.864
+        ],
+        [
+          15.007,
+          30.119
+        ],
+        [
+          16.008,
+          0.201
+        ],
+        [
+          17.001,
+          0.258
+        ],
+        [
+          18.005,
+          0.195
+        ],
+        [
+          19.007,
+          2.178
+        ],
+        [
+          20.001,
+          0.428
+        ],
+        [
+          21.006,
+          0.153
+        ],
+        [
+          22.007,
+          0.2
+        ],
+        [
+          23.004,
+          0.153
+        ],
+        [
+          24.001,
+          0.387
+        ],
+        [
+          25.007,
+          0.292
+        ],
+        [
+          26.001,
+          0.305
+        ],
+        [
+          27.005,
+          0.873
+        ],
+        [
+          28.001,
+          0.686
+        ],
+        [
+          29.007,
+          2.792
+        ],
+        [
+          30.001,
+          61.147
+        ],
+        [
+          30.005,
+          0
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "large",
+      "scenario": "idle",
+      "name": "footprint_mib",
+      "unit": "MiB",
+      "points": [
+        [
+          0,
+          42.594
+        ],
+        [
+          1.007,
+          42.61
+        ],
+        [
+          2.001,
+          42.61
+        ],
+        [
+          3.005,
+          42.594
+        ],
+        [
+          4.007,
+          42.516
+        ],
+        [
+          5.002,
+          42.516
+        ],
+        [
+          6.005,
+          42.516
+        ],
+        [
+          7.001,
+          42.516
+        ],
+        [
+          8.008,
+          42.516
+        ],
+        [
+          9.008,
+          42.516
+        ],
+        [
+          10.001,
+          42.516
+        ],
+        [
+          11.007,
+          42.485
+        ],
+        [
+          12,
+          42.485
+        ],
+        [
+          13.007,
+          42.485
+        ],
+        [
+          14,
+          42.485
+        ],
+        [
+          15.007,
+          42.485
+        ],
+        [
+          16.001,
+          42.485
+        ],
+        [
+          17.006,
+          42.485
+        ],
+        [
+          18.007,
+          42.485
+        ],
+        [
+          19.007,
+          42.485
+        ],
+        [
+          19.999,
+          42.485
+        ],
+        [
+          21.006,
+          42.485
+        ],
+        [
+          22.007,
+          42.485
+        ],
+        [
+          23.001,
+          30.282
+        ],
+        [
+          24.006,
+          30.282
+        ],
+        [
+          25.007,
+          30.282
+        ],
+        [
+          26.001,
+          30.282
+        ],
+        [
+          27.007,
+          30.282
+        ],
+        [
+          28.001,
+          30.282
+        ],
+        [
+          29.006,
+          30.423
+        ],
+        [
+          30.001,
+          30.61
+        ],
+        [
+          30.002,
+          30.673
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "large",
+      "scenario": "idle",
+      "name": "cpu_percent",
+      "unit": "percent",
+      "points": [
+        [
+          1.007,
+          4.172
+        ],
+        [
+          2.001,
+          0
+        ],
+        [
+          3.005,
+          0.016
+        ],
+        [
+          4.007,
+          0.045
+        ],
+        [
+          5.002,
+          0
+        ],
+        [
+          6.005,
+          0
+        ],
+        [
+          7.001,
+          0
+        ],
+        [
+          8.008,
+          0
+        ],
+        [
+          9.008,
+          0
+        ],
+        [
+          10.001,
+          0
+        ],
+        [
+          11.007,
+          0.021
+        ],
+        [
+          12,
+          0
+        ],
+        [
+          13.007,
+          0
+        ],
+        [
+          14,
+          0
+        ],
+        [
+          15.007,
+          0
+        ],
+        [
+          16.001,
+          0
+        ],
+        [
+          17.006,
+          0
+        ],
+        [
+          18.007,
+          0
+        ],
+        [
+          19.007,
+          0
+        ],
+        [
+          19.999,
+          0
+        ],
+        [
+          21.006,
+          0
+        ],
+        [
+          22.007,
+          0.004
+        ],
+        [
+          23.001,
+          13.165
+        ],
+        [
+          24.006,
+          0
+        ],
+        [
+          25.007,
+          0
+        ],
+        [
+          26.001,
+          0.003
+        ],
+        [
+          27.007,
+          0
+        ],
+        [
+          28.001,
+          0
+        ],
+        [
+          29.006,
+          2.677
+        ],
+        [
+          30.001,
+          90.892
+        ],
+        [
+          30.002,
+          172.673
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "large",
+      "scenario": "idle",
+      "name": "footprint_mib",
+      "unit": "MiB",
+      "points": [
+        [
+          0,
+          43.423
+        ],
+        [
+          1.007,
+          43.485
+        ],
+        [
+          1.999,
+          43.485
+        ],
+        [
+          3.008,
+          43.469
+        ],
+        [
+          4.001,
+          43.454
+        ],
+        [
+          5.007,
+          43.454
+        ],
+        [
+          6.001,
+          43.454
+        ],
+        [
+          7.008,
+          43.454
+        ],
+        [
+          8.001,
+          43.454
+        ],
+        [
+          9.007,
+          43.454
+        ],
+        [
+          10.008,
+          43.423
+        ],
+        [
+          11.001,
+          43.423
+        ],
+        [
+          12.007,
+          43.423
+        ],
+        [
+          13.008,
+          43.423
+        ],
+        [
+          14,
+          43.423
+        ],
+        [
+          15.007,
+          43.423
+        ],
+        [
+          16.001,
+          43.423
+        ],
+        [
+          17.007,
+          43.423
+        ],
+        [
+          18.007,
+          43.423
+        ],
+        [
+          19,
+          43.423
+        ],
+        [
+          20.007,
+          43.423
+        ],
+        [
+          21.008,
+          43.423
+        ],
+        [
+          22.001,
+          43.423
+        ],
+        [
+          23.007,
+          28.751
+        ],
+        [
+          24.001,
+          28.751
+        ],
+        [
+          25.007,
+          28.751
+        ],
+        [
+          26.008,
+          28.751
+        ],
+        [
+          27.001,
+          28.751
+        ],
+        [
+          28.003,
+          28.751
+        ],
+        [
+          29.008,
+          28.891
+        ],
+        [
+          30,
+          28.938
+        ],
+        [
+          30.01,
+          28.938
+        ]
+      ]
+    },
+    {
+      "app": "v2",
+      "dataset": "large",
+      "scenario": "idle",
+      "name": "cpu_percent",
+      "unit": "percent",
+      "points": [
+        [
+          1.007,
+          5.08
+        ],
+        [
+          1.999,
+          0
+        ],
+        [
+          3.008,
+          0.01
+        ],
+        [
+          4.001,
+          0.01
+        ],
+        [
+          5.007,
+          0
+        ],
+        [
+          6.001,
+          0
+        ],
+        [
+          7.008,
+          0
+        ],
+        [
+          8.001,
+          0
+        ],
+        [
+          9.007,
+          0
+        ],
+        [
+          10.008,
+          0.015
+        ],
+        [
+          11.001,
+          0
+        ],
+        [
+          12.007,
+          0
+        ],
+        [
+          13.008,
+          0
+        ],
+        [
+          14,
+          0
+        ],
+        [
+          15.007,
+          0
+        ],
+        [
+          16.001,
+          0
+        ],
+        [
+          17.007,
+          0
+        ],
+        [
+          18.007,
+          0
+        ],
+        [
+          19,
+          0
+        ],
+        [
+          20.007,
+          0
+        ],
+        [
+          21.008,
+          0
+        ],
+        [
+          22.001,
+          0.003
+        ],
+        [
+          23.007,
+          13.398
+        ],
+        [
+          24.001,
+          0
+        ],
+        [
+          25.007,
+          0
+        ],
+        [
+          26.008,
+          0.003
+        ],
+        [
+          27.001,
+          0
+        ],
+        [
+          28.003,
+          0
+        ],
+        [
+          29.008,
+          2.962
+        ],
+        [
+          30,
+          90.053
+        ],
+        [
+          30.01,
+          113.144
+        ]
+      ]
+    }
+  ],
+  "notes": [
+    "2 run(s) per dataset and app, sampled every 1000 ms from ready: a settling phase of 20 s (reported as settling_cpu_s and settling_peak_footprint_mib), then the measured idle window of 10 s (+20 s to +30 s after ready) for means, CPU and wakeups",
+    "process set: the headless backend only (V1 Ivy.Tendril --web, which includes its server-side UI; V2 tendril serve without the tendril-app host); whole desktop process trees are in the desktop suite",
+    "user CLI symlinks unchanged (/usr/local/bin/tendril -> absent, ~/.local/bin/tendril -> /Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril)"
+  ],
+  "failures": []
+}
