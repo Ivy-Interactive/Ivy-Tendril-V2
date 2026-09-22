@@ -24,6 +24,43 @@
     background: var(--background);
   }
 
+  /*
+   * The column divider: a hairline on each header cell's trailing edge, marking where to grab to
+   * resize.
+   *
+   * The resize handle is 6px wide and straddles the cell boundary (`-right-[3px] w-[6px]`), so it is
+   * invisible until pointed at — a drag target nobody can find. This paints the line the handle
+   * *would* highlight, at rest, in the same place: `right: 0` here and the handle's own `after` at
+   * its horizontal centre both land on the cell edge, so hovering brightens the very line the reader
+   * aimed at rather than revealing a second one beside it.
+   *
+   * A `::after` on the `th` rather than `border-r`, because a border would be laid out inside the
+   * cell box and shift the label by a pixel at every column; and because the resizer's own `::after`
+   * has to paint *over* this one, which a border cannot lose to (the handle carries `z-10`).
+   *
+   * `inset-block` insets it top and bottom exactly as the handle's line is inset (`after:inset-y-1`
+   * = 4px), so the two are the same mark rather than two marks of different lengths. It stops short
+   * of the header's own bottom hairline for the same reason.
+   *
+   * `:last-child` is excluded so the divider never doubles with the table's outer border on the
+   * right-hand column — which is also why this is `right: 0` on the cell and not a left border on
+   * the next one: the *next* cell's absolutely positioned reorder grip sits at `-left-2` (8px into
+   * this cell's padding at Small), and a left border there would collide with the grip.
+   *
+   * Header only: `thead th` never matches a body cell, so rows keep the clean horizontal-rule look
+   * the reference asks for.
+   */
+  .ivy-data-table thead th:not(:last-child)::after {
+    content: "";
+    position: absolute;
+    top: 4px;
+    bottom: 4px;
+    right: 0;
+    width: 1px;
+    background: var(--border);
+    pointer-events: none;
+  }
+
   /* wrapText: false (the default) — single line, ellipsis on overflow. */
   .ivy-data-table td.ivy-data-table-nowrap {
     overflow: hidden;

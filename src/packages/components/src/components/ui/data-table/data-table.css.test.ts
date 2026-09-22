@@ -34,6 +34,26 @@ describe("data-table.css", () => {
     expect(block).toMatch(/background:\s*var\(--background\)/);
   });
 
+  it("marks each column's drag target with a hairline on the header cell's trailing edge", () => {
+    // The resize handle is transparent until pointed at, so without this the thing a reader has to
+    // aim at is invisible. `right: 0` puts the line on the cell boundary, which is the horizontal
+    // centre of the 6px handle that straddles it — so hovering brightens this line rather than
+    // revealing a second one next to it.
+    const block = ruleBody(".ivy-data-table thead th:not(:last-child)::after");
+    expect(block).toMatch(/right:\s*0/);
+    expect(block).toMatch(/width:\s*1px/);
+    expect(block).toMatch(/background:\s*var\(--border\)/);
+    // It must never swallow a press meant for the handle sitting over it.
+    expect(block).toMatch(/pointer-events:\s*none/);
+  });
+
+  it("keeps the divider off the last column and out of the body", () => {
+    // `:last-child` would otherwise double with the table's own right-hand border, and a `td` rule
+    // would turn the rows into a grid — the reference is horizontal rules only.
+    expect(css).toMatch(/thead th:not\(:last-child\)::after/);
+    expect(css).not.toMatch(/tbody td[^{]*::after\s*\{[^}]*right:\s*0/);
+  });
+
   it("pins column widths while windowed, so scrolling does not resize columns", () => {
     const block = ruleBody(".ivy-data-table.ivy-data-table-virtualized");
     expect(block).toMatch(/table-layout:\s*fixed/);
