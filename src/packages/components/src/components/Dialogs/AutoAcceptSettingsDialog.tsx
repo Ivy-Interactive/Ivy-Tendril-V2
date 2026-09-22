@@ -21,7 +21,7 @@ export interface AutoAcceptSettingsDialogProps {
    */
   loadSettings: () => Promise<{ autoAccept?: boolean; checkIntervalMinutes?: number } | undefined>;
   saveSettings: (settings: { autoAccept: boolean; checkIntervalMinutes: number }) => Promise<void>;
-  runCheck: () => Promise<{ imported: unknown[]; skipped: number }>;
+  runCheck: () => Promise<{ outcome?: string; imported: unknown[]; skipped: number }>;
   describeError?: (err: unknown) => string;
 }
 

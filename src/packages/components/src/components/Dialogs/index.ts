@@ -79,3 +79,11 @@ export {
   readSource,
   type AppComment,
 } from "./appComments";
+export {
+  JobDebugSheet,
+  buildJobDebugFields,
+  formatJobDebugDetails,
+  type JobDebugSheetProps,
+  type JobDebugDetail,
+  type JobDebugField,
+} from "./JobDebugSheet";

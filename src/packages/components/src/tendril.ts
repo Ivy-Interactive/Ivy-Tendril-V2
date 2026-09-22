@@ -353,6 +353,9 @@ export {
   CreateIssueDialog,
   CreatePrDialog,
   SuggestChangesDialog,
+  JobDebugSheet,
+  buildJobDebugFields,
+  formatJobDebugDetails,
   formatChangeRequest,
   readSource,
   type DialogShellProps,
@@ -383,4 +386,7 @@ export {
   type CreatePrOptions,
   type SuggestChangesDialogProps,
   type AppComment,
+  type JobDebugSheetProps,
+  type JobDebugDetail,
+  type JobDebugField,
 } from "./components/Dialogs";

@@ -46,12 +46,6 @@ export interface SuggestChangesDialogProps {
   appUrl?: string;
 }
 
-/**
- * Port of `AppPreview.IsUnfinished`. `Blocked` counts: it is a job already waiting its turn, and the
- * next request belongs after it rather than beside it — which is what makes repeated Update presses
- * form a chain instead of a pile-up.
- */
-const UNFINISHED: ReadonlyArray<Job["status"]> = ["Pending", "Queued", "Running", "Blocked"];
 
 /**
  * Port of `AppPreview.JobsToWaitFor`: everything unfinished on this plan, not only the retries. Two
