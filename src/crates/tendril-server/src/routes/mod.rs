@@ -85,6 +85,10 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             get(plans::plan_artifacts_handler),
         )
         .route(
+            "/api/plans/:id/artifacts/content",
+            get(plans::plan_artifact_content_handler),
+        )
+        .route(
             "/api/plans/:id/revisions",
             get(plans::get_revision_handler).post(plans::write_revision_handler),
         )
