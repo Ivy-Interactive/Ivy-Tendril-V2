@@ -365,6 +365,7 @@
 
 .tsh-logo-toggle .tsh-header-logo {
   transition: opacity var(--duration-base) var(--ease-standard);
+  will-change: opacity;
 }
 
 .tsh-logo-toggle-icon {
@@ -375,6 +376,7 @@
   justify-content: center;
   opacity: 0;
   transition: opacity var(--duration-base) var(--ease-standard);
+  will-change: opacity;
 }
 
 /* Every rule that paints the panel icon in this slot - or fades the brand mark out to make room
@@ -435,7 +437,6 @@
   color: var(--primary-foreground);
   cursor: pointer;
   overflow: hidden;
-  transition: opacity var(--duration-base) var(--ease-standard);
 }
 
 .tsh-newplan:hover {
@@ -502,10 +503,12 @@
   justify-content: center;
   opacity: 0;
   transition: opacity var(--duration-base) var(--ease-standard);
+  will-change: opacity;
 }
 
 .tsh-agent-icon > svg {
   transition: opacity var(--duration-base) var(--ease-standard);
+  will-change: opacity;
 }
 
 .tsh-agent[data-has-list="true"]:hover .tsh-agent-icon > svg,
@@ -800,9 +803,7 @@
   direction: rtl;
   text-overflow: ellipsis;
   cursor: pointer;
-  transition:
-    opacity var(--duration-base) var(--ease-standard),
-    background-color var(--duration-base) var(--ease-standard);
+  transition: background-color var(--duration-base) var(--ease-standard);
 }
 
 .tsh-rail-item-text {
@@ -1045,6 +1046,10 @@
   top: 8px;
   right: 8px;
   opacity: 0;
+  transition:
+    background-color var(--duration-fast) var(--ease-standard),
+    color var(--duration-fast) var(--ease-standard),
+    opacity var(--duration-fast) var(--ease-standard);
 }
 
 .tsh-section-item-wrap:hover .tsh-section-item-menu-btn,
