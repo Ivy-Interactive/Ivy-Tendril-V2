@@ -199,6 +199,44 @@ describe("the agent viewer's metrics footer", () => {
     expect(screen.getByTestId("agent-metrics-elapsed")).toHaveTextContent("4s");
   });
 
+  /**
+   * The labels read as words, not as a row of small caps, and each figure carries its own glyph. The
+   * icon is decorative - it repeats the label - so it must stay out of the accessibility tree.
+   */
+  it("labels the figures in sentence case, each with a muted decorative icon", () => {
+    const { container } = render(
+      <AgentViewer
+        id="labelled"
+        jsonLines={[
+          textLine(START, "hi"),
+          resultLine("2026-09-16T12:00:10.000Z", {
+            usage: { ...REPORTED_USAGE, cost_usd: 0.5, cost_source: "agent" },
+            duration_ms: 10_000,
+          }),
+        ]}
+        eventHandler={() => {}}
+        autoScroll={false}
+      />,
+    );
+
+    const footer = screen.getByTestId("agent-metrics-footer");
+    expect(footer).toHaveTextContent("Output time");
+    expect(footer).toHaveTextContent("Tokens");
+    expect(footer).toHaveTextContent("Cost");
+    // Not shouted, and not re-cased by CSS either: the rule that did that is gone.
+    expect(footer.textContent).not.toMatch(/OUTPUT TIME|TOKENS|COST/);
+
+    // One glyph per figure, hidden from assistive tech because the label already says it.
+    const icons = container.querySelectorAll(".aov-metric-icon");
+    expect(icons).toHaveLength(3);
+    for (const icon of icons) {
+      expect(icon).toHaveAttribute("aria-hidden", "true");
+    }
+    for (const testId of ["agent-metrics-elapsed", "agent-metrics-tokens", "agent-metrics-cost"]) {
+      expect(screen.getByTestId(testId).querySelector(".aov-metric-icon")).not.toBeNull();
+    }
+  });
+
   it("can be turned off", () => {
     render(
       <AgentViewer

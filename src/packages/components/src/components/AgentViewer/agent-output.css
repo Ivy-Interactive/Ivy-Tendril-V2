@@ -148,20 +148,27 @@
   border-top: none;
 }
 
+/* `center` rather than `baseline`: the icon is a box, not a glyph with a baseline of its own, and
+   aligning it on one drops it below the text it labels. */
 .aov-metric {
   display: inline-flex;
-  align-items: baseline;
+  align-items: center;
   gap: 5px;
   min-width: 0;
   white-space: nowrap;
 }
 
+/* The figure's glyph, at the label's weight rather than the value's: it is the quietest part of the
+   strip, and it repeats what the label says. */
+.aov-metric-icon {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
+  color: var(--aov-fg-faint);
+}
+
 .aov-metric-label {
   color: var(--aov-fg-faint);
-  /* Small caps rather than a smaller size: at 12px there is nowhere smaller to go. */
-  font-size: var(--text-xs-tight);
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
 }
 
 .aov-metric-value {
