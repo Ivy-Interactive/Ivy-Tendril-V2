@@ -198,8 +198,27 @@ describe("DashboardView analytics", () => {
     expect(screen.getByText("Port the Pull Requests dashboard view")).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "open" })).toHaveAttribute("href", MERGED_PRS[0].prUrl);
 
-    fireEvent.click(screen.getByRole("button", { name: "Close breakdown" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
     expect(screen.queryByTestId("kpi-breakdown")).not.toBeInTheDocument();
+  });
+
+  it("height-bounds the blade host so the blade scrolls instead of the sheet growing", async () => {
+    mockAnalytics(activity());
+    renderDashboard();
+
+    await clickKpi("Features Shipped");
+
+    const panel = screen.getByTestId("kpi-breakdown");
+    // The sheet itself is a fixed-height flex column that clips rather than growing to fit its
+    // content - the opposite of the hand-rolled `fixed inset-0` overlay this replaces, which had
+    // no height constraint of its own and let a blade's content clip the viewport instead.
+    expect(panel).toHaveClass("flex", "flex-col", "overflow-hidden");
+    // The blade host is `flex-1 min-h-0` inside that column, so it is bounded to the remaining
+    // height rather than sizing to its content - the constraint that lets the blade's own
+    // ScrollArea do the scrolling.
+    const bladeHost = screen.getByRole("group", { name: "Blades" });
+    expect(panel).toContainElement(bladeHost);
+    expect(bladeHost).toHaveClass("flex-1", "min-h-0");
   });
 
   it("renders an unpriced plan cost as a dash, never $0.00", async () => {
