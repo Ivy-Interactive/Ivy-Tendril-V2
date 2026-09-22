@@ -1,10 +1,13 @@
 import { Terminal } from "lucide-react";
 import type { DoctorCheck } from "../../types/api";
+import { useTranslation } from "../../i18n";
 import { CheckBadge, PrerequisiteChecks } from "./PrerequisitesStep";
 
 /**
  * The agents the wizard offers, in V1's order and with V1's labels
- * (`CodingAgentStepView.Agents`: claude, copilot, codex, gemini, antigravity, opencode).
+ * (`CodingAgentStepView.Agents`: claude, copilot, codex, gemini, antigravity, opencode). The labels
+ * are product names and stay as they are in every language; `agent-roster-parity.test.ts` holds
+ * them equal to the settings pane's.
  * `checkName` is the label the health registry reports for the same CLI, which is how a card is
  * annotated with its install status.
  */
@@ -99,15 +102,13 @@ export function CodingAgentStep({
   onSelectAgent,
   busy = false,
 }: CodingAgentStepProps) {
+  const { t } = useTranslation("onboarding");
   const statusFor = (checkName: string) => checks.find((c) => c.name === checkName);
 
   return (
     <div className="space-y-4" data-testid="onboarding-step-agent">
-      <h3 className="text-base font-semibold text-foreground">What is your coding agent?</h3>
-      <p className="text-sm text-muted-foreground">
-        Tendril is a coding orchestrator that runs on top of your own coding agent. Pick the agent
-        you'd like to use:
-      </p>
+      <h3 className="text-base font-semibold text-foreground">{t("codingAgent.title")}</h3>
+      <p className="text-sm text-muted-foreground">{t("codingAgent.description")}</p>
 
       <div className="grid grid-cols-3 gap-3">
         {ONBOARDING_AGENTS.map((agent) => {

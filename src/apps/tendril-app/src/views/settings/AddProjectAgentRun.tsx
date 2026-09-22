@@ -2,6 +2,7 @@ import React from "react";
 import { AgentViewer } from "@ivy-interactive/components/tendril";
 import { isActiveStatus, jobsStore } from "../../state/jobsStore";
 import type { JobDetail, JobStatus } from "../../types/api";
+import { useTranslation, type TFunction } from "../../i18n";
 
 /**
  * The live `AddProject` run - V1's `ProjectAgentStepView` body, which is an `AgentViewer` over the
@@ -27,8 +28,11 @@ import type { JobDetail, JobStatus } from "../../types/api";
  *
  * A cancel is not a failure: `Stopped` is what Skip and Back produce, and V1 sets no error for a run
  * it cancelled itself (`session.Cancelled`).
+ *
+ * The daemon's reason is shown as it is; only the fallbacks are this app's words.
  */
 function failureMessage(
+  t: TFunction<"onboarding">,
   detail: JobDetail | undefined,
   status: JobStatus | undefined,
 ): string | null {
@@ -36,7 +40,7 @@ function failureMessage(
     return null;
   }
   if (detail?.reportedFailureReason) return detail.reportedFailureReason;
-  return status === "Timeout" ? "Setup timed out." : "Setup failed.";
+  return status === "Timeout" ? t("agentRun.timedOut") : t("agentRun.failed");
 }
 
 export interface AddProjectAgentRunProps {
@@ -48,6 +52,7 @@ export interface AddProjectAgentRunProps {
 const noop = () => {};
 
 export const AddProjectAgentRun: React.FC<AddProjectAgentRunProps> = ({ jobId, onFinished }) => {
+  const { t } = useTranslation("onboarding");
   const [events, setEvents] = React.useState(() => jobsStore.getSessionEvents(jobId));
   const [status, setStatus] = React.useState<JobStatus | undefined>(
     () => jobsStore.getJobDetail(jobId)?.status,
@@ -103,7 +108,7 @@ export const AddProjectAgentRun: React.FC<AddProjectAgentRunProps> = ({ jobId, o
   }
 
   const isRunning = status === undefined || isActiveStatus(status);
-  const failure = failureMessage(detail, status);
+  const failure = failureMessage(t, detail, status);
 
   return (
     <div className="space-y-2">
