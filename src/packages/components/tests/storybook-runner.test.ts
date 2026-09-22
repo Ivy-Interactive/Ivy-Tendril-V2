@@ -101,7 +101,9 @@ describe("Storybook dev server runner", () => {
 
   it("resolves the Storybook CLI entrypoint to an existing executable script", () => {
     const pkgPath = createRequire(import.meta.url).resolve("storybook/package.json");
-    const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as { bin?: string | Record<string, string> };
+    const pkg = JSON.parse(readFileSync(pkgPath, "utf8")) as {
+      bin?: string | Record<string, string>;
+    };
     const binRel = typeof pkg.bin === "string" ? pkg.bin : pkg.bin?.storybook;
     expect(binRel).toBeDefined();
     const cliPath = path.resolve(path.dirname(pkgPath), binRel!);
