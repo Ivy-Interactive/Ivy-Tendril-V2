@@ -315,6 +315,7 @@ describe("BladeContainer", () => {
     expect(large.style.width).toBe("");
 
     expect(sectionAt(2).className).toContain("flex-1");
+    expect(sectionAt(2).className).toContain("contain-inline-size");
 
     const custom = sectionAt(3);
     expect(custom.style.width).toBe("30rem");
@@ -405,7 +406,10 @@ describe("BladeContainer", () => {
    * content inside a ~950px window, and the "Add …" buttons on its right edge went off-screen.
    *
    * `min-w-full` is the floor that makes the row match the pane, while leaving `w-max` free to exceed it
-   * when a stack of fixed-width blades genuinely needs more room.
+   * when a stack of fixed-width blades genuinely needs more room. It is only a floor: the Dashboard's KPI
+   * sheet, a lone flex blade whose callout is one long sentence, still made a 1211px row in a 768px
+   * sheet, and the scroll-into-view then parked the start of every line off the left edge. The other
+   * half is on the blade — see the flex cases below.
    */
   describe("the blade row's width", () => {
     const rowOf = (): HTMLElement => {
@@ -414,12 +418,63 @@ describe("BladeContainer", () => {
       return row;
     };
 
-    it("fills the container at least, so a flex blade is not sized by its content", () => {
+    it("fills the container at least", () => {
       renderStack();
 
       const row = rowOf();
       expect(row).toHaveClass("w-max");
       expect(row).toHaveClass("min-w-full");
+    });
+
+    /**
+     * The half of "a flex blade is not sized by its content" that the row cannot do. A max-content row
+     * asks each blade how wide it would like to be, and inline-size containment is what makes a flex
+     * blade answer as if it were empty: the row is then sized by the pane and the fixed blades, and
+     * `flex-1` hands the flex blade what is left over.
+     *
+     * `min-w-80` is asserted with it because containment alone answers *zero*. Beside a stack wider
+     * than the pane that would leave the flex blade a hairline; `sm`'s width is the floor, and the row
+     * scrolls instead.
+     */
+    it("keeps a flex blade's content out of the row's width, down to a floor", () => {
+      const { ref } = renderStack({ root: { ...root, width: "flex" } });
+      pushAll(ref, blade("Detail", { width: "lg" }));
+
+      expect(sectionAt(0)).toHaveClass("flex-1", "contain-inline-size", "min-w-80");
+      // A fixed hint already answers with its own width, so it is left exactly as it was.
+      expect(sectionAt(1)).toHaveClass("w-136", "shrink-0");
+      expect(sectionAt(1)).not.toHaveClass("contain-inline-size");
+    });
+
+    it("drops the flex sizing when collapsed, where the one visible blade is the full row", () => {
+      renderStack({ root: { ...root, width: "flex" } });
+      resizeViewport(NARROW);
+
+      const only = sectionAt(0);
+      expect(only).toHaveClass("w-full", "min-w-0");
+      expect(only).not.toHaveClass("contain-inline-size");
+      expect(only).not.toHaveClass("min-w-80");
+    });
+
+    /**
+     * Inside the blade, the same question one level down. Radix wraps a scroll area's content in a
+     * `display: table` div, which is never narrower than its content's min-content width — so one table
+     * with a path in a `nowrap` column made the whole body wider than the blade, clipped on the right
+     * because the body only scrolls downwards. `fitWidth` makes that wrapper a block at the viewport's
+     * width: prose wraps to the blade, and the table scrolls inside its own frame.
+     *
+     * The class is what is asserted because the wrapper's `display` is an inline style Radix writes and
+     * the override is `!important`; jsdom resolves neither against the other, and does no layout.
+     */
+    it("lays each blade's body out at the blade's width, not its widest child's", () => {
+      const { ref } = renderStack();
+      pushAll(ref, blade("Detail"));
+
+      for (const index of [0, 1]) {
+        const viewport = sectionAt(index).querySelector("[data-radix-scroll-area-viewport]");
+        expect(viewport).not.toBeNull();
+        expect(viewport).toHaveClass("[&>div]:!block");
+      }
     });
 
     it("is a plain full-width row when collapsed, where there is only one blade", () => {
