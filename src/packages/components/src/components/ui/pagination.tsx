@@ -9,10 +9,18 @@ import { paginationContentVariant } from "@/components/ui/pagination-variant";
 import { useDensity } from "@/contexts/density-context";
 import { densityToButtonSize, densityToIconButtonSize } from "@/components/ui/density-scale";
 import { useDensityScale } from "@/contexts/density-context";
+import { useTranslation } from "@/i18n/uiCommon";
 
-const Pagination = ({ className, ...props }: React.ComponentProps<"nav">) => (
-  <nav aria-label="pagination" className={cn("flex w-fit justify-center", className)} {...props} />
-);
+const Pagination = ({ className, ...props }: React.ComponentProps<"nav">) => {
+  const { t } = useTranslation("uiCommon");
+  return (
+    <nav
+      aria-label={t("pagination.ariaLabel")}
+      className={cn("flex w-fit justify-center", className)}
+      {...props}
+    />
+  );
+};
 Pagination.displayName = "Pagination";
 
 const PaginationContent = React.forwardRef<
@@ -63,16 +71,17 @@ const PaginationPrevious = ({
   size,
   ...props
 }: React.ComponentProps<typeof PaginationLink>) => {
+  const { t } = useTranslation("uiCommon");
   const density = useDensity();
   return (
     <PaginationLink
-      aria-label="Go to previous page"
+      aria-label={t("pagination.previousAriaLabel")}
       size={size ?? densityToButtonSize(density)}
       className={cn("gap-1 pl-2.5", className)}
       {...props}
     >
       <ChevronLeft className="size-4" />
-      <span>Previous</span>
+      <span>{t("pagination.previous")}</span>
     </PaginationLink>
   );
 };
@@ -83,15 +92,16 @@ const PaginationNext = ({
   size,
   ...props
 }: React.ComponentProps<typeof PaginationLink>) => {
+  const { t } = useTranslation("uiCommon");
   const density = useDensity();
   return (
     <PaginationLink
-      aria-label="Go to next page"
+      aria-label={t("pagination.nextAriaLabel")}
       size={size ?? densityToButtonSize(density)}
       className={cn("gap-1 pr-2.5", className)}
       {...props}
     >
-      <span>Next</span>
+      <span>{t("pagination.next")}</span>
       <ChevronRight className="size-4" />
     </PaginationLink>
   );
@@ -99,6 +109,7 @@ const PaginationNext = ({
 PaginationNext.displayName = "PaginationNext";
 
 const PaginationEllipsis = ({ className, ...props }: React.ComponentProps<"span">) => {
+  const { t } = useTranslation("uiCommon");
   const { controlSize } = useDensityScale();
   return (
     <span
@@ -107,7 +118,7 @@ const PaginationEllipsis = ({ className, ...props }: React.ComponentProps<"span"
       {...props}
     >
       <MoreHorizontal className="size-4" />
-      <span className="sr-only">More pages</span>
+      <span className="sr-only">{t("pagination.morePages")}</span>
     </span>
   );
 };

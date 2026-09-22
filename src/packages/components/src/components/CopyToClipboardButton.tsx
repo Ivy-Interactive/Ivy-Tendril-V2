@@ -6,6 +6,7 @@ import { Densities } from "@/types/density";
 import { cva } from "class-variance-authority";
 import { controlSize } from "@/components/ui/density-scale";
 import { useDensity } from "@/contexts/density-context";
+import { useTranslation } from "@/i18n/uiCommon";
 import type React from "react";
 
 const copyIconVariant = cva("", {
@@ -52,6 +53,7 @@ export const CopyToClipboardButton: React.FC<CopyToClipboardButtonProps> = ({
   density,
   className,
 }) => {
+  const { t } = useTranslation("uiCommon");
   const [copied, setCopied] = useState(false);
   const contextDensity = useDensity();
   const effectiveDensity = density ?? contextDensity;
@@ -72,7 +74,7 @@ export const CopyToClipboardButton: React.FC<CopyToClipboardButtonProps> = ({
     <button
       type="button"
       onClick={handleCopy}
-      aria-label={ariaLabel || "Copy to clipboard"}
+      aria-label={ariaLabel || t("copyToClipboard.ariaLabel")}
       className={cn(
         isIconOnly
           ? cn(
@@ -107,7 +109,9 @@ export const CopyToClipboardButton: React.FC<CopyToClipboardButtonProps> = ({
           <Check className={copyIconVariant({ density: effectiveDensity })} />
         </span>
       </span>
-      {label && <span className="text-small-label">{copied ? "Copied!" : label}</span>}
+      {label && (
+        <span className="text-small-label">{copied ? t("copyToClipboard.copied") : label}</span>
+      )}
     </button>
   );
 };

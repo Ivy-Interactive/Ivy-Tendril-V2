@@ -7,6 +7,7 @@ import { NativeSelect } from "@/components/ui/native-select";
 import { densityToIconButtonSize } from "@/components/ui/density-scale";
 import { useDensity } from "@/contexts/density-context";
 import { Densities } from "@/types/density";
+import { useTranslation } from "@/i18n/uiCommon";
 
 export interface DataTablePaginationProps extends React.HTMLAttributes<HTMLElement> {
   /** 1-based, already clamped into `[1, pageCount]`. */
@@ -48,6 +49,7 @@ const DataTablePagination = React.forwardRef<HTMLElement, DataTablePaginationPro
     },
     ref,
   ) => {
+    const { t } = useTranslation("uiCommon");
     const contextDensity = useDensity();
     const density = propDensity ?? contextDensity;
     const iconSize = densityToIconButtonSize(density);
@@ -59,7 +61,7 @@ const DataTablePagination = React.forwardRef<HTMLElement, DataTablePaginationPro
     return (
       <nav
         ref={ref}
-        aria-label="Table pagination"
+        aria-label={t("dataTable.pagination.ariaLabel")}
         className={cn(
           "flex flex-wrap items-center justify-between gap-2 border-t border-border px-2 py-2",
           className,
@@ -67,7 +69,9 @@ const DataTablePagination = React.forwardRef<HTMLElement, DataTablePaginationPro
         {...props}
       >
         <p aria-live="polite" className="text-sm text-muted-foreground">
-          {total === 0 ? "No rows" : `Showing ${rangeStart}–${rangeEnd} of ${total}`}
+          {total === 0
+            ? t("dataTable.pagination.noRows")
+            : t("dataTable.pagination.showing", { start: rangeStart, end: rangeEnd, total })}
         </p>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -76,7 +80,7 @@ const DataTablePagination = React.forwardRef<HTMLElement, DataTablePaginationPro
               type="button"
               variant="ghost"
               size={iconSize}
-              aria-label="Go to first page"
+              aria-label={t("dataTable.pagination.firstPage")}
               disabled={atFirst}
               onClick={() => onPageChange(1)}
             >
@@ -86,7 +90,7 @@ const DataTablePagination = React.forwardRef<HTMLElement, DataTablePaginationPro
               type="button"
               variant="ghost"
               size={iconSize}
-              aria-label="Go to previous page"
+              aria-label={t("dataTable.pagination.previousPage")}
               disabled={atFirst}
               onClick={() => onPageChange(page - 1)}
             >
@@ -95,7 +99,7 @@ const DataTablePagination = React.forwardRef<HTMLElement, DataTablePaginationPro
           </div>
 
           <span className="text-sm text-muted-foreground">
-            Page {page} of {pageCount}
+            {t("dataTable.pagination.page", { page, pageCount })}
           </span>
 
           <div className="flex items-center gap-1">
@@ -103,7 +107,7 @@ const DataTablePagination = React.forwardRef<HTMLElement, DataTablePaginationPro
               type="button"
               variant="ghost"
               size={iconSize}
-              aria-label="Go to next page"
+              aria-label={t("dataTable.pagination.nextPage")}
               disabled={atLast}
               onClick={() => onPageChange(page + 1)}
             >
@@ -113,7 +117,7 @@ const DataTablePagination = React.forwardRef<HTMLElement, DataTablePaginationPro
               type="button"
               variant="ghost"
               size={iconSize}
-              aria-label="Go to last page"
+              aria-label={t("dataTable.pagination.lastPage")}
               disabled={atLast}
               onClick={() => onPageChange(pageCount)}
             >
@@ -122,7 +126,9 @@ const DataTablePagination = React.forwardRef<HTMLElement, DataTablePaginationPro
           </div>
 
           <label className="flex items-center gap-2" htmlFor={pageSizeId}>
-            <span className="text-sm text-muted-foreground">Rows per page</span>
+            <span className="text-sm text-muted-foreground">
+              {t("dataTable.pagination.rowsPerPage")}
+            </span>
             {/*
               Deliberately a native <select> rather than the Radix `Select` primitive: Radix needs
               `hasPointerCapture`/`scrollIntoView` polyfills that tests/setup.ts does not install,

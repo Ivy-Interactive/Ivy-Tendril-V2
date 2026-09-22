@@ -7,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { densityToIconButtonSize } from "@/components/ui/density-scale";
 import { Densities } from "@/types/density";
+import { Trans, useTranslation } from "@/i18n/uiCommon";
 
 import {
   filterExpressionColumns,
@@ -57,6 +58,7 @@ function DataTableFilterExpressionInner<TRow>(
   { columns, value, onCommit, density, className }: DataTableFilterExpressionProps<TRow>,
   ref: React.ForwardedRef<HTMLDivElement>,
 ) {
+  const { t } = useTranslation("uiCommon");
   const [draft, setDraft] = React.useState(value);
   const [error, setError] = React.useState<string | null>(null);
   const [expanded, setExpanded] = React.useState(value.length > 0);
@@ -110,8 +112,8 @@ function DataTableFilterExpressionInner<TRow>(
         type="button"
         variant="ghost"
         size={iconButtonSize}
-        aria-label="Filter"
-        title="Filter table data"
+        aria-label={t("dataTable.filter.toggle")}
+        title={t("dataTable.filter.toggleTitle")}
         aria-expanded={expanded}
         // The framework's own active styling for an expanded option (`DataTableOption.tsx`: `expanded ?
         // "bg-accent hover:bg-accent"`), extended to "a filter is applied" so a narrowed table says so
@@ -131,7 +133,7 @@ function DataTableFilterExpressionInner<TRow>(
             <Input
               type="text"
               density={density}
-              aria-label="Filter expression"
+              aria-label={t("dataTable.filter.input")}
               aria-invalid={error ? true : undefined}
               placeholder={filterExpressionPlaceholder(columns)}
               value={draft}
@@ -162,11 +164,11 @@ function DataTableFilterExpressionInner<TRow>(
                 type="button"
                 variant="ghost"
                 size="sm"
-                aria-label="Clear filter"
+                aria-label={t("dataTable.filter.clearAriaLabel")}
                 className="absolute right-0 top-0 h-full rounded-l-none border-l border-input px-2 text-xs"
                 onClick={clear}
               >
-                Clear
+                {t("dataTable.filter.clear")}
               </Button>
             )}
           </div>
@@ -189,23 +191,29 @@ function DataTableFilterExpressionInner<TRow>(
               type="button"
               variant="ghost"
               size={iconButtonSize}
-              aria-label="Filter syntax"
-              title="What can be filtered, and how"
+              aria-label={t("dataTable.filter.syntax")}
+              title={t("dataTable.filter.syntaxTitle")}
             >
               <CircleHelp aria-hidden="true" />
             </Button>
           </PopoverTrigger>
           <PopoverContent align="start" className="max-h-80 w-80 overflow-y-auto text-xs">
             <p className="mb-2 text-muted-foreground">
-              One expression, committed with Enter. Conditions join with <code>AND</code> /{" "}
-              <code>OR</code> and group with parentheses.
+              {/* `AND` and `OR` are the grammar's keywords, which the parser accepts in English only,
+                  so they are values rather than text a translation could change. */}
+              <Trans
+                ns="uiCommon"
+                i18nKey="dataTable.filter.help"
+                values={{ and: "AND", or: "OR" }}
+                components={{ code: <code /> }}
+              />
             </p>
             <ul className="mb-3 flex flex-col gap-1 font-mono">
               {filterExpressionExamples(columns).map((example) => (
                 <li key={example}>{example}</li>
               ))}
             </ul>
-            <p className="mb-1 font-medium">Filterable columns</p>
+            <p className="mb-1 font-medium">{t("dataTable.filter.filterableColumns")}</p>
             <ul className="flex flex-col gap-1">
               {columns
                 .filter((column) => Boolean(column.filter))
@@ -243,7 +251,7 @@ function DataTableFilterExpressionInner<TRow>(
             type="button"
             variant="ghost"
             size="sm"
-            aria-label="Clear filter"
+            aria-label={t("dataTable.filter.clearAriaLabel")}
             className="h-auto px-1 py-0.5 text-muted-foreground"
             onClick={clear}
           >

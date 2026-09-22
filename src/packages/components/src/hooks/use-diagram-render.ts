@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 import { logger } from "@/lib/logger";
+import { i18n } from "@/i18n/uiCommon";
 
 interface UseDiagramRenderResult {
   elementRef: RefObject<HTMLDivElement | null>;
@@ -100,7 +101,7 @@ export function useDiagramRender(
         if (mountedObj.current) {
           setState({
             isLoading: false,
-            error: err instanceof Error ? err.message : "Failed to render diagram",
+            error: err instanceof Error ? err.message : i18n.t("uiCommon:diagram.renderFailed"),
           });
         }
       }

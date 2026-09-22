@@ -9,8 +9,10 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { ErrorDisplay } from "@/components/ErrorDisplay";
+import { useTranslation } from "@/i18n/uiCommon";
 
 export function ErrorSheet() {
+  const { t } = useTranslation("uiCommon");
   const { errors, hideError, clearError } = useErrorSheet();
 
   return (
@@ -31,10 +33,8 @@ export function ErrorSheet() {
             className="w-full sm:max-w-lg flex flex-col h-full overflow-hidden"
           >
             <SheetHeader>
-              <SheetTitle>Oops! Something went wrong</SheetTitle>
-              <SheetDescription>
-                An error occurred in the application. Details are shown below.
-              </SheetDescription>
+              <SheetTitle>{t("errorSheet.title")}</SheetTitle>
+              <SheetDescription>{t("errorSheet.description")}</SheetDescription>
             </SheetHeader>
             <div className="flex-1 min-h-0 flex flex-col">
               <ErrorDisplay title={title} message={message} stackTrace={stackTrace} />

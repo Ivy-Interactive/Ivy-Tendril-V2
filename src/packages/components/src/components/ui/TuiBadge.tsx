@@ -1,6 +1,7 @@
 import React from "react";
 import { X } from "lucide-react";
 import { ivyColorVar } from "@/lib/ivy-color";
+import { useTranslation } from "@/i18n/uiCommon";
 import "./ui.css";
 
 export type BadgeKind =
@@ -57,7 +58,7 @@ export const TuiBadge: React.FC<TuiBadgeProps> = ({
   caps = false,
   icon,
   onRemove,
-  removeLabel = "Remove",
+  removeLabel,
   className = "",
   style,
   title,
@@ -81,18 +82,24 @@ export const TuiBadge: React.FC<TuiBadgeProps> = ({
   >
     {icon}
     {children}
-    {onRemove && (
-      <button
-        type="button"
-        className="tui-badge-remove"
-        aria-label={removeLabel}
-        onClick={onRemove}
-      >
-        <X size={10} aria-hidden="true" />
-      </button>
-    )}
+    {onRemove && <TuiBadgeRemoveButton label={removeLabel} onRemove={onRemove} />}
   </span>
 );
+
+/** The badge's remove control: its own component so only a removable badge subscribes to the language. */
+function TuiBadgeRemoveButton({ label, onRemove }: { label?: string; onRemove: () => void }) {
+  const { t } = useTranslation("uiCommon");
+  return (
+    <button
+      type="button"
+      className="tui-badge-remove"
+      aria-label={label ?? t("tuiBadge.remove")}
+      onClick={onRemove}
+    >
+      <X size={10} aria-hidden="true" />
+    </button>
+  );
+}
 
 export interface CountBadgeProps {
   count: number;
