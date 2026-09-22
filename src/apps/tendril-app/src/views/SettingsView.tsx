@@ -18,6 +18,7 @@ import { bridge } from "../api/bridge";
 import { notificationsStore } from "../state/notificationsStore";
 import { uiStore } from "../state/uiStore";
 import { readAppearance } from "../state/appearance";
+import { readLanguagePreference } from "../state/language";
 import { describeBridgeError, type ServiceInfo, type TendrilConfig } from "../types/api";
 import { ModelCatalogCard } from "../components/ModelCatalogCard";
 import { NewsletterSignup } from "../components/NewsletterSignup";
@@ -510,6 +511,8 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
   const agentEntries = React.useMemo(() => readAgentEntries(config), [config]);
   /** The three appearance keys, for the pane that applies them. */
   const appearance = React.useMemo(() => readAppearance(config), [config]);
+  /** `language`, which the same pane applies, and which is kept out of the appearance keys. */
+  const languagePreference = React.useMemo(() => readLanguagePreference(config), [config]);
 
   /**
    * One section's Save. Only changed keys are written: a full-object overwrite would clobber a
@@ -994,7 +997,11 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
               )}
 
               {on(SettingsTag.Appearance) && (
-                <AppearanceSection settings={appearance} onSaveRaw={saveRawKey} />
+                <AppearanceSection
+                  settings={appearance}
+                  language={languagePreference}
+                  onSaveRaw={saveRawKey}
+                />
               )}
 
               {/* `if (isBeta) rows.Add(("Team Vault", ...))`: gated, and labelled as V1 labels it. */}

@@ -1,137 +1,38 @@
 /**
- * Authoritative locale configurations matching Ivy-Web (`apps/web-new/config/locales.config.ts`).
+ * Locale configuration for the docs site.
  *
- * English is the default and is served unprefixed (`/docs/...`) so that existing URLs,
- * backlinks, and indexed pages keep working. Every other locale lives under its own path prefix
- * (`/{locale}/docs/...`).
+ * The locale table itself - the ten languages, their BCP 47 `hreflang` tags, native labels and
+ * `ogLocale`s - lives in `@ivy-interactive/components/i18n`, because the desktop app and the
+ * components' own strings use the same table. It matches Ivy-Web
+ * (`apps/web-new/config/locales.config.ts`), and is re-exported here so the site keeps importing it
+ * from one place.
  *
- * `hreflang` is the value emitted in alternate links and in `<html lang="...">`.
- * BCP 47 divergence:
- * - Brazilian Portuguese: prefix `/pt`, hreflang `pt-BR`, ogLocale `pt_BR`.
- * - Simplified Chinese: prefix `/zh`, hreflang `zh-CN`, ogLocale `zh_CN`.
- *
- * `ogLocale` is the Open Graph `language_TERRITORY` format.
+ * What stays here is docs-only: how a locale appears in a URL. English is the default and is served
+ * unprefixed (`/docs/...`) so that existing URLs, backlinks, and indexed pages keep working. Every
+ * other locale lives under its own path prefix (`/{locale}/docs/...`).
  */
+import {
+  DEFAULT_LOCALE,
+  LOCALE_CODES,
+  isSiteLocale,
+  type LocaleConfig,
+  type SiteLocale,
+} from "@ivy-interactive/components/i18n";
 
-export type SiteLocale = "en" | "de" | "ja" | "es" | "fr" | "pt" | "zh" | "ru" | "sv" | "hi";
-
-export interface LocaleConfig {
-  /** URL path prefix, without slashes. Also the locale code key. */
-  code: SiteLocale;
-  /** BCP 47 tag for `hreflang` and `<html lang="...">`. */
-  hreflang: string;
-  /** Native language name, for LanguageSwitcher. */
-  label: string;
-  /** English name, for `aria-label`s and accessibility. */
-  englishLabel: string;
-  /** Open Graph `og:locale`, in `language_TERRITORY` form. */
-  ogLocale: string;
-  /** Text direction ('ltr' for all 10 current locales). */
-  dir: "ltr" | "rtl";
-}
-
-export const DEFAULT_LOCALE: SiteLocale = "en";
-
-export const SITE_LOCALES: LocaleConfig[] = [
-  {
-    code: "en",
-    hreflang: "en",
-    label: "English",
-    englishLabel: "English",
-    ogLocale: "en_US",
-    dir: "ltr",
-  },
-  {
-    code: "de",
-    hreflang: "de",
-    label: "Deutsch",
-    englishLabel: "German",
-    ogLocale: "de_DE",
-    dir: "ltr",
-  },
-  {
-    code: "ja",
-    hreflang: "ja",
-    label: "日本語",
-    englishLabel: "Japanese",
-    ogLocale: "ja_JP",
-    dir: "ltr",
-  },
-  {
-    code: "es",
-    hreflang: "es",
-    label: "Español",
-    englishLabel: "Spanish",
-    ogLocale: "es_ES",
-    dir: "ltr",
-  },
-  {
-    code: "fr",
-    hreflang: "fr",
-    label: "Français",
-    englishLabel: "French",
-    ogLocale: "fr_FR",
-    dir: "ltr",
-  },
-  {
-    code: "pt",
-    hreflang: "pt-BR",
-    label: "Português (Brasil)",
-    englishLabel: "Portuguese (Brazil)",
-    ogLocale: "pt_BR",
-    dir: "ltr",
-  },
-  {
-    code: "zh",
-    hreflang: "zh-CN",
-    label: "简体中文",
-    englishLabel: "Chinese (Simplified)",
-    ogLocale: "zh_CN",
-    dir: "ltr",
-  },
-  {
-    code: "ru",
-    hreflang: "ru",
-    label: "Русский",
-    englishLabel: "Russian",
-    ogLocale: "ru_RU",
-    dir: "ltr",
-  },
-  {
-    code: "sv",
-    hreflang: "sv",
-    label: "Svenska",
-    englishLabel: "Swedish",
-    ogLocale: "sv_SE",
-    dir: "ltr",
-  },
-  {
-    code: "hi",
-    hreflang: "hi",
-    label: "हिन्दी",
-    englishLabel: "Hindi",
-    ogLocale: "hi_IN",
-    dir: "ltr",
-  },
-];
-
-export const LOCALES: Record<SiteLocale, LocaleConfig> = Object.fromEntries(
-  SITE_LOCALES.map((locale) => [locale.code, locale]),
-) as Record<SiteLocale, LocaleConfig>;
-
-export const LOCALE_CODES: readonly SiteLocale[] = SITE_LOCALES.map((locale) => locale.code);
+export {
+  DEFAULT_LOCALE,
+  LOCALES,
+  LOCALE_CODES,
+  SITE_LOCALES,
+  getLocale,
+  isSiteLocale,
+  type LocaleConfig,
+  type SiteLocale,
+} from "@ivy-interactive/components/i18n";
 
 export const PREFIXED_LOCALE_CODES: readonly SiteLocale[] = LOCALE_CODES.filter(
   (code) => code !== DEFAULT_LOCALE,
 );
-
-export function isSiteLocale(value: string | undefined): value is SiteLocale {
-  return value !== undefined && LOCALE_CODES.includes(value as SiteLocale);
-}
-
-export function getLocale(code: string): LocaleConfig {
-  return LOCALES[code as SiteLocale] ?? LOCALES[DEFAULT_LOCALE];
-}
 
 /**
  * Split a pathname into its locale and the path beneath it.

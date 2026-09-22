@@ -1,0 +1,55 @@
+{
+  "actions": {
+    "cancel": "Cancel",
+    "close": "Close",
+    "confirm": "Confirm",
+    "copy": "Copy",
+    "delete": "Delete",
+    "retry": "Retry",
+    "save": "Save"
+  },
+  "status": {
+    "copied": "Copied",
+    "error": "Error",
+    "loading": "Loading...",
+    "none": "None",
+    "unknown": "Unknown"
+  },
+  "enums": {
+    "jobStatus": {
+      "pending": "Pending",
+      "queued": "Queued",
+      "running": "Running",
+      "completed": "Completed",
+      "failed": "Failed",
+      "timeout": "Timeout",
+      "stopped": "Stopped",
+      "blocked": "Blocked"
+    },
+    "jobType": {
+      "executePlan": "ExecutePlan",
+      "createPlan": "CreatePlan",
+      "retryPlan": "RetryPlan",
+      "updatePlan": "UpdatePlan",
+      "expandPlan": "ExpandPlan",
+      "splitPlan": "SplitPlan",
+      "createPr": "CreatePr",
+      "createIssue": "CreateIssue",
+      "setupProject": "SetupProject",
+      "addProject": "AddProject",
+      "syncRepo": "SyncRepo"
+    },
+    "planState": {
+      "draft": "Draft",
+      "creating": "Creating",
+      "updating": "Updating",
+      "executing": "Executing",
+      "review": "Review",
+      "failed": "Failed",
+      "completed": "Completed",
+      "skipped": "Skipped",
+      "blocked": "Blocked",
+      "icebox": "Icebox"
+    }
+  }
+}

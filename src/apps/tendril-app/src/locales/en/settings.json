@@ -1,0 +1,12 @@
+{
+  "appearance": {
+    "language": {
+      "title": "Language",
+      "hint": "Choose the language Tendril uses. System default follows your operating system.",
+      "label": "Language",
+      "system": "System default",
+      "saved": "Language set to {{language}}",
+      "loadFailed": "Could not load {{language}}. Tendril stays in the language it was in."
+    }
+  }
+}

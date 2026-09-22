@@ -3,6 +3,7 @@ import { useShortcut } from "@ivy-interactive/components/tendril";
 import { uiStore, type UiState } from "./state/uiStore";
 import type { ChatMode } from "./state/appearance";
 import { chatLauncher, useChatMode } from "./state/chatLauncher";
+import { initLanguage, refreshLanguage } from "./state/language";
 import {
   planDetailNavPlanId,
   sidebarListStore,
@@ -253,6 +254,9 @@ export const App: React.FC = () => {
     // (`TendrilThemes.ApplyTheme` / `ApplyThemeMode`), so a preset chosen in Appearance survives a
     // restart instead of lasting only for the session that chose it.
     void chatLauncher.init();
+    // The UI language, from config.yaml. `main.tsx` already rendered in the one the last session
+    // applied; this corrects it if the setting changed while the app was closed.
+    void initLanguage();
     serviceStore.refreshInfo().catch(() => {});
     plansStore.fetchPlans().catch(() => {});
     jobsStore.fetchJobs().catch(() => {});
@@ -320,6 +324,10 @@ export const App: React.FC = () => {
       serviceStore.setStatus(
         st === "connected" ? "online" : st === "reconnecting" ? "reconnecting" : "offline",
       );
+      // The mount effect's `initLanguage` fails if the daemon is not up yet, and a `language` edit made
+      // while it was out of reach raised no change event this session heard: read it again on every
+      // (re)connection, or the UI would stay in the wrong language until the next config change.
+      if (st === "connected") void refreshLanguage();
     })
       .then((unsub) => (unsubStatus = unsub))
       .catch(() => {});
@@ -383,6 +391,7 @@ export const App: React.FC = () => {
         // `chatMode` lives in config.yaml too, so the Appearance pane's write and a CLI edit both
         // reach the launcher through the same event the project list uses.
         refreshChatMode: () => void chatLauncher.refresh(),
+        refreshLanguage: () => void refreshLanguage(),
         selectedPlanFolder: selected?.folderPath ?? selected?.id ?? null,
       });
     })

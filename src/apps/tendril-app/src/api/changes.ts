@@ -14,6 +14,8 @@ export interface ChangeInvalidationDeps {
    * embedded host) need not supply one.
    */
   refreshChatMode?: () => void;
+  /** Re-reads the `language` setting and applies it. Optional for the same reason. */
+  refreshLanguage?: () => void;
   /** Folder path or name of the plan currently open in the detail view, if any. */
   selectedPlanFolder?: string | null;
 }
@@ -46,6 +48,9 @@ export function applyChangeEvent(event: ChangeEvent, deps: ChangeInvalidationDep
       // The setting is written through the same `putConfig` that raises this event, so the pane that
       // changed it and a `tendril config` edit from the CLI both land here.
       deps.refreshChatMode?.();
+      // And the UI language, so a `tendril config set language de` or an edit in the raw config editor
+      // switches the running app rather than waiting for a restart.
+      deps.refreshLanguage?.();
       break;
     }
     case "inbox": {

@@ -1,3 +1,4 @@
+import type { SiteLocale } from "../src/i18n/locales";
 import type { Densities } from "../src/types/density";
 
 /** Themes offered by the `theme` toolbar global in `preview.tsx`. */
@@ -9,6 +10,8 @@ export type StorybookDensity = `${Densities}`;
 export interface StorybookGlobals {
   theme?: StorybookTheme;
   density?: StorybookDensity;
+  /** The language the `locale` toolbar global renders the components' own strings in. */
+  locale?: SiteLocale;
 }
 
 /**

@@ -218,12 +218,15 @@ export const SelectField: React.FC<{
  * and labelling come from the platform. It also keeps V1's `extraOptions` behaviour honest: a value
  * the catalog does not offer (a model id typed by hand into `config.yaml`, a preset from a vault this
  * build cannot see) is listed as its own option rather than silently reading as the first entry.
+ *
+ * An option can carry the `lang` of its label, for a list that names things in their own language -
+ * the language picker's "Deutsch", "日本語" - so a screen reader pronounces each in that language.
  */
 export const NativeSelectField: React.FC<{
   id: string;
   label: string;
   value: string;
-  options: { value: string; label: string }[];
+  options: { value: string; label: string; lang?: string }[];
   hint?: string;
   disabled?: boolean;
   onChange: (value: string) => void;
@@ -243,7 +246,7 @@ export const NativeSelectField: React.FC<{
         <option value={value}>{value || "Default"}</option>
       )}
       {options.map((option) => (
-        <option key={option.value} value={option.value}>
+        <option key={option.value} value={option.value} lang={option.lang}>
           {option.label}
         </option>
       ))}
