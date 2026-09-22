@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, act, waitFor, cleanup } from "@testing-library/react";
 import { App } from "../src/App";
+import { agentsApi } from "../src/api/agentsApi";
 import { bridge } from "../src/api/bridge";
 import { chatApi } from "../src/api/chatApi";
 import { chatLauncher } from "../src/state/chatLauncher";
@@ -38,6 +39,37 @@ const session = (id: string): ChatSession => ({
   spawnedJobIds: [],
 });
 
+/**
+ * A daemon that remembers what it was told: it lists `listed`, and `createSession` adds `created`.
+ *
+ * `chatStore.fetchSessions` *replaces* the list with whatever `listSessions` answers, and it runs
+ * whenever `init` gets to it — after the agent catalogue, which is its own await. A `listSessions`
+ * stubbed to one fixed answer describes a daemon that forgets a session the moment it has created
+ * it, so a fetch landing after `startNew` emptied the list and failed the test as though the prune
+ * had struck: `expected [] to include 'term-1'`, on whichever run was slow enough to let it land
+ * there. Here a created session stays listed until something deletes it — which is the one thing
+ * the prune must not do — so the list the assertion reads is the daemon's, whenever it was fetched.
+ */
+const fakeDaemon = (listed: ChatSession[], created?: ChatSession) => {
+  const sessions = new Map(listed.map((s) => [s.id, s]));
+  vi.spyOn(chatApi, "listSessions").mockImplementation(async () => [...sessions.values()]);
+  vi.spyOn(chatApi, "getSession").mockImplementation(async (id) => {
+    const found = sessions.get(id);
+    if (!found) throw new Error(`Session '${id}' not found`);
+    return found;
+  });
+  vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
+  vi.spyOn(chatApi, "createSession").mockImplementation(async () => {
+    if (!created) throw new Error("this test creates no session");
+    sessions.set(created.id, created);
+    return created;
+  });
+  const deleteSession = vi.spyOn(chatApi, "deleteSession").mockImplementation(async (id) => {
+    sessions.delete(id);
+  });
+  return { deleteSession };
+};
+
 /** Takes down whatever panes a test opened, without disturbing navigation's subscribers. */
 const closeOpenPanes = () => {
   for (const pane of [...navigation.getState().sessions]) uiStore.closeTab(pane.id);
@@ -55,6 +87,11 @@ describe("a terminal session is not pruned while its pane is open", () => {
     vi.spyOn(bridge, "listPlans").mockResolvedValue([]);
     vi.spyOn(bridge, "listJobs").mockResolvedValue([]);
     vi.spyOn(bridge, "listProjects").mockResolvedValue([]);
+    // There is no Tauri here, so the real `listAgents` throws, and `loadAgents` answers a failure by
+    // waiting `AGENT_CATALOG_RETRY_DELAY_MS` and trying again before `init` fetches the sessions.
+    // That put a 400ms timer in the middle of every run and the session fetch at the far end of
+    // it; an answered catalogue takes the timer out and lets `init` finish before the test acts.
+    vi.spyOn(agentsApi, "listAgents").mockResolvedValue([]);
     uiStore.setActiveNav("chat");
   });
 
@@ -68,12 +105,7 @@ describe("a terminal session is not pruned while its pane is open", () => {
   });
 
   it("survives the prune the Chat page runs as the pane unmounts it", async () => {
-    const created = session("term-1");
-    vi.spyOn(chatApi, "listSessions").mockResolvedValue([]);
-    vi.spyOn(chatApi, "getSession").mockResolvedValue(created);
-    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
-    vi.spyOn(chatApi, "createSession").mockResolvedValue(created);
-    const deleteSession = vi.spyOn(chatApi, "deleteSession").mockResolvedValue();
+    const daemon = fakeDaemon([], session("term-1"));
     const prune = vi.spyOn(chatStore, "pruneEmptySessions");
 
     await act(async () => {
@@ -92,16 +124,12 @@ describe("a terminal session is not pruned while its pane is open", () => {
     await waitFor(() => expect(prune).toHaveBeenCalled());
 
     // The session the terminal is about to spawn into is still there, daemon-side and in the list.
-    expect(deleteSession).not.toHaveBeenCalledWith("term-1");
+    expect(daemon.deleteSession).not.toHaveBeenCalledWith("term-1");
     expect(chatStore.getState().sessions.map((s) => s.id)).toContain("term-1");
   });
 
   it("still prunes an empty session that has no pane open on it", async () => {
-    const abandoned = session("abandoned-1");
-    vi.spyOn(chatApi, "listSessions").mockResolvedValue([abandoned]);
-    vi.spyOn(chatApi, "getSession").mockResolvedValue(abandoned);
-    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
-    const deleteSession = vi.spyOn(chatApi, "deleteSession").mockResolvedValue();
+    const daemon = fakeDaemon([session("abandoned-1")]);
 
     await act(async () => {
       render(<App />);
@@ -113,6 +141,6 @@ describe("a terminal session is not pruned while its pane is open", () => {
     });
 
     // The guard is about panes, not about emptiness: a session nothing is showing is still swept.
-    expect(deleteSession).toHaveBeenCalledWith("abandoned-1");
+    expect(daemon.deleteSession).toHaveBeenCalledWith("abandoned-1");
   });
 });
