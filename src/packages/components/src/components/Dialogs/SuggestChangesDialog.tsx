@@ -2,6 +2,7 @@ import * as React from "react";
 import { Button } from "../ui/button";
 import { Callout } from "../ui/callout";
 import { Textarea } from "../ui/textarea";
+import { useTranslation, type TFunction } from "@/i18n/uiDialogs";
 import { formatChangeRequest, readSource, type AppComment } from "./appComments";
 import { DialogShell } from "./DialogShell";
 
@@ -62,7 +63,37 @@ function groupByPage(url: string, comments: AppComment[]): Array<[string, AppCom
   return [...pages.entries()];
 }
 
-/** V1's stand-in when a reviewer submits with nothing typed but inline comments waiting. */
+/**
+ * The plan states the refusal copy can name, by raw value. A state the daemon added after this build
+ * is shown as it is, never as a key; logic keeps comparing the raw value.
+ *
+ * A copy of the app's `common:enums.planState`, because a component can reach only its own catalog
+ * and `uiCommon`: translate the two with the same words. It can go once the app hands the dialog its
+ * own label for the state, or once the enum labels move to `uiCommon`.
+ */
+const PLAN_STATE_LABELS: Partial<Record<string, Parameters<TFunction>[0]>> = {
+  Draft: "planStates.draft",
+  Creating: "planStates.creating",
+  Updating: "planStates.updating",
+  Executing: "planStates.executing",
+  Review: "planStates.review",
+  Failed: "planStates.failed",
+  Completed: "planStates.completed",
+  Skipped: "planStates.skipped",
+  Blocked: "planStates.blocked",
+  Icebox: "planStates.icebox",
+};
+
+function planStateLabel(t: TFunction, state: string): string {
+  const key = Object.hasOwn(PLAN_STATE_LABELS, state) ? PLAN_STATE_LABELS[state] : undefined;
+  return key ? t(key) : state;
+}
+
+/**
+ * V1's stand-in when a reviewer submits with nothing typed but inline comments waiting.
+ *
+ * Not translated: it is the change request the agent reads, not text on screen.
+ */
 const INLINE_ONLY_REQUEST =
   "Look at inline comments, implement changes, and come back with a new plan.";
 
@@ -99,6 +130,7 @@ export function SuggestChangesDialog({
   isBusy = false,
   error,
 }: SuggestChangesDialogProps) {
+  const { t } = useTranslation("uiDialogs");
   const [changeRequest, setChangeRequest] = React.useState("");
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
   const primaryRef = React.useRef<HTMLButtonElement>(null);
@@ -143,22 +175,19 @@ export function SuggestChangesDialog({
       <DialogShell
         isOpen={isOpen}
         onClose={onClose}
-        title={`Plan #${planId} is not taking changes`}
+        title={t("suggestChanges.notAllowed.title", { planId })}
         width="rem32"
         testId="suggest-changes-dialog"
         initialFocusRef={closeRef}
         footer={
           <Button ref={closeRef} variant="outline" onClick={onClose} data-testid="dialog-cancel">
-            Close
+            {t("actions.close")}
           </Button>
         }
       >
-        <p>
-          The plan is {planState}. A change request lands only while it is in Review, or while it is
-          already applying one.
-        </p>
+        <p>{t("suggestChanges.notAllowed.state", { state: planStateLabel(t, planState) })}</p>
         <p className="mt-2 text-muted-foreground">
-          The {count} comment(s) are still here — send them once the plan is back in Review.
+          {t("suggestChanges.notAllowed.commentsKept", { count })}
         </p>
       </DialogShell>
     );
@@ -170,7 +199,7 @@ export function SuggestChangesDialog({
       <DialogShell
         isOpen={isOpen}
         onClose={onClose}
-        title={`Update Plan #${planId}`}
+        title={t("suggestChanges.fromApp.title", { planId })}
         width="rem32"
         shortcut="Enter"
         onShortcut={() => handleSubmit()}
@@ -184,7 +213,7 @@ export function SuggestChangesDialog({
               data-testid="dialog-cancel"
               disabled={isBusy}
             >
-              Cancel
+              {t("actions.cancel")}
             </Button>
             <Button
               ref={primaryRef}
@@ -192,19 +221,19 @@ export function SuggestChangesDialog({
               data-testid="dialog-confirm"
               disabled={!canSubmit}
             >
-              {isBusy ? "Starting…" : waitForCount > 0 ? "Queue Update" : "Update"}
+              {isBusy
+                ? t("status.starting")
+                : waitForCount > 0
+                  ? t("suggestChanges.fromApp.queue")
+                  : t("suggestChanges.fromApp.submit")}
             </Button>
           </>
         }
       >
-        <p>
-          {comments.length} comment(s) from the running app will be sent to the agent as a change
-          request.
-        </p>
+        <p>{t("suggestChanges.fromApp.summary", { count: comments.length })}</p>
         {waitForCount > 0 && (
           <p className="mt-2 text-muted-foreground" data-testid="suggest-changes-queue-note">
-            Plan #{planId} already has {waitForCount} job(s) in flight, so this one queues behind
-            them and starts when they finish.
+            {t("suggestChanges.fromApp.queueNote", { planId, count: waitForCount })}
           </p>
         )}
         <div className="mt-3 space-y-3" data-testid="suggest-changes-summary">
@@ -214,7 +243,7 @@ export function SuggestChangesDialog({
               <div className="space-y-2">
                 {pageComments.map((comment) => {
                   const where = readSource(comment.debugJson).label ?? comment.selector;
-                  const tag = comment.tag || "element";
+                  const tag = comment.tag || t("suggestChanges.fromApp.untaggedElement");
                   return (
                     <div key={comment.id}>
                       <div>
@@ -239,24 +268,24 @@ export function SuggestChangesDialog({
     <DialogShell
       isOpen={isOpen}
       onClose={onClose}
-      title={`Request Changes for Plan #${planId}`}
+      title={t("suggestChanges.diff.title", { planId })}
       width="rem30"
       shortcut="Ctrl+Enter"
       onShortcut={() => handleSubmit()}
-      description="Provide suggestions or instructions for changes to the implementation. RetryPlan resumes in the existing worktree and applies them as a delta on the work already committed."
+      description={t("suggestChanges.diff.description")}
       testId="suggest-changes-dialog"
       initialFocusRef={textareaRef}
       footer={
         <>
           <Button variant="outline" onClick={onClose} data-testid="dialog-cancel" disabled={isBusy}>
-            Cancel
+            {t("actions.cancel")}
           </Button>
           <Button onClick={() => handleSubmit()} data-testid="dialog-confirm" disabled={!canSubmit}>
             {isBusy
-              ? "Starting…"
+              ? t("status.starting")
               : inlineCount > 0
-                ? `Request Changes (${inlineCount} inline)`
-                : "Request Changes"}
+                ? t("suggestChanges.diff.submitWithInline", { count: inlineCount })
+                : t("suggestChanges.diff.submit")}
           </Button>
         </>
       }
@@ -265,22 +294,22 @@ export function SuggestChangesDialog({
           feedback.")` — the ported `Callout`, not `Alert`, which has no info variant. */}
       {inlineCount > 0 && (
         <Callout.Info className="mb-3" data-testid="suggest-changes-inline-note">
-          {inlineCount} inline comment(s) on file diffs will be included with your feedback.
+          {t("suggestChanges.diff.inlineNote", { count: inlineCount })}
         </Callout.Info>
       )}
       <label htmlFor="suggest-changes-request" className="mb-1 block text-xs text-muted-foreground">
-        Change request
+        {t("suggestChanges.diff.requestLabel")}
       </label>
       <Textarea
         id="suggest-changes-request"
         ref={textareaRef}
-        aria-label="Change request"
+        aria-label={t("suggestChanges.diff.requestLabel")}
         // A pre-filled request is a grouped listing several screens long; five rows of it is a
         // keyhole to read one's own feedback through.
         rows={initialChangeRequest ? 14 : 5}
         value={changeRequest}
         onChange={(event) => setChangeRequest(event.target.value)}
-        placeholder="Describe what needs to be changed, fixed or rewritten in the worktree…"
+        placeholder={t("suggestChanges.diff.requestPlaceholder")}
         className="text-sm"
       />
       {error && <Callout.Error className="mt-4">{error}</Callout.Error>}

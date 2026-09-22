@@ -1,5 +1,6 @@
 import * as React from "react";
 import { Button } from "../ui/button";
+import { useTranslation } from "@/i18n/uiDialogs";
 import type { PlanQuestion } from "../PlanMarkdown/questionsSchema";
 import { DialogShell, DialogShortcutHint } from "./DialogShell";
 
@@ -45,43 +46,39 @@ export function UnansweredQuestionsDialog({
   onProceed,
   onUpdateAndExecute,
 }: UnansweredQuestionsDialogProps) {
+  const { t } = useTranslation("uiDialogs");
   const cancelRef = React.useRef<HTMLButtonElement>(null);
-  const plural = questions.length === 1;
 
   return (
     <DialogShell
       isOpen={isOpen}
       onClose={onClose}
-      title="Unanswered Questions"
+      title={t("unansweredQuestions.title")}
       width="rem32"
       footerClassName="flex-wrap"
       {...(onUpdateAndExecute
         ? { shortcut: "Ctrl+Enter" as const, onShortcut: onUpdateAndExecute }
         : {})}
-      description={`⚠ This plan has ${questions.length} unanswered ${
-        plural ? "question" : "questions"
-      }. Executing now leaves ${
-        plural ? "it" : "them"
-      } to the agent, which will take the recommended option where there is one and decide for itself where there is not.`}
+      description={t("unansweredQuestions.description", { count: questions.length })}
       testId="unanswered-questions-dialog"
       initialFocusRef={cancelRef}
       footer={
         <>
           <Button ref={cancelRef} variant="outline" onClick={onClose} data-testid="dialog-cancel">
-            Cancel
+            {t("actions.cancel")}
           </Button>
           <Button variant="outline" onClick={onUpdatePlan} data-testid="guard-update-plan">
-            Update Plan…
+            {t("unansweredQuestions.updatePlan")}
           </Button>
           <Button variant="outline" onClick={onProceed} data-testid="guard-proceed">
-            Execute Anyway
+            {t("unansweredQuestions.proceed")}
           </Button>
           {/* Cap and chord are spread from the same `onUpdateAndExecute` check as the shell's
               above, so neither can outlive the other: no handler means no primary, no chord, and
               no key cap naming a chord the dialog does not listen for. */}
           {onUpdateAndExecute && (
             <Button onClick={onUpdateAndExecute} data-testid="guard-update-and-execute">
-              Update Plan &amp; Execute
+              {t("unansweredQuestions.updateAndExecute")}
               <DialogShortcutHint shortcut="Ctrl+Enter" />
             </Button>
           )}

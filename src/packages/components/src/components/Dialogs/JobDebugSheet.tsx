@@ -3,6 +3,7 @@ import { ClipboardCopy } from "lucide-react";
 import { copyToClipboard } from "../../lib/clipboard";
 import { Button } from "../ui/button";
 import { HeaderLayout } from "../ui/panel-layout";
+import { i18n, useTranslation, type TFunction } from "@/i18n/uiDialogs";
 /**
  * A job as this sheet renders it.
  *
@@ -61,13 +62,58 @@ export interface JobDebugDetail {
  * chat by hand reaches the same place.
  */
 
+/** The fields of the debug panel, by stable id. Each names its label in the catalog. */
+type JobDebugFieldId =
+  | "jobId"
+  | "planId"
+  | "planTitle"
+  | "status"
+  | "type"
+  | "project"
+  | "provider"
+  | "model"
+  | "started"
+  | "completed"
+  | "lastOutput"
+  | "duration"
+  | "cost"
+  | "tokens"
+  | "processId"
+  | "detached"
+  | "workingDirectory"
+  | "arguments"
+  | "args"
+  | "failureReason"
+  | "permissionDenials"
+  | "planFolder"
+  | "jobLog"
+  | "jobPrompt"
+  | "jobRawLog"
+  | "jobEventwireLog";
+
 /** One row of the debug panel: V1's label, the rendered value, and whether it needs its own line. */
 export interface JobDebugField {
+  /** The row's stable identity - its React key - whatever language the label is in. */
+  id: string;
   label: string;
   value: string;
   /** V1's `.Multiline(...)`: rendered under its label rather than beside it. */
   multiline?: boolean;
 }
+
+/**
+ * The `t` a caller outside React gets when it passes none: it translates into the language current
+ * at each call, so it is safe at module level. The sheet passes its own, which re-renders it when
+ * the language changes.
+ */
+const translateAtCall: TFunction = i18n.getFixedT(null, "uiDialogs");
+
+/**
+ * The `t` the Copy Details text is built with, whatever the UI language: the paste goes into bug
+ * reports and agent chats, which read V1's labels and V1's number formats (`$1234.5679`,
+ * `24,000`), not the reader's.
+ */
+const translateInEnglish: TFunction = i18n.getFixedT("en", "uiDialogs");
 
 /** `"u"`, the format V1 stamps `Started`/`Completed` with: sortable, unambiguous, UTC. */
 function formatUniversalTime(value: string | undefined): string {
@@ -97,56 +143,73 @@ function formatUniversalTime(value: string | undefined): string {
  * The four log paths and the plan folder come from `tendril_core::jobs::logger` by way of the DTO, and
  * only when the file exists, so a path here is one that can be opened. V1 groups them last for a
  * readable paste; so does this.
+ *
+ * `t` decides the language of the labels and of the numbers (duration, cost, tokens): the sheet
+ * passes the UI's, the Copy Details text English. The other values are the engine's record, shown
+ * as it is in both - ids, paths, the command line, the UTC `"u"` timestamps, `true` for Detached,
+ * and the raw `status` and `type`: the status line carries the daemon's own English message, and a
+ * reader matches both against the logs and the CLI, which print them raw.
  */
-export function buildJobDebugFields(job: JobDebugDetail): JobDebugField[] {
+export function buildJobDebugFields(
+  job: JobDebugDetail,
+  t: TFunction = translateAtCall,
+): JobDebugField[] {
   const tokens = job.tokens;
+  const field = (id: JobDebugFieldId, value: string, multiline = false): JobDebugField => ({
+    id,
+    label: t(`jobDebug.fields.${id}`),
+    value,
+    ...(multiline ? { multiline: true } : {}),
+  });
   const fields: JobDebugField[] = [
-    { label: "Job Id", value: job.id },
-    { label: "Plan Id", value: job.planId ?? "" },
-    { label: "Prompt/Title", value: job.planTitle ?? "", multiline: true },
+    field("jobId", job.id),
+    field("planId", job.planId ?? ""),
+    field("planTitle", job.planTitle ?? "", true),
     // V1 folds the message into the status, so a failure reads as one line rather than two fields.
-    {
-      label: "Status",
-      value: job.statusMessage ? `${job.status}: ${job.statusMessage}` : job.status,
-      multiline: true,
-    },
-    { label: "Type", value: job.type },
-    { label: "Project", value: job.project },
-    { label: "Provider", value: job.provider ?? "" },
-    { label: "Model", value: job.model ?? "" },
-    { label: "Started", value: formatUniversalTime(job.startedAt) },
-    { label: "Completed", value: formatUniversalTime(job.completedAt) },
+    field("status", job.statusMessage ? `${job.status}: ${job.statusMessage}` : job.status, true),
+    field("type", job.type),
+    field("project", job.project),
+    field("provider", job.provider ?? ""),
+    field("model", job.model ?? ""),
+    field("started", formatUniversalTime(job.startedAt)),
+    field("completed", formatUniversalTime(job.completedAt)),
     // The staleness anchor the Jobs table's Agent Output column counts from. Not one of V1's fields —
     // V1 keeps `LastOutputAt` in memory only, so its debug sheet has nothing to show — and it is the
     // first thing worth knowing about a job that looks stuck.
-    { label: "Last Output", value: formatUniversalTime(job.lastOutputAt) },
-    {
-      label: "Duration",
-      value: job.durationSeconds === undefined ? "" : `${job.durationSeconds}s`,
-    },
+    field("lastOutput", formatUniversalTime(job.lastOutputAt)),
+    field(
+      "duration",
+      job.durationSeconds === undefined
+        ? ""
+        : t("jobDebug.values.duration", { seconds: job.durationSeconds }),
+    ),
     // Four decimals, not two: this is the diagnostic view, and a sub-cent run is exactly the case the
-    // table's `$0.00` cannot distinguish from free.
-    { label: "Cost", value: job.cost === undefined ? "" : `$${job.cost.toFixed(4)}` },
-    { label: "Tokens", value: tokens === undefined ? "" : tokens.toLocaleString("en-US") },
-    { label: "Process Id", value: job.processId === undefined ? "" : String(job.processId) },
+    // table's `$0.00` cannot distinguish from free. Ungrouped, as V1's fixed-point `$1234.5679` is.
+    // Rounded by `toFixed` first, as V1 rounds it: `Intl` rounds a tie such as 0.00015 (50 tokens at
+    // $3/M) up where `toFixed` rounds it down, so this way the catalog's format only adds the symbol
+    // and the language's separators.
+    field(
+      "cost",
+      job.cost === undefined
+        ? ""
+        : t("jobDebug.values.cost", { cost: Number(job.cost.toFixed(4)) }),
+    ),
+    field("tokens", tokens === undefined ? "" : t("jobDebug.values.tokens", { tokens })),
+    field("processId", job.processId === undefined ? "" : String(job.processId)),
     // Only when true, matching how the daemon and the DTO both report it.
-    { label: "Detached", value: job.detached ? "true" : "" },
-    { label: "Working Directory", value: job.workingDirectory ?? "", multiline: true },
-    { label: "Arguments", value: job.cliCommand ?? "", multiline: true },
-    { label: "Args", value: job.args ?? "", multiline: true },
-    { label: "Failure Reason", value: job.reportedFailureReason ?? "", multiline: true },
-    {
-      label: "Permission Denials",
-      value: (job.permissionDenials ?? []).join("\n"),
-      multiline: true,
-    },
+    field("detached", job.detached ? "true" : ""),
+    field("workingDirectory", job.workingDirectory ?? "", true),
+    field("arguments", job.cliCommand ?? "", true),
+    field("args", job.args ?? "", true),
+    field("failureReason", job.reportedFailureReason ?? "", true),
+    field("permissionDenials", (job.permissionDenials ?? []).join("\n"), true),
     // Paths last, as V1 groups them: a pasted report reads as the run's story followed by where to
     // look. Each is present only if the daemon wrote that artifact.
-    { label: "Plan Folder", value: job.planFolder ?? "", multiline: true },
-    { label: "Job Log", value: job.jobLogPath ?? "", multiline: true },
-    { label: "Job Prompt", value: job.jobPromptPath ?? "", multiline: true },
-    { label: "Job Raw Log", value: job.jobRawLogPath ?? "", multiline: true },
-    { label: "Job Eventwire Log", value: job.jobEventwirePath ?? "", multiline: true },
+    field("planFolder", job.planFolder ?? "", true),
+    field("jobLog", job.jobLogPath ?? "", true),
+    field("jobPrompt", job.jobPromptPath ?? "", true),
+    field("jobRawLog", job.jobRawLogPath ?? "", true),
+    field("jobEventwireLog", job.jobEventwirePath ?? "", true),
   ];
 
   return fields.filter((field) => field.value.length > 0);
@@ -156,7 +219,9 @@ export function buildJobDebugFields(job: JobDebugDetail): JobDebugField[] {
  * `FormatCopyDetails`: `Label: value` a line at a time, empty fields already dropped.
  *
  * The same record the panel renders, for the reason V1 gives — labels defined once, so what is pasted
- * into a bug report is what was on screen.
+ * into a bug report is what was on screen. The sheet builds it in English (see
+ * {@link buildJobDebugFields}), so in another language the paste carries the same rows under V1's
+ * labels.
  */
 export function formatJobDebugDetails(fields: readonly JobDebugField[]): string {
   return fields.map((field) => `${field.label}: ${field.value}`).join("\n");
@@ -173,19 +238,21 @@ export interface JobDebugSheetProps {
  * `Args` blob scrolls under them.
  */
 export const JobDebugSheet: React.FC<JobDebugSheetProps> = ({ job }) => {
-  const fields = buildJobDebugFields(job);
+  const { t } = useTranslation("uiDialogs");
+  const fields = buildJobDebugFields(job, t);
   const [copied, setCopied] = useState(false);
-  const [copyError, setCopyError] = useState<string | null>(null);
+  // The clipboard's own message when it gave one; `message` absent means the sheet's fallback.
+  const [copyError, setCopyError] = useState<{ message?: string } | null>(null);
 
   const copy = async () => {
     setCopyError(null);
     try {
-      await copyToClipboard(formatJobDebugDetails(fields));
+      await copyToClipboard(formatJobDebugDetails(buildJobDebugFields(job, translateInEnglish)));
       setCopied(true);
     } catch (err) {
       // A webview that refuses clipboard access is the one case worth a word: the whole point of the
       // button is that the text left the app, and a silent failure looks identical to success.
-      setCopyError(err instanceof Error ? err.message : "Could not copy to the clipboard");
+      setCopyError(err instanceof Error ? { message: err.message } : {});
     }
   };
 
@@ -202,11 +269,11 @@ export const JobDebugSheet: React.FC<JobDebugSheetProps> = ({ job }) => {
             data-testid="job-debug-copy"
           >
             <ClipboardCopy aria-hidden="true" />
-            {copied ? "Copied" : "Copy Details"}
+            {copied ? t("jobDebug.copied") : t("jobDebug.copy")}
           </Button>
           {copyError && (
             <span role="alert" className="text-xs text-destructive">
-              {copyError}
+              {copyError.message ?? t("jobDebug.copyFailed")}
             </span>
           )}
         </div>
@@ -217,7 +284,7 @@ export const JobDebugSheet: React.FC<JobDebugSheetProps> = ({ job }) => {
         data-testid="job-debug-fields"
       >
         {fields.map((field) => (
-          <React.Fragment key={field.label}>
+          <React.Fragment key={field.id}>
             <dt className="text-muted-foreground">{field.label}</dt>
             <dd
               className={

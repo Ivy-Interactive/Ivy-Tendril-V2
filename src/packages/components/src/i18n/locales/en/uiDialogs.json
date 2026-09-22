@@ -1,1 +1,307 @@
-{}
+{
+  "actions": {
+    "cancel": "Cancel",
+    "close": "Close"
+  },
+  "status": {
+    "starting": "Starting…"
+  },
+  "planStates": {
+    "draft": "Draft",
+    "creating": "Creating",
+    "updating": "Updating",
+    "executing": "Executing",
+    "review": "Review",
+    "failed": "Failed",
+    "completed": "Completed",
+    "skipped": "Skipped",
+    "blocked": "Blocked",
+    "icebox": "Icebox"
+  },
+  "confirm": {
+    "working": "Working…"
+  },
+  "autoAcceptSettings": {
+    "title": "Auto-Accept Settings",
+    "save": "Save",
+    "saving": "Saving…",
+    "intro": "Automatically import newly assigned GitHub issues into Tendril plans at regular intervals.",
+    "autoAcceptLabel": "Auto-Accept Assigned Issues",
+    "intervalLabel": "Check Interval",
+    "intervalOption_one": "{{count}} minute",
+    "intervalOption_other": "{{count}} minutes",
+    "checkNow": "Check Now",
+    "checking": "Checking…",
+    "checkAlreadyRunning": "A check is already running.",
+    "checkSummary": "Imported {{imported}}, skipped {{skipped}}."
+  },
+  "createIssue": {
+    "title": "Create GitHub Issue #{{planId}}",
+    "titleForSubject": "Create GitHub Issue from {{kind}}",
+    "titleForSubject_recommendation": "Create GitHub Issue from Recommendation",
+    "description": "CreateIssue writes the issue body from the plan and opens it with `gh` in the selected repository.",
+    "descriptionForSubject": "CreateIssue opens this with `gh` in the selected repository. The issue is filed against plan #{{planId}}, but describes the {{kind}} rather than the plan's own work.",
+    "descriptionForSubject_recommendation": "CreateIssue opens this with `gh` in the selected repository. The issue is filed against plan #{{planId}}, but describes the recommendation rather than the plan's own work.",
+    "submit": "Create Issue",
+    "issueTitle": {
+      "label": "Title",
+      "placeholder": "What the issue is about",
+      "required": "A title is required: the plan's own title is not used here."
+    },
+    "body": {
+      "label": "Body",
+      "placeholder": "What should be done, and why…",
+      "hint": "Edit before filing if the wording is terse. The agent formats it into Markdown and keeps your words rather than rewriting them."
+    },
+    "repository": {
+      "label": "Repository",
+      "none": "Neither the plan nor its project records a repository, so there is nowhere to run <code>{{command}}</code>. Add one to the plan first.",
+      "hint": "The local repository path the issue is opened against, not an owner/name slug."
+    },
+    "assignee": {
+      "label": "Assignee"
+    },
+    "labels": {
+      "label": "Labels",
+      "hint": "Comma-separated. Assignee and labels are free text: the service exposes issue metadata, not the org's assignable users, so there is no list to pick from."
+    },
+    "comment": {
+      "label": "Comment",
+      "placeholder": "Extra context to append to the issue body…"
+    }
+  },
+  "createPr": {
+    "title": "Create PR for #{{planId}}",
+    "description": "CreatePr pushes the plan's branch, opens the PR and — unless you say otherwise — merges it and deletes the branch.",
+    "submit": "Create PR",
+    "toggles": {
+      "solveMergeConflicts": {
+        "label": "Solve Merge Conflicts"
+      },
+      "merge": {
+        "label": "Merge",
+        "hint": "Unchecked opens the PR without merging."
+      },
+      "deleteBranch": {
+        "label": "Delete Branch",
+        "label_multiple": "Delete Branches",
+        "hint": "Deletes the branch pushed to origin after successful merge.",
+        "hint_multiple": "Deletes the branches pushed to origin after successful merge."
+      },
+      "includeArtifacts": {
+        "label": "Include Artifacts"
+      },
+      "draft": {
+        "label": "Create as Draft",
+        "hint": "A draft PR cannot be merged."
+      }
+    },
+    "reviewers": {
+      "label": "Reviewers",
+      "hint": "Comma-separated GitHub logins. V2 has no separate assignee field — the CLI folds an assignee into the reviewer list, so these are the same channel."
+    },
+    "comment": {
+      "label": "Comment",
+      "placeholder": "Anything the reviewer should know before reading the diff…"
+    }
+  },
+  "deleteProject": {
+    "title": "Delete Project",
+    "confirm": "Delete Project",
+    "intro": "This permanently deletes project <name>{{name}}</name> and everything it owns on disk. It cannot be undone.",
+    "plans": "Every plan of this project, with its revisions and verification reports.",
+    "folder": "<code>{{root}}</code><code>{{name}}</code> — its cloned repositories, skills, MCP definitions and memories, including any commit that was never pushed.",
+    "database": "Its plans, jobs and recommendations in Tendril's database.",
+    "config": "Its entry in config.yaml.",
+    "logsKept": "Job logs are kept: they are stored by job id rather than by project.",
+    "removeInstead": "To remove the project from Tendril without touching anything on disk, cancel and use Remove Project instead.",
+    "typeToConfirm": "Type <name>{{name}}</name> to confirm",
+    "typeToConfirmAriaLabel": "Type {{name}} to confirm"
+  },
+  "dirtyRepo": {
+    "title": "Local Changes Detected",
+    "description_one": "⚠ {{count}} repository has uncommitted changes. They will not be included in the worktree the agent works in.",
+    "description_other": "⚠ {{count}} repositories have uncommitted changes. They will not be included in the worktree the agent works in.",
+    "proceed": "Execute Anyway",
+    "changeCount_one": "{{count}} uncommitted change",
+    "changeCount_other": "{{count}} uncommitted changes",
+    "moreChanges_one": "+{{count}} more",
+    "moreChanges_other": "+{{count}} more"
+  },
+  "jobDebug": {
+    "copy": "Copy Details",
+    "copied": "Copied",
+    "copyFailed": "Could not copy to the clipboard",
+    "values": {
+      "duration": "{{seconds}}s",
+      "cost": "{{cost, currency(minimumFractionDigits: 4; maximumFractionDigits: 4; useGrouping: false)}}",
+      "tokens": "{{tokens, number}}"
+    },
+    "fields": {
+      "jobId": "Job Id",
+      "planId": "Plan Id",
+      "planTitle": "Prompt/Title",
+      "status": "Status",
+      "type": "Type",
+      "project": "Project",
+      "provider": "Provider",
+      "model": "Model",
+      "started": "Started",
+      "completed": "Completed",
+      "lastOutput": "Last Output",
+      "duration": "Duration",
+      "cost": "Cost",
+      "tokens": "Tokens",
+      "processId": "Process Id",
+      "detached": "Detached",
+      "workingDirectory": "Working Directory",
+      "arguments": "Arguments",
+      "args": "Args",
+      "failureReason": "Failure Reason",
+      "permissionDenials": "Permission Denials",
+      "planFolder": "Plan Folder",
+      "jobLog": "Job Log",
+      "jobPrompt": "Job Prompt",
+      "jobRawLog": "Job Raw Log",
+      "jobEventwireLog": "Job Eventwire Log"
+    }
+  },
+  "noProjects": {
+    "title": "No Projects",
+    "description": "Every plan belongs to a project, and this Tendril home has none yet.",
+    "openSettings": "Go to Projects",
+    "body": "Add a project under <location>Settings → Projects</location> — a name, its repositories and the verifications its plans run — then create the plan again."
+  },
+  "pendingAnnotations": {
+    "title": {
+      "changes": "Unincorporated Changes",
+      "answers": "Unincorporated Answers",
+      "annotations": "Unincorporated Annotations"
+    },
+    "description": {
+      "items_one": "⚠ This plan has {{count}} item that no UpdatePlan run has incorporated yet.",
+      "items_other": "⚠ This plan has {{count}} items that no UpdatePlan run has incorporated yet.",
+      "annotations_one": "⚠ This plan has {{count}} annotation that haven't been incorporated yet. Executing now would ignore them.",
+      "annotations_other": "⚠ This plan has {{count}} annotations that haven't been incorporated yet. Executing now would ignore them.",
+      "answers_one": "⚠ This plan has {{count}} answered question that haven't been incorporated yet. Executing now means the agent reads them as they stand rather than as part of the plan.",
+      "answers_other": "⚠ This plan has {{count}} answered questions that haven't been incorporated yet. Executing now means the agent reads them as they stand rather than as part of the plan.",
+      "both": "⚠ This plan has {{annotations}} and {{answers}} that haven't been incorporated yet. Executing now would ignore the annotations, and the agent would read the answers as they stand rather than as part of the plan.",
+      "annotationCount_one": "{{count}} annotation",
+      "annotationCount_other": "{{count}} annotations",
+      "answerCount_one": "{{count}} answered question",
+      "answerCount_other": "{{count}} answered questions"
+    },
+    "updatePlan": "Update Plan",
+    "decline": {
+      "discardAnnotations": "Discard Annotations & Execute",
+      "withoutUpdating": "Execute Without Updating",
+      "anyway": "Execute Anyway"
+    },
+    "updateAndExecute": "Update Plan & Execute",
+    "body": "Executing now runs the plan as written, so those notes will not shape what the agent does. Running UpdatePlan first folds them into the plan body."
+  },
+  "resetToDraft": {
+    "title": "Reset Plan #{{planId}} to Draft",
+    "confirm": "Reset to Draft",
+    "body": "The plan returns to <state>Draft</state> and its worktrees are removed, discarding any uncommitted work inside them. Commits already pushed are not affected."
+  },
+  "partialDelivery": {
+    "title": "Verification Failed",
+    "confirm": "Complete as Partial Delivery",
+    "body": "Plan #{{planId}} is recorded as <state>Completed</state> and flagged as a partial delivery, despite these failing verifications:"
+  },
+  "deletePlan": {
+    "title": "Delete Plan",
+    "confirm": "Delete",
+    "body": "Are you sure you want to permanently delete plan #{{planId}}? This removes the plan folder, all revisions and all verification reports, and cannot be undone. To keep the folder, move the plan to Skipped or Icebox instead.",
+    "skip": "Move to Skipped",
+    "archive": "Move to Icebox"
+  },
+  "planSearch": {
+    "title": "Search Plans",
+    "inputLabel": "Search plans",
+    "placeholder": "Search plans",
+    "searching": "Searching…",
+    "empty": "No plans found."
+  },
+  "removeProject": {
+    "title": "Remove Project",
+    "confirm": "Remove Project",
+    "question": "Are you sure you want to remove project <name>{{name}}</name>?",
+    "consequence": "This removes the project from config.yaml. Its cloned repositories, plan folders and history stay on disk, so nothing is deleted from your machine - but Tendril will stop listing the project, and its existing plans and jobs will name a project it no longer knows."
+  },
+  "shareTunnel": {
+    "title": "Share Work",
+    "intro": "Share your work with teammates via a secure, read-only Cloudflare tunnel. Reviewers can inspect plans, diffs, and leave comments without having access to your terminal or settings.",
+    "errorTitle": "Error",
+    "connecting": {
+      "title": "Tunnel Starting",
+      "body": "Starting share tunnel... This typically takes 15-30 seconds."
+    },
+    "active": {
+      "title": "Share Active",
+      "body": "Your share tunnel is active with read-only & comment-only permissions."
+    },
+    "copyLink": "Copy Link",
+    "openInBrowser": "Open in Browser",
+    "stop": "Stop Sharing",
+    "start": "Start Share Tunnel",
+    "errors": {
+      "start": "Failed to start share tunnel: {{error}}",
+      "stop": "Failed to stop share tunnel: {{error}}",
+      "copy": "Could not copy the link: {{error}}"
+    },
+    "notifications": {
+      "stoppedTitle": "Deactivated",
+      "stoppedMessage": "Share tunnel stopped",
+      "copiedTitle": "Link Copied",
+      "copiedMessage": "Share URL copied to clipboard"
+    }
+  },
+  "suggestChanges": {
+    "notAllowed": {
+      "title": "Plan #{{planId}} is not taking changes",
+      "state": "The plan is {{state}}. A change request lands only while it is in Review, or while it is already applying one.",
+      "commentsKept_one": "The {{count}} comment(s) are still here — send them once the plan is back in Review.",
+      "commentsKept_other": "The {{count}} comment(s) are still here — send them once the plan is back in Review."
+    },
+    "fromApp": {
+      "title": "Update Plan #{{planId}}",
+      "submit": "Update",
+      "queue": "Queue Update",
+      "summary_one": "{{count}} comment(s) from the running app will be sent to the agent as a change request.",
+      "summary_other": "{{count}} comment(s) from the running app will be sent to the agent as a change request.",
+      "queueNote_one": "Plan #{{planId}} already has {{count}} job(s) in flight, so this one queues behind them and starts when they finish.",
+      "queueNote_other": "Plan #{{planId}} already has {{count}} job(s) in flight, so this one queues behind them and starts when they finish.",
+      "untaggedElement": "element"
+    },
+    "diff": {
+      "title": "Request Changes for Plan #{{planId}}",
+      "description": "Provide suggestions or instructions for changes to the implementation. RetryPlan resumes in the existing worktree and applies them as a delta on the work already committed.",
+      "submit": "Request Changes",
+      "submitWithInline_one": "Request Changes ({{count}} inline)",
+      "submitWithInline_other": "Request Changes ({{count}} inline)",
+      "inlineNote_one": "{{count}} inline comment(s) on file diffs will be included with your feedback.",
+      "inlineNote_other": "{{count}} inline comment(s) on file diffs will be included with your feedback.",
+      "requestLabel": "Change request",
+      "requestPlaceholder": "Describe what needs to be changed, fixed or rewritten in the worktree…"
+    }
+  },
+  "unansweredQuestions": {
+    "title": "Unanswered Questions",
+    "description_one": "⚠ This plan has {{count}} unanswered question. Executing now leaves it to the agent, which will take the recommended option where there is one and decide for itself where there is not.",
+    "description_other": "⚠ This plan has {{count}} unanswered questions. Executing now leaves them to the agent, which will take the recommended option where there is one and decide for itself where there is not.",
+    "updatePlan": "Update Plan…",
+    "proceed": "Execute Anyway",
+    "updateAndExecute": "Update Plan & Execute"
+  },
+  "updatePlan": {
+    "title": "Update Plan #{{planId}}",
+    "description": "Provide instructions for revising this plan. UpdatePlan rewrites the plan into a new revision — it does not touch any code.",
+    "submit": "Update",
+    "alreadyRunning": "UpdatePlan is already running for this plan. Please wait…",
+    "instructionsLabel": "Instructions",
+    "instructionsAriaLabel": "Update instructions",
+    "instructionsPlaceholder": "Fold in the answered questions, then narrow the scope to the guard chain only…"
+  }
+}

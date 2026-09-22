@@ -1,5 +1,6 @@
 import * as React from "react";
 import { Button } from "../ui/button";
+import { Trans, useTranslation } from "@/i18n/uiDialogs";
 import { DialogShell, DialogShortcutHint } from "./DialogShell";
 
 export interface NoProjectsDialogProps {
@@ -18,14 +19,15 @@ export interface NoProjectsDialogProps {
  * copy names the Projects section within it.
  */
 export function NoProjectsDialog({ isOpen, onClose, onOpenSettings }: NoProjectsDialogProps) {
+  const { t } = useTranslation("uiDialogs");
   const cancelRef = React.useRef<HTMLButtonElement>(null);
 
   return (
     <DialogShell
       isOpen={isOpen}
       onClose={onClose}
-      title="No Projects"
-      description="Every plan belongs to a project, and this Tendril home has none yet."
+      title={t("noProjects.title")}
+      description={t("noProjects.description")}
       testId="no-projects-dialog"
       initialFocusRef={cancelRef}
       // Navigational rather than a submit, and included anyway: this is the *only* way forward from
@@ -41,20 +43,23 @@ export function NoProjectsDialog({ isOpen, onClose, onOpenSettings }: NoProjects
       footer={
         <>
           <Button ref={cancelRef} variant="outline" onClick={onClose} data-testid="dialog-cancel">
-            Cancel
+            {t("actions.cancel")}
           </Button>
           {/* V1's label is `Go to Projects`, and it navigates to the Projects tag of Settings —
               which is where `onOpenSettings` lands too, so the label survives the port intact. */}
           <Button onClick={onOpenSettings} data-testid="open-settings">
-            Go to Projects
+            {t("noProjects.openSettings")}
             <DialogShortcutHint shortcut="Ctrl+Enter" />
           </Button>
         </>
       }
     >
       <p className="text-sm text-muted-foreground">
-        Add a project under <span className="text-foreground">Settings → Projects</span> — a name,
-        its repositories and the verifications its plans run — then create the plan again.
+        <Trans
+          ns="uiDialogs"
+          i18nKey="noProjects.body"
+          components={{ location: <span className="text-foreground" /> }}
+        />
       </p>
     </DialogShell>
   );
