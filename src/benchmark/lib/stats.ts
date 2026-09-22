@@ -169,44 +169,107 @@ export interface BootstrapOptions {
   iters?: number;
   alpha?: number;
   seed?: number;
+  /**
+   * Instance of each sample (parallel to the samples). With two or more instances the bootstrap is
+   * hierarchical: each resample draws instances with replacement, then samples with replacement
+   * within each drawn instance, so the interval reflects instance-to-instance variation instead of
+   * treating every request as independent.
+   */
+  groups?: readonly number[];
+}
+
+/** Splits samples by instance; null when there is at most one instance (a plain bootstrap then). */
+function splitGroups(xs: readonly number[], groups: readonly number[] | undefined): number[][] | null {
+  if (!groups || groups.length !== xs.length) return null;
+  const by = new Map<number, number[]>();
+  xs.forEach((x, i) => {
+    if (!Number.isFinite(x)) return;
+    const g = groups[i]!;
+    const l = by.get(g);
+    if (l) l.push(x);
+    else by.set(g, [x]);
+  });
+  if (by.size < 2) return null;
+  return [...by.keys()].sort((a, b) => a - b).map((k) => by.get(k)!);
+}
+
+/** One hierarchical resample into `scratch` (instances, then samples within them); returns its length. */
+function resampleNested(parts: readonly number[][], rand: () => number, scratch: number[]): number {
+  scratch.length = 0;
+  const k = parts.length;
+  for (let i = 0; i < k; i++) {
+    const part = parts[Math.floor(rand() * k)]!;
+    for (let j = 0; j < part.length; j++) scratch.push(part[Math.floor(rand() * part.length)]!);
+  }
+  return scratch.length;
+}
+
+function medianOfArray(xs: number[]): number {
+  return medianInPlace(Float64Array.from(xs));
+}
+
+/** One bootstrap draw of the median: flat, or hierarchical when `parts` is given. */
+function drawMedian(xs: readonly number[], parts: number[][] | null, rand: () => number, flat: Float64Array, nested: number[]): number {
+  if (parts) {
+    resampleNested(parts, rand, nested);
+    return medianOfArray(nested);
+  }
+  return resampleMedian(xs, rand, flat);
 }
 
 /** Percentile bootstrap CI of the median. With n < 2 the interval collapses to the point. */
 export function bootstrapMedianCI(samples: readonly number[], opts: BootstrapOptions = {}): CI {
   const iters = opts.iters ?? 2000;
   const alpha = opts.alpha ?? 0.05;
-  const xs = samples.filter((x) => Number.isFinite(x));
+  const finite = samples.map((x) => Number.isFinite(x));
+  const xs = samples.filter((_, i) => finite[i]);
+  const groups = opts.groups && opts.groups.length === samples.length ? opts.groups.filter((_, i) => finite[i]) : undefined;
   const est = median(xs);
   if (xs.length < 2) return { estimate: est, lo: est, hi: est, iters: 0, alpha };
+  const parts = splitGroups(xs, groups);
   const rand = mulberry32(opts.seed ?? DEFAULT_SEED);
   const scratch = new Float64Array(xs.length);
+  const nested: number[] = [];
   const meds = new Float64Array(iters);
-  for (let b = 0; b < iters; b++) meds[b] = resampleMedian(xs, rand, scratch);
+  for (let b = 0; b < iters; b++) meds[b] = drawMedian(xs, parts, rand, scratch, nested);
   meds.sort();
   return { estimate: est, lo: quantileSorted(meds, alpha / 2), hi: quantileSorted(meds, 1 - alpha / 2), iters, alpha };
 }
 
 /**
  * Ratio of medians b / a (V2 over V1 by convention) with a percentile bootstrap CI, resampling each
- * group independently. Resamples whose `a` median is 0 are skipped; `iters` is the number kept.
+ * group independently (hierarchically when instance groups are given). Resamples whose `a` median is
+ * 0 are skipped; `iters` is the number kept.
  */
-export function ratioCI(a: readonly number[], b: readonly number[], opts: BootstrapOptions = {}): CI {
+export function ratioCI(
+  a: readonly number[],
+  b: readonly number[],
+  opts: BootstrapOptions & { groupsA?: readonly number[]; groupsB?: readonly number[] } = {},
+): CI {
   const iters = opts.iters ?? 2000;
   const alpha = opts.alpha ?? 0.05;
-  const xa = a.filter((x) => Number.isFinite(x));
-  const xb = b.filter((x) => Number.isFinite(x));
+  const keepA = a.map((x) => Number.isFinite(x));
+  const keepB = b.map((x) => Number.isFinite(x));
+  const xa = a.filter((_, i) => keepA[i]);
+  const xb = b.filter((_, i) => keepB[i]);
+  const ga = opts.groupsA && opts.groupsA.length === a.length ? opts.groupsA.filter((_, i) => keepA[i]) : undefined;
+  const gb = opts.groupsB && opts.groupsB.length === b.length ? opts.groupsB.filter((_, i) => keepB[i]) : undefined;
   const ma = median(xa);
   const mb = median(xb);
   const est = ma === 0 ? NaN : mb / ma;
   if (xa.length === 0 || xb.length === 0) return { estimate: NaN, lo: NaN, hi: NaN, iters: 0, alpha };
   if (xa.length < 2 && xb.length < 2) return { estimate: est, lo: est, hi: est, iters: 0, alpha };
+  const pa = splitGroups(xa, ga);
+  const pb = splitGroups(xb, gb);
   const rand = mulberry32(opts.seed ?? DEFAULT_SEED);
   const sa = new Float64Array(xa.length);
   const sb = new Float64Array(xb.length);
+  const na: number[] = [];
+  const nb: number[] = [];
   const ratios: number[] = [];
   for (let i = 0; i < iters; i++) {
-    const ra = resampleMedian(xa, rand, sa);
-    const rb = resampleMedian(xb, rand, sb);
+    const ra = drawMedian(xa, pa, rand, sa, na);
+    const rb = drawMedian(xb, pb, rand, sb, nb);
     if (ra !== 0) ratios.push(rb / ra);
   }
   if (!ratios.length) return { estimate: est, lo: NaN, hi: NaN, iters: 0, alpha };
@@ -255,36 +318,61 @@ export interface MwuResult {
   effect: number;
 }
 
-/** Number of arrangements of n1 + n2 items giving each U (no ties), by dynamic programming. */
-function exactUCounts(n1: number, n2: number): number[] {
-  // f[i][j][u]: count for i items of group 1 and j of group 2. Rolled over j to keep memory small.
-  const maxU = n1 * n2;
-  let prev: number[][] = [];
-  for (let i = 0; i <= n1; i++) {
-    prev[i] = new Array(maxU + 1).fill(0);
-    prev[i]![0] = 1; // j = 0: only U = 0
-  }
-  for (let j = 1; j <= n2; j++) {
-    const cur: number[][] = [];
-    for (let i = 0; i <= n1; i++) {
-      cur[i] = new Array(maxU + 1).fill(0);
-      for (let u = 0; u <= maxU; u++) {
-        // Largest element is from group 2 (adds 0 to U) or from group 1 (adds j to U).
-        let v = prev[i]![u]!;
-        if (i > 0 && u - j >= 0) v += cur[i - 1]![u - j]!;
-        cur[i]![u] = v;
+/**
+ * Largest pooled sample for which the exact permutation distribution is computed. The dynamic
+ * programme below costs about N x n1 x N^2 / 2 steps (N = n1 + n2), a few million at N = 60, and
+ * its counts stay within double precision's relative accuracy.
+ */
+export const MWU_EXACT_MAX_N = 60;
+
+/**
+ * Exact two-sided permutation p-value of the rank sum of group 1, with ties handled by midranks:
+ * every one of the C(N, n1) ways to assign the N pooled (mid)ranks to group 1 is equally likely under
+ * the null, so the distribution of their sum is counted by dynamic programming over the ranks. Ranks
+ * are doubled so midranks (x.5) stay integers. "As extreme" means at least as far from the null mean.
+ */
+function exactRankSumP(doubledRanks: readonly number[], n1: number, observed: number): number {
+  const N = doubledRanks.length;
+  const maxSum = doubledRanks.reduce((a, b) => a + b, 0);
+  // ways[k][s]: subsets of the ranks seen so far with k members and doubled-rank sum s.
+  const ways: Float64Array[] = Array.from({ length: n1 + 1 }, () => new Float64Array(maxSum + 1));
+  ways[0]![0] = 1;
+  let reach = 0;
+  for (let i = 0; i < N; i++) {
+    const r = doubledRanks[i]!;
+    reach += r;
+    for (let k = Math.min(i + 1, n1); k >= 1; k--) {
+      const from = ways[k - 1]!;
+      const to = ways[k]!;
+      for (let sum = reach; sum >= r; sum--) {
+        const v = from[sum - r]!;
+        if (v) to[sum] = to[sum]! + v;
       }
     }
-    prev = cur;
   }
-  return prev[n1]!;
+  const dist = ways[n1]!;
+  let total = 0;
+  let mean = 0;
+  for (let sum = 0; sum <= maxSum; sum++) {
+    total += dist[sum]!;
+    mean += sum * dist[sum]!;
+  }
+  mean /= total;
+  const dev = Math.abs(observed - mean);
+  let extreme = 0;
+  // A relative tolerance so a sum exactly as far from the mean on the other side is not lost to rounding.
+  const eps = 1e-9 * Math.max(1, dev);
+  for (let sum = 0; sum <= maxSum; sum++) if (dist[sum] && Math.abs(sum - mean) >= dev - eps) extreme += dist[sum]!;
+  return Math.min(1, extreme / total);
 }
 
 /**
- * Two-sided Mann-Whitney U test, matching scipy.stats.mannwhitneyu(method='auto'): exact
- * distribution when both samples have at most 8 values and there are no ties, otherwise the normal
- * approximation with tie correction and continuity correction. `method` forces one (exact is only
- * possible without ties).
+ * Two-sided Mann-Whitney U test. Exact permutation distribution (ties handled by midranks, see
+ * exactRankSumP) when the pooled sample has at most MWU_EXACT_MAX_N values; otherwise the normal
+ * approximation with tie and continuity correction, as scipy.stats.mannwhitneyu. The exact method
+ * matters at the small run counts used here: the approximation turns complete separation of 5 vs 5
+ * runs with ties inside one app (say several idle CPU readings of exactly 0) into p = 0.011 instead of
+ * the exact 2/252 = 0.008. `method` forces one.
  */
 export function mannWhitneyU(a: readonly number[], b: readonly number[], opts: { method?: 'auto' | 'exact' | 'asymptotic' } = {}): MwuResult {
   const xa = a.filter((x) => Number.isFinite(x));
@@ -297,12 +385,16 @@ export function mannWhitneyU(a: readonly number[], b: readonly number[], opts: {
   const n = all.length;
   let r1 = 0;
   let tieTerm = 0;
+  const doubled: number[] = [];
   for (let i = 0; i < n; ) {
     let j = i;
     while (j + 1 < n && all[j + 1]!.v === all[i]!.v) j++;
     const t = j - i + 1;
     const midrank = (i + j + 2) / 2; // ranks are 1-based
-    for (let k = i; k <= j; k++) if (all[k]!.g === 0) r1 += midrank;
+    for (let k = i; k <= j; k++) {
+      doubled.push(i + j + 2);
+      if (all[k]!.g === 0) r1 += midrank;
+    }
     if (t > 1) tieTerm += t * t * t - t;
     i = j + 1;
   }
@@ -312,13 +404,10 @@ export function mannWhitneyU(a: readonly number[], b: readonly number[], opts: {
   const effect = U1 / (n1 * n2);
 
   const method = opts.method ?? 'auto';
-  if (method === 'exact' && tieTerm !== 0) throw new Error('mannWhitneyU: the exact method needs samples without ties');
-  if (method === 'exact' || (method === 'auto' && n1 <= 8 && n2 <= 8 && tieTerm === 0)) {
-    const counts = exactUCounts(n1, n2);
-    const total = counts.reduce((s, c) => s + c, 0);
-    let tail = 0;
-    for (let u = Math.ceil(Umax); u < counts.length; u++) tail += counts[u]!;
-    return { U: U1, U1, U2, n1, n2, z: NaN, p: Math.min(1, (2 * tail) / total), method: 'exact', effect };
+  // Every value tied: no ordering information at all.
+  if (tieTerm === n * n * n - n) return { U: U1, U1, U2, n1, n2, z: method === 'exact' ? NaN : 0, p: 1, method: method === 'exact' || (method === 'auto' && n <= MWU_EXACT_MAX_N) ? 'exact' : 'asymptotic', effect };
+  if (method === 'exact' || (method === 'auto' && n <= MWU_EXACT_MAX_N)) {
+    return { U: U1, U1, U2, n1, n2, z: NaN, p: exactRankSumP(doubled, n1, 2 * r1), method: 'exact', effect };
   }
 
   const mu = (n1 * n2) / 2;
