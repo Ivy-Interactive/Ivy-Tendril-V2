@@ -40,3 +40,18 @@ export {
   type DeleteProjectDialogProps,
 } from "./DeleteProjectDialog";
 export { UpdatePlanDialog, type UpdatePlanDialogProps } from "./UpdatePlanDialog";
+export {
+  PlanSearchDialog,
+  MAX_PLAN_SEARCH_RESULTS,
+  PLAN_SEARCH_DEBOUNCE_MS,
+  type PlanSearchDialogProps,
+} from "./PlanSearchDialog";
+export {
+  ShareTunnelDialog,
+  shareUrlForPlan,
+  SHARE_POLL_INTERVAL_MS,
+  type ShareTunnelDialogProps,
+  type ShareTunnelSnapshot,
+  type ShareTunnelStatus,
+  type ShareTunnelApi,
+} from "./ShareTunnelDialog";
