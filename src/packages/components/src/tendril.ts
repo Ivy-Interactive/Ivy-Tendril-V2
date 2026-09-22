@@ -155,6 +155,7 @@ export {
   TendrilQuestions,
   QuestionsForm,
   ChatQuestionsBlock,
+  AnswersSummaryCard,
   DescriptionMarkdown,
   buildAnswersSummary,
   canSubmitAnswers,
@@ -162,6 +163,7 @@ export {
   documentOtherOpen,
   entryTitle,
   hasEntries,
+  parseAnswersSummary,
   submitNote,
   unansweredRequired,
 } from "./components/TendrilQuestions";
@@ -170,7 +172,9 @@ export type {
   TendrilQuestionsProps,
   QuestionsFormProps,
   QuestionsSubmitAction,
+  AnswersSummaryCardProps,
   AnswerMap,
+  ParsedAnswer,
 } from "./components/TendrilQuestions";
 
 // Plan Diff Components
