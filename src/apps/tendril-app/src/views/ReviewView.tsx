@@ -6,7 +6,7 @@ import {
   type PlanTabDto,
   type ShellBadgeDto,
 } from "@ivy-interactive/components/tendril";
-import { Button, Callout } from "@ivy-interactive/components/ui";
+import { Badge, Button, Callout } from "@ivy-interactive/components/ui";
 import {
   describeBridgeError,
   type DraftComment,
@@ -23,7 +23,7 @@ import { bridge } from "../api/bridge";
 import { PlanActionsController } from "../controllers/planActions";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { NoContentView } from "../components/NoContentView";
-import { VERIFICATION_BADGE_CLASS } from "../utils/verificationStatus";
+import { VERIFICATION_BADGE_VARIANT } from "../utils/verificationStatus";
 import { PlanChatPanel } from "../components/chat/PlanChatPanel";
 import { ProjectBadges } from "../components/ProjectBadges";
 import { TendrilProcessWallpaper } from "../components/TendrilProcessWallpaper";
@@ -985,14 +985,13 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                 <div key="rows" className="grid grid-cols-[auto_1fr] items-center gap-2">
                   {verifications.map((v) => (
                     <React.Fragment key={v.name}>
-                      <span
+                      <Badge
                         data-testid={`review-verification-${v.name}`}
-                        className={`justify-self-start rounded border px-2 py-0.5 text-xs font-medium ${
-                          VERIFICATION_BADGE_CLASS[v.status]
-                        }`}
+                        variant={VERIFICATION_BADGE_VARIANT[v.status]}
+                        className="justify-self-start"
                       >
                         {v.status}
-                      </span>
+                      </Badge>
                       <span className="truncate text-sm text-foreground">{v.name}</span>
                     </React.Fragment>
                   ))}
