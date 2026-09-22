@@ -5,6 +5,7 @@
 // setup, datasets and report live in modules owned by other parts of the project; they are imported
 // lazily so that a missing or broken one only breaks its own command.
 
+import { spawn, type ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
@@ -216,6 +217,10 @@ async function cmdRun(ctx: CommandContext): Promise<number> {
   setDefaultLogDir(dirs.logs);
   log.info(`run ${runId}: profile ${profile}, suites ${suites.join(',')}, apps ${apps.join(',')}, datasets ${datasetOverride?.join(',') ?? '(profile default)'}`);
   installExitHandlers(log);
+  // An idle Mac goes to system sleep (and turns the display off, which locks the screen) while a
+  // run waits on timers: a 20 s window then lasts 15 minutes and the desktop windows are occluded.
+  // caffeinate holds display, idle and system sleep assertions for as long as this process lives.
+  const caffeinate = keepAwake(log);
 
   const procstat = await ProcStat.open({ bin: paths.procstatBin, log: log.child('procstat') });
   const invocationStart = localIso();
@@ -244,7 +249,7 @@ async function cmdRun(ctx: CommandContext): Promise<number> {
         pins: { v1Ref: V1_REF, v1Sha: env.apps.v1.cloneSha ?? V1_SHA, v2Ref, v2Sha: env.apps.v2.cloneSha },
         env: env as unknown as Record<string, unknown>,
         buildInfo,
-        options: { quietLoad, quietTimeoutSec, datasetOverride, apps, knobs: PROFILES[profile] },
+        options: { quietLoad, quietTimeoutSec, datasetOverride, apps, knobs: PROFILES[profile], keptAwake: caffeinate !== null },
         invocations: [inv],
       };
     }
@@ -295,6 +300,7 @@ async function cmdRun(ctx: CommandContext): Promise<number> {
     await stopAll(log);
     await procstat.close();
     markInterrupted();
+    caffeinate?.kill('SIGTERM');
   }
 
   const final = updateRunInfo(runDir, (i) => {
@@ -315,6 +321,19 @@ async function cmdRun(ctx: CommandContext): Promise<number> {
   log.info(`results in ${path.join(runDir, 'results')}`);
   if (fatal) return 1;
   return Object.values(statuses).every((s) => s === 'ok' || s === 'failures') ? 0 : 1;
+}
+
+/** `caffeinate -dims -w <this pid>`: no display, idle or system sleep while the run lives. */
+function keepAwake(log: CommandContext['log']): ChildProcess | null {
+  try {
+    const c = spawn('/usr/bin/caffeinate', ['-d', '-i', '-m', '-s', '-w', String(process.pid)], { stdio: 'ignore' });
+    c.on('error', (e) => log.warn(`caffeinate failed: ${errorMessage(e)}; the Mac may sleep during the run`));
+    c.unref();
+    return c;
+  } catch (e) {
+    log.warn(`caffeinate failed: ${errorMessage(e)}; the Mac may sleep during the run`);
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------------------------

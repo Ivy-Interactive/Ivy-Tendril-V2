@@ -2795,7 +2795,7 @@ function findingsBlock(model: Model, headline: HeadlineRow[]): string[] {
   }
 
   // Harness notes that point at measurement problems.
-  const flagged = model.suites.flatMap((s) => model.results.get(s)!.notes.filter((n) => /validation:|leaked|removed .* non-finite|merged with a later invocation/i.test(n)).map((n) => `${s}: ${n}`));
+  const flagged = model.suites.flatMap((s) => model.results.get(s)!.notes.filter((n) => /validation:|leaked|removed .* non-finite|merged with a later invocation|machine slept|^WARNING:/i.test(n)).map((n) => `${s}: ${n}`));
   if (flagged.length) {
     items.push(`**Harness notes worth checking:**`);
     for (const f of flagged.slice(0, 10)) items.push(`  - ${mdEscape(f)}`);

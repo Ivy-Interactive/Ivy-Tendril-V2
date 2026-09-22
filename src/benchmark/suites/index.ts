@@ -6,6 +6,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
+import { performance } from 'node:perf_hooks';
 import type { AdapterOptions, AppAdapter } from '../apps/types.ts';
 import { PROFILES, type DatasetName, type ProfileKnobs, type ProfileName, type WorkspacePaths } from '../lib/config.ts';
 import { loadSampler, quiesce } from '../lib/env.ts';
@@ -256,6 +257,10 @@ export async function runSuites(ctx: SuiteContext, opts: RunSuitesOptions): Prom
     }
 
     const startedAt = localIso();
+    // The monotonic clock stops while the Mac sleeps and the wall clock does not: their drift is
+    // how long the machine slept during the suite (timers and windows were stretched by that much).
+    const wall0 = Date.now();
+    const mono0 = performance.now();
     const loadavgStart = os.loadavg();
     const sampler = loadSampler();
     log.info(`suite ${name} starting (profile ${ctx.profile}, load ${loadavgStart.map((x) => x.toFixed(2)).join(' ')})`);
@@ -287,6 +292,7 @@ export async function runSuites(ctx: SuiteContext, opts: RunSuitesOptions): Prom
     }
 
     const loadSamples = sampler.stop();
+    const sleptMs = Date.now() - wall0 - (performance.now() - mono0);
     // The runner owns load bookkeeping so every suite reports it the same way; a suite that
     // recorded its own start/end keeps them.
     result.suite = name;
@@ -300,6 +306,11 @@ export async function runSuites(ctx: SuiteContext, opts: RunSuitesOptions): Prom
     if (!result.env.loadSamples?.length) result.env.loadSamples = loadSamples;
     result.env.quietWaitMs = quietWaitMs;
     result.notes.unshift(...preNotes);
+    if (sleptMs > 5000) {
+      const msg = `WARNING: the machine slept for about ${Math.round(sleptMs / 1000)} s during this suite (wall clock ran ahead of the monotonic clock); samples spanning the sleep are not valid`;
+      log.warn(msg);
+      result.notes.unshift(msg);
+    }
 
     // Interleaved iterations that failed but never made it into `failures` would vanish from the
     // report; record them here (matching by app and error text).

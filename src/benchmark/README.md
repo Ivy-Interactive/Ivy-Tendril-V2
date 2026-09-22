@@ -333,6 +333,10 @@ Ivy entry closure plus the Tendril widgets bundle (its root shell is an external
   suite the runner stops anything still running and records it; Ctrl-C stops everything and marks
   the run interrupted. V2 launches set `TENDRIL_SKIP_SERVICE_PROVISION=1` and
   `TENDRIL_SKIP_SERVICE_AUTOSTART=1` (no LaunchAgent, no sidecar copy).
+- `run` holds `caffeinate -dims` for its lifetime, so the Mac neither sleeps nor turns the display
+  off (which would lock the screen) while timers and windows are being measured. A suite during
+  which the machine slept anyway (the wall clock runs ahead of the monotonic clock) gets a warning
+  note, which the report lists in its findings.
 - Every spawned process's stdout and stderr is kept in `<runDir>/logs/`, next to `harness.log`.
 
 ## Caveats

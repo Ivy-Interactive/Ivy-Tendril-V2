@@ -309,11 +309,11 @@ function pageWatcher(arg: { auto: Record<string, CondSpec> | null; idleCheckMs: 
 type WatcherWindow = { __TBENCH__?: any; __SHIM_IPC__?: Array<{ cmd: string; t: number; ok: boolean }> };
 
 async function arm(page: Page, id: string, cond: CondSpec | { badge: string; expected: number }): Promise<{ already: boolean; selector?: string; error?: string }> {
-  return page.evaluate(([i, c]) => (window as unknown as WatcherWindow).__TBENCH__.arm(i, c), [id, cond] as const);
+  return inPage(page.evaluate(([i, c]) => (window as unknown as WatcherWindow).__TBENCH__.arm(i, c), [id, cond] as const), `arm ${id}`);
 }
 
 async function cancel(page: Page, id: string): Promise<void> {
-  await page.evaluate((i) => (window as unknown as WatcherWindow).__TBENCH__?.cancel(i), id).catch(() => {});
+  await inPage(page.evaluate((i) => (window as unknown as WatcherWindow).__TBENCH__?.cancel(i), id), `cancel ${id}`).catch(() => {});
 }
 
 
@@ -336,8 +336,9 @@ async function waitDone(page: Page, id: string, timeoutMs: number, what: string)
   const wait = page.waitForFunction((i) => (window as unknown as WatcherWindow).__TBENCH__?.result(i) ?? null, id, { polling: 25, timeout: timeoutMs });
   wait.catch(() => {});
   try {
-    const h = await Promise.race([wait, gone]);
-    const v = (await h.jsonValue()) as WaitDone;
+    // The outer limit covers a renderer so busy that Playwright's own timeout never gets to fire.
+    const h = await inPage(Promise.race([wait, gone]), what, timeoutMs + PAGE_CALL_TIMEOUT_MS);
+    const v = (await inPage(h.jsonValue(), what)) as WaitDone;
     await h.dispose().catch(() => {});
     if (v.error) throw new Error(`${what}: watcher error: ${v.error}`);
     return v;
@@ -488,6 +489,30 @@ class ServerGone extends AppStalled {}
 /** A click that could not land: the page no longer takes input, so its later samples are skipped. */
 class ClickBlocked extends AppStalled {}
 
+/** The page's main thread did not answer a harness call in time (it is busy or hung). */
+class PageFrozen extends AppStalled {}
+
+/** How long a page may take to answer one harness call before it counts as frozen. */
+const PAGE_CALL_TIMEOUT_MS = 30_000;
+
+/**
+ * Bounds a call into the page. Playwright's evaluate (and a page CDP call) has no timeout of its
+ * own, so a renderer whose main thread is blocked would stall the harness for as long as it stays
+ * blocked; this turns that into a PageFrozen result instead.
+ */
+async function inPage<T>(p: Promise<T>, what: string, limitMs = PAGE_CALL_TIMEOUT_MS): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const limit = new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new PageFrozen(`${what}: the page did not answer within ${limitMs} ms (main thread busy or hung)`, limitMs)), limitMs);
+  });
+  p.catch(() => {});
+  try {
+    return await Promise.race([p, limit]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Session
 
@@ -575,8 +600,8 @@ async function newRig(s: Session): Promise<PageRig> {
 }
 
 async function pageMetrics(rig: PageRig, gc: boolean): Promise<{ heapMiB: number; nodes: number; listeners: number }> {
-  if (gc) await rig.cdp.send('HeapProfiler.collectGarbage').catch(() => {});
-  const { metrics } = await rig.cdp.send('Performance.getMetrics');
+  if (gc) await inPage(rig.cdp.send('HeapProfiler.collectGarbage'), 'collect garbage').catch(() => {});
+  const { metrics } = await inPage(rig.cdp.send('Performance.getMetrics'), 'Performance.getMetrics');
   const get = (n: string) => metrics.find((m) => m.name === n)?.value ?? NaN;
   return { heapMiB: toMiB(get('JSHeapUsedSize')), nodes: get('Nodes'), listeners: get('JSEventListeners') };
 }
@@ -590,7 +615,7 @@ interface IpcSummary {
 
 /** V2 only: the shim's IPC log since page time `from` (and up to `to`), summarised in the page. */
 async function ipcSummary(page: Page, from = 0, to = Number.POSITIVE_INFINITY): Promise<IpcSummary | null> {
-  return page.evaluate(
+  return inPage(page.evaluate(
     ([a, b]) => {
       const l = (window as unknown as WatcherWindow).__SHIM_IPC__;
       if (!l) return null;
@@ -607,11 +632,11 @@ async function ipcSummary(page: Page, from = 0, to = Number.POSITIVE_INFINITY): 
       return out;
     },
     [from, to === Number.POSITIVE_INFINITY ? Number.MAX_VALUE : to] as const,
-  );
+  ), 'IPC summary');
 }
 
 async function pageNow(page: Page): Promise<number> {
-  return page.evaluate(() => performance.now());
+  return inPage(page.evaluate(() => performance.now()), 'page clock');
 }
 
 /** Transport activity between two page times, for meta: V2 IPC calls, WebSocket frames for both. */
@@ -650,11 +675,11 @@ let diagSeq = 0;
 /** What the page showed when a wait failed: URL, active nav item, active pane text, a screenshot. */
 async function diagnose(s: Session, page: Page, what: string): Promise<string> {
   try {
-    const d = await page.evaluate(() => {
+    const d = await inPage(page.evaluate(() => {
       const active = document.querySelector('button.tsh-nav-item[data-active="true"]')?.getAttribute('data-menu-item') ?? null;
       const pane = document.querySelector('.tsh-frame-pane[data-active="true"]') ?? document.querySelector('main') ?? document.body;
       return { url: location.pathname + location.search, active, text: (pane?.textContent ?? '').replace(/\s+/g, ' ').trim().slice(0, 160) };
-    });
+    }), 'diagnostics');
     const shot = path.join(s.diagDir, `ui-${s.app.id}-${s.ds}-${what}-${++diagSeq}.png`);
     await page.screenshot({ path: shot, timeout: 10_000 }).catch(() => {});
     return `page at ${d.url}, active nav ${d.active ?? 'none'}, content "${d.text}", screenshot ${path.basename(shot)}`;
@@ -670,18 +695,18 @@ async function navigateTo(s: Session, page: Page, target: NavTarget): Promise<Na
   if (armed.error) throw new Error(`${target}: watcher could not evaluate its selectors: ${armed.error}`);
   if (armed.already) throw new Error(`${target}: ready marker ${armed.selector} was already present before the click (stale view), sample dropped`);
   try {
-    const before = await page.evaluate(() => {
+    const before = await inPage(page.evaluate(() => {
       const b = (window as unknown as WatcherWindow).__TBENCH__;
       b.lastClick = null;
       return performance.now();
-    });
+    }), `before the ${target} click`);
     await page.click(s.app.ui.navButton(target), { timeout: CLICK_TIMEOUT_MS }).catch(async (e) => {
       throw new ClickBlocked(`${target}: the nav click did not land within ${CLICK_TIMEOUT_MS} ms: ${shortError(e)}; ${await diagnose(s, page, `click-${target}`)}`, CLICK_TIMEOUT_MS);
     });
     const done = await waitDone(page, id, s.timeoutMs, `navigate to ${target}`).catch(async (e: unknown) => {
       throw withDiagnosis(e, await diagnose(s, page, `nav-${target}`));
     });
-    const click = (await page.evaluate(() => (window as unknown as WatcherWindow).__TBENCH__.lastClick)) as number | null;
+    const click = (await inPage(page.evaluate(() => (window as unknown as WatcherWindow).__TBENCH__.lastClick), `after the ${target} click`)) as number | null;
     if (click === null) throw new Error(`${target}: the click never reached the page`);
     if (done.t < click) throw new Error(`${target}: ready ${Math.round(click - done.t)} ms before the click`);
     return { ms: done.t - click, kind: done.kind, via: done.via, checks: done.checks, checkMs: done.checkMs, clickLagMs: click - before };
@@ -722,7 +747,7 @@ async function navPass(s: Session, rig: PageRig, scenarioPrefix: string, metric:
       s.col.add({ scenario, app: s.app.id, dataset: s.ds, metric, unit: 'ms', value: r.ms, instance: s.instance, sampleMeta: { kind: r.kind, via: r.via, clickLagMs: round1(r.clickLagMs), watcherChecks: r.checks, watcherCheckMs: r.checkMs, ...tm, ...extraMeta } });
     } catch (e) {
       failed = true;
-      if (e instanceof ClickBlocked || e instanceof ServerGone) rig.stuck = { why: `${scenario}: ${e.message.split(';')[0]}`, bound: e.bound };
+      if (e instanceof ClickBlocked || e instanceof ServerGone || e instanceof PageFrozen) rig.stuck = { why: `${scenario}: ${e.message.split(';')[0]}`, bound: e.bound };
       s.lost(scenario, metric, e);
     }
   }
@@ -859,7 +884,7 @@ async function openWarmPage(s: Session): Promise<WarmPage> {
 
 /** Reads the plans badge and checks it against the dataset; returns what the page shows. */
 async function badgeNow(s: Session, page: Page): Promise<number> {
-  return page.evaluate((css) => (window as unknown as WatcherWindow).__TBENCH__.badge(css), s.app.ui.navBadge('plans'));
+  return inPage(page.evaluate((css) => (window as unknown as WatcherWindow).__TBENCH__.badge(css), s.app.ui.navBadge('plans')), 'plans badge');
 }
 
 /** Waits until the plans badge shows `expected` (used to restore state between scenarios). */
@@ -917,7 +942,7 @@ async function setState(s: Session, kind: PushKind, id: string, value: string, s
  */
 async function clockOffset(page: Page): Promise<{ offsetMs: number; rttMs: number }> {
   const a = Date.now();
-  const pageEpoch = await page.evaluate(() => performance.timeOrigin + performance.now());
+  const pageEpoch = await inPage(page.evaluate(() => performance.timeOrigin + performance.now()), 'page clock');
   const b = Date.now();
   return { offsetMs: pageEpoch - (a + b) / 2, rttMs: b - a };
 }
@@ -968,6 +993,11 @@ async function pushScenario(s: Session, rig: PageRig, kind: PushKind, samples: n
       });
     } catch (e) {
       s.lost(kind, 'push_latency_ms', e);
+      if (e instanceof PageFrozen || e instanceof ServerGone) {
+        rig.stuck = { why: `${kind}: ${e.message.split(';')[0]}`, bound: e.bound };
+        for (let k = i + 1; k < samples; k++) s.lost(kind, 'push_latency_ms', new AppStalled(`skipped: the page stopped taking input earlier (${rig.stuck.why})`, rig.stuck.bound));
+        return;
+      }
       await cancel(page, id);
     }
     await sleep(PUSH_GAP_MS);

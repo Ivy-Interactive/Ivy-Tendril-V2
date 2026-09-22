@@ -85,6 +85,31 @@ const SHIM_LABEL = 'IPC shim (stand-in for the tendril-app host; not the Tauri b
 type Want = 'content' | 'empty' | 'any';
 type Leg = 'net' | 'ui';
 
+/** How long one call into the page may take beyond its own timeout before the page counts as hung. */
+const PAGE_GRACE_MS = 30_000;
+
+/** The page stopped answering: nothing more can be measured on it. */
+class PageHung extends Error {}
+
+/**
+ * Bounds a Playwright call. evaluate has no timeout of its own, and a renderer whose main thread is
+ * blocked can hold even a timed wait far past its limit, which would stall the whole run.
+ */
+async function bounded<T>(p: Promise<T>, what: string, limitMs = PAGE_GRACE_MS): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  p.catch(() => {});
+  try {
+    return await Promise.race([
+      p,
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(() => reject(new PageHung(`${what}: the page did not answer within ${Math.round(limitMs / 1000)} s`)), limitMs);
+      }),
+    ]);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 // ---------------------------------------------------------------------------------------------
 // Taps: the proxies of one session and their settle logic
 
@@ -127,7 +152,7 @@ async function settle(t: Taps): Promise<{ ms: number; capped: boolean }> {
 
 async function snap(t: Taps, page: Page | null, app: AppId): Promise<Snap> {
   let ipc: number | null = null;
-  if (page && app === 'v2') ipc = await page.evaluate(() => ((window as unknown as { __SHIM_IPC__?: unknown[] }).__SHIM_IPC__ ?? []).length).catch(() => null);
+  if (page && app === 'v2') ipc = await bounded(page.evaluate(() => ((window as unknown as { __SHIM_IPC__?: unknown[] }).__SHIM_IPC__ ?? []).length), 'IPC count').catch(() => null);
   return { net: t.net.snapshot(), ui: t.ui.snapshot(), ipc };
 }
 
@@ -244,33 +269,48 @@ async function waitReady(page: Page, c: ReadyCondition, want: Want, what: string
   const probes = want === 'any' ? c.anyOf : c.anyOf.filter((p) => p.kind === want);
   const use = probes.length ? probes : c.anyOf;
   try {
-    await Promise.any(use.map((p) => page.locator(p.selector).first().waitFor({ state: p.state, timeout: WAIT_MS })));
-    for (const p of c.allOf ?? []) await page.locator(p.selector).first().waitFor({ state: p.state, timeout: WAIT_MS });
-    for (const s of c.noneOf ?? []) await page.locator(s).first().waitFor({ state: 'detached', timeout: WAIT_MS });
+    await bounded(
+      (async () => {
+        await Promise.any(use.map((p) => page.locator(p.selector).first().waitFor({ state: p.state, timeout: WAIT_MS })));
+        for (const p of c.allOf ?? []) await page.locator(p.selector).first().waitFor({ state: p.state, timeout: WAIT_MS });
+        for (const s of c.noneOf ?? []) await page.locator(s).first().waitFor({ state: 'detached', timeout: WAIT_MS });
+      })(),
+      what,
+      WAIT_MS + PAGE_GRACE_MS,
+    );
   } catch (e) {
+    if (e instanceof PageHung) throw e;
     const msg = e instanceof AggregateError ? errorMessage(e.errors[0]) : errorMessage(e);
     throw new Error(`${what}: view not ready within ${WAIT_MS} ms: ${msg.split('\n')[0]}`);
   }
 }
 
 async function badge(page: Page, css: string): Promise<number> {
-  return page.evaluate((sel) => {
-    const el = document.querySelector(sel);
-    return el ? Number((el.textContent ?? '').replace(/[^0-9]/g, '') || '0') : 0;
-  }, css);
+  return bounded(
+    page.evaluate((sel) => {
+      const el = document.querySelector(sel);
+      return el ? Number((el.textContent ?? '').replace(/[^0-9]/g, '') || '0') : 0;
+    }, css),
+    'plans badge',
+  );
 }
 
 async function waitBadge(page: Page, css: string, expected: number, what: string): Promise<void> {
   try {
-    await page.waitForFunction(
-      ([sel, exp]) => {
-        const el = document.querySelector(sel);
-        return (el ? Number((el.textContent ?? '').replace(/[^0-9]/g, '') || '0') : 0) === exp;
-      },
-      [css, expected] as const,
-      { timeout: WAIT_MS, polling: 50 },
+    await bounded(
+      page.waitForFunction(
+        ([sel, exp]) => {
+          const el = document.querySelector(sel);
+          return (el ? Number((el.textContent ?? '').replace(/[^0-9]/g, '') || '0') : 0) === exp;
+        },
+        [css, expected] as const,
+        { timeout: WAIT_MS, polling: 50 },
+      ),
+      what,
+      WAIT_MS + PAGE_GRACE_MS,
     );
   } catch (e) {
+    if (e instanceof PageHung) throw e;
     throw new Error(`${what}: plans badge did not reach ${expected} within ${WAIT_MS} ms (${errorMessage(e).split('\n')[0]})`);
   }
 }
@@ -314,24 +354,22 @@ async function newPage(s: Session): Promise<{ ctx: BrowserContext; page: Page }>
 /** Closes a context after collecting the V2 shim's failed IPC commands (to prove the shadow home works). */
 async function closePage(s: Session, ctx: BrowserContext, page: Page): Promise<void> {
   if (s.app.id === 'v2') {
-    const failed = await page
-      .evaluate(() => ((window as unknown as { __SHIM_IPC__?: Array<{ cmd: string; ok: boolean }> }).__SHIM_IPC__ ?? []).filter((x) => !x.ok).map((x) => x.cmd))
-      .catch(() => [] as string[]);
+    const failed = await bounded(page.evaluate(() => ((window as unknown as { __SHIM_IPC__?: Array<{ cmd: string; ok: boolean }> }).__SHIM_IPC__ ?? []).filter((x) => !x.ok).map((x) => x.cmd)), 'IPC failures').catch(() => [] as string[]);
     for (const c of failed) s.ipcFailures.set(c, (s.ipcFailures.get(c) ?? 0) + 1);
   }
-  await ctx.close().catch(() => {});
+  await bounded(ctx.close(), 'close context').catch(() => {});
 }
 
 async function load(s: Session, page: Page): Promise<{ settleMs: number; capped: boolean }> {
-  await page.goto(s.taps.pageUrl, { waitUntil: 'commit', timeout: WAIT_MS });
-  await page.locator(s.app.ui.shell).first().waitFor({ state: 'visible', timeout: WAIT_MS });
+  await bounded(page.goto(s.taps.pageUrl, { waitUntil: 'commit', timeout: WAIT_MS }), 'page load', WAIT_MS + PAGE_GRACE_MS);
+  await bounded(page.locator(s.app.ui.shell).first().waitFor({ state: 'visible', timeout: WAIT_MS }), 'shell', WAIT_MS + PAGE_GRACE_MS);
   await waitReady(page, s.app.ui.ready.plans, s.want.plans, 'landing view');
   const st = await settle(s.taps);
   return { settleMs: st.ms, capped: st.capped };
 }
 
 async function visit(s: Session, page: Page, target: NavTarget): Promise<{ settleMs: number; capped: boolean }> {
-  await page.click(s.app.ui.navButton(target), { timeout: CLICK_TIMEOUT_MS });
+  await bounded(page.click(s.app.ui.navButton(target), { timeout: CLICK_TIMEOUT_MS }), `click ${target}`, CLICK_TIMEOUT_MS + PAGE_GRACE_MS);
   await waitReady(page, s.app.ui.ready[target], s.want[target], `navigate to ${target}`);
   const st = await settle(s.taps);
   return { settleMs: st.ms, capped: st.capped };
@@ -355,14 +393,19 @@ async function pushOnce(s: Session, page: Page): Promise<{ settleMs: number; cap
   const before = i % 2 === 0 ? s.queue : s.queue - 1;
   const expected = i % 2 === 0 ? s.queue - 1 : s.queue;
   const css = s.app.ui.navBadge('plans');
+  const t0 = performance.now();
   const shown = await badge(page, css);
   if (shown !== before) throw new Error(`plans badge shows ${shown} before push ${i}, expected ${before}`);
   const spec = s.app.api['plans.update']({ planId: target, jobId: '', i: value === 'Icebox' ? 0 : 1 });
+  const t1 = performance.now();
   const r = await request({ method: spec.method, url: joinUrl(s.server.baseUrl, spec.path), headers: s.server.authHeaders(), body: spec.body });
   if (r.status < 200 || r.status >= 300) throw new Error(`PUT ${spec.path} -> ${r.status || r.error}`);
   s.pushSeq++;
+  const t2 = performance.now();
   await waitBadge(page, css, expected, `push ${value} of ${target}`);
+  const t3 = performance.now();
   const st = await settle(s.taps);
+  s.log.debug(`push ${i}: badge read ${Math.round(t1 - t0)} ms, PUT ${Math.round(t2 - t1)} ms, badge change ${Math.round(t3 - t2)} ms, settle ${Math.round(st.ms)} ms`);
   return { settleMs: st.ms, capped: st.capped, target, value, requestMs: Math.round(r.ms * 10) / 10 };
 }
 
@@ -449,6 +492,7 @@ async function warmPageScenarios(s: Session, k: SuiteContext['knobs']['network']
         recordWindow(s.rec, 'push', a, b, { i, target: p.target, value: p.value, putMs: p.requestMs, settleMs: Math.round(p.settleMs), settleCapped: p.capped, windowMs: Math.round(b.net.at - a.net.at) });
       } catch (e) {
         s.fail('push', e);
+        if (e instanceof PageHung) return;
         await settle(s.taps);
       }
     }
@@ -565,14 +609,18 @@ async function closeBrowser(browser: Browser, log: Logger): Promise<void> {
 async function runSession(ctx: SuiteContext, result: SuiteResult, app: AppAdapter, ds: DatasetName, manifest: DatasetManifest): Promise<void> {
   const log = ctx.log.child(`${app.id}/${ds}`);
   const k = ctx.knobs.network;
+  // Once a page stops answering, the rest of this app's scenarios on this dataset are skipped.
+  let hung: string | null = null;
   const fail = (scenario: string, e: unknown) => {
     const error = errorMessage(e).split('\n')[0]!;
     log.warn(`${scenario}: ${error}`);
     result.failures.push({ app: app.id, dataset: ds, scenario, error });
+    if (e instanceof PageHung) hung ??= error;
   };
   const note = (s: string) => {
     if (!result.notes.includes(s)) result.notes.push(s);
   };
+  const go = () => isAlive(server.pid) && hung === null;
   const restored = await restoreHome({ paths: ctx.paths, dataset: ds, app: app.id, runDir: ctx.runDir, suffix: 'network', log });
   const server = await app.startServer({ home: restored.home, runDir: ctx.runDir, mode: 'web' });
   let wired: Awaited<ReturnType<typeof wire>> | null = null;
@@ -607,11 +655,12 @@ async function runSession(ctx: SuiteContext, result: SuiteResult, app: AppAdapte
     await settle(s.taps);
 
     log.info(`cold-load + first visits x${k.coldLoads}`);
-    for (let i = 0; i < k.coldLoads && isAlive(server.pid); i++) await coldLoadAndNav(s, i);
+    for (let i = 0; i < k.coldLoads && go(); i++) await coldLoadAndNav(s, i);
     log.info(`idle ${k.idleWindows} x ${k.idleWindowSec} s, push x${k.pushSamples}`);
-    if (isAlive(server.pid)) await warmPageScenarios(s, k);
+    if (go()) await warmPageScenarios(s, k);
     log.info(`session x${k.sessions} (${k.sessionPushes} pushes each)`);
-    for (let i = 0; i < k.sessions && isAlive(server.pid); i++) await session(s, i, k.sessionPushes);
+    for (let i = 0; i < k.sessions && go(); i++) await session(s, i, k.sessionPushes);
+    if (hung) fail('(session)', new Error(`the ${app.id} page stopped answering (${hung}); the remaining scenarios on ${ds} were skipped`));
     if (!isAlive(server.pid)) fail('(session)', new Error(`${app.id} server (pid ${server.pid}) exited during the suite`));
 
     const all = deltaCounters(pre.net, s.taps.net.snapshot());
