@@ -3,15 +3,26 @@ import { Clock, Coins, Hash, type LucideIcon } from "lucide-react";
 
 import { formatElapsed, formatTokenCount } from "../ui/StatusLine";
 import { useElapsedMs } from "../ui/use-elapsed";
+import { formatCurrency, useTranslation } from "@/i18n/uiShell";
 import type { StreamMetrics } from "./stream-metrics.ts";
 
+const COST_FORMAT: Intl.NumberFormatOptions = {
+  minimumFractionDigits: 4,
+  maximumFractionDigits: 4,
+  useGrouping: false,
+};
+
 /**
- * A cost in the shape `result-summary.tsx` prints it, so the footer and the result's own stats row
- * cannot disagree about the same number. Four decimals because the interesting costs are cents.
+ * A run's cost as this footer and `result-summary.tsx` both print it, so the two cannot disagree
+ * about the same number: four decimals, because the interesting costs are cents, and no grouping.
+ *
+ * Rounded by `toFixed` before it is formatted. `Intl` rounds a number's shortest decimal form and
+ * `toFixed` its exact binary value, and the two part on ties ($4.69485 is $4.6948 by `toFixed`,
+ * $4.6949 by `Intl`); rounding first keeps every figure what the `$${usd.toFixed(4)}` this replaced
+ * printed, in the current language's digits.
  */
-function formatCost(usd: number): string {
-  return `$${usd.toFixed(4)}`;
-}
+export const formatRunCost = (usd: number): string =>
+  formatCurrency(Number(usd.toFixed(4)), "USD", COST_FORMAT);
 
 interface MetricProps {
   label: string;
@@ -20,8 +31,8 @@ interface MetricProps {
   value: string;
   /** Renders the "~" and says so on hover. */
   estimated?: boolean;
-  /** Where the figure came from, for the reader who hovers to ask. */
-  provenance: string;
+  /** The label and where the figure came from, for the reader who hovers to ask. */
+  title: string;
   testId: string;
 }
 
@@ -41,15 +52,10 @@ const Metric: React.FC<MetricProps> = ({
   icon: Icon,
   value,
   estimated = false,
-  provenance,
+  title,
   testId,
 }) => (
-  <span
-    className="aov-metric"
-    data-estimated={estimated}
-    data-testid={testId}
-    title={`${label}: ${provenance}`}
-  >
+  <span className="aov-metric" data-estimated={estimated} data-testid={testId} title={title}>
     <Icon className="aov-metric-icon" aria-hidden="true" />
     <span className="aov-metric-label">{label}</span>
     <span className="aov-metric-value">
@@ -103,6 +109,7 @@ export const AgentMetricsFooter: React.FC<AgentMetricsFooterProps> = ({
   showDivider = true,
   startedAt,
 }) => {
+  const { t } = useTranslation("uiShell");
   // The agent's own duration outranks our reading of the clock, and once the run is over the span
   // between its first and last event is the measurement — neither is an estimate, so neither carries a
   // "~"; they differ only in who did the measuring, which the hover text says.
@@ -130,43 +137,43 @@ export const AgentMetricsFooter: React.FC<AgentMetricsFooterProps> = ({
     >
       {showElapsed && (
         <Metric
-          label="Output time"
+          label={t("metrics.elapsed.label")}
           icon={Clock}
           value={formatElapsed(elapsedMs)}
-          provenance={
+          title={
             reportedMs != null
-              ? "the duration the agent reported"
+              ? t("metrics.elapsed.reportedTooltip")
               : isComplete
-                ? "measured from the first event to the last"
-                : "measured from the first event"
+                ? t("metrics.elapsed.measuredTooltip")
+                : t("metrics.elapsed.runningTooltip")
           }
           testId="agent-metrics-elapsed"
         />
       )}
       {tokens != null && (
         <Metric
-          label="Tokens"
+          label={t("metrics.tokens.label")}
           icon={Hash}
           value={formatTokenCount(tokens)}
           estimated={metrics.tokensEstimated}
-          provenance={
+          title={
             metrics.tokensEstimated
-              ? "estimated from the stream so far; the agent reports its own count when it finishes"
-              : "reported by the agent"
+              ? t("metrics.tokens.estimatedTooltip")
+              : t("metrics.tokens.reportedTooltip")
           }
           testId="agent-metrics-tokens"
         />
       )}
       {costUsd != null && (
         <Metric
-          label="Cost"
+          label={t("metrics.cost.label")}
           icon={Coins}
-          value={formatCost(costUsd)}
+          value={formatRunCost(costUsd)}
           estimated={metrics.costEstimated}
-          provenance={
+          title={
             metrics.costEstimated
-              ? "priced from the token counts at this model's list price, which cannot know your plan or tier"
-              : "billed by the agent"
+              ? t("metrics.cost.estimatedTooltip")
+              : t("metrics.cost.billedTooltip")
           }
           testId="agent-metrics-cost"
         />

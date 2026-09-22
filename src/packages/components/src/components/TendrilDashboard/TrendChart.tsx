@@ -1,5 +1,6 @@
 import React, { useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { computeRollingAverage, formatAxisDate, formatTooltipDate, niceTicks } from "./types.ts";
+import { useTranslation } from "@/i18n/uiShell";
 
 interface TrendChartProps {
   /** One `yyyy-MM-dd` per point, ascending and contiguous. Axis ticks and tooltips come from these. */
@@ -78,6 +79,8 @@ export const TrendChart: React.FC<TrendChartProps> = ({
   formatValue,
   rolling,
 }) => {
+  // Also what re-renders the axis and tooltip dates, which `types.ts` formats in the current language.
+  const { t } = useTranslation("uiShell");
   const wrapRef = useRef<HTMLDivElement>(null);
   const [size, setSize] = useState({ width: 0, height: DEFAULT_HEIGHT });
   const [hoverIndex, setHoverIndex] = useState<number | null>(null);
@@ -242,12 +245,12 @@ export const TrendChart: React.FC<TrendChartProps> = ({
           <div className="tdb-chart-tooltip-title">{formatTooltipDate(dates[hover.index])}</div>
           <div className="tdb-chart-tooltip-row">
             <span className="tdb-legend-dot" />
-            {currentName}: {formatValue(hover.value)}
+            {t("trendChart.currentRow", { name: currentName, value: formatValue(hover.value) })}
           </div>
           {hover.rollingValue != null && (
             <div className="tdb-chart-tooltip-row">
               <span className="tdb-legend-line-avg" />
-              7-day average: {formatValue(hover.rollingValue)}
+              {t("trendChart.rollingRow", { value: formatValue(hover.rollingValue) })}
             </div>
           )}
         </div>

@@ -13,6 +13,7 @@ import { ShellTooltip } from "./ShellTooltip.tsx";
 import { IconButton } from "../ui/IconButton";
 import { TuiBadge as Badge } from "../ui/TuiBadge";
 import { TuiKbd } from "../ui/TuiKbd";
+import { useTranslation } from "@/i18n/uiShell";
 import "./shell.css";
 
 const SEARCH_SHORTCUT_KEY = "K";
@@ -50,12 +51,14 @@ export const ShellSidebarSection: React.FC<ShellSidebarSectionProps> = ({
   items = [],
   selectedId,
   searchable = false,
-  searchLabel = "Search plans",
+  searchLabel: searchLabelProp,
   emptyText,
   newLabel,
   collapsible = true,
   collapsedMenu = false,
 }) => {
+  const { t } = useTranslation("uiShell");
+  const searchLabel = searchLabelProp ?? t("sidebarSection.searchLabel");
   const select = (itemId: string) => {
     if (events.includes("OnSelectItem")) eventHandler("OnSelectItem", id, [itemId]);
   };
@@ -170,7 +173,9 @@ export const ShellSidebarSection: React.FC<ShellSidebarSectionProps> = ({
               <span className="tsh-row">
                 <span className="tsh-section-search-button-main">
                   <Search size={16} />
-                  <span className="tsh-section-search-button-label">Search</span>
+                  <span className="tsh-section-search-button-label">
+                    {t("sidebarSection.searchButton")}
+                  </span>
                 </span>
                 <TuiKbd
                   keys={[modKeyLabel(), SEARCH_SHORTCUT_KEY]}

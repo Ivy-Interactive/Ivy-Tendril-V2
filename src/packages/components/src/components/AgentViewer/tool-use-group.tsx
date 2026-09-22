@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import type { ToolUsePresentation } from "./types.ts";
 import { aggregateToolStatus } from "./group-events.ts";
 import { ToolUseCard, inputSummary } from "./tool-use-card.tsx";
+import { useTranslation } from "@/i18n/uiShell";
 
 interface ToolUseGroupProps {
   tools: ToolUsePresentation[];
@@ -25,6 +26,7 @@ const ChevronDownIcon: React.FC = () => (
 );
 
 export const ToolUseGroup: React.FC<ToolUseGroupProps> = ({ tools }) => {
+  const { t } = useTranslation("uiShell");
   const [open, setOpen] = useState(false);
   const status = aggregateToolStatus(tools);
 
@@ -59,7 +61,7 @@ export const ToolUseGroup: React.FC<ToolUseGroupProps> = ({ tools }) => {
           <ChevronDownIcon />
         </span>
         <span className={`aov-tool-status aov-tool-status--${status}`} />
-        <span className="aov-tool-name">{tools.length} tool calls</span>
+        <span className="aov-tool-name">{t("toolGroup.count", { count: tools.length })}</span>
         <span className="aov-tool-preview">{preview}</span>
       </div>
       {open && (

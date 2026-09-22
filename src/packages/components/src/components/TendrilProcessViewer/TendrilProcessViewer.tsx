@@ -2,6 +2,7 @@ import React from "react";
 import { Plus, Feather, ThumbsUp, LoaderCircle } from "lucide-react";
 import type { TendrilProcessViewerProps } from "./types.ts";
 import { getWidth, getHeight } from "@/lib/styles";
+import { useTranslation } from "@/i18n/uiShell";
 import "../ui/ui.css";
 import "./tendril-process.css";
 
@@ -87,6 +88,7 @@ export const TendrilProcessViewer: React.FC<TendrilProcessViewerProps> = ({
   retryingPlansCount = 0,
   creatingPrCount = 0,
 }) => {
+  const { t } = useTranslation("uiShell");
   const style: React.CSSProperties = {
     ...getWidth(width),
     ...getHeight(height),
@@ -114,7 +116,7 @@ export const TendrilProcessViewer: React.FC<TendrilProcessViewerProps> = ({
           className={`tpv-box tpv-box-create${allZero ? " tpv-pulse" : ""}`}
           onClick={() => fireEvent("OnCreate")}
         >
-          <span className="tpv-box-label">New Plan</span>
+          <span className="tpv-box-label">{t("processViewer.newPlan")}</span>
           <Plus size={16} className="tpv-box-icon" />
         </button>
 
@@ -132,7 +134,8 @@ export const TendrilProcessViewer: React.FC<TendrilProcessViewerProps> = ({
           <button className="tpv-box tpv-box-stage" onClick={() => fireEvent("OnDrafts")}>
             <Feather size={14} className="tpv-box-stage-icon" />
             <span className="tpv-box-label">
-              Plans{draftCount > 0 && <span className="tpv-box-count">{draftCount}</span>}
+              {t("processViewer.plans")}
+              {draftCount > 0 && <span className="tpv-box-count">{draftCount}</span>}
             </span>
           </button>
         </div>
@@ -151,12 +154,13 @@ export const TendrilProcessViewer: React.FC<TendrilProcessViewerProps> = ({
           <button className="tpv-box tpv-box-stage" onClick={() => fireEvent("OnReview")}>
             <ThumbsUp size={14} className="tpv-box-stage-icon" />
             <span className="tpv-box-label">
-              Review{reviewCount > 0 && <span className="tpv-box-count">{reviewCount}</span>}
+              {t("processViewer.review")}
+              {reviewCount > 0 && <span className="tpv-box-count">{reviewCount}</span>}
             </span>
           </button>
           {creatingPrCount > 0 && (
             <button className="tpv-sub-label" onClick={() => fireEvent("OnJobs")}>
-              <span>PR {creatingPrCount}</span>
+              <span>{t("processViewer.creatingPr", { value: creatingPrCount })}</span>
               <LoaderCircle className="tpv-spinner" size={13} />
             </button>
           )}

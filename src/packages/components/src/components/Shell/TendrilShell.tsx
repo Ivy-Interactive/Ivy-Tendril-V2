@@ -8,6 +8,7 @@ import {
 } from "../../hooks/use-resizable-sidebar";
 import { useShortcut } from "../../lib/useShortcut";
 import { TooltipScope } from "../ui/TuiTooltip";
+import { useTranslation } from "@/i18n/uiShell";
 import "./shell.css";
 
 interface TendrilShellProps extends ShellWidgetProps {
@@ -78,6 +79,7 @@ export const TendrilShell: React.FC<TendrilShellProps> = ({
   hasTabs = false,
   slots,
 }) => {
+  const { t } = useTranslation("uiShell");
   const [collapsed, setCollapsed] = useState(() => {
     const stored = readStoredCollapsed();
     return stored != null ? stored : collapsedProp;
@@ -110,7 +112,8 @@ export const TendrilShell: React.FC<TendrilShellProps> = ({
   }, [events, eventHandler, id]);
 
   useShortcut("tendril-shell:toggle-sidebar", "mod+b", toggle, {
-    description: "Toggle sidebar",
+    // Re-registers when the language changes, so the shortcuts help panel follows it.
+    description: t("shell.toggleSidebarShortcut"),
     skipInInputs: true,
     // A toggle is not idempotent: two genuine presses inside the registry's 300ms debounce window
     // must still flip the state twice (open -> closed -> open), not collapse into one fire.
@@ -149,8 +152,8 @@ export const TendrilShell: React.FC<TendrilShellProps> = ({
               <div
                 className="tsh-sidebar-resizer"
                 {...separatorProps}
-                aria-label="Resize sidebar"
-                title="Drag to resize sidebar, double-click to reset"
+                aria-label={t("shell.resizer.ariaLabel")}
+                title={t("shell.resizer.title")}
               />
             )}
           </div>

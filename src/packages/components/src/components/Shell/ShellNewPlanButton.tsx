@@ -4,6 +4,7 @@ import { useShell } from "./ShellContext.tsx";
 import { type ShellWidgetProps, isMac } from "./types.ts";
 import { ShellTooltip } from "./ShellTooltip.tsx";
 import { TuiKbd } from "../ui/TuiKbd";
+import { useTranslation } from "@/i18n/uiShell";
 import "./shell.css";
 
 interface ShellNewPlanButtonProps extends ShellWidgetProps {
@@ -19,8 +20,10 @@ export const ShellNewPlanButton: React.FC<ShellNewPlanButtonProps> = ({
   id,
   events = [],
   eventHandler,
-  label = "New Plan",
+  label: labelProp,
 }) => {
+  const { t } = useTranslation("uiShell");
+  const label = labelProp ?? t("newPlanButton.label");
   const { collapsed } = useShell();
   const hintKeys = isMac() ? ["⌘", "⌥", "N"] : ["Ctrl", "Alt", "N"];
 

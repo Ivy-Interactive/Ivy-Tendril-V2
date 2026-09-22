@@ -1,14 +1,30 @@
 import { debugLog } from "./debug-log";
+import { i18n } from "@/i18n/uiShell";
 
 export type VoiceStatus = "idle" | "connecting" | "recording" | "processing";
 
-export const INSECURE_CONTEXT_ERROR =
-  "Voice input needs a secure connection. Open Tendril over HTTPS or on localhost, then try again.";
+/**
+ * The messages this module reports through `onError`, in the language current when each is raised:
+ * `getFixedT(null, …)` looks the language up at every call, so it is safe at module level.
+ */
+const t = i18n.getFixedT(null, "uiShell");
 
-export const MEDIA_DEVICES_UNAVAILABLE_ERROR =
-  "Voice input is not available in this window. On macOS, quit and reopen Ivy Tendril after updating, then allow microphone access when prompted. You can also run 'tendril --web' and use voice input in your browser.";
+/** The command the unavailable-devices message tells the user to run. Code, so never translated. */
+const WEB_COMMAND = "tendril --web";
 
-export const AUDIO_CAPTURE_UNSUPPORTED_ERROR = "This browser cannot capture audio for voice input.";
+/*
+ * The English of each environment error, for the tests and callers that compare against it. The UI
+ * never shows these constants: `unsupportedEnvironmentError()` returns the current language's text.
+ */
+const englishT = i18n.getFixedT("en", "uiShell");
+
+export const INSECURE_CONTEXT_ERROR = englishT("voice.errors.insecureContext");
+
+export const MEDIA_DEVICES_UNAVAILABLE_ERROR = englishT("voice.errors.mediaDevicesUnavailable", {
+  command: WEB_COMMAND,
+});
+
+export const AUDIO_CAPTURE_UNSUPPORTED_ERROR = englishT("voice.errors.audioCaptureUnsupported");
 
 /**
  * Returns the reason voice capture cannot work in this environment, or null when it can.
@@ -18,7 +34,7 @@ export function unsupportedEnvironmentError(): string | null {
   const hostname = typeof window !== "undefined" ? window.location?.hostname : undefined;
   const isLoopback = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "[::1]";
   if (typeof window !== "undefined" && window.isSecureContext === false && !isLoopback) {
-    return INSECURE_CONTEXT_ERROR;
+    return t("voice.errors.insecureContext");
   }
 
   if (
@@ -26,11 +42,11 @@ export function unsupportedEnvironmentError(): string | null {
     !navigator.mediaDevices ||
     typeof navigator.mediaDevices.getUserMedia !== "function"
   ) {
-    return MEDIA_DEVICES_UNAVAILABLE_ERROR;
+    return t("voice.errors.mediaDevicesUnavailable", { command: WEB_COMMAND });
   }
 
   if (typeof AudioWorkletNode === "undefined") {
-    return AUDIO_CAPTURE_UNSUPPORTED_ERROR;
+    return t("voice.errors.audioCaptureUnsupported");
   }
 
   return null;
@@ -112,7 +128,7 @@ export class VoiceRecorder {
             if (this.stream && this.ws) {
               this.beginPcmCapture(this.stream, this.ws).catch((err) => {
                 console.error("[VoiceRecorder] Failed to begin PCM capture:", err);
-                this.options.onError(`Audio capture initialization failed: ${err}`);
+                this.options.onError(t("voice.errors.captureInitFailed", { error: String(err) }));
                 this.cleanup();
               });
             }
@@ -132,7 +148,7 @@ export class VoiceRecorder {
 
       this.ws.onerror = (evt) => {
         console.error("[VoiceRecorder] WebSocket error event:", evt);
-        this.options.onError("WebSocket error occurred connecting to transcription service.");
+        this.options.onError(t("voice.errors.websocket"));
         this.cleanup();
       };
 
@@ -142,20 +158,21 @@ export class VoiceRecorder {
         );
         if (!evt.wasClean && evt.code !== 1000 && evt.code !== 1005) {
           this.options.onError(
-            `WebSocket connection closed unexpectedly (code ${evt.code}: ${evt.reason || "No reason given"})`,
+            evt.reason
+              ? t("voice.errors.closedUnexpectedly", { code: evt.code, reason: evt.reason })
+              : t("voice.errors.closedUnexpectedlyNoReason", { code: evt.code }),
           );
         }
         this.cleanup();
       };
     } catch (err) {
       console.error("[VoiceRecorder] start() failed:", err);
-      let errorMessage = `Microphone access denied or connection failed: ${err}`;
+      let errorMessage = t("voice.errors.connectionFailed", { error: String(err) });
       if (err instanceof DOMException) {
         if (err.name === "NotAllowedError") {
-          errorMessage =
-            "Microphone access was denied. Allow microphone access for Ivy Tendril in System Settings > Privacy and Security > Microphone, then try again.";
+          errorMessage = t("voice.errors.microphoneDenied");
         } else if (err.name === "NotFoundError") {
-          errorMessage = "No microphone was found. Connect an input device and try again.";
+          errorMessage = t("voice.errors.microphoneNotFound");
         }
       }
       this.options.onError(errorMessage);

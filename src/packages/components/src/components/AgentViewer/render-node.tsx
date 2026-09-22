@@ -12,6 +12,7 @@ import { QuestionsAnswerContext, type AnswerCallback } from "../PlanMarkdown/que
 import { StatusDot } from "../ui/TuiBadge";
 import { getMarkdownPlugins } from "@/lib/math";
 import { useMathReady } from "@/hooks/use-math-ready";
+import { useTranslation } from "@/i18n/uiShell";
 
 /** Which optional node kinds the viewer is showing. */
 export interface AgentNodeVisibility {
@@ -66,6 +67,7 @@ export const AgentNode: React.FC<AgentNodeProps> = ({ node, answerCallback }) =>
   // containing maths typesets on the render this subscription triggers rather than never - see
   // `src/hooks/use-math-ready.ts`.
   useMathReady();
+  const { t } = useTranslation("uiShell");
 
   if (node.kind === "tool-group") {
     return <ToolUseGroup tools={node.tools} />;
@@ -87,8 +89,13 @@ export const AgentNode: React.FC<AgentNodeProps> = ({ node, answerCallback }) =>
     case "system":
       return (
         <div className="aov-system">
-          session: {event.sessionId ?? "init"}
-          {event.model ? ` (${event.model})` : ""}
+          {/* "init" is the agent's own name for the system event that opens a session. */}
+          {event.model
+            ? t("agentNode.sessionWithModel", {
+                session: event.sessionId ?? "init",
+                model: event.model,
+              })
+            : t("agentNode.session", { session: event.sessionId ?? "init" })}
         </div>
       );
     case "thinking":
@@ -125,7 +132,7 @@ export const AgentNode: React.FC<AgentNodeProps> = ({ node, answerCallback }) =>
       return (
         <div className="aov-result error">
           <div className="aov-result-header">
-            <span className="aov-result-title">❌ Error</span>
+            <span className="aov-result-title">{t("agentNode.errorTitle")}</span>
           </div>
           <div className="aov-result-body">{event.message}</div>
         </div>
