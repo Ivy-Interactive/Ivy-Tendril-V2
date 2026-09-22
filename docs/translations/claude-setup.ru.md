@@ -48,4 +48,4 @@ Claude Code прочитает `.claude-plugin/plugin.json` и автомати�
 
 ## Лицензия
 
-Навыки и плагины Tendril лицензируются на условиях [Functional Source License (FSL-1.1-ALv2)](../LICENSE) в корне репозитория.
+Навыки и плагины Tendril лицензируются на условиях [Functional Source License (FSL-1.1-ALv2)](../../LICENSE) в корне репозитория.

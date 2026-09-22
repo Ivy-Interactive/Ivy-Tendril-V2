@@ -77,4 +77,4 @@ Associer les skills Tendril à l'extension VS Code vous offre un centre de contr
 
 ## Licence
 
-Les skills et plugins Tendril sont sous licence [Functional Source License (FSL-1.1-ALv2)](../LICENSE) à la racine du dépôt.
+Les skills et plugins Tendril sont sous licence [Functional Source License (FSL-1.1-ALv2)](../../LICENSE) à la racine du dépôt.

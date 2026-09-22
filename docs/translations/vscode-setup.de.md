@@ -77,4 +77,4 @@ Die Kombination von Tendril Skills mit der VS Code Erweiterung bietet Ihnen eine
 
 ## Lizenz
 
-Tendril Skills und Plugins sind unter der im Repository-Stammverzeichnis befindlichen [Functional Source License (FSL-1.1-ALv2)](../LICENSE) lizenziert.
+Tendril Skills und Plugins sind unter der im Repository-Stammverzeichnis befindlichen [Functional Source License (FSL-1.1-ALv2)](../../LICENSE) lizenziert.

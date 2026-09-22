@@ -1,6 +1,6 @@
 //! Git changes/diff behind a plan's Changes tab.
 
-use crate::git::service::{get_commit_diff, get_combined_diff, run_git};
+use crate::git::service::{get_combined_diff, get_commit_diff, run_git};
 use crate::git::worktree::enumerate_worktree_directories;
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
@@ -73,11 +73,15 @@ fn get_diff_from_commits(repo: &Path, commits: &[String]) -> Option<String> {
         return None;
     }
     if commits.len() == 1 {
-        get_commit_diff(repo, &commits[0]).ok().filter(|d| !d.trim().is_empty())
+        get_commit_diff(repo, &commits[0])
+            .ok()
+            .filter(|d| !d.trim().is_empty())
     } else {
         let first = &commits[0];
         let last = commits.last().unwrap();
-        get_combined_diff(repo, first, last).ok().filter(|d| !d.trim().is_empty())
+        get_combined_diff(repo, first, last)
+            .ok()
+            .filter(|d| !d.trim().is_empty())
     }
 }
 
@@ -124,7 +128,7 @@ pub fn parse_git_diff(raw_diff: &str) -> Vec<ChangedFile> {
     };
 
     for line in raw_diff.lines() {
-        if line.starts_with("diff --git ") {
+        if let Some(rest) = line.strip_prefix("diff --git ") {
             finish_current(
                 current_file.take(),
                 std::mem::take(&mut current_diff_lines),
@@ -135,7 +139,6 @@ pub fn parse_git_diff(raw_diff: &str) -> Vec<ChangedFile> {
             current_additions = 0;
             current_deletions = 0;
 
-            let rest = &line["diff --git ".len()..];
             let mut parts = rest.split(" b/");
             let a_part = parts.next().unwrap_or("");
             let b_part = parts.next();

@@ -77,4 +77,4 @@ Att kombinera Tendril skills med VS Code-tillägget ger dig ett komplett kontrol
 
 ## Licens
 
-Tendril skills och plugins licensieras under [Functional Source License (FSL-1.1-ALv2)](../LICENSE) i arkivets rot.
+Tendril skills och plugins licensieras under [Functional Source License (FSL-1.1-ALv2)](../../LICENSE) i arkivets rot.
