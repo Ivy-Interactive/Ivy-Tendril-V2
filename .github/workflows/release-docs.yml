@@ -1,0 +1,146 @@
+name: Release Docs
+
+on:
+  workflow_dispatch:
+    inputs:
+      test-mode:
+        description: 'Dry-run test mode (skips creating GitHub release and deploying Pages)'
+        type: boolean
+        default: false
+      version:
+        description: 'Version override (e.g. 0.1.0)'
+        type: string
+        required: false
+  push:
+    tags:
+      - 'docs-v*'
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+concurrency:
+  group: release-docs-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release-docs:
+    name: Build, Package & Release Docs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.25.0
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install Vite+
+        uses: voidzero-dev/setup-vp@v1
+        with:
+          run-install: false
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build components library
+        run: pnpm --filter @ivy-interactive/components build
+
+      - name: Run docs tests
+        run: pnpm --filter @ivy-interactive/tendril-docs test
+
+      - name: Run docs check
+        run: pnpm --filter @ivy-interactive/tendril-docs check
+
+      - name: Determine version
+        id: version
+        run: |
+          if [ -n "${{ inputs.version }}" ]; then
+            VERSION="${{ inputs.version }}"
+          elif [[ "${{ github.ref }}" == refs/tags/docs-v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/docs-v}"
+          else
+            VERSION=$(node -p "require('./src/apps/tendril-docs/package.json').version")
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_ENV
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+          echo "Resolved docs version: $VERSION"
+
+      - name: Setup Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Build docs static site
+        run: pnpm --filter @ivy-interactive/tendril-docs build
+        env:
+          VITE_BASE_PATH: ${{ steps.pages.outputs.base_path }}/docs/
+
+      - name: Prepare Pages & Release distribution
+        run: |
+          mkdir -p dist-pages/docs
+          cp -r src/apps/tendril-docs/dist/. dist-pages/docs/
+          cp -r src/apps/tendril-docs/dist/. dist-pages/
+          cp -r src/apps/tendril-docs/dist/.well-known dist-pages/
+          cp -r src/apps/tendril-docs/dist/.well-known dist-pages/docs/
+          cp src/apps/tendril-docs/dist/homepage.html dist-pages/index.html
+          cp src/apps/tendril-docs/dist/404.html dist-pages/404.html
+          touch dist-pages/.nojekyll
+
+      - name: Assemble release archive
+        run: |
+          ARCHIVE="tendril-docs-v${{ env.VERSION }}.tar.gz"
+          tar -czvf "$ARCHIVE" -C src/apps/tendril-docs/dist .
+          if command -v sha256sum >/dev/null 2>&1; then
+            sha256sum "$ARCHIVE" > "${ARCHIVE}.sha256"
+          else
+            shasum -a 256 "$ARCHIVE" > "${ARCHIVE}.sha256"
+          fi
+          echo "ARCHIVE=$ARCHIVE" >> $GITHUB_ENV
+          echo "CHECKSUM=${ARCHIVE}.sha256" >> $GITHUB_ENV
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: tendril-docs-v${{ env.VERSION }}
+          path: |
+            ${{ env.ARCHIVE }}
+            ${{ env.CHECKSUM }}
+
+      - name: Publish GitHub Release
+        if: (github.event_name == 'push' && !inputs.test-mode) || (github.event_name == 'workflow_dispatch' && inputs.test-mode == false)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: docs-v${{ env.VERSION }}
+          name: Tendril Docs v${{ env.VERSION }}
+          target_commitish: ${{ github.sha }}
+          draft: false
+          prerelease: false
+          files: |
+            ${{ env.ARCHIVE }}
+            ${{ env.CHECKSUM }}
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist-pages
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: release-docs
+    if: (github.event_name == 'push' && !inputs.test-mode) || (github.event_name == 'workflow_dispatch' && inputs.test-mode == false)
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
