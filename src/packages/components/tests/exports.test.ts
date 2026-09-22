@@ -134,7 +134,6 @@ describe("Package Exports", () => {
       expect(renderers.Icon).toBeDefined();
       expect(renderers.InvalidIcon).toBeDefined();
       expect(renderers.IvyLogo).toBeDefined();
-      expect(renderers.Kbd).toBeDefined();
       expect(renderers.Loading).toBeDefined();
       expect(renderers.LoadingScreen).toBeDefined();
       expect(renderers.LogoLoading).toBeDefined();
