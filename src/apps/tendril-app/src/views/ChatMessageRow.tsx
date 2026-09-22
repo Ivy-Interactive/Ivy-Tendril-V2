@@ -19,7 +19,7 @@ import { patchQuestionsMarkdown } from "../utils/questionMarkdown";
 import { formatSystemEvent } from "../utils/systemEvents";
 import { resolveJobState, type JobDisplayState } from "../utils/jobStatus";
 import type { LightboxImage } from "../components/chat/ImageLightbox";
-import { TurnActivity } from "../components/chat/TurnActivity";
+import { TurnActivity, buildTurnSegments, parseTurnStream } from "../components/chat/TurnActivity";
 
 export interface ChatMessageRowProps {
   message: ChatMessage;
@@ -210,6 +210,33 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
       ? message.attachments
       : (userContent?.attachments ?? []);
 
+  /**
+   * One markdown segment. `body` keeps the bare `chat-msg-<id>` the single-body turn has always
+   * used; an interleaved turn suffixes its stream key, so each segment is its own renderer instance
+   * with its own stable identity across appends.
+   */
+  const renderMarkdown = useCallback(
+    (segment: string, key: string) => (
+      <PlanMarkdown
+        id={key === "body" ? `chat-msg-${message.id}` : `chat-msg-${message.id}-${key}`}
+        content={segment}
+        wireframeBaseUrl={wireframeBaseUrl}
+        flow
+      />
+    ),
+    [message.id, wireframeBaseUrl],
+  );
+
+  /* One parse per stream, shared by the body's segments and anything else that reads the turn's
+     events. A turn appends a line per event and re-parses its whole stream each time, so parsing
+     once here rather than in each consumer keeps that cost to a single pass. Keyed on `rawStream`
+     alone, so an arriving `content` delta re-reconciles without re-parsing. */
+  const parsedTurn = useMemo(
+    () => (isUser ? null : parseTurnStream(currentMessage.rawStream)),
+    [isUser, currentMessage.rawStream],
+  );
+  const turnSegments = useMemo(() => buildTurnSegments(parsedTurn, content), [parsedTurn, content]);
+
   const systemEvent = useMemo(
     () => (isSystem ? formatSystemEvent(currentMessage.content) : null),
     [isSystem, currentMessage.content],
@@ -303,8 +330,6 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
             <div className="self-stretch whitespace-pre-wrap">{content}</div>
           ) : (
             <div>
-              {/* What the turn did, ahead of what it said, as `AssistantTurn` orders it. */}
-              <TurnActivity rawStream={currentMessage.rawStream} />
               {/* `flow` drops the plan *page* off the renderer. V1 renders `BlockMarkdown` here
                   (react-markdown, no shell) inside a plain `.chat-markdown-body`; only V1's plan
                   tab gets `PlanMarkdown`'s `Cap()`, gutter and own scroll. Sharing one component
@@ -319,12 +344,8 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
                   path — see `PlanDetailView`. */}
               <QuestionsDraftContext.Provider value={chatStore.questionDraftStore(message.id)}>
                 <QuestionsSubmitContext.Provider value={handleQuestionSubmit}>
-                  <PlanMarkdown
-                    id={`chat-msg-${message.id}`}
-                    content={content}
-                    wireframeBaseUrl={wireframeBaseUrl}
-                    flow
-                  />
+                  <TurnActivity segments={turnSegments} renderText={renderMarkdown} />
+                  {turnSegments.length === 0 && renderMarkdown(content, "body")}
                 </QuestionsSubmitContext.Provider>
               </QuestionsDraftContext.Provider>
               {isSubmitting && (

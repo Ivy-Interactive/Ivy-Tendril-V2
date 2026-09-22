@@ -340,8 +340,16 @@ describe("the plan chat's live tool-call stream", () => {
 
     // The card the events became, with the tool it ran named on it.
     const activity = await screen.findByTestId("chat-turn-activity");
-    // The tool it ran, what it was for, and the result it came back with.
-    expect(activity.textContent).toBe("BashList files in working directory \u2192 total 448");
+    // The tool it ran, what it was for, and the result it came back with - after the sentence the
+    // turn spoke before running it, because the stream's order is the render order.
+    expect(activity.textContent).toBe(
+      "I'll list the files in the working directory." +
+        "BashList files in working directory \u2192 total 448",
+    );
+    expect(
+      [...activity.querySelectorAll("[data-testid='chat-turn-text'],[data-testid='chat-turn-tool']")]
+        .map((node) => node.getAttribute("data-testid")),
+    ).toEqual(["chat-turn-text", "chat-turn-tool"]);
   });
 
   it("writes a turn for another conversation nowhere near this one", async () => {

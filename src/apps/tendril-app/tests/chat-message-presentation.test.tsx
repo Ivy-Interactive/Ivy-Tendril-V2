@@ -40,20 +40,34 @@ describe("chat message presentation parity", () => {
     vi.restoreAllMocks();
   });
 
+  /**
+   * The daemon does not replace the message body on each text event, it *appends*: whole messages
+   * are joined with a blank line (`chat/execution/streaming.rs`'s `next_text_delta`). So `content`
+   * for an interleaved turn is every utterance concatenated, which is what these fixtures build.
+   */
   describe("a turn's tool activity", () => {
-    const rawStream = [
-      JSON.stringify({ kind: "text", text: "Reading the file", delta: false }),
+    const text = (value: string) => JSON.stringify({ kind: "text", text: value, delta: false });
+    const toolCall = (id: string, file: string) =>
       JSON.stringify({
         kind: "tool_call",
-        tool_use_id: "t1",
+        tool_use_id: id,
         tool_name: "Read",
-        input: { file_path: "/src/app.ts" },
-      }),
-      JSON.stringify({ kind: "tool_result", tool_use_id: "t1", output: "ok" }),
+        input: { file_path: file },
+      });
+    const toolResult = (id: string) =>
+      JSON.stringify({ kind: "tool_result", tool_use_id: id, output: "ok" });
+
+    /** What the daemon's accumulated body looks like for these utterances. */
+    const body = (...blocks: string[]) => blocks.join("\n\n");
+
+    const rawStream = [
+      text("Reading the file"),
+      toolCall("t1", "/src/app.ts"),
+      toolResult("t1"),
     ].join("\n");
 
     it("renders what the turn did, from the raw stream V1 renders the whole turn from", () => {
-      render(<ChatMessageRow message={message({ rawStream })} />);
+      render(<ChatMessageRow message={message({ rawStream, content: "Reading the file" })} />);
 
       expect(screen.getByTestId("chat-turn-activity")).toBeInTheDocument();
       expect(screen.getByText("Read")).toBeInTheDocument();
@@ -70,9 +84,216 @@ describe("chat message presentation parity", () => {
     });
 
     it("survives a half-written trailing line", () => {
-      render(<ChatMessageRow message={message({ rawStream: `${rawStream}\n{"kind":"tool_ca` })} />);
+      render(
+        <ChatMessageRow
+          message={message({
+            rawStream: `${rawStream}\n{"kind":"tool_ca`,
+            content: "Reading the file",
+          })}
+        />,
+      );
 
       expect(screen.getByTestId("chat-turn-activity")).toBeInTheDocument();
+    });
+
+    /**
+     * The interleaving is the point of #257: a turn that spoke, ran a tool, then spoke again reads
+     * in that order, rather than stacking every tool card above one block of prose.
+     */
+    it("renders text, tool and text in the order the stream produced them", () => {
+      const interleaved = [
+        text("First I look."),
+        toolCall("t1", "/src/app.ts"),
+        toolResult("t1"),
+        text("Then I answer."),
+      ].join("\n");
+
+      render(
+        <ChatMessageRow
+          message={message({
+            rawStream: interleaved,
+            content: body("First I look.", "Then I answer."),
+          })}
+        />,
+      );
+
+      const activity = screen.getByTestId("chat-turn-activity");
+      const kinds = [
+        ...activity.querySelectorAll(
+          "[data-testid='chat-turn-text'],[data-testid='chat-turn-tool']",
+        ),
+      ].map((node) => node.getAttribute("data-testid"));
+      expect(kinds).toEqual(["chat-turn-text", "chat-turn-tool", "chat-turn-text"]);
+      expect(screen.getAllByText("First I look.")).toHaveLength(1);
+      expect(screen.getAllByText("Then I answer.")).toHaveLength(1);
+    });
+
+    /**
+     * The blocker the first cut shipped: `content` carries the pre-tool prose too, so swapping it
+     * wholesale into the trailing segment printed the opening sentence a second time.
+     */
+    it("says each block exactly once for a two-tool turn", () => {
+      const interleaved = [
+        text("First I look."),
+        toolCall("t1", "/src/app.ts"),
+        toolResult("t1"),
+        text("Now the config."),
+        toolCall("t2", "/src/config.ts"),
+        toolResult("t2"),
+        text("Then I answer."),
+      ].join("\n");
+
+      render(
+        <ChatMessageRow
+          message={message({
+            rawStream: interleaved,
+            content: body("First I look.", "Now the config.", "Then I answer."),
+          })}
+        />,
+      );
+
+      for (const block of ["First I look.", "Now the config.", "Then I answer."]) {
+        expect(screen.getAllByText(block)).toHaveLength(1);
+      }
+      const activity = screen.getByTestId("chat-turn-activity");
+      const kinds = [
+        ...activity.querySelectorAll(
+          "[data-testid='chat-turn-text'],[data-testid='chat-turn-tool']",
+        ),
+      ].map((node) => node.getAttribute("data-testid"));
+      expect(kinds).toEqual([
+        "chat-turn-text",
+        "chat-turn-tool",
+        "chat-turn-text",
+        "chat-turn-tool",
+        "chat-turn-text",
+      ]);
+    });
+
+    it("says each block exactly once for a one-tool turn", () => {
+      const interleaved = [
+        text("First I look."),
+        toolCall("t1", "/src/app.ts"),
+        toolResult("t1"),
+        text("Then I answer."),
+      ].join("\n");
+
+      render(
+        <ChatMessageRow
+          message={message({
+            rawStream: interleaved,
+            content: body("First I look.", "Then I answer."),
+          })}
+        />,
+      );
+
+      expect(screen.getAllByText("First I look.")).toHaveLength(1);
+      expect(screen.getAllByText("Then I answer.")).toHaveLength(1);
+    });
+
+    /** A stream that ended on a tool call still shows what `content` holds, appended after it. */
+    it("appends the unspoken remainder of content when the stream ended on a tool call", () => {
+      render(
+        <ChatMessageRow
+          message={message({ rawStream, content: body("Reading the file", "All done.") })}
+        />,
+      );
+
+      const activity = screen.getByTestId("chat-turn-activity");
+      const kinds = [
+        ...activity.querySelectorAll(
+          "[data-testid='chat-turn-text'],[data-testid='chat-turn-tool']",
+        ),
+      ].map((node) => node.getAttribute("data-testid"));
+      expect(kinds).toEqual(["chat-turn-text", "chat-turn-tool", "chat-turn-text"]);
+      expect(screen.getAllByText("Reading the file")).toHaveLength(1);
+      expect(screen.getAllByText("All done.")).toHaveLength(1);
+    });
+
+    /**
+     * The tail exists in `content` before the stream's closing text node arrives, so its key must
+     * not change when that node lands - a changed key flips the renderer's id and remounts the
+     * prose mid-stream.
+     */
+    it("keeps the tail's key stable when the closing text node arrives", () => {
+      const content = body("Reading the file", "All done.");
+      const tailKey = () =>
+        screen.getAllByTestId("chat-turn-text").at(-1)?.getAttribute("data-segment-key");
+
+      const { rerender } = render(<ChatMessageRow message={message({ rawStream, content })} />);
+      const before = tailKey();
+
+      rerender(
+        <ChatMessageRow
+          message={message({ rawStream: `${rawStream}\n${text("All done.")}`, content })}
+        />,
+      );
+
+      expect(tailKey()).toBe(before);
+      expect(screen.getAllByText("All done.")).toHaveLength(1);
+    });
+
+    /**
+     * Stream text that is not a prefix of `content` cannot be reconciled - a daemon that replaced
+     * rather than appended, or a re-read message whose body was rewritten. The body is then rendered
+     * once, on its own, rather than beside stream segments that would duplicate it.
+     */
+    it("falls back to the single body when the stream is not a prefix of content", () => {
+      const interleaved = [
+        text("Something else entirely."),
+        toolCall("t1", "/src/app.ts"),
+        toolResult("t1"),
+        text("Then I answer."),
+      ].join("\n");
+
+      render(
+        <ChatMessageRow message={message({ rawStream: interleaved, content: "Then I answer." })} />,
+      );
+
+      expect(screen.queryByTestId("chat-turn-activity")).not.toBeInTheDocument();
+      expect(screen.getAllByText("Then I answer.")).toHaveLength(1);
+      expect(screen.queryByText("Something else entirely.")).not.toBeInTheDocument();
+    });
+
+    /**
+     * The reason the old code rendered `content` rather than the stream: an in-flight answer patches
+     * the `questions` fence onto `content`, and that patch has to survive the interleaving.
+     */
+    it("still applies the questions-fence patch to the trailing segment with tools present", () => {
+      const withQuestions = [
+        text("Looking into it."),
+        toolCall("t1", "/src/app.ts"),
+        toolResult("t1"),
+        text("A question for you."),
+      ].join("\n");
+      const content = body(
+        "Looking into it.",
+        [
+          "A question for you.",
+          "",
+          "```questions",
+          "- id: q1",
+          "  title: Which one?",
+          "  options: [Alpha, Beta]",
+          "```",
+        ].join("\n"),
+      );
+
+      render(
+        <ChatMessageRow
+          message={message({ rawStream: withQuestions, content })}
+          inProgressAnswers={{ q1: ["Alpha"] }}
+        />,
+      );
+
+      const activity = screen.getByTestId("chat-turn-activity");
+      expect(screen.getByText("Read")).toBeInTheDocument();
+      expect(screen.getByText("Which one?")).toBeInTheDocument();
+      // The fence rendered as a live block rather than as a code fence of raw YAML.
+      expect(activity.textContent).not.toContain("```questions");
+      // Each spoken block still appears exactly once alongside the patched fence.
+      expect(screen.getAllByText("Looking into it.")).toHaveLength(1);
+      expect(screen.getAllByText("A question for you.")).toHaveLength(1);
     });
   });
 
