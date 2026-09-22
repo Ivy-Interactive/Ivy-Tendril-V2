@@ -336,29 +336,6 @@ questions:
     expect(attachmentChip.closest("div")).toHaveAttribute("title", "/var/log/system.log");
   });
 
-  it("renders the auto-scroll lock with initial state ON and toggles state on click", async () => {
-    vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
-    vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
-    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
-
-    render(<ChatView />);
-
-    // The header is keyed on the session, so it remounts once the session list arrives; wait for
-    // that before holding on to the control.
-    await waitFor(() => {
-      expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
-    });
-
-    const toggle = () => screen.getByTestId("chat-autoscroll-toggle");
-    expect(toggle()).toHaveTextContent("Auto-scroll: ON");
-
-    fireEvent.click(toggle());
-    expect(toggle()).toHaveTextContent("Auto-scroll: OFF");
-
-    fireEvent.click(toggle());
-    expect(toggle()).toHaveTextContent("Auto-scroll: ON");
-  });
-
   it("renders bottom anchor element with data-testid chat-scroll-anchor", async () => {
     vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
     vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
@@ -370,7 +347,7 @@ questions:
     expect(anchor).toBeInTheDocument();
   });
 
-  it("calls scrollIntoView on anchor when stream delta arrives and autoScrollEnabled is true", async () => {
+  it("calls scrollIntoView on anchor when stream delta arrives while locked to the tail", async () => {
     vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
     vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
     vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
@@ -479,35 +456,6 @@ questions:
 
       expect(scrollIntoViewMock).toHaveBeenCalledWith({ behavior: "smooth" });
     }
-  });
-
-  it("does not call scrollIntoView on stream deltas when autoScrollEnabled is toggled OFF", async () => {
-    vi.spyOn(chatApi, "listSessions").mockResolvedValue([mockSessionWithQuestions]);
-    vi.spyOn(chatApi, "getSession").mockResolvedValue(mockSessionWithQuestions);
-    vi.spyOn(chatApi, "getQueue").mockResolvedValue([]);
-
-    render(<ChatView />);
-
-    await waitFor(() => {
-      expect(screen.getAllByText("Architecture Planning").length).toBeGreaterThan(0);
-    });
-
-    const toggle = () => screen.getByTestId("chat-autoscroll-toggle");
-    fireEvent.click(toggle());
-    expect(toggle()).toHaveTextContent("Auto-scroll: OFF");
-
-    scrollIntoViewMock.mockClear();
-
-    act(() => {
-      chatStore.handleChatEvent({
-        type: "chat.stream_delta",
-        sessionId: "session-10",
-        messageId: "msg-asst-1",
-        delta: " Delta while OFF",
-      });
-    });
-
-    expect(scrollIntoViewMock).not.toHaveBeenCalled();
   });
 
   it("re-locks and scrolls to tail when sending a new message", async () => {

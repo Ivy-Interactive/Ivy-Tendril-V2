@@ -28,10 +28,8 @@ export interface UseChatAutoScrollReturn {
   anchorRef: RefObject<HTMLDivElement | null>;
   /** Sized by the pin so a just-sent message can sit at the top of the viewport. */
   spacerRef: RefObject<HTMLDivElement | null>;
-  autoScrollEnabled: boolean;
   isLockedToTail: boolean;
   isAtBottom: boolean;
-  toggleAutoScroll: () => void;
   scrollToTail: (smooth?: boolean) => void;
   resetToTail: () => void;
   notifyContentUpdate: () => void;
@@ -51,7 +49,6 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions = {}): UseCh
     spacerRef: externalSpacerRef,
   } = options;
 
-  const [autoScrollEnabled, setAutoScrollEnabled] = useState(true);
   const [isLockedToTail, setIsLockedToTail] = useState(true);
   const [isAtBottom, setIsAtBottom] = useState(true);
 
@@ -63,9 +60,6 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions = {}): UseCh
   const anchorRef = externalAnchorRef ?? internalAnchorRef;
   const spacerRef = externalSpacerRef ?? internalSpacerRef;
   const pinRef = useRef<Pin | null>(null);
-
-  const autoScrollEnabledRef = useRef(autoScrollEnabled);
-  autoScrollEnabledRef.current = autoScrollEnabled;
 
   const isLockedToTailRef = useRef(isLockedToTail);
   isLockedToTailRef.current = isLockedToTail;
@@ -137,28 +131,8 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions = {}): UseCh
     }
   }, [anchorRef, scrollContainerRef]);
 
-  const toggleAutoScroll = useCallback(() => {
-    setAutoScrollEnabled((prev) => {
-      const next = !prev;
-      if (next) {
-        const container = scrollContainerRef.current;
-        const atBottom = container ? checkIsAtBottom(container) : true;
-        if (atBottom) {
-          setIsLockedToTail(true);
-          setIsAtBottom(true);
-          if (anchorRef.current) {
-            anchorRef.current.scrollIntoView?.({ behavior: "auto" });
-          } else if (container) {
-            container.scrollTop = container.scrollHeight;
-          }
-        }
-      }
-      return next;
-    });
-  }, [checkIsAtBottom, scrollContainerRef, anchorRef]);
-
   const notifyContentUpdate = useCallback(() => {
-    if (autoScrollEnabledRef.current && isLockedToTailRef.current) {
+    if (isLockedToTailRef.current) {
       if (anchorRef.current) {
         anchorRef.current.scrollIntoView?.({ behavior: "auto" });
       } else if (scrollContainerRef.current) {
@@ -281,10 +255,8 @@ export function useChatAutoScroll(options: UseChatAutoScrollOptions = {}): UseCh
     scrollContainerRef,
     anchorRef,
     spacerRef,
-    autoScrollEnabled,
     isLockedToTail,
     isAtBottom,
-    toggleAutoScroll,
     scrollToTail,
     resetToTail,
     notifyContentUpdate,
