@@ -29,6 +29,15 @@ overrides:
   # loading its config through Storybook's ESM loader.
   jest@*: 30.4.2
   jest-runtime@*: 30.4.2
+
+  # nwsapi 2.2.27 recurses into itself for the host-state pseudo-classes. Under jsdom nothing calls
+  # nwsapi's `install()`, so its saved `_matches` stays undefined and `matchesNative` falls back to
+  # `node.matches` - which *is* nwsapi. `:modal` therefore re-enters `isModal` -> `isFullscreen` ->
+  # `matchesNative(':fullscreen')` -> `node.matches` until the stack overflows, and the RangeError is
+  # swallowed by the try/catch, so it merely looks slow. floating-ui's `isTopLayer` asks `:modal` of
+  # every ancestor while positioning, which is how opening one Radix Select costs ~9s of CPU and 41M
+  # `matches` calls. 2.2.28 adds the re-entrancy guard. Drop this once jsdom's range pulls it in.
+  nwsapi@*: 2.2.28
   playwright@*: 1.63.0
   playwright-core@*: 1.63.0
   vite@*: "catalog:"
