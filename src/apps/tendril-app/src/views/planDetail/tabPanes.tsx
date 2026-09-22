@@ -3,7 +3,11 @@ import { openPath } from "@tauri-apps/plugin-opener";
 import { WandSparkles } from "lucide-react";
 import { copyToClipboard } from "@ivy-interactive/components";
 import { Button, Callout, Densities } from "@ivy-interactive/components/ui";
-import { PlanGitView, PlanMarkdown } from "@ivy-interactive/components/tendril";
+import {
+  PlanGitView,
+  PlanMarkdown,
+  type PlanMarkdownProps,
+} from "@ivy-interactive/components/tendril";
 import type { Annotation, Job, PlanDetail, PlanGitData, RecommendationItem } from "../../types/api";
 import { ErrorBanner } from "../../components/ErrorBanner";
 import { RecommendationCard } from "../../components/RecommendationCard";
@@ -43,6 +47,68 @@ interface PlanPaneProps {
   applyAnswer: (questionId: string, answer: string[]) => Promise<void>;
 }
 
+type PlanDocumentPaneProps = Omit<
+  PlanMarkdownProps,
+  "article" | "dangerouslyAllowLocalFiles" | "flow" | "width" | "height"
+> & {
+  /** Blocks that come before the document — a failed plan's callout — at the other tab bodies' inset. */
+  lead?: React.ReactNode;
+  /**
+   * Shown in the document's place, at the same inset, when there is no document to render yet:
+   * the summary still loading, a plan whose body was never written.
+   */
+  placeholder?: React.ReactNode;
+  "data-testid"?: string;
+};
+
+/**
+ * A markdown document as a tab body: the Plans app's Plan tab, and the Review app's Summary and Plan
+ * tabs.
+ *
+ * All three are V1's bare `PlanMarkdown` — `PlanTabView`, `SummaryTabView` and
+ * `Review/Tabs/PlanTabView` each return `new PlanMarkdown(...).Article().DangerouslyAllowLocalFiles()
+ * .Height(Size.Full())` with nothing around it — because the widget owns its own scroll, its inset
+ * and its max-width. `Review/ContentView.cs` spells out why that matters: "Summary and Plan are
+ * PlanMarkdown, which owns its own scroll, inset and max-width, so neither is wrapped in Cap():
+ * wrapped, each would be inset twice and the two tabs would start their text in different places."
+ *
+ * The Review app's tabs were wrapped anyway, in the same `overflow-y-auto` + `px-8 py-6` + measure
+ * cap the Details tab gets. Inside `PlanWorkspace` the markdown already pads itself 24px/32px
+ * (`.pws-content .pmv-markdown`), and the wrapper's `px-8` / `py-6` added another 34.56px / 25.92px
+ * on top (`--spacing` is 0.27rem here, not Tailwind's 0.25rem). A review summary therefore started
+ * about 67px in and 50px down against the plan page's 32px and 24px, inside a narrower column, with
+ * a second scroller around the widget's own. Every document tab now goes through this one component,
+ * so the inset is decided in exactly one place and the two apps cannot drift apart again.
+ *
+ * `lead` and `placeholder` are the only things that sit beside the document. They get the `px-8` /
+ * `pt-6` inset every other tab body gets (`OtherTabsPane`, V1's `Cap()` `Padding(8, 6, …)`).
+ *
+ * `lead` stacks above the document rather than scrolling with it, as `PlanTabView.Build` stacks the
+ * failure callout above a full-height `PlanMarkdown`. That leaves the document only what the lead
+ * does not take, so the lead is capped at 40% of the pane and scrolls on its own past that: a failed
+ * plan quoting a long status message, or listing many failed verifications, in a short window would
+ * otherwise squeeze the document to nothing and leave it unreachable.
+ */
+export const PlanDocumentPane: React.FC<PlanDocumentPaneProps> = ({
+  lead,
+  placeholder,
+  "data-testid": testId,
+  ...markdown
+}) => (
+  <div className="flex min-h-0 flex-1 flex-col" data-testid={testId}>
+    {lead ? (
+      <div className="max-h-[40%] w-full max-w-[var(--content-measure)] shrink-0 overflow-y-auto px-8 pt-6">
+        {lead}
+      </div>
+    ) : null}
+    {placeholder ? (
+      <div className="w-full max-w-[var(--content-measure)] px-8 py-6">{placeholder}</div>
+    ) : (
+      <PlanMarkdown {...markdown} article dangerouslyAllowLocalFiles />
+    )}
+  </div>
+);
+
 /**
  * The plan document pane.
  *
@@ -63,117 +129,109 @@ export const PlanPane: React.FC<PlanPaneProps> = ({
   handleAnnotationsChange,
   applyAnswer,
 }) => (
-  <div className="flex min-h-0 flex-1 flex-col">
-    {/* `PlanTabView.Build`: a failed plan leads with why, above the plan itself. */}
-    {effectivePlan.state === "Failed" && (
-      <div className="w-full max-w-[var(--content-measure)] px-8 pt-6">
+  <PlanDocumentPane
+    /* `PlanTabView.Build`: a failed plan leads with why, above the plan itself. */
+    lead={
+      effectivePlan.state === "Failed" && (
         <ExecutionFailedCallout plan={effectivePlan} jobs={jobs} />
-      </div>
-    )}
-    {/* An absent body is prose, not a document: rendering it through `PlanMarkdown` is what made it
+      )
+    }
+    /* An absent body is prose, not a document: rendering it through `PlanMarkdown` is what made it
           indistinguishable from a real plan.
 
           All three reasons go through `Callout`, the library primitive `ErrorBanner` already wraps,
           rather than the three different treatments this used to have (two bare `<p>`s and one
           banner). One shape, three variants: the severity is the only thing that differs, which is
           what `Callout`'s variants are for. `Small` density and the icon are `ErrorBanner`'s
-          choices, kept so the `unreadable` case renders exactly as it did. */}
-    {emptyBodyReason ? (
-      <div className="w-full max-w-[var(--content-measure)] px-8 py-6">
-        {emptyBodyReason === "writing" ? (
-          <Callout.Info
-            data-testid="revision-writing"
-            density={Densities.Small}
-            icon={false}
-            className="text-sm"
-          >
-            The agent is still drafting this plan. Its body appears here once the job writes the
-            first revision.
-          </Callout.Info>
-        ) : emptyBodyReason === "never" ? (
-          <Callout.Warning
-            data-testid="revision-never-written"
-            density={Densities.Small}
-            icon={false}
-            className="text-sm"
-          >
-            <p>
-              This plan has no revisions. Its folder was created but the job that was drafting it
-              never wrote one, so there is no plan body to show.
-            </p>
-            {/* The button, not the sentence "Run Update Plan to draft it".
+          choices, kept so the `unreadable` case renders exactly as it did.
 
-                  That sentence was a dead end precisely here. The badged *Update Plan* secondary is
-                  gated on `pendingWork > 0` -- unresolved annotations plus answered questions -- and
-                  a plan with no revision has neither, because there is no body to annotate or answer
-                  against. So the only control that remained was an unlabeled wand glyph in the
-                  topbar, which folds into an overflow menu below 720px. The instruction named a
-                  button the reader could not find.
+          The document itself is hidden entirely while the body is absent: `PlanMarkdown` with an
+          empty string is what used to require the fake-heading placeholder. */
+    placeholder={
+      emptyBodyReason === "writing" ? (
+        <Callout.Info
+          data-testid="revision-writing"
+          density={Densities.Small}
+          icon={false}
+          className="text-sm"
+        >
+          The agent is still drafting this plan. Its body appears here once the job writes the first
+          revision.
+        </Callout.Info>
+      ) : emptyBodyReason === "never" ? (
+        <Callout.Warning
+          data-testid="revision-never-written"
+          density={Densities.Small}
+          icon={false}
+          className="text-sm"
+        >
+          <p>
+            This plan has no revisions. Its folder was created but the job that was drafting it
+            never wrote one, so there is no plan body to show.
+          </p>
+          {/* The button, not the sentence "Run Update Plan to draft it".
 
-                  `canOpenUpdateDialog` is the same predicate that decides whether that wand renders,
-                  so this button appears exactly when the dialog is reachable and is absent when it
-                  is not -- rather than telling the reader to do something impossible. */}
-            {canOpenUpdateDialog && (
-              <Button
-                type="button"
-                variant="secondary"
-                size="sm"
-                className="mt-3"
-                data-testid="revision-never-written-update"
-                onClick={() => setActiveDialog("update")}
-              >
-                <WandSparkles className="size-4" aria-hidden="true" />
-                Update Plan
-              </Button>
-            )}
-          </Callout.Warning>
-        ) : (
-          <ErrorBanner data-testid="revision-unreadable">
-            This plan records {plan.revisionCount} revision
-            {plan.revisionCount === 1 ? "" : "s"} on disk, but its latest revision came back empty.
-            The file may be unreadable.
-          </ErrorBanner>
-        )}
-      </div>
-    ) : null}
-    {/* `PlanTabView.Build` composes this as
+                That sentence was a dead end precisely here. The badged *Update Plan* secondary is
+                gated on `pendingWork > 0` -- unresolved annotations plus answered questions -- and
+                a plan with no revision has neither, because there is no body to annotate or answer
+                against. So the only control that remained was an unlabeled wand glyph in the
+                topbar, which folds into an overflow menu below 720px. The instruction named a
+                button the reader could not find.
+
+                `canOpenUpdateDialog` is the same predicate that decides whether that wand renders,
+                so this button appears exactly when the dialog is reachable and is absent when it
+                is not -- rather than telling the reader to do something impossible. */}
+          {canOpenUpdateDialog && (
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="mt-3"
+              data-testid="revision-never-written-update"
+              onClick={() => setActiveDialog("update")}
+            >
+              <WandSparkles className="size-4" aria-hidden="true" />
+              Update Plan
+            </Button>
+          )}
+        </Callout.Warning>
+      ) : emptyBodyReason === "unreadable" ? (
+        <ErrorBanner data-testid="revision-unreadable">
+          This plan records {plan.revisionCount} revision
+          {plan.revisionCount === 1 ? "" : "s"} on disk, but its latest revision came back empty.
+          The file may be unreadable.
+        </ErrorBanner>
+      ) : null
+    }
+    /* `PlanTabView.Build` composes this as
           `new PlanMarkdown(annotatedContent).Article().DangerouslyAllowLocalFiles()
            .Annotations(...).OnAnnotationsChange(...).OnAnswersChange(onAnswerChanged)
            .ScrollTo(scrollTo)`. `OnAnswersChange` is what makes the questions in the document
           answerable at all; without it `PlanMarkdown` passes `undefined` as its answer callback and
-          "undefined puts every callout in read-only mode".
-
-          Hidden entirely while the body is absent: `PlanMarkdown` with an empty string is what used
-          to require the fake-heading placeholder. */}
-    {!emptyBodyReason && (
-      <PlanMarkdown
-        id="plan-markdown"
-        content={revisionContent}
-        wireframeBaseUrl={wireframeBaseUrl}
-        article
-        dangerouslyAllowLocalFiles
-        annotations={annotations}
-        scrollTo={scrollTo}
-        events={["OnAnnotationsChange", "OnAnswersChange"]}
-        eventHandler={(evt: string, _id: string, args?: unknown[]) => {
-          if (evt === "OnAnnotationsChange") {
-            const next = args?.[0];
-            if (Array.isArray(next)) handleAnnotationsChange(next as Annotation[]);
-            return;
-          }
-          if (evt !== "OnAnswersChange") return;
-          const payload = args?.[0] as { questionId?: string; answer?: unknown } | undefined;
-          if (!payload?.questionId) return;
-          // `null` on the wire means the key goes; a list is the answer. Either way the merge takes
-          // a list, and an empty one removes the `answer` key.
-          const value = Array.isArray(payload.answer)
-            ? (payload.answer as unknown[]).map((entry) => String(entry))
-            : [];
-          void applyAnswer(payload.questionId, value);
-        }}
-      />
-    )}
-  </div>
+          "undefined puts every callout in read-only mode". */
+    id="plan-markdown"
+    content={revisionContent}
+    wireframeBaseUrl={wireframeBaseUrl}
+    annotations={annotations}
+    scrollTo={scrollTo}
+    events={["OnAnnotationsChange", "OnAnswersChange"]}
+    eventHandler={(evt: string, _id: string, args?: unknown[]) => {
+      if (evt === "OnAnnotationsChange") {
+        const next = args?.[0];
+        if (Array.isArray(next)) handleAnnotationsChange(next as Annotation[]);
+        return;
+      }
+      if (evt !== "OnAnswersChange") return;
+      const payload = args?.[0] as { questionId?: string; answer?: unknown } | undefined;
+      if (!payload?.questionId) return;
+      // `null` on the wire means the key goes; a list is the answer. Either way the merge takes
+      // a list, and an empty one removes the `answer` key.
+      const value = Array.isArray(payload.answer)
+        ? (payload.answer as unknown[]).map((entry) => String(entry))
+        : [];
+      void applyAnswer(payload.questionId, value);
+    }}
+  />
 );
 
 interface OtherTabsPaneProps {
