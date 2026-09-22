@@ -1263,7 +1263,9 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       <VerificationReportSheet
         planId={plan.id}
         verificationName={openVerification}
-        initialStatus={effectivePlan.verifications?.find((v) => v.name === openVerification)?.status}
+        initialStatus={
+          effectivePlan.verifications?.find((v) => v.name === openVerification)?.status
+        }
         onClose={() => setOpenVerification(null)}
         wireframeBaseUrl={wireframeBaseUrl}
       />

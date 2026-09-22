@@ -8,9 +8,9 @@
 
 ## 选择性加入（Opt-in），而非选择性退出（Opt-out）
 
-**遥测默认处于关闭状态，除非您主动开启。** 只有在 `config.yaml` 中明确设置 `telemetry: true` 才会启用遥测；若缺少该配置项或设置为 `telemetry: false`，两者的行为完全相同 —— 不会构建客户端、不会将事件排队、也不会尝试任何网络调用。该配置项仅在 [config.rs](../src/crates/tendril-core/src/config.rs) 中的 `TendrilSettings::telemetry_enabled` 这一处读取，并且 V2 绝不会*自动插入*该键：保存一个不含该键的 `config.yaml` 会保持其缺失，而不会硬编码写入 `telemetry: false`；因此，与原版应用（会将缺失键视为“开启”）共享文件进行往返处理时，不会意外关闭原版应用的遥测。明确配置的值在往返处理中保持不变。
+**遥测默认处于关闭状态，除非您主动开启。** 只有在 `config.yaml` 中明确设置 `telemetry: true` 才会启用遥测；若缺少该配置项或设置为 `telemetry: false`，两者的行为完全相同 —— 不会构建客户端、不会将事件排队、也不会尝试任何网络调用。该配置项仅在 [config.rs](../../src/crates/tendril-core/src/config.rs) 中的 `TendrilSettings::telemetry_enabled` 这一处读取，并且 V2 绝不会*自动插入*该键：保存一个不含该键的 `config.yaml` 会保持其缺失，而不会硬编码写入 `telemetry: false`；因此，与原版应用（会将缺失键视为“开启”）共享文件进行往返处理时，不会意外关闭原版应用的遥测。明确配置的值在往返处理中保持不变。
 
-**这是经过深思熟虑的差异。** 原版应用采用选择性退出：它将 `Telemetry` 默认设为 `true`，其 `TELEMETRY.md` 写道“遥测为选择性退出：默认开启”。V2 默认关闭，是因为开启数据收集不应该由移植版本在未征得用户同意的情况下静默决定。这种差异仅在一个方向上是安全的 —— 相比原版，V2 只会少报，绝不会多报。如需逆转此行为，只需将 [config.rs](../src/crates/tendril-core/src/config.rs) 中的字段默认值和 `Default` 实现改回 `Some(true)`。
+**这是经过深思熟虑的差异。** 原版应用采用选择性退出：它将 `Telemetry` 默认设为 `true`，其 `TELEMETRY.md` 写道“遥测为选择性退出：默认开启”。V2 默认关闭，是因为开启数据收集不应该由移植版本在未征得用户同意的情况下静默决定。这种差异仅在一个方向上是安全的 —— 相比原版，V2 只会少报，绝不会多报。如需逆转此行为，只需将 [config.rs](../../src/crates/tendril-core/src/config.rs) 中的字段默认值和 `Default` 实现改回 `Some(true)`。
 
 用户仅通过持久保存在 `<TendrilHome>/.anonymous-id` 中的随机 UUID 进行标识。它绝不会从用户名、机器名或仓库名派生。（原版优先使用 `<LocalAppData>/Tendril/.anonymous-id`；因此同时运行两个应用的主机会被计为两次安装。）
 
@@ -69,7 +69,7 @@ ID 会首先标准化为 5 位数字，以便数据库中的整数格式（`42`�
 
 ## 附加至每个事件的属性
 
-在 [client.rs](../src/crates/tendril-core/src/telemetry/client.rs) 中为每个进程设置一次的超级属性：
+在 [client.rs](../../src/crates/tendril-core/src/telemetry/client.rs) 中为每个进程设置一次的超级属性：
 
 | 属性 | 状态 | 备注 |
 |---|---|---|
@@ -83,7 +83,7 @@ ID 会首先标准化为 5 位数字，以便数据库中的整数格式（`42`�
 
 ## 当前事件审计
 
-所有事件均遵循本策略。上下文在 [events.rs](../src/crates/tendril-core/src/telemetry/events.rs) 中定义为类型化结构体，因此属性集合是在编译期决定的，而不是松散的映射。
+所有事件均遵循本策略。上下文在 [events.rs](../../src/crates/tendril-core/src/telemetry/events.rs) 中定义为类型化结构体，因此属性集合是在编译期决定的，而不是松散的映射。
 
 | 事件 | 属性 | 发送自 |
 |---|---|---|
@@ -98,12 +98,12 @@ ID 会首先标准化为 5 位数字，以便数据库中的整数格式（`42`�
 
 ### 已定义但未接入
 
-`onboarding_completed` 和 `project_created` 在 [events.rs](../src/crates/tendril-core/src/telemetry/events.rs) 中有上下文结构体，但没有调用点：V2 没有新手引导流程，并且项目创建发生在未安装客户端的 CLI 进程中。它们之所以存在，是为了使后续计划只需添加调用点而无需修改模式定义。
+`onboarding_completed` 和 `project_created` 在 [events.rs](../../src/crates/tendril-core/src/telemetry/events.rs) 中有上下文结构体，但没有调用点：V2 没有新手引导流程，并且项目创建发生在未安装客户端的 CLI 进程中。它们之所以存在，是为了使后续计划只需添加调用点而无需修改模式定义。
 
 客户端仅存在于守护进程中。CLI 调用绝不会调用 `telemetry::install`，因此 `tendril plan ...` 不会发送任何数据。
 
 ## 实现
 
-- [events.rs](../src/crates/tendril-core/src/telemetry/events.rs) — 在编译期强制执行本策略的类型化上下文。新增事件在此处定义结构体，而非属性包。
-- [client.rs](../src/crates/tendril-core/src/telemetry/client.rs) — PostHog 客户端、anonymous_id、计划 UUID 派生。每个 `track_*` 均捕获自身错误，仅推入由后台任务消费的队列中：遥测绝不能导致任务失败或变慢。
-- [telemetry_test.rs](../src/crates/tendril-core/tests/telemetry_test.rs) — 断言禁用时零网络调用、每个已接入事件的精确属性集，以及计划 UUID 派生正确性。
+- [events.rs](../../src/crates/tendril-core/src/telemetry/events.rs) — 在编译期强制执行本策略的类型化上下文。新增事件在此处定义结构体，而非属性包。
+- [client.rs](../../src/crates/tendril-core/src/telemetry/client.rs) — PostHog 客户端、anonymous_id、计划 UUID 派生。每个 `track_*` 均捕获自身错误，仅推入由后台任务消费的队列中：遥测绝不能导致任务失败或变慢。
+- [telemetry_test.rs](../../src/crates/tendril-core/tests/telemetry_test.rs) — 断言禁用时零网络调用、每个已接入事件的精确属性集，以及计划 UUID 派生正确性。

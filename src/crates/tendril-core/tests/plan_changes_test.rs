@@ -25,7 +25,9 @@ index 1234567..89abcdef 100644
     assert_eq!(files[0].file_path, "src/main.rs");
     assert_eq!(files[0].additions, 1);
     assert_eq!(files[0].deletions, 1);
-    assert!(files[0].diff.contains("diff --git a/src/main.rs b/src/main.rs"));
+    assert!(files[0]
+        .diff
+        .contains("diff --git a/src/main.rs b/src/main.rs"));
 }
 
 #[test]

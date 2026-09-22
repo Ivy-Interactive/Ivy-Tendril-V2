@@ -66,4 +66,4 @@ Antigravity IDE 内で作業する場合：
 
 ## ライセンス
 
-Tendril のスキルおよびプラグインは、リポジトリルートの [Functional Source License (FSL-1.1-ALv2)](../LICENSE) の下でライセンスされています。
+Tendril のスキルおよびプラグインは、リポジトリルートの [Functional Source License (FSL-1.1-ALv2)](../../LICENSE) の下でライセンスされています。

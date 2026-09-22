@@ -77,4 +77,4 @@ npx skills add ivy-interactive/ivy-tendril-v2 --agent roo
 
 ## Лицензия
 
-Навыки и плагины Tendril лицензируются на условиях [Functional Source License (FSL-1.1-ALv2)](../LICENSE) в корне репозитория.
+Навыки и плагины Tendril лицензируются на условиях [Functional Source License (FSL-1.1-ALv2)](../../LICENSE) в корне репозитория.

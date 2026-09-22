@@ -77,4 +77,4 @@ Tendril スキルと VS Code 拡張機能を組み合わせることで、自律
 
 ## ライセンス
 
-Tendril のスキルおよびプラグインは、リポジトリルートの [Functional Source License (FSL-1.1-ALv2)](../LICENSE) の下でライセンスされています。
+Tendril のスキルおよびプラグインは、リポジトリルートの [Functional Source License (FSL-1.1-ALv2)](../../LICENSE) の下でライセンスされています。
