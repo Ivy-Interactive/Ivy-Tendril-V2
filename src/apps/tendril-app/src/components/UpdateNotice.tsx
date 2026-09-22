@@ -1,6 +1,7 @@
 import React from "react";
 import { Button } from "@ivy-interactive/components/ui";
 import type { VersionInfo } from "../types/api";
+import { useTranslation } from "../i18n";
 
 interface UpdateNoticeProps {
   info: VersionInfo | null;
@@ -15,6 +16,7 @@ export const UpdateNotice: React.FC<UpdateNoticeProps> = ({
   onDismiss,
   onCopyCommand,
 }) => {
+  const { t } = useTranslation("common");
   if (!info || !info.hasUpdate || !info.latestVersion) return null;
   if (info.latestVersion === dismissedVersion) return null;
 
@@ -27,7 +29,10 @@ export const UpdateNotice: React.FC<UpdateNoticeProps> = ({
     >
       <div className="flex items-center space-x-2">
         <span className="font-semibold">
-          v{info.latestVersion} is available (you have v{info.currentVersion})
+          {t("updateNotice.available", {
+            latest: info.latestVersion,
+            current: info.currentVersion,
+          })}
         </span>
       </div>
       <div className="flex items-center space-x-2">
@@ -42,7 +47,7 @@ export const UpdateNotice: React.FC<UpdateNoticeProps> = ({
           onClick={onCopyCommand}
           className="bg-info/60 text-xs text-info hover:bg-info/90 hover:text-info"
         >
-          Copy Command
+          {t("updateNotice.copyCommand")}
         </Button>
         <Button
           type="button"
@@ -51,7 +56,7 @@ export const UpdateNotice: React.FC<UpdateNoticeProps> = ({
           onClick={() => onDismiss(info.latestVersion as string)}
           className="text-xs text-info hover:bg-info/20 hover:text-info"
         >
-          Dismiss
+          {t("updateNotice.dismiss")}
         </Button>
       </div>
     </div>

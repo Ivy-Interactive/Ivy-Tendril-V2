@@ -1,4 +1,5 @@
 import { useSyncExternalStore } from "react";
+import { i18n } from "../i18n";
 
 /**
  * The navigation seam: **one** `navigate({ appId, args, tabId })` plus a read of the current address.
@@ -34,7 +35,11 @@ import { useSyncExternalStore } from "react";
 /** The fields of V1's `AppDescriptor` the shell reads. */
 export interface AppDescriptor {
   id: string;
-  title: string;
+  /**
+   * The page tab's title, in the current language: every registered app's is a getter that looks the
+   * title up when it is read, so a registry built at import still follows a language change.
+   */
+  readonly title: string;
   /** V1's `[App(allowDuplicateTabs: true)]`: this app opens as a session pane, not as the page. */
   allowDuplicateTabs?: boolean;
   /**
@@ -85,33 +90,51 @@ export interface AppDescriptor {
  */
 export const AGENT_APP_ID = "agent";
 
+/**
+ * A registered app whose title is translated when it is read rather than when this module loads -
+ * the registry is a module-level constant, and a string looked up at import would stay in whatever
+ * language the app started in.
+ */
+const app = (
+  id: string,
+  title: () => string,
+  flags: Pick<AppDescriptor, "allowDuplicateTabs" | "fullBleed"> = {},
+): AppDescriptor => ({
+  id,
+  get title() {
+    return title();
+  },
+  ...flags,
+});
+
 export const APP_DESCRIPTORS: Record<string, AppDescriptor> = {
   // Full-bleed for the same reason V1's is: `TendrilDashboard` is a full-bleed widget that owns its
   // own scroll (`.tdb-root { height: 100%; overflow-y: auto }`) and re-applies the host's inset
   // itself (`.tdb-inner { padding: 16px 16px 24px }`). Padding it here padded it twice and nested a
   // second scroll container inside the first.
-  dashboard: { id: "dashboard", title: "Dashboard", fullBleed: true },
-  plans: { id: "plans", title: "Plans", fullBleed: true },
-  review: { id: "review", title: "Review", fullBleed: true },
-  recommendations: { id: "recommendations", title: "Recommendations" },
-  jobs: { id: "jobs", title: "Jobs" },
-  chat: { id: "chat", title: "Chat", fullBleed: true },
-  inbox: { id: "inbox", title: "Inbox" },
+  dashboard: app("dashboard", () => i18n.t("common:appTitles.dashboard"), { fullBleed: true }),
+  plans: app("plans", () => i18n.t("common:appTitles.plans"), { fullBleed: true }),
+  review: app("review", () => i18n.t("common:appTitles.review"), { fullBleed: true }),
+  recommendations: app("recommendations", () => i18n.t("common:appTitles.recommendations")),
+  jobs: app("jobs", () => i18n.t("common:appTitles.jobs")),
+  chat: app("chat", () => i18n.t("common:appTitles.chat"), { fullBleed: true }),
+  inbox: app("inbox", () => i18n.t("common:appTitles.inbox")),
   // V1 builds Settings as `new SidebarLayout(content, sidebar)`, and `SidebarLayoutWidget` carries
   // `remove-parent-padding` on its own root - so the section rail's `border-r` runs the full height
   // of the frame and the content pane supplies its own inset (`SettingsApp.cs:203`: `.Padding(4)`).
   // V2's view is built the same way and already pads its content pane, so padding the page as well
   // both doubled that inset and left the rail's divider floating off the frame's edges.
-  settings: { id: "settings", title: "Settings", fullBleed: true },
-  "pull-requests": { id: "pull-requests", title: "Pull Requests" },
-  icebox: { id: "icebox", title: "Icebox" },
-  "review-action": {
-    id: "review-action",
-    title: "Review Action",
+  settings: app("settings", () => i18n.t("common:appTitles.settings"), { fullBleed: true }),
+  "pull-requests": app("pull-requests", () => i18n.t("common:appTitles.pullRequests")),
+  icebox: app("icebox", () => i18n.t("common:appTitles.icebox")),
+  "review-action": app("review-action", () => i18n.t("common:appTitles.reviewAction"), {
     allowDuplicateTabs: true,
     fullBleed: true,
-  },
-  agent: { id: AGENT_APP_ID, title: "Agent", allowDuplicateTabs: true, fullBleed: true },
+  }),
+  agent: app(AGENT_APP_ID, () => i18n.t("common:appTitles.agent"), {
+    allowDuplicateTabs: true,
+    fullBleed: true,
+  }),
   /**
    * V1's `Apps/Debug/DialogsApp.cs`, which is `[App(icon: Icons.Bug, isVisible: false)]`.
    *
@@ -122,6 +145,8 @@ export const APP_DESCRIPTORS: Record<string, AppDescriptor> = {
    *
    * Padded, not full-bleed: the harness is an ordinary document-shaped view and takes the shell's
    * 16px like every other one.
+   *
+   * Its title stays English, untranslated, like the developer-only page it names (`DebugView`).
    */
   debug: { id: "debug", title: "Debug", fullBleed: false },
 };
@@ -142,11 +167,15 @@ export const appDescriptor = (appId: string | null | undefined): AppDescriptor |
   if (appId.startsWith("plan-")) {
     // A plan page *is* V1's `PlansApp` with args, so it inherits `PlansApp`'s full-bleed frame:
     // `PlanWorkspace` draws its own topbar, tab strip and insets to the edges.
-    return { id: appId, title: `Plan ${appId.slice("plan-".length)}`, fullBleed: true };
+    return {
+      id: appId,
+      title: i18n.t("common:appTitles.plan", { id: appId.slice("plan-".length) }),
+      fullBleed: true,
+    };
   }
   if (appId.startsWith("job-")) {
     // Not full-bleed: V1 shows a job's output in a sheet over the Jobs table, and a sheet is inset.
-    return { id: appId, title: `Job ${appId.slice("job-".length)}` };
+    return { id: appId, title: i18n.t("common:appTitles.job", { id: appId.slice("job-".length) }) };
   }
   return undefined;
 };
@@ -331,7 +360,7 @@ class Navigation {
         return;
       }
       if (isPop) {
-        this.set({ error: "Tab no longer exists." });
+        this.set({ error: i18n.t("common:navigation.errors.tabGone") });
         return;
       }
       // A first load: the pane's process died with the session that started it, so the address is
