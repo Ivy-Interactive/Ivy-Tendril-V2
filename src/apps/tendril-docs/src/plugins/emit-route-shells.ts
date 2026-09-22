@@ -216,16 +216,20 @@ export function emitRouteShells(options: EmitRouteShellsOptions): Plugin {
       const emitRedirect = (relativeFile: string, targetUrl: string, locConfig: LocaleConfig) => {
         const targetPath = path.join(outDir, relativeFile);
         mkdirSync(path.dirname(targetPath), { recursive: true });
+        const targetHref =
+          base === "/"
+            ? targetUrl
+            : `${base.replace(/\/+$/, "")}${targetUrl.startsWith("/") ? targetUrl : `/${targetUrl}`}`;
         const redirectHtml = shell
           .replace(/<html[^>]*>/i, `<html lang="${locConfig.hreflang}" dir="${locConfig.dir}">`)
           .replace(/<title>.*?<\/title>/i, `<title>Redirecting... · Tendril Docs</title>`)
           .replace(
             "</head>",
-            `  <meta http-equiv="refresh" content="0; url=${targetUrl}">\n  <link rel="canonical" href="https://docs.ivy.app${targetUrl}">\n</head>`,
+            `  <meta http-equiv="refresh" content="0; url=${targetHref}">\n  <link rel="canonical" href="https://docs.ivy.app${targetUrl}">\n</head>`,
           )
           .replace(
             '<div id="root"></div>',
-            `<div id="root"><p style="font-family:sans-serif;padding:2rem">Redirecting to <a href="${targetUrl}">${targetUrl}</a>...</p></div>`,
+            `<div id="root"><p style="font-family:sans-serif;padding:2rem">Redirecting to <a href="${targetHref}">${targetHref}</a>...</p></div>`,
           );
         writeFileSync(targetPath, redirectHtml);
       };
