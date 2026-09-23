@@ -6,6 +6,8 @@ import { bridge } from "../api/bridge";
 import { onPlanEvent } from "../api/events";
 import { describeBridgeError, type DraftComment } from "../types/api";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { Trans, useTranslation } from "../i18n";
+import { useEnumLabels } from "../i18n/enumLabels";
 
 interface PlanRevisionDiffProps {
   planId: string;
@@ -73,6 +75,8 @@ export function commentsForRevisionPair(
  * than the hand-written patch this tab used to render.
  */
 export const PlanRevisionDiff: React.FC<PlanRevisionDiffProps> = ({ planId, revisionCount }) => {
+  const { t } = useTranslation("plans");
+  const labels = useEnumLabels();
   const revisions = useMemo(
     () => Array.from({ length: revisionCount }, (_, i) => i + 1),
     [revisionCount],
@@ -223,8 +227,10 @@ export const PlanRevisionDiff: React.FC<PlanRevisionDiffProps> = ({ planId, revi
   if (revisionCount < 2) {
     return (
       <p data-testid="diff-single-revision" className="text-sm text-muted-foreground">
-        This plan has only one revision, so there is nothing to compare yet. A diff appears once
-        CreatePlan or RetryPlan writes a new revision.
+        {t("revisionDiff.singleRevision", {
+          createPlan: labels.jobType("CreatePlan"),
+          retryPlan: labels.jobType("RetryPlan"),
+        })}
       </p>
     );
   }
@@ -236,48 +242,57 @@ export const PlanRevisionDiff: React.FC<PlanRevisionDiffProps> = ({ planId, revi
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-        <label className="flex items-center gap-2">
-          <span>Compare revision</span>
-          <NativeSelect
-            aria-label="Old revision"
-            density="Small"
-            wrapperClassName="w-auto"
-            className="w-auto"
-            value={oldRevision}
-            onChange={(e) => setOldRevision(Number(e.target.value))}
-          >
-            {revisions.map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </NativeSelect>
-        </label>
-        <label className="flex items-center gap-2">
-          <span>against</span>
-          <NativeSelect
-            aria-label="New revision"
-            density="Small"
-            wrapperClassName="w-auto"
-            className="w-auto"
-            value={newRevision}
-            onChange={(e) => setNewRevision(Number(e.target.value))}
-          >
-            {revisions.map((n) => (
-              <option key={n} value={n}>
-                {n}
-              </option>
-            ))}
-          </NativeSelect>
-        </label>
+        {/* One sentence, "Compare revision [old] against [new]", so a translator can reorder it: each
+            half is still its own `<label>` around its own select, which is what names the select. */}
+        <Trans
+          ns="plans"
+          i18nKey="revisionDiff.compare"
+          components={{
+            oldLabel: <label className="flex items-center gap-2" />,
+            newLabel: <label className="flex items-center gap-2" />,
+            text: <span />,
+            oldSelect: (
+              <NativeSelect
+                aria-label={t("revisionDiff.oldRevisionLabel")}
+                density="Small"
+                wrapperClassName="w-auto"
+                className="w-auto"
+                value={oldRevision}
+                onChange={(e) => setOldRevision(Number(e.target.value))}
+              >
+                {revisions.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </NativeSelect>
+            ),
+            newSelect: (
+              <NativeSelect
+                aria-label={t("revisionDiff.newRevisionLabel")}
+                density="Small"
+                wrapperClassName="w-auto"
+                className="w-auto"
+                value={newRevision}
+                onChange={(e) => setNewRevision(Number(e.target.value))}
+              >
+                {revisions.map((n) => (
+                  <option key={n} value={n}>
+                    {n}
+                  </option>
+                ))}
+              </NativeSelect>
+            ),
+          }}
+        />
         <span className="text-muted-foreground/70">
-          {revisionCount} revision{revisionCount === 1 ? "" : "s"} on disk
+          {t("revisionDiff.onDisk", { count: revisionCount })}
         </span>
       </div>
 
       {isLoading && (
         <p data-testid="diff-loading" className="text-xs text-muted-foreground/70">
-          Loading revisions {oldRevision} and {newRevision}...
+          {t("revisionDiff.loading", { from: oldRevision, to: newRevision })}
         </p>
       )}
 
@@ -291,7 +306,7 @@ export const PlanRevisionDiff: React.FC<PlanRevisionDiffProps> = ({ planId, revi
       {patch !== null &&
         (oldRevision === newRevision || contents?.old === contents?.new ? (
           <p data-testid="diff-identical" className="text-sm text-muted-foreground">
-            Revisions {oldRevision} and {newRevision} are identical.
+            {t("revisionDiff.identical", { from: oldRevision, to: newRevision })}
           </p>
         ) : (
           <PlanDiffView

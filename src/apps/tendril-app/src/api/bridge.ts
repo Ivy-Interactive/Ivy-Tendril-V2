@@ -25,6 +25,7 @@ import type {
   JobDetail,
   ModelCatalogStatus,
   OnboardingStatus,
+  PlanArtifactContent,
   PlanArtifacts,
   PlanChangesData,
   PlanDetail,
@@ -41,6 +42,7 @@ import type {
   RecommendationItem,
   RecommendationState,
   RepoStatus,
+  ReviewActionConditionResult,
   ReviewActionConfig,
   RevisionResult,
   ServiceHealth,
@@ -63,6 +65,7 @@ import type {
 } from "../types/api";
 import type { ChatAttachment } from "../types/chat";
 import { encodeBase64, isTauri } from "../utils/tauri";
+import { i18n } from "../i18n";
 
 export type { ReviewActionSession } from "./events";
 
@@ -232,7 +235,9 @@ async function startReviewActionViaHttp(
     });
     if (!res.ok) {
       const detail = await res.text().catch(() => "");
-      throw new Error(`Review action ${endpoint} failed (${res.status}): ${detail}`);
+      throw new Error(
+        i18n.t("common:errors.reviewActionFailed", { endpoint, status: res.status, detail }),
+      );
     }
   };
 
@@ -284,7 +289,7 @@ async function invokeOrFetch<T>(
     if (body && typeof body === "object" && (body as { success?: unknown }).success === false) {
       return body as T;
     }
-    throw new Error(`Request to ${path} failed (${res.status})`);
+    throw new Error(i18n.t("common:errors.requestFailed", { path, status: res.status }));
   }
   return res.json() as Promise<T>;
 }
@@ -410,6 +415,20 @@ const tauriClient = {
       "cmd_get_plan_artifacts",
       { id },
       `/api/plans/${encodeURIComponent(id)}/artifacts`,
+    );
+  },
+
+  /**
+   * One artifact's text for the Review app's artifact sheet, by the absolute path
+   * `getPlanArtifacts` listed. The daemon refuses a path that does not resolve inside the plan's
+   * `Artifacts/` folder (`VALIDATION_ERROR`), and answers `binary` / `tooLarge` rather than text for
+   * a file there is nothing to show of. Images go through `getLocalFilePreview` instead.
+   */
+  async getPlanArtifactContent(this: void, id: string, path: string): Promise<PlanArtifactContent> {
+    return invokeOrFetch<PlanArtifactContent>(
+      "cmd_get_plan_artifact_content",
+      { id, path },
+      `/api/plans/${encodeURIComponent(id)}/artifacts/content?path=${encodeURIComponent(path)}`,
     );
   },
 
@@ -654,6 +673,22 @@ const tauriClient = {
     } catch {
       return [];
     }
+  },
+
+  /**
+   * Whether each of the project's review actions has its condition met for `planId`, decided by the
+   * daemon against the plan folder. `ReviewActionsBarView` disables a button on `notMet` and says why
+   * on hover; see `ReviewActionConditionResult`.
+   */
+  async getReviewActionConditions(
+    this: void,
+    projectName: string,
+    planId: string,
+  ): Promise<ReviewActionConditionResult[]> {
+    return invoke<ReviewActionConditionResult[]>("cmd_get_review_action_conditions", {
+      projectName,
+      planId,
+    });
   },
 
   /**

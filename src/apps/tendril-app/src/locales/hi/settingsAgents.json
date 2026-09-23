@@ -1,0 +1,142 @@
+{
+  "section": {
+    "title": "कोडिंग एजेंट",
+    "hint": "Tendril आपके कॉन्फ़िगर किए गए AI कोडिंग एजेंट या OpenCode जैसे बंडल किए गए ओपन सोर्स इंजनों से जुड़ता है।",
+    "unknownAgent": "अज्ञात कोडिंग एजेंट \"{{value}}\"। मान्य एजेंट: {{agents}}"
+  },
+  "byo": {
+    "title": "अपना LLM लाएं",
+    "baseUrl": {
+      "label": "API बेस URL"
+    },
+    "apiKey": {
+      "label": "API कुंजी",
+      "hint": "{{agent}} एजेंट पर ANTHROPIC_API_KEY और OPENAI_API_KEY के रूप में संग्रहीत, जो हर लॉन्च को मिलने वाला पर्यावरण है।",
+      "hint_ivy": "{{agent}} एजेंट पर IVY_API_KEY, ANTHROPIC_API_KEY और OPENAI_API_KEY के रूप में संग्रहीत, जो हर लॉन्च को मिलने वाला पर्यावरण है।"
+    },
+    "fetchModels": {
+      "label": "मॉडल प्राप्त करें",
+      "busy": "प्राप्त किए जा रहे हैं…"
+    },
+    "discovery": {
+      "found_one": "इस एंडपॉइंट पर {{count}} मॉडल मिला।",
+      "found_other": "इस एंडपॉइंट पर {{count}} मॉडल मिले।",
+      "customNames": "यह एंडपॉइंट कोई मॉडल सूची नहीं देता, इसलिए मॉडल के नाम हाथ से दर्ज करने होंगे।",
+      "unreachable": "मॉडल प्राप्त करने के लिए डेमॉन तक नहीं पहुंचा जा सका: {{error}}"
+    }
+  },
+  "profiles": {
+    "title": "प्रोफ़ाइल मॉडल",
+    "hint": {
+      "custom": "हर प्रोफ़ाइल के लिए उपयोग होने वाले कस्टम मॉडल नाम और प्रयास स्तर निर्दिष्ट करें।",
+      "discovered": "हर प्रोफ़ाइल स्तर के लिए अपने एंडपॉइंट से मॉडल चुनें।",
+      "default": "वर्कफ़्लो एजेंट्स कार्य की जटिलता के आधार पर अलग-अलग प्रोफ़ाइल उपयोग करने के लिए कॉन्फ़िगर किए गए हैं। आप हर प्रोफ़ाइल के लिए उपयोग होने वाला मॉडल और प्रयास स्तर निर्दिष्ट कर सकते हैं।"
+    },
+    "customNames": "कस्टम मॉडल नाम",
+    "effortUnsupported": "इस एजेंट का CLI प्रयास तर्क नहीं लेता, इसलिए प्रयास को अनदेखा किया जाता है।",
+    "tiers": {
+      "deep": "गहन",
+      "balanced": "संतुलित",
+      "quick": "त्वरित"
+    },
+    "effort": "प्रयास",
+    "efforts": {
+      "default": "डिफ़ॉल्ट",
+      "low": "निम्न",
+      "medium": "मध्यम",
+      "high": "उच्च",
+      "xhigh": "अति उच्च",
+      "max": "अधिकतम"
+    }
+  },
+  "environment": {
+    "title": "अतिरिक्त तर्क और पर्यावरण",
+    "arguments": {
+      "label": "अतिरिक्त तर्क",
+      "placeholder": "उदा. --verbose",
+      "hint": "व्हाइटस्पेस पर विभाजित करके इस एजेंट के हर लॉन्च में जोड़े जाते हैं।"
+    },
+    "variables": {
+      "label": "पर्यावरण चर",
+      "hint": "हर पंक्ति में एक KEY=value। # से शुरू होने वाली पंक्तियों को अनदेखा किया जाता है।"
+    }
+  },
+  "help": {
+    "title": "सहायता",
+    "hint": "इस मशीन पर {{agent}} को चालू करना।",
+    "install": "1. इंस्टॉल करें",
+    "authenticate": "2. प्रमाणित करें",
+    "apiKey": "2. API कुंजी",
+    "or": "या",
+    "then": "फिर, प्रॉम्प्ट पर: <code>{{command}}</code>",
+    "binary": "Tendril आपके PATH पर <code>{{binary}}</code> खोजता है।"
+  },
+  "actions": {
+    "test": "एजेंट का परीक्षण करें",
+    "saving": "सहेजा जा रहा है…"
+  },
+  "save": {
+    "toastTitle": "सहेजा गया",
+    "toastMessage": "कोडिंग एजेंट सेटिंग्स सहेजी गईं",
+    "failed": "सहेजने में विफल: {{error}}"
+  },
+  "test": {
+    "title": "कोडिंग एजेंट परीक्षण",
+    "defaultModel": "डिफ़ॉल्ट",
+    "columns": {
+      "test": "परीक्षण",
+      "result": "परिणाम"
+    },
+    "status": {
+      "passed": "पास",
+      "failed": "विफल",
+      "warning": "चेतावनी",
+      "running": "चल रहा",
+      "pending": "लंबित"
+    },
+    "showRawOutput": "रॉ आउटपुट दिखाएं",
+    "rawOutputTitle": "रॉ आउटपुट",
+    "rows": {
+      "install": "इंस्टॉलेशन",
+      "auth": "प्रमाणीकरण",
+      "model": "मॉडल: {{name}}",
+      "unexpectedError": "अप्रत्याशित त्रुटि"
+    },
+    "install": {
+      "version": "v{{version}}",
+      "installed": "इंस्टॉल है",
+      "notInstalled": "इंस्टॉल नहीं है"
+    },
+    "auth": {
+      "authenticated": "प्रमाणित",
+      "authenticatedWith": "प्रमाणित ({{provider}})",
+      "notAuthenticated": "प्रमाणित नहीं",
+      "notAuthenticatedRun": "प्रमाणित नहीं - `{{command}}` चलाएं",
+      "notAuthenticatedRunThen": "प्रमाणित नहीं - `{{command}}` चलाएं, फिर `{{prompt}}`",
+      "notAuthenticatedCreateKey": "प्रमाणित नहीं - {{url}} पर एक कुंजी बनाएं",
+      "inconclusive": "जांच अनिर्णायक रही"
+    },
+    "model": {
+      "notChecked": "जांचा नहीं गया",
+      "ok": "ठीक",
+      "invalidModel": "अमान्य मॉडल",
+      "authError": "प्रमाणीकरण त्रुटि",
+      "rateLimit": "कोटा समाप्त या दर सीमित"
+    },
+    "cancelled": "रद्द किया गया",
+    "runFailed": "परीक्षण रन विफल रहा"
+  },
+  "usage": {
+    "window": "{{window}} विंडो",
+    "left": "{{percent}} शेष",
+    "ariaLabel": "{{window}} विंडो, {{percent}} शेष",
+    "resetsIn": "{{countdown}} में रीसेट होगा",
+    "resetsIn_now": "अभी रीसेट होगा",
+    "asOf": "{{relative}} की स्थिति",
+    "countdown": {
+      "now": "अभी",
+      "hoursMinutes": "{{hours}} {{minutes}}"
+    },
+    "justNow": "अभी-अभी"
+  }
+}

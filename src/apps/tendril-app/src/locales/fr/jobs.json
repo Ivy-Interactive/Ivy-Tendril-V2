@@ -1,0 +1,243 @@
+{
+  "table": {
+    "columns": {
+      "id": {
+        "header": "ID"
+      },
+      "status": {
+        "header": "Statut",
+        "filterPlaceholder": "Tous"
+      },
+      "planId": {
+        "header": "ID du plan",
+        "filterPlaceholder": "ID…"
+      },
+      "prompt": {
+        "header": "Prompt"
+      },
+      "type": {
+        "header": "Type",
+        "filterPlaceholder": "Tous"
+      },
+      "project": {
+        "header": "Projet",
+        "filterPlaceholder": "Tous"
+      },
+      "timer": {
+        "header": "Durée",
+        "filterPlaceholder": "Secondes…"
+      },
+      "agentOutput": {
+        "header": "Sortie de l'agent",
+        "filterPlaceholder": "Date…"
+      },
+      "cost": {
+        "header": "Coût",
+        "filterPlaceholder": "Montant…"
+      },
+      "tokens": {
+        "header": "Tokens",
+        "filterPlaceholder": "Nombre…"
+      },
+      "timestamp": {
+        "header": "Horodatage",
+        "filterPlaceholder": "Date…"
+      },
+      "statusMessage": {
+        "header": "Message de statut"
+      }
+    },
+    "detached": {
+      "label": "Détaché",
+      "title": "Détaché (PID {{pid}}) — surveillance d'un processus actif lancé avant le dernier redémarrage du démon",
+      "unknownPid": "inconnu"
+    },
+    "empty": {
+      "filtered": "Aucun job ne correspond aux filtres actuels.",
+      "none": "Aucun job pour l'instant. Lancer un plan, un nouvel essai ou une création de PR en crée un."
+    },
+    "queryError": "Impossible de lire la table des jobs : {{error}}",
+    "statusProgress": {
+      "ariaLabel": "Jobs par statut"
+    },
+    "headerMenu": {
+      "ariaLabel": "Actions sur la liste des jobs",
+      "stopAllQueued": "Arrêter les jobs en file ({{count}})",
+      "stopAll": "Tout arrêter ({{count}})"
+    }
+  },
+  "actions": {
+    "menu": "Actions du job",
+    "stop": {
+      "label": "Arrêter",
+      "tooltip": "Arrêter ce job",
+      "busy": "Arrêt…"
+    },
+    "rerun": {
+      "label": "Relancer",
+      "unavailable": "Impossible de relancer : les arguments d'origine n'ont pas été conservés."
+    },
+    "forceStart": {
+      "label": "Forcer le démarrage",
+      "tooltip": "Forcer le démarrage de ce job bloqué",
+      "busy": "Démarrage…"
+    },
+    "debug": {
+      "label": "Déboguer",
+      "tooltip": "Afficher les détails de débogage de ce job"
+    },
+    "delete": {
+      "label": "Supprimer",
+      "tooltip": "Supprimer ce job"
+    }
+  },
+  "errors": {
+    "stopFailed": "Échec de l'arrêt : {{error}}",
+    "forceStartFailed": "Échec du démarrage forcé : {{error}}",
+    "deleteFailed": "Échec de la suppression : {{error}}"
+  },
+  "deleteDialog": {
+    "title": "Supprimer le job",
+    "body": "Voulez-vous vraiment supprimer ce job ? Cette action est irréversible."
+  },
+  "statusMessage": {
+    "blocked": "En attente de la fin des plans dont il dépend.",
+    "failed": "Le job a rencontré une erreur pendant l'exécution",
+    "timeout": "Le job a dépassé le délai d'expiration configuré",
+    "queued": "En attente d'un créneau de job disponible",
+    "stopped": "Job arrêté manuellement",
+    "pending": "Le job est en file d'attente et attend de démarrer."
+  },
+  "agentOutput": {
+    "starting": "Démarrage…",
+    "done": "Terminé"
+  },
+  "cost": {
+    "estimated": "~{{cost}}",
+    "notReported": "Aucun coût n'a été déclaré pour ce job"
+  },
+  "tokens": {
+    "buckets": {
+      "input": "Entrée",
+      "output": "Sortie",
+      "cacheRead": "Lecture du cache",
+      "cacheWrite": "Écriture dans le cache",
+      "reasoning": "Raisonnement"
+    },
+    "breakdownEntry": "{{label}} : {{tokens, number}}"
+  },
+  "outputSheet": {
+    "title": "{{type}} {{planId}}",
+    "fallbackTitle": "Sortie du job"
+  },
+  "session": {
+    "detachedBadge": "Détaché (PID {{pid}}) — surveillance d'un processus actif",
+    "tokens": "Tokens : {{tokens}}",
+    "cost": "Coût : {{cost}}",
+    "closeTab": "Fermer l'onglet de session",
+    "noOutput": "Aucune sortie disponible.",
+    "statusCallout": {
+      "title": "Statut du job : {{status}}",
+      "title_pending": "Job en attente",
+      "title_queued": "Job en file d'attente",
+      "title_blocked": "Job bloqué",
+      "title_failed": "Échec du job",
+      "title_timeout": "Délai du job dépassé",
+      "title_stopped": "Job arrêté"
+    }
+  },
+  "costSheet": {
+    "title": "Coût et tokens",
+    "titleWithPlan": "Coût et tokens — {{planId}}",
+    "details": {
+      "model": "Modèle",
+      "provider": "Fournisseur",
+      "type": "Type",
+      "profile": "Profil",
+      "agentCost": "Coût déclaré par l'agent"
+    },
+    "notProvided": "Non fourni",
+    "noUsage": "Aucune ventilation par token n'a été enregistrée pour ce job.",
+    "noUsage_total": "Aucune ventilation par token n'a été enregistrée pour ce job, seulement un total de {{total}} tokens.",
+    "breakdown": {
+      "title": "Ventilation",
+      "tokenType": "Type de token",
+      "tokens": "Tokens",
+      "total": "Total"
+    },
+    "totalCost": "Coût total"
+  },
+  "promptSheet": {
+    "title": "Prompt complet",
+    "empty": "Ce job n'a enregistré aucun texte de prompt."
+  },
+  "clear": {
+    "dialogTitle": "Effacer des jobs",
+    "confirm": "Effacer",
+    "confirmCount": "Effacer ({{count}})",
+    "countFailed": "Impossible de compter les jobs : {{error}}",
+    "failed": "Échec de l'effacement : {{error}}",
+    "scopes": {
+      "completed": {
+        "label": "Effacer les jobs terminés",
+        "counting": "Décompte des jobs terminés…",
+        "empty": "Aucun job terminé à effacer.",
+        "confirm_one": "Supprimer {{count}} job terminé ? Ses journaux et sa sortie seront supprimés avec lui. Cette action est irréversible.",
+        "confirm_many": "Supprimer {{count}} jobs terminés ? Leurs journaux et leur sortie seront supprimés avec eux. Cette action est irréversible.",
+        "confirm_other": "Supprimer {{count}} jobs terminés ? Leurs journaux et leur sortie seront supprimés avec eux. Cette action est irréversible."
+      },
+      "failed": {
+        "label": "Effacer les jobs en échec",
+        "counting": "Décompte des jobs en échec…",
+        "empty": "Aucun job en échec à effacer.",
+        "confirm_one": "Supprimer {{count}} job en échec ? Ses journaux et sa sortie seront supprimés avec lui. Cette action est irréversible.",
+        "confirm_many": "Supprimer {{count}} jobs en échec ? Leurs journaux et leur sortie seront supprimés avec eux. Cette action est irréversible.",
+        "confirm_other": "Supprimer {{count}} jobs en échec ? Leurs journaux et leur sortie seront supprimés avec eux. Cette action est irréversible."
+      },
+      "timeout": {
+        "label": "Effacer les jobs expirés",
+        "counting": "Décompte des jobs expirés…",
+        "empty": "Aucun job expiré à effacer.",
+        "confirm_one": "Supprimer {{count}} job expiré ? Ses journaux et sa sortie seront supprimés avec lui. Cette action est irréversible.",
+        "confirm_many": "Supprimer {{count}} jobs expirés ? Leurs journaux et leur sortie seront supprimés avec eux. Cette action est irréversible.",
+        "confirm_other": "Supprimer {{count}} jobs expirés ? Leurs journaux et leur sortie seront supprimés avec eux. Cette action est irréversible."
+      },
+      "stopped": {
+        "label": "Effacer les jobs arrêtés",
+        "counting": "Décompte des jobs arrêtés…",
+        "empty": "Aucun job arrêté à effacer.",
+        "confirm_one": "Supprimer {{count}} job arrêté ? Ses journaux et sa sortie seront supprimés avec lui. Cette action est irréversible.",
+        "confirm_many": "Supprimer {{count}} jobs arrêtés ? Leurs journaux et leur sortie seront supprimés avec eux. Cette action est irréversible.",
+        "confirm_other": "Supprimer {{count}} jobs arrêtés ? Leurs journaux et leur sortie seront supprimés avec eux. Cette action est irréversible."
+      },
+      "all": {
+        "label": "Effacer tous les jobs achevés",
+        "counting": "Décompte des jobs achevés…",
+        "empty": "Aucun job achevé à effacer.",
+        "confirm_one": "Supprimer {{count}} job achevé ? Ses journaux et sa sortie seront supprimés avec lui. Cette action est irréversible.",
+        "confirm_many": "Supprimer {{count}} jobs achevés ? Leurs journaux et leur sortie seront supprimés avec eux. Cette action est irréversible.",
+        "confirm_other": "Supprimer {{count}} jobs achevés ? Leurs journaux et leur sortie seront supprimés avec eux. Cette action est irréversible."
+      }
+    }
+  },
+  "notifications": {
+    "exit": {
+      "completed": "{{type}} : terminé",
+      "failed": "{{type}} : échec",
+      "timedOut": "{{type}} : délai dépassé",
+      "withReason": "{{subject}} : {{reason}}"
+    },
+    "summary": {
+      "title": "Jobs achevés",
+      "finished_one": "{{count}} job achevé",
+      "finished_many": "{{count}} jobs achevés",
+      "finished_other": "{{count}} jobs achevés",
+      "finishedWithFailures_one": "{{count}} job achevé, {{failures}}",
+      "finishedWithFailures_many": "{{count}} jobs achevés, {{failures}}",
+      "finishedWithFailures_other": "{{count}} jobs achevés, {{failures}}",
+      "failedCount_one": "{{count}} en échec",
+      "failedCount_many": "{{count}} en échec",
+      "failedCount_other": "{{count}} en échec"
+    }
+  }
+}

@@ -7,6 +7,7 @@ import {
   DataTable,
   type DataTableColumn,
 } from "@ivy-interactive/components/ui";
+import { useTranslation } from "../../i18n";
 import { notificationsStore } from "../../state/notificationsStore";
 import { describeBridgeError } from "../../types/api";
 import { levelBadgeColor } from "../../utils/levelColor";
@@ -39,6 +40,12 @@ export interface LevelsSectionProps {
 
 type Draft = { index: number | null; name: string; color: string };
 
+/**
+ * The colour names the editor's hint cites. They are `config.yaml` values, what the operator types,
+ * so they reach the translated hint as a variable and stay as they are in every language.
+ */
+const COLOR_EXAMPLES = ["Red", "Blue", "Purple", "Slate", "Gray"];
+
 const levelToWire = (level: LevelEntry): Record<string, unknown> => ({
   ...level.rest,
   name: level.name,
@@ -47,6 +54,7 @@ const levelToWire = (level: LevelEntry): Record<string, unknown> => ({
 });
 
 export const LevelsSection: React.FC<LevelsSectionProps> = ({ levels, onSaveRaw }) => {
+  const { t } = useTranslation("settings");
   const [draft, setDraft] = React.useState<Draft | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [isSaving, setIsSaving] = React.useState(false);
@@ -57,20 +65,20 @@ export const LevelsSection: React.FC<LevelsSectionProps> = ({ levels, onSaveRaw 
     setError(null);
     try {
       await onSaveRaw("levels", next.map(levelToWire));
-      notificationsStore.notifySuccess("Saved", message);
+      notificationsStore.notifySuccess(t("shared.toastSaved"), message);
       setDraft(null);
     } catch (err) {
-      setError(`Failed to save level: ${describeBridgeError(err)}`);
+      setError(t("levels.saveFailed", { error: describeBridgeError(err) }));
     } finally {
       setIsSaving(false);
     }
   };
 
   const columns: DataTableColumn<LevelEntry>[] = [
-    { name: "name", header: "Name", accessor: (row) => row.name },
+    { name: "name", header: t("levels.columns.name"), accessor: (row) => row.name },
     {
       name: "color",
-      header: "Color",
+      header: t("levels.columns.color"),
       accessor: (row) => row.color,
       /**
        * `.Builder(t => t.Color, ... new Badge(color).Color(Enum.TryParse<Colors>(color, out var c) ? c
@@ -89,7 +97,7 @@ export const LevelsSection: React.FC<LevelsSectionProps> = ({ levels, onSaveRaw 
           </Badge>
         ) : (
           <Badge variant="secondary" data-testid={`level-color-${row.name}`}>
-            {row.color || "unset"}
+            {row.color || t("levels.unsetColor")}
           </Badge>
         );
       },
@@ -107,13 +115,13 @@ export const LevelsSection: React.FC<LevelsSectionProps> = ({ levels, onSaveRaw 
     };
     if (draft.index === null) next.push(entry);
     else next[draft.index] = entry;
-    void write(next, "Level saved");
+    void write(next, t("levels.saved"));
   };
 
   return (
     <SettingsSection
-      title="Priority Levels"
-      hint="Define priority levels used to categorize plans."
+      title={t("levels.title")}
+      hint={t("levels.hint")}
       testId="levels-card"
       action={
         <Button
@@ -123,7 +131,7 @@ export const LevelsSection: React.FC<LevelsSectionProps> = ({ levels, onSaveRaw 
           onClick={() => setDraft({ index: null, name: "", color: "Gray" })}
         >
           <Plus className="size-4" aria-hidden />
-          Add Level
+          {t("levels.addButton")}
         </Button>
       }
     >
@@ -135,24 +143,23 @@ export const LevelsSection: React.FC<LevelsSectionProps> = ({ levels, onSaveRaw 
           rows={levels}
           getRowId={(row) => row.name}
           rowActions={[
-            { tag: "edit", label: "Edit" },
-            { tag: "delete", label: "Delete", variant: "destructive" },
+            { tag: "edit", label: t("levels.editAction") },
+            { tag: "delete", label: t("common:actions.delete"), variant: "destructive" },
           ]}
-          emptyState={<span className="text-muted-foreground">No levels defined.</span>}
+          emptyState={<span className="text-muted-foreground">{t("levels.empty")}</span>}
           onRowAction={({ tag, row }) => {
             const index = levels.findIndex((level) => level.name === row.name);
             if (tag === "edit") {
               setDraft({ index, name: row.name, color: row.color });
             } else if (tag === "delete") {
               requestRemoval({
-                kind: "level",
+                kindId: "level",
                 name: row.name,
-                consequence:
-                  "Plans already categorised at this level keep the name in their plan.yaml; it simply stops being one of the levels offered.",
+                consequence: t("levels.removeConsequence"),
                 onConfirm: () =>
                   void write(
                     levels.filter((_, i) => i !== index),
-                    `Level '${row.name}' deleted`,
+                    t("levels.deleted", { name: row.name }),
                   ),
               });
             }
@@ -169,29 +176,33 @@ export const LevelsSection: React.FC<LevelsSectionProps> = ({ levels, onSaveRaw 
             }}
           >
             <h3 className="text-sm font-semibold text-foreground">
-              {draft.index === null ? "Add Level" : "Edit Level"}
+              {draft.index === null ? t("levels.editor.addTitle") : t("levels.editor.editTitle")}
             </h3>
             <TextField
               id="level-name"
-              label="Name"
+              label={t("levels.editor.nameLabel")}
               value={draft.name}
-              placeholder="Level name..."
+              placeholder={t("levels.editor.namePlaceholder")}
               onChange={(value) => setDraft((prev) => (prev ? { ...prev, name: value } : prev))}
             />
             <TextField
               id="level-color"
-              label="Color"
+              label={t("levels.editor.colorLabel")}
               value={draft.color}
-              placeholder="e.g. Blue"
-              hint="An Ivy colour name, as config.yaml stores it (Red, Blue, Purple, Slate, Gray...)."
+              placeholder={t("levels.editor.colorPlaceholder", { example: "Blue" })}
+              hint={t("levels.editor.colorHint", { examples: COLOR_EXAMPLES.join(", ") })}
               onChange={(value) => setDraft((prev) => (prev ? { ...prev, color: value } : prev))}
             />
             <div className="flex flex-wrap items-center gap-2">
               <Button type="submit" disabled={draft.name.trim() === "" || isSaving}>
-                {isSaving ? "Saving..." : draft.index === null ? "Add" : "Save"}
+                {isSaving
+                  ? t("shared.saving")
+                  : draft.index === null
+                    ? t("levels.editor.add")
+                    : t("common:actions.save")}
               </Button>
               <Button type="button" variant="outline" onClick={() => setDraft(null)}>
-                Cancel
+                {t("common:actions.cancel")}
               </Button>
             </div>
           </form>
@@ -199,10 +210,7 @@ export const LevelsSection: React.FC<LevelsSectionProps> = ({ levels, onSaveRaw 
 
         <SaveError message={error} />
 
-        <Callout.Warning data-testid="levels-no-effect">
-          Levels are stored in config.yaml and advertised over MCP, but nothing in this app reads
-          them yet, so editing them here changes no behaviour you can see.
-        </Callout.Warning>
+        <Callout.Warning data-testid="levels-no-effect">{t("levels.noEffect")}</Callout.Warning>
 
         {removalDialog}
       </div>

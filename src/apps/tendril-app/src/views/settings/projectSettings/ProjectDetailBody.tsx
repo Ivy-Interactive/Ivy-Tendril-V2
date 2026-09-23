@@ -13,6 +13,7 @@ import {
 } from "@ivy-interactive/components/ui";
 import { SortableVerificationList } from "@ivy-interactive/components/tendril";
 import { bridge } from "../../../api/bridge";
+import { useTranslation, type TFunction } from "../../../i18n";
 import { notificationsStore } from "../../../state/notificationsStore";
 import { describeBridgeError } from "../../../types/api";
 import {
@@ -22,14 +23,12 @@ import {
   SaveError,
   SelectField,
   SubSection,
-  asOptions,
 } from "../fields";
-import { useRemovalConfirm } from "../useRemovalConfirm";
+import { type RemovalRequest, useRemovalConfirm } from "../useRemovalConfirm";
 import { parseLines } from "../configValues";
 import {
-  AUTO_IMPLEMENT_OPTIONS,
+  AUTO_IMPLEMENT_VALUES,
   OUTSIDE_FILE_POLICIES,
-  PORTS_ARE_MERGED,
   SANDBOX_MODES,
   SECURITY_PRESETS,
   TERMINAL_AUTO_EXECUTIONS,
@@ -45,6 +44,8 @@ import {
   orderForDisplay,
   parseModeLines,
   portsToWire,
+  projectOptionLabel,
+  projectOptions,
   projectPatch,
   reorderProjectVerifications,
   repoToWire,
@@ -75,10 +76,50 @@ import { AGENT_LABELS, type ProjectSettingsViewProps } from "./types";
 /* ------------------------------------------------------------------- detail body */
 
 /** `Icons.Pencil` / `Icons.Trash`, the two row buttons every V1 project table carries. */
-const editDeleteActions = <TRow,>(): DataTableRowAction<TRow>[] => [
-  { tag: "edit", label: "Edit" },
-  { tag: "delete", label: "Delete", variant: "destructive" },
+const editDeleteActions = <TRow,>(t: TFunction<"settingsProjects">): DataTableRowAction<TRow>[] => [
+  { tag: "edit", label: t("rowActions.edit") },
+  { tag: "delete", label: t("common:actions.delete"), variant: "destructive" },
 ];
+
+/**
+ * The room {@link editDeleteActions} needs, set through `DataTable`'s own
+ * `--ivy-data-table-actions-width` override. Goes on every table that uses those actions.
+ *
+ * Under `table-fixed` the actions column is exactly that width, whatever it holds, and the 5rem
+ * default fits one button. `Edit` and `Delete` are two text buttons, 116px together plus the cell's
+ * 26px of padding, so they overflowed leftwards and `Edit` always sat over the last 49px of the
+ * column before it. That went unnoticed while the root blade was laid out as wide as its content,
+ * because the Condition column was wide and a short value ended well clear of the button. Once a
+ * flex blade stopped being sized by its content (`bladeWidthVariant`'s `flex`), opening an editor
+ * beside this blade at a 1280px window left the root about 350px wide, and a review action's
+ * "always" was printed over its `Edit`.
+ *
+ * The width is in `--spacing` units, like the calendar's `--cell-size`, because most of those 142px
+ * are the buttons' `px-3` and the cell's padding, which are counted in the same unit. 36 of them is
+ * 155px at the default 0.27rem, and that leaves margin for a wider fallback font.
+ */
+const EDIT_DELETE_ACTIONS_WIDTH = "[--ivy-data-table-actions-width:--spacing(36)]";
+
+/**
+ * Which kind of entry a removal on this screen is. These are ids, never shown, and they are spelled
+ * like the settings namespace's `RemovalKind` (`settings:removal.title_<kind>`), which words a whole
+ * title and question per kind. Until `useRemovalConfirm` takes such an id, `requestRemoval` below
+ * turns it into this namespace's translated lower-case noun (`removalKinds.<id>`) for the hook's
+ * `kind`; once it does, the wrapper should pass the id through as `kindId` instead.
+ */
+type ProjectRemovalKind =
+  | "repository"
+  | "reviewAction"
+  | "environmentFile"
+  | "mcpServer"
+  | "customSkill";
+
+/**
+ * The words `parseModeLines` accepts at the start of a rule line (`OUTSIDE_FILE_POLICIES`), and the
+ * two Claude tools a file Deny rule covers. The hints name them, so they are passed in as variables:
+ * translating one would teach a keyword the parser reads as part of an Allow rule's path.
+ */
+const RULE_KEYWORDS = { allow: "Allow", deny: "Deny", write: "Write", edit: "Edit" } as const;
 
 /**
  * A cell whose value may be one long unbroken string — a review action's command, an env file path, a
@@ -119,6 +160,7 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
   onRemoved,
   onDeleted,
 }) => {
+  const { t } = useTranslation("settingsProjects");
   const { push, pop } = useBlades();
   const [error, setError] = React.useState<string | null>(null);
   const [repoDraft, setRepoDraft] = React.useState("");
@@ -146,9 +188,9 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
     setError(null);
     try {
       await onSaveRaw("projects", projectPatch(project.name, changes));
-      notificationsStore.notifySuccess("Saved", message);
+      notificationsStore.notifySuccess(t("notifications.saved"), message);
     } catch (err) {
-      setError(`Failed to save project: ${describeBridgeError(err)}`);
+      setError(t("saveError", { error: describeBridgeError(err) }));
     }
   };
 
@@ -162,7 +204,12 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
    * "never delete on single click". Each of them rewrites `config.yaml` with the entry gone, and
    * `merge_config_value` replaces sequences wholesale, so the click was the whole transaction.
    */
-  const { requestRemoval, removalDialog } = useRemovalConfirm();
+  const { requestRemoval: requestAnyRemoval, removalDialog } = useRemovalConfirm();
+  const requestRemoval = ({
+    kindId,
+    ...request
+  }: Omit<RemovalRequest, "kind"> & { kindId: ProjectRemovalKind }) =>
+    requestAnyRemoval({ ...request, kind: t(`removalKinds.${kindId}`) });
 
   /* --------------------------------------------------------------- repositories */
 
@@ -188,7 +235,7 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
     setRepoError(null);
 
     if (!isValidRepoPath(path)) {
-      setRepoError("Invalid repository path.");
+      setRepoError(t("repositories.add.invalidPath"));
       return;
     }
 
@@ -198,7 +245,7 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
     }
 
     if (classifyRepoPath(path) === "local") {
-      saveRepos([...project.repos, { path, rest: {} }], `Added ${path}`);
+      saveRepos([...project.repos, { path, rest: {} }], t("repositories.add.added", { path }));
       setRepoDraft("");
       return;
     }
@@ -213,11 +260,14 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
       // The clone path, never `path`. A remote URL can carry a token, and a toast is copied into
       // screenshots and bug reports; the daemon's answer is a directory under TENDRIL_HOME and
       // cannot carry one. `redact_credentials` is the daemon's guard on the same hazard.
-      notificationsStore.notifySuccess("Cloned", `Repository cloned to ${added.path}`);
+      notificationsStore.notifySuccess(
+        t("notifications.cloned"),
+        t("repositories.add.cloned", { path: added.path }),
+      );
     } catch (err) {
       // The daemon has already put every URL its clone errors mention through `redact_credentials`,
       // so relaying its message is safe and re-stating the typed URL here would undo that.
-      setRepoError(`Failed to add repository: ${describeBridgeError(err)}`);
+      setRepoError(t("repositories.add.failed", { error: describeBridgeError(err) }));
     } finally {
       setIsAddingRepo(false);
     }
@@ -226,16 +276,16 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
   /* ----------------------------------------------------------- review actions */
 
   const reviewActionColumns: DataTableColumn<ReviewActionConfigEntry>[] = [
-    { name: "name", header: "Action Name", accessor: (row) => row.name },
+    { name: "name", header: t("reviewActions.columns.name"), accessor: (row) => row.name },
     {
       name: "command",
-      header: "Command",
+      header: t("reviewActions.columns.command"),
       accessor: (row) => row.command,
       cell: cappedCell<ReviewActionConfigEntry>((row) => row.command),
     },
     {
       name: "condition",
-      header: "Condition",
+      header: t("reviewActions.columns.condition"),
       accessor: (row) => row.condition,
       cell: cappedCell<ReviewActionConfigEntry>((row) => row.condition),
     },
@@ -248,7 +298,7 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
     pop(1);
     void patch(
       { reviewActions: next.map(reviewActionToWire) },
-      `Review action '${action.name}' saved`,
+      t("reviewActions.saved", { name: action.name }),
     );
   };
 
@@ -289,7 +339,7 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
       const item = JSON.parse(payload) as { name: string; enabled: boolean; required: boolean };
       saveVerifications(
         applyVerificationChange(item, project.verifications),
-        `Verifications updated for ${project.name}`,
+        t("verifications.updated", { project: project.name }),
       );
       return;
     }
@@ -297,7 +347,7 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
       const indices = JSON.parse(payload) as number[];
       saveVerifications(
         reorderProjectVerifications(indices, displayed, project.verifications),
-        "Verification run order saved",
+        t("verifications.orderSaved"),
       );
     }
   };
@@ -321,9 +371,9 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
             })),
           }),
         );
-        notificationsStore.notifySuccess("Saved", "Verification added");
+        notificationsStore.notifySuccess(t("notifications.saved"), t("verifications.added"));
       } catch (err) {
-        setError(`Failed to add verification: ${describeBridgeError(err)}`);
+        setError(t("verifications.addFailed", { error: describeBridgeError(err) }));
       }
     })();
   };
@@ -331,15 +381,23 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
   /* -------------------------------------------------------------------- ports */
 
   const portColumns: DataTableColumn<ProjectPortConfigEntry>[] = [
-    { name: "name", header: "Name", accessor: (row) => row.name },
-    { name: "defaultPort", header: "Default Port", accessor: (row) => row.defaultPort },
-    { name: "description", header: "Description", accessor: (row) => row.description },
+    { name: "name", header: t("ports.columns.name"), accessor: (row) => row.name },
+    {
+      name: "defaultPort",
+      header: t("ports.columns.defaultPort"),
+      accessor: (row) => row.defaultPort,
+    },
+    {
+      name: "description",
+      header: t("ports.columns.description"),
+      accessor: (row) => row.description,
+    },
   ];
 
   const submitPort = (port: ProjectPortConfigEntry, existing: ProjectPortConfigEntry | null) => {
     const others = project.ports.filter((p) => p.name !== existing?.name);
     pop(1);
-    void patch({ ports: portsToWire([...others, port]) }, `Port '${port.name}' saved`);
+    void patch({ ports: portsToWire([...others, port]) }, t("ports.saved", { name: port.name }));
   };
 
   /* --------------------------------------------------------- environment files */
@@ -347,19 +405,19 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
   const envFileColumns: DataTableColumn<ProjectEnvFileConfigEntry>[] = [
     {
       name: "path",
-      header: "Path",
+      header: t("envFiles.columns.path"),
       accessor: (row) => row.path,
       cell: cappedCell<ProjectEnvFileConfigEntry>((row) => row.path),
     },
     {
       name: "template",
-      header: "Template",
+      header: t("envFiles.columns.template"),
       accessor: (row) => row.template,
       cell: cappedCell<ProjectEnvFileConfigEntry>((row) => row.template),
     },
     {
       name: "overrides",
-      header: "Overrides",
+      header: t("envFiles.columns.overrides"),
       accessor: (row) => Object.keys(row.overrides).join(", "),
       cell: cappedCell<ProjectEnvFileConfigEntry>((row) => Object.keys(row.overrides).join(", ")),
     },
@@ -370,22 +428,27 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
     if (index === null) next.push(file);
     else next[index] = file;
     pop(1);
-    void patch({ envFiles: next.map(envFileToWire) }, `Environment file '${file.path}' saved`);
+    void patch({ envFiles: next.map(envFileToWire) }, t("envFiles.saved", { path: file.path }));
   };
 
   /* ------------------------------------------------------------- mcp / skills */
 
   const mcpColumns: DataTableColumn<ProjectMcpServerRefEntry>[] = [
-    { name: "name", header: "Name", accessor: (row) => row.name },
+    { name: "name", header: t("mcpServers.columns.name"), accessor: (row) => row.name },
     {
       name: "command",
-      header: "Command",
+      header: t("mcpServers.columns.command"),
       accessor: (row) => [row.command, ...row.arguments].join(" "),
       cell: cappedCell<ProjectMcpServerRefEntry>((row) =>
         [row.command, ...row.arguments].join(" "),
       ),
     },
-    { name: "disabled", header: "Disabled", accessor: (row) => (row.disabled ? "Yes" : "No") },
+    {
+      name: "disabled",
+      header: t("mcpServers.columns.disabled"),
+      accessor: (row) =>
+        row.disabled ? t("mcpServers.disabledValue.yes") : t("mcpServers.disabledValue.no"),
+    },
   ];
 
   const submitMcpServer = (server: ProjectMcpServerRefEntry, index: number | null) => {
@@ -393,20 +456,23 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
     if (index === null) next.push(server);
     else next[index] = server;
     pop(1);
-    void patch({ mcpServers: next.map(mcpServerToWire) }, `MCP server '${server.name}' saved`);
+    void patch(
+      { mcpServers: next.map(mcpServerToWire) },
+      t("mcpServers.saved", { name: server.name }),
+    );
   };
 
   const skillColumns: DataTableColumn<ProjectSkillRefEntry>[] = [
-    { name: "name", header: "Name", accessor: (row) => row.name },
+    { name: "name", header: t("skills.columns.name"), accessor: (row) => row.name },
     {
       name: "description",
-      header: "Description",
+      header: t("skills.columns.description"),
       accessor: (row) => row.description,
       cell: cappedCell<ProjectSkillRefEntry>((row) => row.description),
     },
     {
       name: "path",
-      header: "Path",
+      header: t("skills.columns.path"),
       accessor: (row) => row.path,
       cell: cappedCell<ProjectSkillRefEntry>((row) => row.path),
     },
@@ -417,7 +483,7 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
     if (index === null) next.push(skill);
     else next[index] = skill;
     pop(1);
-    void patch({ skills: next.map(skillToWire) }, `Skill '${skill.name}' saved`);
+    void patch({ skills: next.map(skillToWire) }, t("skills.saved", { name: skill.name }));
   };
 
   /* ----------------------------------------------------------------- security */
@@ -433,11 +499,13 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
   ) => setSecurity((prev) => ({ ...prev, [key]: value }));
 
   const enforcementPairs: [string, boolean][] = [
-    ["sandbox mode", enforcement.sandbox],
-    ["network access", enforcement.network],
-    ["terminal confirmation", enforcement.terminalPrompt],
-    ["file and command rules", enforcement.fileRules],
+    [t("security.enforcement.controls.sandbox"), enforcement.sandbox],
+    [t("security.enforcement.controls.network"), enforcement.network],
+    [t("security.enforcement.controls.terminalPrompt"), enforcement.terminalPrompt],
+    [t("security.enforcement.controls.fileRules"), enforcement.fileRules],
   ];
+  const enforcedControls = enforcementPairs.filter(([, on]) => on).map(([name]) => name);
+  const ignoredControls = enforcementPairs.filter(([, on]) => !on).map(([name]) => name);
 
   return (
     // The pane is capped at the shared settings width, which bounds every child at once. Without it
@@ -453,15 +521,12 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
           moved up there with it, as the blade's `headerAction`. */}
       <SaveError message={error} />
 
-      <SubSection
-        title="Basic"
-        hint="The project's colour and the AI context handed to every agent working on it."
-      >
+      <SubSection title={t("basic.title")} hint={t("basic.hint")}>
         <form
           className="space-y-4"
           onSubmit={(e) => {
             e.preventDefault();
-            void patch({ color: basic.color, context: basic.context }, "Project saved");
+            void patch({ color: basic.color, context: basic.context }, t("basic.saved"));
           }}
         >
           {/* V1's `projectColor.ToColorInput().Variant(ColorInputVariant.SwatchPicker)`
@@ -472,21 +537,21 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
               would rewrite to `Slate` on the next save. */}
           <ColorSwatchField
             id="project-color"
-            label="Color"
+            label={t("basic.color.label")}
             value={basic.color}
-            hint="An Ivy colour name, as config.yaml stores it."
+            hint={t("basic.color.hint")}
             onChange={(value) => setBasic((prev) => ({ ...prev, color: value }))}
           />
           <LinesField
             id="project-context"
-            label="Context"
+            label={t("basic.context.label")}
             value={basic.context}
             rows="tall"
-            placeholder="What an agent should know about this project..."
+            placeholder={t("basic.context.placeholder")}
             onChange={(value) => setBasic((prev) => ({ ...prev, context: value }))}
           />
           <Button type="submit" disabled={!basicChanged}>
-            Save
+            {t("common:actions.save")}
           </Button>
         </form>
       </SubSection>
@@ -494,14 +559,14 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
       {/* Section 2: repositories. V1's `ProjectRepoPickerView` is a list, not a table, with the
           base branch editable per row. Its Sync button is omitted: no bridge method syncs a repo. */}
       <SubSection
-        title="Repositories"
-        hint="Source repositories, and the base branch each plan branches from."
+        title={t("repositories.title")}
+        hint={t("repositories.hint")}
         count={project.repos.length}
         testId="project-repos"
       >
         <div className="space-y-2">
           {project.repos.length === 0 && (
-            <p className="text-sm text-muted-foreground">No repositories yet.</p>
+            <p className="text-sm text-muted-foreground">{t("repositories.empty")}</p>
           )}
           {project.repos.map((repo, index) => (
             <div
@@ -512,32 +577,31 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
                 {repo.path}
               </span>
               <Input
-                aria-label={`Base branch for ${repo.path}`}
+                aria-label={t("repositories.baseBranch.ariaLabel", { path: repo.path })}
                 value={repo.baseBranch ?? ""}
-                placeholder="Base branch"
+                placeholder={t("repositories.baseBranch.placeholder")}
                 className="w-40"
                 onChange={(e) => {
                   const next = [...project.repos];
                   const value = e.target.value.trim();
                   next[index] = { ...repo, baseBranch: value === "" ? undefined : value };
-                  saveRepos(next, `Base branch saved for ${repo.path}`);
+                  saveRepos(next, t("repositories.baseBranch.saved", { path: repo.path }));
                 }}
               />
               <Button
                 type="button"
                 variant="outline"
                 size="sm"
-                aria-label={`Remove ${repo.path}`}
+                aria-label={t("repositories.remove.ariaLabel", { path: repo.path })}
                 onClick={() =>
                   requestRemoval({
-                    kind: "repository",
+                    kindId: "repository",
                     name: repo.path,
-                    consequence:
-                      "The checkout on disk is untouched — this only stops new plans for this project from being based on it.",
+                    consequence: t("repositories.remove.consequence"),
                     onConfirm: () =>
                       saveRepos(
                         project.repos.filter((_, i) => i !== index),
-                        `Removed ${repo.path}`,
+                        t("repositories.remove.removed", { path: repo.path }),
                       ),
                   })
                 }
@@ -548,9 +612,9 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
           ))}
           <div className="flex flex-wrap items-center gap-2">
             <Input
-              aria-label="Repository URL or Local Path"
+              aria-label={t("repositories.add.ariaLabel")}
               value={repoDraft}
-              placeholder="Repository URL or Local Path"
+              placeholder={t("repositories.add.placeholder")}
               className="min-w-60 flex-1"
               disabled={isAddingRepo}
               onChange={(e) => setRepoDraft(e.target.value)}
@@ -566,7 +630,7 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
               ) : (
                 <Plus className="size-4" aria-hidden />
               )}
-              {isAddingRepo ? "Cloning..." : "Add Repository"}
+              {isAddingRepo ? t("repositories.add.cloning") : t("repositories.add.button")}
             </Button>
           </div>
           {repoError && (
@@ -576,17 +640,14 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
           )}
           {/* The clone is the daemon's, and it can take minutes on a large repository - worth
               saying, because the row only appears once it has finished. */}
-          <p className="text-xs text-muted-foreground">
-            A remote URL is cloned into TENDRIL_HOME, and the row shows where it was cloned to
-            rather than the URL; a local path is stored as typed.
-          </p>
+          <p className="text-xs text-muted-foreground">{t("repositories.note")}</p>
         </div>
       </SubSection>
 
       {/* Section 3: review actions. */}
       <SubSection
-        title="Review Actions"
-        hint="Quick-launch buttons shown during review to preview or run the app."
+        title={t("reviewActions.title")}
+        hint={t("reviewActions.hint")}
         count={project.reviewActions.length}
         testId="project-review-actions"
         action={
@@ -596,7 +657,7 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
             size="sm"
             onClick={() =>
               openBlade(
-                "Add Review Action",
+                t("reviewActions.addTitle"),
                 <ReviewActionBlade
                   existing={null}
                   onSubmit={(action) => submitReviewAction(action, null)}
@@ -605,7 +666,7 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
             }
           >
             <Plus className="size-4" aria-hidden />
-            Add Review Action
+            {t("reviewActions.addButton")}
           </Button>
         }
       >
@@ -615,21 +676,19 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
              view a horizontal scrollbar. `table-fixed` makes the columns divide the available width
              instead, which is also what lets the per-cell `truncate` bind. `JobsView` forces the
              same thing for the same reason. */
-          className="[&_table.ivy-data-table]:table-fixed"
+          className={`[&_table.ivy-data-table]:table-fixed ${EDIT_DELETE_ACTIONS_WIDTH}`}
           data-testid="project-review-actions-table"
           paginated={false}
           columns={reviewActionColumns}
           rows={project.reviewActions}
           getRowId={(row) => row.name}
-          rowActions={editDeleteActions<ReviewActionConfigEntry>()}
-          emptyState={
-            <span className="text-muted-foreground">No review actions for this project.</span>
-          }
+          rowActions={editDeleteActions<ReviewActionConfigEntry>(t)}
+          emptyState={<span className="text-muted-foreground">{t("reviewActions.empty")}</span>}
           onRowAction={({ tag, row }) => {
             const index = project.reviewActions.findIndex((a) => a.name === row.name);
             if (tag === "edit") {
               openBlade(
-                "Edit Review Action",
+                t("reviewActions.editTitle"),
                 <ReviewActionBlade
                   existing={row}
                   onSubmit={(action) => submitReviewAction(action, index)}
@@ -637,10 +696,9 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
               );
             } else if (tag === "delete") {
               requestRemoval({
-                kind: "review action",
+                kindId: "reviewAction",
                 name: row.name,
-                consequence:
-                  "It stops being offered on this project's plans in Review, and the remaining actions close up around its place in the run order.",
+                consequence: t("reviewActions.removal.consequence"),
                 onConfirm: () =>
                   void patch(
                     {
@@ -648,7 +706,7 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
                         .filter((_, i) => i !== index)
                         .map(reviewActionToWire),
                     },
-                    `Review action '${row.name}' deleted`,
+                    t("reviewActions.deleted", { name: row.name }),
                   ),
               });
             }
@@ -658,8 +716,8 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
 
       {/* Section 4: verifications, with the run order the project's own array encodes. */}
       <SubSection
-        title="Verifications"
-        hint="Quality checks required before plans are marked complete. Drag to set the run order."
+        title={t("verifications.title")}
+        hint={t("verifications.hint")}
         count={project.verifications.length}
         testId="project-verifications"
         action={
@@ -669,7 +727,7 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
             size="sm"
             onClick={() =>
               openBlade(
-                "Add Verification",
+                t("verifications.addTitle"),
                 <VerificationBlade
                   existingNames={verificationDefs.map((def) => def.name)}
                   onSubmit={addVerification}
@@ -678,15 +736,12 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
             }
           >
             <Plus className="size-4" aria-hidden />
-            Add Verification
+            {t("verifications.addButton")}
           </Button>
         }
       >
         {displayed.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            No verifications are defined in config.yaml, so there is nothing to enable. Add one to
-            create it and enable it here.
-          </p>
+          <p className="text-sm text-muted-foreground">{t("verifications.empty")}</p>
         ) : (
           <div className="max-h-80 overflow-auto">
             <SortableVerificationList
@@ -701,8 +756,8 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
 
       {/* Section 5: ports. */}
       <SubSection
-        title="Ports"
-        hint="Named service ports. A plan falls back to a free port when the default is taken."
+        title={t("ports.title")}
+        hint={t("ports.hint")}
         count={project.ports.length}
         testId="project-ports"
         action={
@@ -712,13 +767,13 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
             size="sm"
             onClick={() =>
               openBlade(
-                "Add Port",
+                t("ports.addTitle"),
                 <PortBlade existing={null} onSubmit={(p) => submitPort(p, null)} />,
               )
             }
           >
             <Plus className="size-4" aria-hidden />
-            Add Port
+            {t("ports.addButton")}
           </Button>
         }
       >
@@ -729,30 +784,27 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
           columns={portColumns}
           rows={project.ports}
           getRowId={(row) => row.name}
-          rowActions={[{ tag: "edit", label: "Edit" }]}
-          emptyState={
-            <span className="text-muted-foreground">
-              No service ports configured. Define named ports for dynamic port allocation across
-              concurrent plan reviews.
-            </span>
-          }
+          rowActions={[{ tag: "edit", label: t("rowActions.edit") }]}
+          emptyState={<span className="text-muted-foreground">{t("ports.empty")}</span>}
           onRowAction={({ tag, row }) => {
             if (tag === "edit") {
               openBlade(
-                "Edit Port",
+                t("ports.editTitle"),
                 <PortBlade existing={row} onSubmit={(p) => submitPort(p, row)} />,
               );
             }
           }}
         />
         {/* V1 can delete and rename a port because it rewrites the whole file. This app cannot. */}
-        <Callout.Warning data-testid="project-ports-merge-note">{PORTS_ARE_MERGED}</Callout.Warning>
+        <Callout.Warning data-testid="project-ports-merge-note">
+          {t("ports.mergeLimitation")}
+        </Callout.Warning>
       </SubSection>
 
       {/* Section 6: environment files. */}
       <SubSection
-        title="Environment Files"
-        hint="Files recreated inside every plan worktree, which starts without untracked .env files."
+        title={t("envFiles.title")}
+        hint={t("envFiles.hint")}
         count={project.envFiles.length}
         testId="project-env-files"
         action={
@@ -762,47 +814,41 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
             size="sm"
             onClick={() =>
               openBlade(
-                "Add Environment File",
+                t("envFiles.addTitle"),
                 <EnvFileBlade existing={null} onSubmit={(f) => submitEnvFile(f, null)} />,
               )
             }
           >
             <Plus className="size-4" aria-hidden />
-            Add Environment File
+            {t("envFiles.addButton")}
           </Button>
         }
       >
         <DataTable<ProjectEnvFileConfigEntry>
-          className="[&_table.ivy-data-table]:table-fixed"
+          className={`[&_table.ivy-data-table]:table-fixed ${EDIT_DELETE_ACTIONS_WIDTH}`}
           data-testid="project-env-files-table"
           paginated={false}
           columns={envFileColumns}
           rows={project.envFiles}
           getRowId={(row) => row.path}
-          rowActions={editDeleteActions<ProjectEnvFileConfigEntry>()}
-          emptyState={
-            <span className="text-muted-foreground">
-              No environment files configured. Define environment files to materialize .env
-              templates and inject variables into plan worktrees.
-            </span>
-          }
+          rowActions={editDeleteActions<ProjectEnvFileConfigEntry>(t)}
+          emptyState={<span className="text-muted-foreground">{t("envFiles.empty")}</span>}
           onRowAction={({ tag, row }) => {
             const index = project.envFiles.findIndex((f) => f.path === row.path);
             if (tag === "edit") {
               openBlade(
-                "Edit Environment File",
+                t("envFiles.editTitle"),
                 <EnvFileBlade existing={row} onSubmit={(f) => submitEnvFile(f, index)} />,
               );
             } else if (tag === "delete") {
               requestRemoval({
-                kind: "environment file",
+                kindId: "environmentFile",
                 name: row.path,
-                consequence:
-                  "Its variables stop being injected into new plan worktrees. Files already materialized in existing worktrees stay as they are.",
+                consequence: t("envFiles.removal.consequence"),
                 onConfirm: () =>
                   void patch(
                     { envFiles: project.envFiles.filter((_, i) => i !== index).map(envFileToWire) },
-                    `Environment file '${row.path}' deleted`,
+                    t("envFiles.deleted", { path: row.path }),
                   ),
               });
             }
@@ -812,16 +858,16 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
 
       {/* Section 7: agent behaviour, `isBeta` in V1. */}
       {isBeta && (
-        <SubSection title="Agent Behavior" testId="project-agent-behavior">
+        <SubSection title={t("agentBehavior.title")} testId="project-agent-behavior">
           <div>
             <SelectField
               id="project-auto-implement"
-              label="Artifact Review / Auto-Implement Policy"
+              label={t("agentBehavior.autoImplement.label")}
               value={security.autoImplementPlans}
-              options={AUTO_IMPLEMENT_OPTIONS}
+              options={projectOptions(t, "autoImplement", AUTO_IMPLEMENT_VALUES)}
               onChange={(value) => {
                 setSecurityField("autoImplementPlans", value);
-                void patch({ autoImplementPlans: value }, "Agent behaviour saved");
+                void patch({ autoImplementPlans: value }, t("agentBehavior.saved"));
               }}
             />
           </div>
@@ -831,11 +877,7 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
       {/* Security. No V1 counterpart at all: `ProjectDetailView` never exposed the seven flattened
           `AgentSecurityConfig` keys that `apply_security_settings` reads on every job launch. They
           belong to one project, so they live here rather than as a top-level settings section. */}
-      <SubSection
-        title="Security"
-        hint="Sandboxing, file and network rules, and terminal confirmation, for this project."
-        testId="project-security"
-      >
+      <SubSection title={t("security.title")} hint={t("security.hint")} testId="project-security">
         <form
           className="space-y-4"
           onSubmit={(e) => {
@@ -850,50 +892,67 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
                 networkAccessRules: security.networkAccessRules,
                 allowedTerminalCommands: security.allowedTerminalCommands,
               },
-              `Security settings saved for ${project.name}`,
+              t("security.saved", { project: project.name }),
             );
           }}
         >
           <SelectField
             id="project-security-preset"
-            label="Security Preset"
+            label={t("security.preset.label")}
             value={security.securityPreset}
-            options={asOptions(SECURITY_PRESETS)}
-            hint="Anything other than Custom overrides the sandbox and file/network fields below."
+            options={projectOptions(t, "securityPreset", SECURITY_PRESETS)}
+            hint={t("security.preset.hint")}
             onChange={(value) => setSecurityField("securityPreset", value)}
           />
           <SelectField
             id="project-sandbox-mode"
-            label="Sandbox Mode"
+            label={t("security.sandboxMode.label")}
             value={security.sandboxMode}
-            options={asOptions(SANDBOX_MODES)}
+            options={projectOptions(t, "sandboxMode", SANDBOX_MODES)}
             disabled={presetOverrides}
-            hint={`Inherit General means no sandbox. Effective: ${effectiveSandboxMode(security)}.`}
+            hint={t("security.sandboxMode.hint", {
+              effective: projectOptionLabel(t, "sandboxMode", effectiveSandboxMode(security)),
+            })}
             onChange={(value) => setSecurityField("sandboxMode", value)}
           />
           <SelectField
             id="project-outside-file-access"
-            label="Outside File Access"
+            label={t("security.outsideFileAccess.label")}
             value={security.outsideFileAccessPolicy}
-            options={asOptions(OUTSIDE_FILE_POLICIES)}
+            options={projectOptions(t, "outsideFileAccess", OUTSIDE_FILE_POLICIES)}
             disabled={presetOverrides}
-            hint={`Deny drops every file rule below. Effective: ${effectiveOutsideFileAccess(security)}.`}
+            hint={t("security.outsideFileAccess.hint", {
+              effective: projectOptionLabel(
+                t,
+                "outsideFileAccess",
+                effectiveOutsideFileAccess(security),
+              ),
+            })}
             onChange={(value) => setSecurityField("outsideFileAccessPolicy", value)}
           />
           <SelectField
             id="project-terminal-auto-execution"
-            label="Terminal Auto-Execution"
+            label={t("security.terminalAutoExecution.label")}
             value={security.terminalAutoExecution}
-            options={asOptions(TERMINAL_AUTO_EXECUTIONS)}
-            hint={`Not affected by the preset. Effective: ${effectiveTerminalAutoExecution(security)}.`}
+            options={projectOptions(t, "terminalAutoExecution", TERMINAL_AUTO_EXECUTIONS)}
+            hint={t("security.terminalAutoExecution.hint", {
+              effective: projectOptionLabel(
+                t,
+                "terminalAutoExecution",
+                effectiveTerminalAutoExecution(security),
+              ),
+            })}
             onChange={(value) => setSecurityField("terminalAutoExecution", value)}
           />
           <LinesField
             id="project-file-permissions"
-            label="File Permissions"
+            label={t("security.filePermissions.label")}
             value={security.filePermissions.map((rule) => `${rule.mode} ${rule.path}`).join("\n")}
             placeholder={"Allow src/**\nDeny .env"}
-            hint="One `Allow|Ask|Deny <path>` per line. Allow adds a writable directory; Deny denies Write and Edit on the path."
+            hint={t("security.filePermissions.hint", {
+              syntax: "Allow|Ask|Deny <path>",
+              ...RULE_KEYWORDS,
+            })}
             onChange={(value) =>
               setSecurityField(
                 "filePermissions",
@@ -903,14 +962,22 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
           />
           <LinesField
             id="project-network-rules"
-            label="Network Access Rules"
+            label={t("security.networkRules.label")}
             value={security.networkAccessRules
               .map((rule) => `${rule.mode} ${rule.urlPattern}`)
               .join("\n")}
             placeholder={"Deny https://example.com/*"}
-            hint={`One \`Allow|Deny <url pattern>\` per line. A single Deny turns network access off entirely. Effective: ${
-              effectiveNetworkAllowed(security) ? "allowed" : "denied"
-            }.`}
+            hint={
+              effectiveNetworkAllowed(security)
+                ? t("security.networkRules.hintAllowed", {
+                    syntax: "Allow|Deny <url pattern>",
+                    deny: RULE_KEYWORDS.deny,
+                  })
+                : t("security.networkRules.hintDenied", {
+                    syntax: "Allow|Deny <url pattern>",
+                    deny: RULE_KEYWORDS.deny,
+                  })
+            }
             onChange={(value) =>
               setSecurityField(
                 "networkAccessRules",
@@ -920,10 +987,10 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
           />
           <LinesField
             id="project-allowed-terminal-commands"
-            label="Allowed Terminal Commands"
+            label={t("security.allowedCommands.label")}
             value={security.allowedTerminalCommands.join("\n")}
             placeholder={"pnpm\ncargo"}
-            hint="One command per line, each allowed as `Bash(<command> *)`."
+            hint={t("security.allowedCommands.hint", { syntax: "Bash(<command> *)" })}
             onChange={(value) => setSecurityField("allowedTerminalCommands", parseLines(value))}
           />
 
@@ -931,28 +998,26 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
           <Callout.Info data-testid="project-security-enforcement">
             <div className="space-y-1">
               <p>
-                {agentLabel} enforces:{" "}
-                {enforcementPairs
-                  .filter(([, on]) => on)
-                  .map(([name]) => name)
-                  .join(", ") || "none of these controls"}
-                .
+                {enforcedControls.length > 0
+                  ? t("security.enforcement.enforces", {
+                      agent: agentLabel,
+                      controls: enforcedControls,
+                    })
+                  : t("security.enforcement.enforcesNone", { agent: agentLabel })}
               </p>
-              {enforcementPairs.some(([, on]) => !on) && (
+              {ignoredControls.length > 0 && (
                 <p className="text-xs">
-                  Ignored by {agentLabel}:{" "}
-                  {enforcementPairs
-                    .filter(([, on]) => !on)
-                    .map(([name]) => name)
-                    .join(", ")}
-                  . Those keys are still written and honoured by agents that support them.
+                  {t("security.enforcement.ignored", {
+                    agent: agentLabel,
+                    controls: ignoredControls,
+                  })}
                 </p>
               )}
             </div>
           </Callout.Info>
 
           <Button type="submit" disabled={!securityChanged}>
-            Save
+            {t("common:actions.save")}
           </Button>
         </form>
       </SubSection>
@@ -960,8 +1025,8 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
       {/* Section 8: local permissions (MCP), `isBeta` in V1. */}
       {isBeta && (
         <SubSection
-          title="Local Permissions"
-          hint="Custom Model Context Protocol servers for this project."
+          title={t("mcpServers.title")}
+          hint={t("mcpServers.hint")}
           count={project.mcpServers.length}
           testId="project-mcp-servers"
           action={
@@ -971,42 +1036,37 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
               size="sm"
               onClick={() =>
                 openBlade(
-                  "Add MCP Server",
+                  t("mcpServers.addTitle"),
                   <McpServerBlade existing={null} onSubmit={(s) => submitMcpServer(s, null)} />,
                 )
               }
             >
               <Plus className="size-4" aria-hidden />
-              Add MCP Server
+              {t("mcpServers.addButton")}
             </Button>
           }
         >
           <DataTable<ProjectMcpServerRefEntry>
-            className="[&_table.ivy-data-table]:table-fixed"
+            className={`[&_table.ivy-data-table]:table-fixed ${EDIT_DELETE_ACTIONS_WIDTH}`}
             data-testid="project-mcp-servers-table"
             paginated={false}
             columns={mcpColumns}
             rows={project.mcpServers}
             getRowId={(row) => row.name}
-            rowActions={editDeleteActions<ProjectMcpServerRefEntry>()}
-            emptyState={
-              <span className="text-muted-foreground">
-                No MCP servers configured for this project.
-              </span>
-            }
+            rowActions={editDeleteActions<ProjectMcpServerRefEntry>(t)}
+            emptyState={<span className="text-muted-foreground">{t("mcpServers.empty")}</span>}
             onRowAction={({ tag, row }) => {
               const index = project.mcpServers.findIndex((s) => s.name === row.name);
               if (tag === "edit") {
                 openBlade(
-                  "Edit MCP Server",
+                  t("mcpServers.editTitle"),
                   <McpServerBlade existing={row} onSubmit={(s) => submitMcpServer(s, index)} />,
                 );
               } else if (tag === "delete") {
                 requestRemoval({
-                  kind: "MCP server",
+                  kindId: "mcpServer",
                   name: row.name,
-                  consequence:
-                    "Agents working on this project stop being given its tools. This removes the project's reference to it, not the server definition itself.",
+                  consequence: t("mcpServers.removal.consequence"),
                   onConfirm: () =>
                     void patch(
                       {
@@ -1014,7 +1074,7 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
                           .filter((_, i) => i !== index)
                           .map(mcpServerToWire),
                       },
-                      `MCP server '${row.name}' deleted`,
+                      t("mcpServers.deleted", { name: row.name }),
                     ),
                 });
               }
@@ -1026,8 +1086,8 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
       {/* Section 9: customizations (skills and memories), `isBeta` in V1. */}
       {isBeta && (
         <SubSection
-          title="Customizations"
-          hint="Custom skills and prompt instructions for agents working on this project."
+          title={t("skills.title")}
+          hint={t("skills.hint")}
           count={project.skills.length}
           testId="project-skills"
           action={
@@ -1037,46 +1097,41 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
               size="sm"
               onClick={() =>
                 openBlade(
-                  "Add Custom Skill",
+                  t("skills.addTitle"),
                   <SkillBlade existing={null} onSubmit={(s) => submitSkill(s, null)} />,
                 )
               }
             >
               <Plus className="size-4" aria-hidden />
-              Add Custom Skill
+              {t("skills.addButton")}
             </Button>
           }
         >
           <DataTable<ProjectSkillRefEntry>
-            className="[&_table.ivy-data-table]:table-fixed"
+            className={`[&_table.ivy-data-table]:table-fixed ${EDIT_DELETE_ACTIONS_WIDTH}`}
             data-testid="project-skills-table"
             paginated={false}
             columns={skillColumns}
             rows={project.skills}
             getRowId={(row) => row.name}
-            rowActions={editDeleteActions<ProjectSkillRefEntry>()}
-            emptyState={
-              <span className="text-muted-foreground">
-                No custom skills configured for this project.
-              </span>
-            }
+            rowActions={editDeleteActions<ProjectSkillRefEntry>(t)}
+            emptyState={<span className="text-muted-foreground">{t("skills.empty")}</span>}
             onRowAction={({ tag, row }) => {
               const index = project.skills.findIndex((s) => s.name === row.name);
               if (tag === "edit") {
                 openBlade(
-                  "Edit Custom Skill",
+                  t("skills.editTitle"),
                   <SkillBlade existing={row} onSubmit={(s) => submitSkill(s, index)} />,
                 );
               } else if (tag === "delete") {
                 requestRemoval({
-                  kind: "custom skill",
+                  kindId: "customSkill",
                   name: row.name,
-                  consequence:
-                    "Agents working on this project stop being given it. This removes the project's reference to it, not the skill's own files.",
+                  consequence: t("skills.removal.consequence"),
                   onConfirm: () =>
                     void patch(
                       { skills: project.skills.filter((_, i) => i !== index).map(skillToWire) },
-                      `Skill '${row.name}' deleted`,
+                      t("skills.deleted", { name: row.name }),
                     ),
                 });
               }
@@ -1086,9 +1141,7 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
               under `<TENDRIL_HOME>/Projects/<Project>/memory/`. The daemon has no memory route and
               the bridge has no filesystem access, so project memories stay unreachable. */}
           <Callout.Info data-testid="project-memory-note">
-            Project memories live as markdown files under
-            {" <TENDRIL_HOME>/Projects/<Project>/memory/"}. The daemon exposes no route for them, so
-            they cannot be edited here yet.
+            {t("skills.memoryNote", { path: "<TENDRIL_HOME>/Projects/<Project>/memory/" })}
           </Callout.Info>
         </SubSection>
       )}
@@ -1101,7 +1154,7 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
           conflated are now two buttons with the verbs that happen, each saying its own consequence.
           Remove is listed first and is the outline button: it is the one that is almost always
           meant, and the destructive fill is reserved for the one that is not. */}
-      <SubSection title="Danger Zone" testId="project-danger-zone">
+      <SubSection title={t("dangerZone.title")} testId="project-danger-zone">
         <div className="space-y-4">
           <div className="space-y-2">
             <Button
@@ -1110,12 +1163,9 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
               onClick={() => setIsRemoving(true)}
               data-testid="remove-project"
             >
-              Remove Project
+              {t("dangerZone.remove.button")}
             </Button>
-            <p className="text-xs text-muted-foreground">
-              Removes the project from config.yaml. Cloned repositories, plan folders and history
-              are left on disk, so adding the project back by name restores it.
-            </p>
+            <p className="text-xs text-muted-foreground">{t("dangerZone.remove.description")}</p>
           </div>
           <div className="space-y-2">
             <Button
@@ -1124,12 +1174,10 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
               onClick={() => setIsDeleting(true)}
               data-testid="delete-project"
             >
-              Delete Project
+              {t("dangerZone.delete.button")}
             </Button>
             <p className="text-xs text-muted-foreground">
-              Permanently deletes the project&apos;s plans, its cloned repositories under
-              {" <TENDRIL_HOME>/Projects/"}, its database rows and its config entry. This cannot be
-              undone, and asks you to type the project name first.
+              {t("dangerZone.delete.description", { path: "<TENDRIL_HOME>/Projects/" })}
             </p>
           </div>
         </div>

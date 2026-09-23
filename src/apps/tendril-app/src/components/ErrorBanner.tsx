@@ -1,5 +1,6 @@
 import React from "react";
 import { Callout, Densities } from "@ivy-interactive/components/ui";
+import { useTranslation } from "../i18n";
 
 interface ErrorBannerProps {
   children: React.ReactNode;
@@ -23,21 +24,24 @@ interface ErrorBannerProps {
 export const ErrorBanner: React.FC<ErrorBannerProps> = ({
   children,
   onDismiss,
-  dismissLabel = "Dismiss error",
+  dismissLabel,
   "data-testid": testId,
   className = "",
-}) => (
-  <Callout.Error
-    data-testid={testId}
-    density={Densities.Small}
-    /* No icon: this replaced a hand-rolled box that never had one, and it sits inline in panels and
-       table toolbars where a 20px glyph re-flows the row. `Callout`'s own `role="alert"` and dismiss
-       button carry over. */
-    icon={false}
-    onDismiss={onDismiss}
-    dismissLabel={dismissLabel}
-    className={`text-xs text-destructive [&_p]:text-xs ${className}`.trim()}
-  >
-    {children}
-  </Callout.Error>
-);
+}) => {
+  const { t } = useTranslation("common");
+  return (
+    <Callout.Error
+      data-testid={testId}
+      density={Densities.Small}
+      /* No icon: this replaced a hand-rolled box that never had one, and it sits inline in panels and
+         table toolbars where a 20px glyph re-flows the row. `Callout`'s own `role="alert"` and dismiss
+         button carry over. */
+      icon={false}
+      onDismiss={onDismiss}
+      dismissLabel={dismissLabel ?? t("errorBanner.dismiss")}
+      className={`text-xs text-destructive [&_p]:text-xs ${className}`.trim()}
+    >
+      {children}
+    </Callout.Error>
+  );
+};

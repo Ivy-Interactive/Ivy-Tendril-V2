@@ -21,6 +21,7 @@ import {
 import { cva } from "class-variance-authority";
 import { Densities } from "@/types/density";
 import { useDensity } from "@/contexts/density-context";
+import { useTranslation } from "@/i18n/uiCommon";
 import { xIconVariant } from "@/components/ui/input/text-input-variant";
 import {
   selectMultiTriggerVariant,
@@ -100,7 +101,7 @@ const MultipleSelector = React.forwardRef<
       value = [],
       defaultOptions = [],
       onValueChange,
-      placeholder = "Select options...",
+      placeholder: placeholderProp,
       disabled = false,
       className,
       commandProps,
@@ -124,6 +125,8 @@ const MultipleSelector = React.forwardRef<
     },
     ref,
   ) => {
+    const { t } = useTranslation("uiCommon");
+    const placeholder = placeholderProp ?? t("multiselect.placeholder");
     const contextDensity = useDensity();
     const effectiveDensity = density ?? contextDensity;
 
@@ -440,8 +443,8 @@ const MultipleSelector = React.forwardRef<
                       <button
                         type="button"
                         tabIndex={-1}
-                        aria-label="Remove"
-                        className="ml-1 p-0.5 rounded-sm hover:bg-black/10 dark:hover:bg-white/10 focus:outline-none cursor-pointer flex items-center justify-center opacity-70 hover:opacity-100 transition-opacity"
+                        aria-label={t("multiselect.remove")}
+                        className="ml-1 p-0.5 rounded-sm hover:bg-black/10 dark:hover:bg-white/10 focus:outline-none cursor-pointer flex items-center justify-center opacity-70 hover:opacity-100 transition-colors"
                         onKeyDown={(e) => {
                           if (e.key === "Enter" || e.key === " ") {
                             e.preventDefault();
@@ -534,7 +537,7 @@ const MultipleSelector = React.forwardRef<
                     }}
                     role="button"
                     tabIndex={disabled ? -1 : 0}
-                    aria-label="Toggle dropdown"
+                    aria-label={t("multiselect.toggleDropdown")}
                   />
                 </div>
               </div>
@@ -554,7 +557,7 @@ const MultipleSelector = React.forwardRef<
             >
               {filteredOptions.length === 0 ? (
                 <CommandEmpty>
-                  {emptyIndicator ? emptyIndicator : emptyMessage || "No options available"}
+                  {emptyIndicator ? emptyIndicator : emptyMessage || t("multiselect.empty")}
                 </CommandEmpty>
               ) : (
                 <CommandGroup>
@@ -620,7 +623,7 @@ const MultipleSelector = React.forwardRef<
               <div
                 className="border-t border-border p-2 flex justify-between items-center gap-2 text-sm shrink-0"
                 role="group"
-                aria-label="Bulk selection"
+                aria-label={t("multiselect.bulkSelection")}
               >
                 <button
                   type="button"
@@ -629,7 +632,7 @@ const MultipleSelector = React.forwardRef<
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => handleBulkSelectAll()}
                 >
-                  Select All
+                  {t("multiselect.selectAll")}
                 </button>
                 <button
                   type="button"
@@ -638,7 +641,7 @@ const MultipleSelector = React.forwardRef<
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => handleBulkClearAll()}
                 >
-                  Clear All
+                  {t("multiselect.clearAll")}
                 </button>
               </div>
             )}

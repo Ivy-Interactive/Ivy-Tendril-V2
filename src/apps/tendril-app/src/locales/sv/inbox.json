@@ -1,0 +1,234 @@
+{
+  "rail": {
+    "ariaLabel": "Inkorgskategorier",
+    "myIssues": "Mina ärenden",
+    "reviews": "PR-granskningar",
+    "projects": "Projekt",
+    "noProjects": "Inga projekt i inställningarna"
+  },
+  "header": {
+    "title": {
+      "myIssues": "Mina ärenden",
+      "reviews": "PR-granskningar",
+      "projectIssues": "Ärenden i {{project}}",
+      "projectIssues_noProject": "Projektärenden"
+    },
+    "refresh": "Uppdatera",
+    "autoAccept": {
+      "on": "Acceptera automatiskt: På",
+      "off": "Acceptera automatiskt: Av",
+      "onTooltip": "Nyligen tilldelade ärenden startar en plan så snart de hittas",
+      "offTooltip": "Nyligen tilldelade ärenden markeras nedan med Väntar på beslut så att du kan acceptera eller avfärda dem",
+      "settings": "Inställningar för automatisk acceptans"
+    },
+    "checkNow": {
+      "label": "Kontrollera nu",
+      "checking": "Kontrollerar…",
+      "tooltip": "Importera GitHub-ärenden som tilldelats dig nu, utan att vänta på nästa schemalagda kontroll"
+    }
+  },
+  "bulk": {
+    "selectAll": "Markera alla",
+    "deselectAll": "Avmarkera alla",
+    "summary": "{{selected}} av {{total}} markerade",
+    "openChat": {
+      "label": "Öppna chatt",
+      "labelWithCount": "Öppna chatt ({{selected}})",
+      "tooltip": "Diskutera de markerade ärendena med kodningsagenten"
+    },
+    "fireOff": {
+      "label": "Starta i Tendril",
+      "labelWithCount": "Starta i Tendril ({{selected}})"
+    }
+  },
+  "freshness": {
+    "repo": {
+      "label": "Arkiv:",
+      "ariaLabel": "Filtrera efter arkiv"
+    },
+    "updated": "Uppdaterad {{when}}",
+    "updated_justNow": "Uppdaterad nyss",
+    "notYetUpdated": "Inte uppdaterad än",
+    "autoRefresh": {
+      "label": "Automatisk uppdatering:",
+      "ariaLabel": "Intervall för automatisk uppdatering",
+      "off": "Av"
+    }
+  },
+  "fireNotice": {
+    "success_one": "Startade {{count}} ärende i Tendril",
+    "success_other": "Startade {{count}} ärenden i Tendril",
+    "partial": "Startade {{fired}} av {{total}}. Misslyckades med #{{number}}: {{error}}",
+    "partial_unknownIssue": "Startade {{fired}} av {{total}}. Misslyckades med ett ärende: {{error}}"
+  },
+  "sweep": {
+    "alreadyRunning": "En kontroll körs redan.",
+    "notMaster": "Den här daemonen är inte master, så den gjorde ingen kontroll.",
+    "imported": "Importerade {{imported}}, hoppade över {{skipped}}.",
+    "accepted_one": "{{count}} startade en plan direkt.",
+    "accepted_other": "{{count}} startade en plan direkt.",
+    "accepted_partial_one": "{{count}} startade en plan direkt (resten väntar på ditt beslut).",
+    "accepted_partial_other": "{{count}} startade en plan direkt (resten väntar på ditt beslut).",
+    "errors_one": "{{count}} fel: {{error}}",
+    "errors_other": "{{count}} fel: {{error}}",
+    "join": "{{previous}} {{next}}"
+  },
+  "chatTitle_one": "{{count}} ärende",
+  "chatTitle_other": "{{count}} ärenden",
+  "errors": {
+    "noRemotes": "Inga Git-fjärrarkiv hittades för projektet {{project}}.",
+    "noRemotes_noProject": "Inga Git-fjärrarkiv hittades för projektet (inget projekt valt).",
+    "loadFailed": "Det gick inte att läsa in GitHub-ärenden"
+  },
+  "loading": "Läser in ärenden från GitHub…",
+  "empty": {
+    "reviews": {
+      "title": "Du är ikapp!",
+      "description": "Inga pull requests väntar på din granskning just nu."
+    },
+    "issues": {
+      "title": "Inga ärenden hittades",
+      "description": "Inga ärenden matchar den valda vyn."
+    },
+    "filtered": "Inga ärenden matchar dina aktuella sök- och filtervillkor."
+  },
+  "filters": {
+    "search": {
+      "ariaLabel": "Sök ärenden",
+      "placeholder": "Sök efter titel, #nummer, författare eller beskrivning…"
+    },
+    "awaiting": {
+      "label": "Väntar",
+      "tooltip": "Visa bara tilldelade ärenden som väntar på ditt beslut"
+    },
+    "labelPlaceholder": "Filtrera efter etikett…",
+    "assigneePlaceholder": "Filtrera efter tilldelad person…"
+  },
+  "issueTable": {
+    "columns": {
+      "issue": "Ärende",
+      "repository": "Arkiv",
+      "labels": "Etiketter",
+      "assignees": "Tilldelade"
+    },
+    "awaitingMark": {
+      "ariaLabel": "Väntar på beslut",
+      "tooltip": "Väntar på ditt beslut. Hittades av kontrollen av tilldelade ärenden {{when}}; Acceptera startar en plan i {{project}}.",
+      "tooltip_justNow": "Väntar på ditt beslut. Hittades av kontrollen av tilldelade ärenden nyss; Acceptera startar en plan i {{project}}."
+    },
+    "actions": {
+      "fireOff": {
+        "label": "Starta i Tendril",
+        "tooltip": "Starta det här ärendet i Tendril"
+      },
+      "viewDetails": {
+        "label": "Visa detaljer",
+        "tooltip": "Visa ärendets detaljer"
+      },
+      "openGitHub": {
+        "label": "Öppna i GitHub",
+        "tooltip": "Öppna ärendet på GitHub"
+      },
+      "accept": {
+        "label": "Acceptera",
+        "tooltip": "Acceptera: starta en plan för det här ärendet i {{project}}"
+      },
+      "more": {
+        "label": "Fler åtgärder",
+        "tooltip": "Öppna i GitHub eller avfärda"
+      },
+      "dismiss": {
+        "label": "Avfärda"
+      }
+    }
+  },
+  "reviewTable": {
+    "columns": {
+      "pullRequest": "Pull request",
+      "repository": "Arkiv",
+      "updated": "Uppdaterad"
+    },
+    "actions": {
+      "openGitHub": {
+        "label": "Granska på GitHub",
+        "tooltip": "Öppna pull requesten på GitHub"
+      },
+      "viewDetails": {
+        "label": "Visa detaljer",
+        "tooltip": "Visa granskningens detaljer"
+      }
+    }
+  },
+  "sheet": {
+    "titleFallback": "Ärende",
+    "assigned": "Tilldelad: {{assignees}}",
+    "openOnGitHub": "Öppna på GitHub",
+    "dismiss": {
+      "label": "Avfärda",
+      "tooltip": "Avfärda permanent: kontrollen av tilldelade ärenden föreslår inte det här ärendet igen"
+    },
+    "accept": {
+      "label": "Acceptera",
+      "tooltip": "Starta en plan för det här ärendet i {{project}}"
+    },
+    "fireOff": "Starta i Tendril",
+    "noDescription": "Ingen beskrivning angavs."
+  },
+  "pullRequests": {
+    "title": "Pull requests",
+    "status": {
+      "open": "Öppen",
+      "merged": "Sammanslagen",
+      "closed": "Stängd",
+      "unknown": "Okänd"
+    },
+    "statusTooltip": {
+      "unknown": "Okänd: daemonen kunde inte slå upp den här pull requesten (senast kontrollerad {{lastChecked}}). Synka om för att försöka igen.",
+      "unknown_neverChecked": "Okänd: daemonen kunde inte slå upp den här pull requesten (aldrig kontrollerad). Synka om för att försöka igen.",
+      "merged": "Sammanslagen (senast kontrollerad {{lastChecked}}). Sammanslagna pull requests kontrolleras aldrig igen.",
+      "merged_neverChecked": "Sammanslagen (aldrig kontrollerad). Sammanslagna pull requests kontrolleras aldrig igen.",
+      "other": "{{status}} vid senaste kontrollen {{lastChecked}}.",
+      "other_neverChecked": "{{status}} (aldrig kontrollerad)."
+    },
+    "syncNotice": {
+      "unreachableAll": "Ingen status kunde uppdateras: GitHub kunde inte nås för {{repos}}. Kontrollera att CLI:et `{{cli}}` är installerat och autentiserat (`{{command}}`).",
+      "unreachableSome": "Vissa statusar är oförändrade: GitHub kunde inte nås för {{repos}}. Kontrollera att CLI:et `{{cli}}` är installerat och autentiserat (`{{command}}`).",
+      "nothingToRefresh": "Inget att uppdatera: {{fresh}} kontrollerade nyligen, {{merged}} redan sammanslagna.",
+      "alreadyRunning": "En synkronisering körs redan."
+    },
+    "columns": {
+      "plan": "Plan",
+      "project": "Projekt",
+      "status": "Status",
+      "pr": "PR",
+      "tokens": "Tokens",
+      "cost": "Kostnad",
+      "repository": "Arkiv",
+      "branch": "Gren"
+    },
+    "actions": {
+      "viewPlan": "Visa plan",
+      "followUp": "Följ upp",
+      "openPr": "Öppna PR",
+      "resync": "Synka om"
+    },
+    "empty": {
+      "title": "Inga pull requests",
+      "description": "Ingen plan har någon registrerad pull request än. Skapa en från fliken Granskning så visas den här.",
+      "loadFailed": "Listan över pull requests kunde inte läsas in, så inget kan visas.",
+      "filtered": "Inga pull requests matchar din aktuella sökning eller dina filtervillkor."
+    },
+    "search": {
+      "ariaLabel": "Sök pull requests",
+      "placeholder": "Sök efter plan, projekt, arkiv eller gren…"
+    },
+    "statusFilterPlaceholder": "Filtrera efter status…",
+    "resyncAll": "Synka om alla",
+    "resyncing": "Synkar om…",
+    "sheet": {
+      "titleFallback": "Plan",
+      "loadingRevision": "Läser in revision…",
+      "notFound": "Planen hittades inte eller är tom."
+    }
+  }
+}

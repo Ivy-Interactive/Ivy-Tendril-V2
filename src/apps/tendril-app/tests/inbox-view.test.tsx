@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach, type MockInstance } from "vitest";
 import { render, screen, fireEvent, waitFor, within, act } from "@testing-library/react";
-import { InboxView } from "../src/views/InboxView";
+import { InboxView, describeSweep } from "../src/views/InboxView";
 import { bridge } from "../src/api/bridge";
 import type {
   GitHubIssue,
@@ -792,7 +792,11 @@ describe("InboxView Component & Triage Tests", () => {
   });
 
   describe("imported proposals", () => {
-    const proposal = (id: number, number: number): InboxProposal => ({
+    const proposal = (
+      id: number,
+      number: number,
+      overrides: Partial<InboxProposal> = {},
+    ): InboxProposal => ({
       id,
       number,
       repository: "SpaceCorps/Tendril-App",
@@ -803,6 +807,7 @@ describe("InboxView Component & Triage Tests", () => {
       state: "Pending",
       discovered: "2026-09-10T09:00:00Z",
       updated: "2026-09-10T09:00:00Z",
+      ...overrides,
     });
 
     const report = (overrides: Partial<SweepReport> = {}): SweepReport => ({
@@ -814,44 +819,355 @@ describe("InboxView Component & Triage Tests", () => {
       ...overrides,
     });
 
-    it("hides the panel entirely when nothing has been imported", async () => {
+    /** A button in one row's actions cell, which is where Accept now lives. */
+    const rowButton = (number: number, name: string): HTMLElement =>
+      within(issueRow(number)!).getByRole("button", { name });
+
+    /**
+     * Picks an entry from a row's overflow menu, which is where Dismiss lives. By keyboard, for the
+     * reason `jobs-bulk-clears.test.tsx` gives: Radix's trigger opens on a primary-button
+     * `pointerDown`, which jsdom cannot synthesise, and on `Enter`, which it can.
+     */
+    const pickRowMenuItem = async (number: number, name: string) => {
+      fireEvent.keyDown(rowButton(number, "More actions"), { key: "Enter" });
+      fireEvent.click(await screen.findByRole("menuitem", { name }));
+    };
+
+    /** Any row's Awaiting decision mark. */
+    const anyAwaitingMark = () => document.querySelector('[data-testid^="inbox-awaiting-mark-"]');
+
+    /** The rendered rows' ids, top to bottom. */
+    const rowOrder = () =>
+      Array.from(document.querySelectorAll("[data-row-id]")).map((row) =>
+        row.getAttribute("data-row-id"),
+      );
+
+    /** The table's column headers, by their text, as the column test above reads them. */
+    const columnHeaders = () =>
+      within(screen.getByTestId("inbox-issue-table"))
+        .getAllByRole("columnheader")
+        .map((th) => th.textContent?.trim())
+        .filter(Boolean);
+
+    /** The DataTable's root, which is what its `className` lands on (see the height tests). */
+    const tableRoot = () =>
+      screen.getByTestId("inbox-issue-table").parentElement!.parentElement!.parentElement!;
+
+    it("marks no row and adds no filter when nothing has been imported", async () => {
       render(<InboxView projects={mockProjects} />);
 
+      await waitForInboxIdle();
       await waitFor(() => {
         expect(listInboxProposalsSpy).toHaveBeenCalled();
       });
-      expect(screen.queryByTestId("inbox-proposals")).not.toBeInTheDocument();
+      expect(anyAwaitingMark()).toBeNull();
+      expect(screen.queryByTestId("inbox-awaiting-filter")).not.toBeInTheDocument();
+      expect(screen.queryByRole("button", { name: "Accept" })).not.toBeInTheDocument();
       // The manual trigger is always available: it is how a user gets the first proposal.
       expect(screen.getByTestId("inbox-check-now")).toBeInTheDocument();
     });
 
-    it("renders a card per pending proposal with its repo and target project", async () => {
-      listInboxProposalsSpy.mockResolvedValue([proposal(1, 101), proposal(2, 102)]);
+    /**
+     * The reported bug: "why in my issues I see two tables? just have 1 datatable with all issues."
+     * Every swept proposal is an issue assigned to you, which My Issues lists too, so the card list
+     * above the table showed the same issues a second time.
+     */
+    it("marks a swept issue on its own row instead of listing it a second time", async () => {
+      listInboxProposalsSpy.mockResolvedValue([
+        // A project named unlike the repository, so the tooltip is seen to name the project.
+        proposal(1, 101, { project: "Plans-Core" }),
+        proposal(2, 102),
+      ]);
       render(<InboxView projects={mockProjects} />);
 
-      const card = await waitFor(() => screen.getByTestId("proposal-card-1"));
-      expect(within(card).getByText(/#101 Swept issue 101/)).toBeInTheDocument();
-      expect(within(card).getByText(/SpaceCorps\/Tendril-App/)).toBeInTheDocument();
-      expect(within(card).getByText(/Tendril-App/)).toBeInTheDocument();
-      expect(screen.getByTestId("proposal-card-2")).toBeInTheDocument();
-      expect(screen.getByTestId("accept-proposal-1")).toBeInTheDocument();
-      expect(screen.getByTestId("dismiss-proposal-1")).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByTestId("inbox-awaiting-mark-1")).toBeInTheDocument());
+
+      // One table, and each issue in it once.
+      const content = screen.getByTestId("inbox-content");
+      expect(within(content).getAllByRole("table")).toHaveLength(1);
+      expect(screen.queryByTestId("inbox-proposals")).not.toBeInTheDocument();
+      expect(document.querySelectorAll('[data-row-id="101"]')).toHaveLength(1);
+      expect(document.querySelectorAll('[data-row-id="102"]')).toHaveLength(1);
+
+      // The row keeps the live issue's own data; the proposal only adds its mark, in the Issue
+      // cell beside the title, so the columns are still exactly V1's.
+      const row101 = issueRow(101)!;
+      const title = within(row101).getByText("#101 Add offline cache for plans");
+      expect(within(row101).getByText("feature")).toBeInTheDocument();
+      const mark = within(row101).getByRole("img", { name: "Awaiting decision" });
+      expect(mark).toBe(within(row101).getByTestId("inbox-awaiting-mark-1"));
+      expect(mark.closest("td")).toBe(title.closest("td"));
+      // An icon, not a text badge: the title beside it is what the width is for.
+      expect(mark.textContent).toBe("");
+      expect(columnHeaders()).toEqual([
+        "Select all rows",
+        "Issue",
+        "Repository",
+        "Labels",
+        "Assignees",
+        "Row actions",
+      ]);
+      // What the card used to print: the project Accept would plan the issue in.
+      expect(mark).toHaveAttribute(
+        "title",
+        expect.stringContaining("Accept starts a plan in Plans-Core"),
+      );
+
+      // The card's Accept takes Fire off's slot; View Details keeps its own; Open in GitHub and
+      // the permanent Dismiss share an overflow menu, so the row still has three slots.
+      expect(
+        within(row101)
+          .getAllByRole("button")
+          .map((b) => b.getAttribute("aria-label"))
+          .filter(Boolean),
+      ).toEqual(["Accept", "View Details", "More actions"]);
+      expect(within(row101).queryByRole("button", { name: "Dismiss" })).toBeNull();
+      expect(within(issueRow(102)!).getByTestId("inbox-awaiting-mark-2")).toBeInTheDocument();
     });
 
-    it("shows the swept proposals on My Issues only", async () => {
+    /**
+     * Measured in Chromium in the shell at 1440x900: a fourth row action widened the actions column
+     * from `w-28` to `w-48`, which took the Issue column from 154px to 67px on every row - and with
+     * it the titles of the issues awaiting a decision.
+     */
+    it("keeps the actions column at its width while a row awaits a decision", async () => {
+      listInboxProposalsSpy.mockResolvedValue([proposal(1, 101)]);
+      render(<InboxView projects={mockProjects} />);
+
+      await waitFor(() => expect(screen.getByTestId("inbox-awaiting-mark-1")).toBeInTheDocument());
+      expect(tableRoot().className).toContain("[&_table.ivy-data-table_th:last-child]:w-28");
+      expect(tableRoot().className).not.toContain("w-48");
+    });
+
+    /**
+     * The Issue column is V1's `45%` in a fixed layout, which gets only what V1's fixed columns
+     * leave: nothing at all in the shell's default 1280x800 window (measured in Chromium). The
+     * floor makes the table scroll sideways instead, as V1's grid does, so a title - the thing an
+     * Accept or Dismiss is decided on - is always on screen. Reviews declare different columns and
+     * never needed it.
+     */
+    it("keeps the Issue column from collapsing on the issue categories only", async () => {
+      render(<InboxView projects={mockProjects} />);
+      await waitForInboxIdle();
+      expect(tableRoot().className).toContain("[&_table.ivy-data-table]:min-w-[53rem]");
+
+      fireEvent.click(screen.getByTestId("category-review-requests"));
+      await waitForInboxIdle();
+      await waitFor(() => expect(columnHeaders()).toContain("Pull Request"));
+      expect(tableRoot().className).not.toContain("min-w-[53rem]");
+    });
+
+    it("puts the issues awaiting a decision first", async () => {
+      listInboxProposalsSpy.mockResolvedValue([proposal(2, 102)]);
+      render(<InboxView projects={mockProjects} />);
+
+      await waitFor(() => expect(screen.getByTestId("inbox-awaiting-mark-2")).toBeInTheDocument());
+
+      expect(rowOrder()).toEqual(["102", "101"]);
+      // The unmarked row keeps V1's three actions.
+      expect(within(issueRow(101)!).queryByRole("button", { name: "Accept" })).toBeNull();
+      expect(rowButton(101, "Fire off in Tendril")).toBeInTheDocument();
+    });
+
+    it("keeps a proposal whose issue is no longer listed, once the page is the whole category", async () => {
+      // Closed or unassigned since the sweep found it: My Issues no longer lists it, but the
+      // proposal is still pending, and without a row of its own nothing could decide it.
+      listGitHubIssuesSpy.mockResolvedValue(makePage(mockIssues));
+      listInboxProposalsSpy.mockResolvedValue([proposal(9, 999), proposal(1, 101)]);
+      render(<InboxView projects={mockProjects} />);
+
+      await waitFor(() => expect(issueRow(999)).not.toBeNull());
+      expect(rowOrder()).toEqual(["999", "101", "102"]);
+      expect(within(issueRow(999)!).getByText("#999 Swept issue 999")).toBeInTheDocument();
+      expect(within(issueRow(999)!).getByTestId("inbox-awaiting-mark-9")).toBeInTheDocument();
+      // Counted like any other row, so the footer and the summary describe what is on screen.
+      expect(screen.getByTestId("inbox-selection-summary")).toHaveTextContent("0 of 3 selected");
+      expect(screen.getByText("Showing 1–3 of 3")).toBeInTheDocument();
+    });
+
+    /**
+     * The whole category on one page, but with no room left on it. Adding the rows anyway made the
+     * footer count one past the page, offer a page two, and land on an empty table when it was
+     * followed - with the added rows gone too, since page two is not the whole category.
+     */
+    it("does not add unlisted proposals that would push the footer onto a second page", async () => {
+      const nearlyFull = Array.from({ length: 48 }, (_, i) => ({
+        ...mockIssues[0],
+        number: 300 + i,
+        title: `Issue ${300 + i}`,
+      }));
+      listGitHubIssuesSpy.mockResolvedValue(makePage(nearlyFull));
+      listInboxProposalsSpy.mockResolvedValue([
+        proposal(1, 901),
+        proposal(2, 902),
+        proposal(3, 903),
+      ]);
+      render(<InboxView projects={mockProjects} />);
+
+      await waitForInboxIdle();
+      await waitFor(() => expect(screen.getByTestId("inbox-awaiting-filter")).toBeInTheDocument());
+      expect(issueRow(901)).toBeNull();
+      expect(screen.getByText("Showing 1–48 of 48")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /next page/i })).toBeDisabled();
+
+      // Still reachable: the filter's count and rows are every proposal.
+      const filter = screen.getByTestId("inbox-awaiting-filter");
+      expect(filter).toHaveTextContent("Awaiting3");
+      fireEvent.click(filter);
+      await waitFor(() => expect(rowOrder()).toEqual(["901", "902", "903"]));
+      expect(screen.getByText("Showing 1–3 of 3")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /next page/i })).toBeDisabled();
+    });
+
+    it("leaves an unlisted proposal to the Awaiting decision filter while other pages may list it", async () => {
+      // The default page reports `hasMore`, so #999 may simply be on page two.
+      listInboxProposalsSpy.mockResolvedValue([proposal(9, 999), proposal(1, 101)]);
+      render(<InboxView projects={mockProjects} />);
+
+      await waitFor(() => expect(screen.getByTestId("inbox-awaiting-mark-1")).toBeInTheDocument());
+      expect(issueRow(999)).toBeNull();
+
+      const filter = screen.getByTestId("inbox-awaiting-filter");
+      expect(filter).toHaveTextContent("Awaiting2");
+      expect(filter).toHaveAttribute(
+        "title",
+        "Show only the assigned issues awaiting your decision",
+      );
+      expect(filter).toHaveAttribute("aria-pressed", "false");
+
+      fireEvent.click(filter);
+
+      // Every proposal, on this page or not, and nothing else.
+      await waitFor(() => expect(issueRow(999)).not.toBeNull());
+      expect(issueRow(101)).not.toBeNull();
+      expect(issueRow(102)).toBeNull();
+      expect(filter).toHaveAttribute("aria-pressed", "true");
+      expect(screen.getByTestId("inbox-selection-summary")).toHaveTextContent("0 of 2 selected");
+
+      fireEvent.click(filter);
+      await waitFor(() => expect(issueRow(102)).not.toBeNull());
+      expect(issueRow(999)).toBeNull();
+    });
+
+    /**
+     * The filter's rows are every pending proposal, whichever server page is loaded. Paged by the
+     * server's page they rendered in full on every page under a footer claiming a slice of them,
+     * and Next fetched a server page that changed nothing. The table pages them itself.
+     */
+    it("pages the Awaiting decision filter itself when it holds more than a page", async () => {
+      listInboxProposalsSpy.mockResolvedValue(
+        Array.from({ length: 12 }, (_, i) => proposal(i + 1, 900 + i)),
+      );
+      render(<InboxView projects={mockProjects} />);
+      await waitForInboxIdle();
+
+      fireEvent.change(screen.getByLabelText(/rows per page/i), { target: { value: "10" } });
+      await waitFor(() =>
+        expect(listGitHubIssuesSpy).toHaveBeenLastCalledWith(undefined, "my-issues", 1, 10),
+      );
+      await waitForInboxIdle();
+      const fetchesBefore = listGitHubIssuesSpy.mock.calls.length;
+
+      fireEvent.click(await screen.findByTestId("inbox-awaiting-filter"));
+      await waitFor(() => expect(screen.getByText("Showing 1–10 of 12")).toBeInTheDocument());
+      expect(document.querySelectorAll("[data-row-id]")).toHaveLength(10);
+      expect(rowOrder()[0]).toBe("900");
+
+      fireEvent.click(screen.getByRole("button", { name: /next page/i }));
+      await waitFor(() => expect(screen.getByText("Showing 11–12 of 12")).toBeInTheDocument());
+      expect(rowOrder()).toEqual(["910", "911"]);
+      expect(screen.getByRole("button", { name: /next page/i })).toBeDisabled();
+      // Nothing fetched: the server's page has nothing to add to a list the daemon gave in full.
+      expect(listGitHubIssuesSpy.mock.calls.length).toBe(fetchesBefore);
+    });
+
+    it("returns to the first server page when the filter is turned on from a later one", async () => {
+      listInboxProposalsSpy.mockResolvedValue([proposal(1, 101)]);
+      render(<InboxView projects={mockProjects} />);
+      await waitForInboxIdle();
+
+      fireEvent.click(screen.getByRole("button", { name: /next page/i }));
+      await waitFor(() =>
+        expect(listGitHubIssuesSpy).toHaveBeenLastCalledWith(undefined, "my-issues", 2, PAGE_SIZE),
+      );
+      await waitForInboxIdle();
+
+      fireEvent.click(screen.getByTestId("inbox-awaiting-filter"));
+      await waitFor(() =>
+        expect(listGitHubIssuesSpy).toHaveBeenLastCalledWith(undefined, "my-issues", 1, PAGE_SIZE),
+      );
+    });
+
+    it("turns the filter off once nothing is left to decide, so the next sweep is not hidden", async () => {
+      vi.spyOn(bridge, "acceptInboxProposal").mockResolvedValue({ jobId: "00042" });
+      vi.spyOn(bridge, "checkInbox").mockResolvedValue(report({ imported: [proposal(2, 102)] }));
+      listInboxProposalsSpy
+        .mockResolvedValueOnce([proposal(1, 101)])
+        .mockResolvedValueOnce([])
+        .mockResolvedValue([proposal(2, 102)]);
+      render(<InboxView projects={mockProjects} />);
+
+      fireEvent.click(await screen.findByTestId("inbox-awaiting-filter"));
+      await waitFor(() => expect(issueRow(102)).toBeNull());
+
+      fireEvent.click(rowButton(101, "Accept"));
+      await waitFor(() =>
+        expect(screen.queryByTestId("inbox-awaiting-filter")).not.toBeInTheDocument(),
+      );
+
+      fireEvent.click(screen.getByTestId("inbox-check-now"));
+      await waitFor(() => expect(screen.getByTestId("inbox-awaiting-mark-2")).toBeInTheDocument());
+      expect(screen.getByTestId("inbox-awaiting-filter")).toHaveAttribute("aria-pressed", "false");
+      expect(rowOrder()).toEqual(["102", "101"]);
+    });
+
+    it("builds no row from a proposal before the first page has arrived", async () => {
+      // Until then `issues` is not this page's answer, so a proposal cannot be told to be unlisted.
+      listGitHubIssuesSpy.mockReturnValue(new Promise(() => {}));
+      listInboxProposalsSpy.mockResolvedValue([proposal(9, 999)]);
+      render(<InboxView projects={mockProjects} />);
+
+      await waitFor(() => expect(listInboxProposalsSpy).toHaveBeenCalled());
+      await act(async () => {});
+      expect(screen.getByTestId("inbox-loading")).toBeInTheDocument();
+      expect(issueRow(999)).toBeNull();
+    });
+
+    it("fires off a row built from a proposal like any other row", async () => {
+      const handleOpenModal = vi.fn();
+      listGitHubIssuesSpy.mockResolvedValue(makePage(mockIssues));
+      listInboxProposalsSpy.mockResolvedValue([proposal(9, 999)]);
+      render(<InboxView projects={mockProjects} onOpenNewPlanModal={handleOpenModal} />);
+
+      await waitFor(() => expect(issueRow(999)).not.toBeNull());
+      fireEvent.click(within(issueRow(999)!).getByRole("checkbox"));
+      fireEvent.click(screen.getByTestId("inbox-fire-off"));
+
+      expect(handleOpenModal).toHaveBeenCalledTimes(1);
+      expect(handleOpenModal.mock.calls[0][0]).toMatchObject({
+        title: "Swept issue 999",
+        sourceUrl: "https://github.com/SpaceCorps/Tendril-App/issues/999",
+        project: "Tendril-App",
+      });
+    });
+
+    it("marks the swept issues on My Issues only", async () => {
       // V1 keeps the whole Auto-Accept surface on My Issues (`ContentView.cs:429`), and these rows
       // are what that sweep produced: they are not scoped to a category or a project.
       listInboxProposalsSpy.mockResolvedValue([proposal(1, 101)]);
       render(<InboxView projects={mockProjects} />);
 
-      await waitFor(() => expect(screen.getByTestId("inbox-proposals")).toBeInTheDocument());
+      await waitFor(() => expect(screen.getByTestId("inbox-awaiting-mark-1")).toBeInTheDocument());
 
       fireEvent.click(screen.getByTestId("category-review-requests"));
-      expect(screen.queryByTestId("inbox-proposals")).not.toBeInTheDocument();
+      await waitForInboxIdle();
+      await waitFor(() => expect(issueRow(101)).not.toBeNull());
+      expect(screen.queryByTestId("inbox-awaiting-mark-1")).not.toBeInTheDocument();
+      expect(screen.queryByTestId("inbox-awaiting-filter")).not.toBeInTheDocument();
       expect(screen.queryByTestId("inbox-check-now")).not.toBeInTheDocument();
 
       fireEvent.click(screen.getByTestId("category-my-issues"));
-      expect(screen.getByTestId("inbox-proposals")).toBeInTheDocument();
+      await waitFor(() => expect(screen.getByTestId("inbox-awaiting-mark-1")).toBeInTheDocument());
     });
 
     it("revalidates the issue list after a manual check, as V1's onRefresh does", async () => {
@@ -871,7 +1187,7 @@ describe("InboxView Component & Triage Tests", () => {
       await waitFor(() => expect(myIssuesFetches()).toBe(before + 1));
     });
 
-    it("runs a check and refetches proposals, reporting what the sweep did", async () => {
+    it("runs a check and marks what it imported, reporting what the sweep did", async () => {
       const checkInboxSpy = vi
         .spyOn(bridge, "checkInbox")
         .mockResolvedValue(report({ imported: [proposal(1, 101)], skipped: 3 }));
@@ -886,7 +1202,7 @@ describe("InboxView Component & Triage Tests", () => {
 
       await waitFor(() => {
         expect(checkInboxSpy).toHaveBeenCalledTimes(1);
-        expect(screen.getByTestId("proposal-card-1")).toBeInTheDocument();
+        expect(within(issueRow(101)!).getByTestId("inbox-awaiting-mark-1")).toBeInTheDocument();
       });
       expect(screen.getByTestId("inbox-check-summary")).toHaveTextContent("Imported 1, skipped 3.");
     });
@@ -911,9 +1227,9 @@ describe("InboxView Component & Triage Tests", () => {
       );
     });
 
-    it("reports the plans an auto-accepting sweep started, which leave no card behind", async () => {
-      // With auto-accept on, the sweep inserts the proposal and accepts it in the same pass, so the
-      // panel below stays empty and `accepted` is the only evidence anything happened.
+    it("reports the plans an auto-accepting sweep started, which leave nothing to decide", async () => {
+      // With auto-accept on, the sweep inserts the proposal and accepts it in the same pass, so no
+      // row is marked as awaiting a decision and `accepted` is the only evidence anything happened.
       vi.spyOn(bridge, "checkInbox").mockResolvedValue(
         report({ imported: [proposal(1, 101)], accepted: 1 }),
       );
@@ -965,39 +1281,119 @@ describe("InboxView Component & Triage Tests", () => {
       expect(screen.queryByTestId("inbox-error")).not.toBeInTheDocument();
     });
 
-    it("accepts a proposal and drops it from the panel once it is no longer pending", async () => {
+    it("accepts from the row and unmarks it once it is no longer pending", async () => {
       const acceptSpy = vi
         .spyOn(bridge, "acceptInboxProposal")
         .mockResolvedValue({ jobId: "00042" });
       listInboxProposalsSpy.mockResolvedValueOnce([proposal(1, 101)]).mockResolvedValueOnce([]);
 
       render(<InboxView projects={mockProjects} />);
-      await waitFor(() => screen.getByTestId("accept-proposal-1"));
+      await waitFor(() => expect(screen.getByTestId("inbox-awaiting-mark-1")).toBeInTheDocument());
 
-      fireEvent.click(screen.getByTestId("accept-proposal-1"));
+      fireEvent.click(rowButton(101, "Accept"));
 
       await waitFor(() => {
         expect(acceptSpy).toHaveBeenCalledWith(1);
-        expect(screen.queryByTestId("inbox-proposals")).not.toBeInTheDocument();
+        expect(screen.queryByTestId("inbox-awaiting-mark-1")).not.toBeInTheDocument();
       });
+      // Still assigned to you, so still listed - as an ordinary row with Fire off back.
+      expect(issueRow(101)).not.toBeNull();
+      expect(rowButton(101, "Fire off in Tendril")).toBeInTheDocument();
+      expect(anyAwaitingMark()).toBeNull();
     });
 
-    it("dismisses a proposal and refetches", async () => {
+    /**
+     * The daemon keeps `Dismissed` for good, so Dismiss is a labelled entry in the row's menu
+     * rather than an icon button one slot from Accept. The menu keeps Open in GitHub, whose slot it
+     * took.
+     */
+    it("dismisses from the row's menu and refetches", async () => {
       const dismissSpy = vi.spyOn(bridge, "dismissInboxProposal").mockResolvedValue(undefined);
       listInboxProposalsSpy.mockResolvedValueOnce([proposal(1, 101)]).mockResolvedValueOnce([]);
 
       render(<InboxView projects={mockProjects} />);
-      await waitFor(() => screen.getByTestId("dismiss-proposal-1"));
+      await waitFor(() => expect(screen.getByTestId("inbox-awaiting-mark-1")).toBeInTheDocument());
 
-      fireEvent.click(screen.getByTestId("dismiss-proposal-1"));
+      fireEvent.keyDown(rowButton(101, "More actions"), { key: "Enter" });
+      const menu = await screen.findByRole("menu");
+      expect(
+        within(menu)
+          .getAllByRole("menuitem")
+          .map((item) => item.textContent),
+      ).toEqual(["Open in GitHub", "Dismiss"]);
+      fireEvent.click(within(menu).getByRole("menuitem", { name: "Dismiss" }));
 
       await waitFor(() => {
         expect(dismissSpy).toHaveBeenCalledWith(1);
         expect(listInboxProposalsSpy).toHaveBeenCalledTimes(2);
       });
+      await waitFor(() =>
+        expect(screen.queryByTestId("inbox-awaiting-mark-1")).not.toBeInTheDocument(),
+      );
     });
 
-    it("keeps the proposal on screen and shows why when a decision fails", async () => {
+    it("opens the issue on GitHub from the row's menu", async () => {
+      listInboxProposalsSpy.mockResolvedValue([proposal(1, 101)]);
+      render(<InboxView projects={mockProjects} />);
+      await waitFor(() => expect(screen.getByTestId("inbox-awaiting-mark-1")).toBeInTheDocument());
+
+      await pickRowMenuItem(101, "Open in GitHub");
+
+      await waitFor(() =>
+        expect(openUrl).toHaveBeenCalledWith(
+          "https://github.com/SpaceCorps/Tendril-App/issues/101",
+        ),
+      );
+    });
+
+    it("offers the same decision in the issue's details sheet", async () => {
+      const acceptSpy = vi
+        .spyOn(bridge, "acceptInboxProposal")
+        .mockResolvedValue({ jobId: "00042" });
+      listInboxProposalsSpy.mockResolvedValue([proposal(1, 101)]);
+
+      render(<InboxView projects={mockProjects} />);
+      await waitFor(() => expect(screen.getByTestId("inbox-awaiting-mark-1")).toBeInTheDocument());
+
+      fireEvent.click(rowButton(101, "View Details"));
+      const sheet = await screen.findByRole("dialog");
+      expect(within(sheet).getByRole("button", { name: "Dismiss" })).toHaveAttribute(
+        "title",
+        expect.stringContaining("will not propose this issue again"),
+      );
+      expect(within(sheet).queryByRole("button", { name: /Fire off in Tendril/ })).toBeNull();
+
+      fireEvent.click(within(sheet).getByRole("button", { name: "Accept" }));
+
+      await waitFor(() => expect(acceptSpy).toHaveBeenCalledWith(1));
+    });
+
+    /** A second Accept would reach the daemon as a CONFLICT, which is what the card guarded too. */
+    it("disables the decision everywhere while it is in flight", async () => {
+      let settle: (value: { jobId: string }) => void = () => {};
+      const acceptSpy = vi
+        .spyOn(bridge, "acceptInboxProposal")
+        .mockReturnValue(new Promise((resolve) => (settle = resolve)));
+      listInboxProposalsSpy.mockResolvedValue([proposal(1, 101)]);
+
+      render(<InboxView projects={mockProjects} />);
+      await waitFor(() => expect(screen.getByTestId("inbox-awaiting-mark-1")).toBeInTheDocument());
+
+      fireEvent.click(rowButton(101, "Accept"));
+      await waitFor(() => expect(rowButton(101, "Accept")).toBeDisabled());
+      fireEvent.click(rowButton(101, "Accept"));
+      expect(acceptSpy).toHaveBeenCalledTimes(1);
+
+      fireEvent.click(rowButton(101, "View Details"));
+      const sheet = await screen.findByRole("dialog");
+      expect(within(sheet).getByRole("button", { name: "Accept" })).toBeDisabled();
+      expect(within(sheet).getByRole("button", { name: "Dismiss" })).toBeDisabled();
+
+      await act(async () => settle({ jobId: "00042" }));
+      expect(within(sheet).getByRole("button", { name: "Accept" })).toBeEnabled();
+    });
+
+    it("keeps the row marked and shows why when a decision fails", async () => {
       vi.spyOn(bridge, "acceptInboxProposal").mockRejectedValue({
         code: "CONFLICT",
         message: "Inbox proposal 1 is already Accepted",
@@ -1005,14 +1401,15 @@ describe("InboxView Component & Triage Tests", () => {
       listInboxProposalsSpy.mockResolvedValue([proposal(1, 101)]);
 
       render(<InboxView projects={mockProjects} />);
-      await waitFor(() => screen.getByTestId("accept-proposal-1"));
+      await waitFor(() => expect(screen.getByTestId("inbox-awaiting-mark-1")).toBeInTheDocument());
 
-      fireEvent.click(screen.getByTestId("accept-proposal-1"));
+      fireEvent.click(rowButton(101, "Accept"));
 
       await waitFor(() => {
         expect(screen.getByTestId("inbox-proposal-error")).toHaveTextContent(/already Accepted/);
       });
-      expect(screen.getByTestId("proposal-card-1")).toBeInTheDocument();
+      expect(within(issueRow(101)!).getByTestId("inbox-awaiting-mark-1")).toBeInTheDocument();
+      expect(rowButton(101, "Accept")).toBeEnabled();
     });
 
     it("does not blank the issue list when the proposals route is unavailable", async () => {
@@ -1027,7 +1424,28 @@ describe("InboxView Component & Triage Tests", () => {
         expect(screen.getByTestId("inbox-proposal-error")).toBeInTheDocument();
       });
       expect(issueRow(101)).not.toBeNull();
-      expect(screen.queryByTestId("inbox-proposals")).not.toBeInTheDocument();
+      expect(anyAwaitingMark()).toBeNull();
+    });
+
+    it("keeps the proposals decidable when the GitHub list fails", async () => {
+      // They come from the daemon, not from GitHub, and deciding on them worked through a GitHub
+      // outage while they were a list of their own.
+      listGitHubIssuesSpy.mockRejectedValue({ code: "GITHUB_ERROR", message: "rate limited" });
+      listInboxProposalsSpy.mockResolvedValue([proposal(1, 101)]);
+      render(<InboxView projects={mockProjects} />);
+
+      await waitFor(() => expect(screen.getByTestId("inbox-error")).toBeInTheDocument());
+      await waitFor(() => expect(issueRow(101)).not.toBeNull());
+      expect(within(issueRow(101)!).getByText("#101 Swept issue 101")).toBeInTheDocument();
+      expect(rowButton(101, "Accept")).toBeInTheDocument();
+    });
+
+    it("says where the rest of a partly auto-accepted sweep went", () => {
+      expect(
+        describeSweep(report({ imported: [proposal(1, 101), proposal(2, 102)], accepted: 1 })),
+      ).toBe(
+        "Imported 2, skipped 0. 1 started a plan straight away (the rest await your decision).",
+      );
     });
   });
 
@@ -1218,6 +1636,18 @@ describe("InboxView Component & Triage Tests", () => {
      * different hat. The filters live in the `DataTable` toolbar (as `PullRequestsView` puts them),
      * which `fillHeight` renders `shrink-0` *above* the scroll viewport — so they are outside the
      * thing that scrolls, not at the end of it.
+     *
+     * The controls are looked up *inside* the toolbar rather than across the document, and that is
+     * load-bearing for the suite, not style. A label or accessible-name query asks every candidate
+     * element for its `labels`, and jsdom answers that by walking the whole document and asking each
+     * node for its `control` — which, for a `<label for>`, is another walk of the document to find
+     * the id (`HTMLLabelElement-impl.js`, `helpers/form-controls.js`). A long page carries 51 of
+     * those labels (the `DataTable`'s sr-only "Select row N" and "Select all rows") and ~280
+     * labelable buttons, so one document-wide `getByLabelText` here cost ~1s on an idle machine and
+     * over 5s on a loaded one: the test timed out, and its orphaned continuation then typed into the
+     * next test's search box and failed that one too. Scoped to the toolbar, only its own few
+     * controls are asked. It still fails if the search box leaves the toolbar, since `within` then
+     * finds nothing.
      */
     it("keeps the filter bar above the rows instead of at the end of them", async () => {
       listGitHubIssuesSpy.mockResolvedValue(longIssuePage());
@@ -1225,21 +1655,20 @@ describe("InboxView Component & Triage Tests", () => {
       await waitForInboxIdle();
       await waitFor(() => expect(issueRow(300)).not.toBeNull());
 
-      const search = screen.getByLabelText("Search issues");
+      // The toolbar is the table's own `shrink-0` chrome, and it precedes the viewport's box.
       const table = screen.getByTestId("inbox-issue-table");
       const viewport = table.parentElement as HTMLElement;
+      const tableRoot = viewport.parentElement?.parentElement as HTMLElement;
+      const toolbar = tableRoot.firstElementChild as HTMLElement;
+      const search = within(toolbar).getByLabelText("Search issues");
 
       // Not inside the scroller, so no amount of scrolling can move it off screen.
       expect(viewport.contains(search)).toBe(false);
-      const labelFilter = screen.getByRole("button", { name: "Filter by label..." });
-      const assigneeFilter = screen.getByRole("button", { name: "Filter by assignee..." });
+      const labelFilter = within(toolbar).getByRole("button", { name: "Filter by label..." });
+      const assigneeFilter = within(toolbar).getByRole("button", { name: "Filter by assignee..." });
       expect(viewport.contains(labelFilter)).toBe(false);
       expect(viewport.contains(assigneeFilter)).toBe(false);
 
-      // The toolbar is the table's own `shrink-0` chrome, and it precedes the viewport's box.
-      const tableRoot = viewport.parentElement?.parentElement as HTMLElement;
-      const toolbar = tableRoot.firstElementChild as HTMLElement;
-      expect(toolbar.contains(search)).toBe(true);
       expect(toolbar.className).toContain("shrink-0");
       expect(
         toolbar.compareDocumentPosition(viewport) & Node.DOCUMENT_POSITION_FOLLOWING,
@@ -1253,20 +1682,21 @@ describe("InboxView Component & Triage Tests", () => {
     });
 
     /**
-     * The panel that actually broke the page. An unbounded flex child keeps its content height as
-     * its flex basis, so shrink is distributed around it and the bounded table is handed nothing to
-     * fill — the column overflows and the frame becomes the scroller. `HeaderLayout` plus a cap is
-     * what makes the shrink resolve.
+     * The proposals used to be a second list above the table, and the one that broke the page: an
+     * unbounded flex child kept its content height as its flex basis and left the bounded table
+     * nothing to fill, which is why it once needed a `HeaderLayout` and a height cap of its own.
+     * As rows of the table they are inside the table's own scroller, so a sweep that imports a
+     * whole page's worth takes no height from the column at all.
      */
-    it("bounds the proposals panel and gives it its own scroller", async () => {
+    it("keeps a whole page of awaiting issues inside the table's own scroller", async () => {
       listInboxProposalsSpy.mockResolvedValue(
         Array.from({ length: 25 }, (_, i) => ({
           id: i + 1,
-          number: 500 + i,
+          number: 300 + i,
           repository: "SpaceCorps/Tendril-App",
-          title: `Swept issue ${500 + i}`,
+          title: `Swept issue ${300 + i}`,
           body: "Assigned to me by someone else.",
-          issueUrl: `https://github.com/SpaceCorps/Tendril-App/issues/${500 + i}`,
+          issueUrl: `https://github.com/SpaceCorps/Tendril-App/issues/${300 + i}`,
           project: "Tendril-App",
           state: "Pending",
           discovered: "2026-09-10T09:00:00Z",
@@ -1276,31 +1706,30 @@ describe("InboxView Component & Triage Tests", () => {
       listGitHubIssuesSpy.mockResolvedValue(longIssuePage());
       render(<InboxView projects={mockProjects} />);
       await waitForInboxIdle();
-      const panel = await waitFor(() => screen.getByTestId("inbox-proposals"));
+      await waitFor(() => expect(screen.getByTestId("inbox-awaiting-mark-25")).toBeInTheDocument());
 
-      // The shared primitive, not a hand-rolled scroll container.
-      expect(panel.dataset.slot).toBe("header-layout");
-      // Capped, shrinkable, and not `h-full`: 25 cards cannot claim the column.
-      expect(panel.className).toContain("max-h-[min(16rem,33%)]");
-      expect(panel.className).toContain("min-h-0");
-      expect(panel.className).toContain("h-auto");
-      expect(panel.className).not.toContain("h-full ");
+      // No panel of its own, and no row twice.
+      expect(screen.queryByTestId("inbox-proposals")).not.toBeInTheDocument();
+      expect(
+        screen.getByTestId("inbox-content").querySelector('[data-slot="header-layout"]'),
+      ).toBeNull();
+      expect(document.querySelectorAll("[data-row-id]").length).toBe(LONG_PAGE);
 
-      // Heading is the panel's fixed chrome; the cards scroll under it.
-      const header = panel.firstElementChild as HTMLElement;
-      expect(header.className).toContain("flex-none");
-      expect(header).toHaveTextContent("Assigned issues awaiting your decision");
-      const scroller = panel.lastElementChild as HTMLElement;
-      expect(scroller.className).toContain("min-h-0");
-      expect(scroller.className).toContain("flex-1");
-      expect(scroller.className).toContain("overflow-hidden");
-      expect(scroller.querySelector("[data-radix-scroll-area-viewport]")).not.toBeNull();
-      expect(scroller.contains(screen.getByTestId("proposal-card-25"))).toBe(true);
-
-      // The table keeps its own bound beside it, and the page still has no scroller of its own.
-      expect(screen.getByTestId("inbox-issue-table")).toBeInTheDocument();
-      expect(screen.getByTestId("inbox-content").className).toContain("min-h-0");
-      expect(screen.getByTestId("inbox-view").className).not.toContain("overflow");
+      // Every marked row is in the table's viewport, and that viewport is still the only scroller
+      // between the rows and the view root.
+      const table = screen.getByTestId("inbox-issue-table");
+      const viewport = table.parentElement as HTMLElement;
+      expect(viewport.className).toContain("overflow-auto");
+      expect(viewport.contains(screen.getByTestId("inbox-awaiting-mark-1"))).toBe(true);
+      expect(viewport.contains(screen.getByTestId("inbox-awaiting-mark-25"))).toBe(true);
+      let node = viewport.parentElement as HTMLElement;
+      const root = screen.getByTestId("inbox-view");
+      while (node !== root) {
+        expect(node.className).not.toContain("overflow-y-auto");
+        expect(node.className).not.toContain("overflow-auto");
+        node = node.parentElement as HTMLElement;
+      }
+      expect(root.className).not.toContain("overflow");
     });
   });
 });

@@ -1,0 +1,141 @@
+{
+  "section": {
+    "title": "编程智能体",
+    "hint": "Tendril 可连接到您配置的 AI 编程智能体，或 OpenCode 等内置的开源引擎。",
+    "unknownAgent": "未知的编程智能体“{{value}}”。有效的智能体：{{agents}}"
+  },
+  "byo": {
+    "title": "使用您自己的 LLM",
+    "baseUrl": {
+      "label": "API 基础 URL"
+    },
+    "apiKey": {
+      "label": "API 密钥",
+      "hint": "以 ANTHROPIC_API_KEY 和 OPENAI_API_KEY 的形式存储在 {{agent}} 智能体上，这是每次启动都会使用的环境。",
+      "hint_ivy": "以 IVY_API_KEY、ANTHROPIC_API_KEY 和 OPENAI_API_KEY 的形式存储在 {{agent}} 智能体上，这是每次启动都会使用的环境。"
+    },
+    "fetchModels": {
+      "label": "获取模型",
+      "busy": "正在获取…"
+    },
+    "discovery": {
+      "found_other": "在此端点找到 {{count}} 个模型。",
+      "customNames": "此端点不提供模型列表，因此需要手动输入模型名称。",
+      "unreachable": "无法连接到守护进程以获取模型：{{error}}"
+    }
+  },
+  "profiles": {
+    "title": "配置文件模型",
+    "hint": {
+      "custom": "为每个配置文件指定要使用的自定义模型名称和推理强度。",
+      "discovered": "为每个配置文件级别从您的端点中选择模型。",
+      "default": "工作流智能体会根据需求的复杂度使用不同的配置文件。您可以为每个配置文件指定要使用的模型和推理强度。"
+    },
+    "customNames": "自定义模型名称",
+    "effortUnsupported": "此智能体的 CLI 不接受推理强度参数，因此将忽略推理强度。",
+    "tiers": {
+      "deep": "深度",
+      "balanced": "均衡",
+      "quick": "快速"
+    },
+    "effort": "推理强度",
+    "efforts": {
+      "default": "默认",
+      "low": "低",
+      "medium": "中",
+      "high": "高",
+      "xhigh": "超高",
+      "max": "最高"
+    }
+  },
+  "environment": {
+    "title": "额外参数与环境",
+    "arguments": {
+      "label": "额外参数",
+      "placeholder": "例如 --verbose",
+      "hint": "按空白字符拆分，并追加到此智能体的每次启动中。"
+    },
+    "variables": {
+      "label": "环境变量",
+      "hint": "每行一个 KEY=value。以 # 开头的行将被忽略。"
+    }
+  },
+  "help": {
+    "title": "帮助",
+    "hint": "让 {{agent}} 在此计算机上正常运行。",
+    "install": "1. 安装",
+    "authenticate": "2. 认证",
+    "apiKey": "2. API 密钥",
+    "or": "或",
+    "then": "然后在提示符处输入：<code>{{command}}</code>",
+    "binary": "Tendril 会在您的 PATH 中查找 <code>{{binary}}</code>。"
+  },
+  "actions": {
+    "test": "测试智能体",
+    "saving": "正在保存…"
+  },
+  "save": {
+    "toastTitle": "已保存",
+    "toastMessage": "编程智能体设置已保存",
+    "failed": "保存失败：{{error}}"
+  },
+  "test": {
+    "title": "编程智能体测试",
+    "defaultModel": "默认",
+    "columns": {
+      "test": "测试",
+      "result": "结果"
+    },
+    "status": {
+      "passed": "通过",
+      "failed": "失败",
+      "warning": "警告",
+      "running": "运行中",
+      "pending": "待处理"
+    },
+    "showRawOutput": "显示原始输出",
+    "rawOutputTitle": "原始输出",
+    "rows": {
+      "install": "安装",
+      "auth": "认证",
+      "model": "模型：{{name}}",
+      "unexpectedError": "意外错误"
+    },
+    "install": {
+      "version": "v{{version}}",
+      "installed": "已安装",
+      "notInstalled": "未安装"
+    },
+    "auth": {
+      "authenticated": "已认证",
+      "authenticatedWith": "已认证（{{provider}}）",
+      "notAuthenticated": "未认证",
+      "notAuthenticatedRun": "未认证，请运行 `{{command}}`",
+      "notAuthenticatedRunThen": "未认证，请运行 `{{command}}`，然后输入 `{{prompt}}`",
+      "notAuthenticatedCreateKey": "未认证，请在 {{url}} 创建密钥",
+      "inconclusive": "检查结果不确定"
+    },
+    "model": {
+      "notChecked": "未检查",
+      "ok": "正常",
+      "invalidModel": "模型无效",
+      "authError": "认证错误",
+      "rateLimit": "配额已用尽或受到速率限制"
+    },
+    "cancelled": "已取消",
+    "runFailed": "测试运行失败"
+  },
+  "usage": {
+    "window": "{{window}} 窗口",
+    "left": "剩余 {{percent}}",
+    "ariaLabel": "{{window}} 窗口，剩余 {{percent}}",
+    "resetsIn": "{{countdown}} 后重置",
+    "resetsIn_now": "即将重置",
+    "asOf": "更新于 {{relative}}",
+    "countdown": {
+      "now": "现在",
+      "hoursMinutes": "{{hours}} {{minutes}}"
+    },
+    "justNow": "刚刚"
+  }
+}

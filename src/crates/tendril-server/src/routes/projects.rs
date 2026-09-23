@@ -24,7 +24,7 @@ pub use hooks::{add_project_hook, remove_project_hook};
 pub use repos::{add_project_repo, remove_project_repo, sync_project_repos};
 pub use review_actions::{
     add_project_review_action, execute_review_action, remove_project_review_action,
-    review_action_input, review_action_resize,
+    review_action_conditions, review_action_input, review_action_resize,
 };
 pub use verifications::{
     add_project_verification, move_project_verification_route, remove_project_verification,

@@ -44,11 +44,7 @@ describe("VerificationReportSheet", () => {
     vi.spyOn(bridge, "getVerificationReport").mockRejectedValue(new Error("File not found"));
 
     render(
-      <VerificationReportSheet
-        planId="00006"
-        verificationName="MissingReport"
-        onClose={vi.fn()}
-      />,
+      <VerificationReportSheet planId="00006" verificationName="MissingReport" onClose={vi.fn()} />,
     );
 
     await waitFor(() => {
@@ -58,13 +54,7 @@ describe("VerificationReportSheet", () => {
   });
 
   it("does not render when verificationName is null", () => {
-    render(
-      <VerificationReportSheet
-        planId="00006"
-        verificationName={null}
-        onClose={vi.fn()}
-      />,
-    );
+    render(<VerificationReportSheet planId="00006" verificationName={null} onClose={vi.fn()} />);
 
     expect(screen.queryByTestId("verification-report-sheet")).not.toBeInTheDocument();
   });
@@ -74,10 +64,7 @@ describe("ReviewView verification click interactions", () => {
   const testPlan = planSummary({
     id: "00006",
     title: "Implement Apple Foundation Model CLI",
-    verifications: [
-      verification("CheckResult", "Pass"),
-      verification("DotnetTest", "Fail"),
-    ],
+    verifications: [verification("CheckResult", "Pass"), verification("DotnetTest", "Fail")],
   });
 
   beforeEach(() => {
@@ -85,10 +72,7 @@ describe("ReviewView verification click interactions", () => {
       planDetail({
         id: "00006",
         title: "Implement Apple Foundation Model CLI",
-        verifications: [
-          verification("CheckResult", "Pass"),
-          verification("DotnetTest", "Fail"),
-        ],
+        verifications: [verification("CheckResult", "Pass"), verification("DotnetTest", "Fail")],
       }),
     );
     vi.spyOn(bridge, "listRecommendations").mockResolvedValue([]);
@@ -117,13 +101,7 @@ describe("ReviewView verification click interactions", () => {
   });
 
   it("opens VerificationReportSheet when clicking verification in the corner dropdown", async () => {
-    render(
-      <ReviewView
-        plans={[testPlan]}
-        selectedPlanId="00006"
-        onSelectPlan={vi.fn()}
-      />,
-    );
+    render(<ReviewView plans={[testPlan]} selectedPlanId="00006" onSelectPlan={vi.fn()} />);
 
     // Open Verifications dropdown
     const verifBtn = await screen.findByRole("button", { name: "Verifications" });
@@ -144,13 +122,7 @@ describe("ReviewView verification click interactions", () => {
   });
 
   it("opens VerificationReportSheet when clicking verification in Details tab", async () => {
-    render(
-      <ReviewView
-        plans={[testPlan]}
-        selectedPlanId="00006"
-        onSelectPlan={vi.fn()}
-      />,
-    );
+    render(<ReviewView plans={[testPlan]} selectedPlanId="00006" onSelectPlan={vi.fn()} />);
 
     // Switch to Details tab
     const detailsTab = await screen.findByRole("tab", { name: "Details" });

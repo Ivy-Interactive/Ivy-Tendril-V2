@@ -20,6 +20,7 @@ import { ActivityGrid } from "./ActivityGrid.tsx";
 import { PillBars } from "./PillBars.tsx";
 import { ChartSkeleton, KpiSkeletonGrid } from "./DashboardSkeleton.tsx";
 import { TuiBadge } from "../ui/TuiBadge";
+import { formatCurrency, useTranslation } from "@/i18n/uiShell";
 import "../ui/ui.css";
 import "./dashboard.css";
 
@@ -38,14 +39,27 @@ const StatusItem: React.FC<StatusItemProps> = ({ icon, count, label, onClick }) 
   </button>
 );
 
+const WHOLE_DOLLARS: Intl.NumberFormatOptions = {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+};
+
+/** Ungrouped like the old `toFixed(2)`: $999.996 rounds to "$1000.00", not "$1,000.00". */
+const CENTS: Intl.NumberFormatOptions = {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+  useGrouping: false,
+};
+
+/**
+ * A trend value: whole dollars from $1,000 up, cents below, in the current language. Rounded by
+ * `Math.round` and `toFixed` first, as before: `Intl` rounds ties in a number's shortest decimal form
+ * ($87.455 to $87.46) where `toFixed` rounds its binary value ($87.45).
+ */
 const formatCurrencyValue = (value: number): string =>
-  value >= 1000 ? `$${Math.round(value).toLocaleString("en-US")}` : `$${value.toFixed(2)}`;
-
-const formatPlansValue = (value: number): string =>
-  `${Math.round(value)} plan${Math.round(value) === 1 ? "" : "s"}`;
-
-/** The window the trend card plots, matching `DashboardApp.TrendDailyWindowDays`. */
-const TREND_NAME = "Last 4 weeks";
+  value >= 1000
+    ? formatCurrency(Math.round(value), "USD", WHOLE_DOLLARS)
+    : formatCurrency(Number(value.toFixed(2)), "USD", CENTS);
 
 export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
   id,
@@ -69,6 +83,7 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
   loading = false,
   slots,
 }) => {
+  const { t } = useTranslation("uiShell");
   const [tab, setTab] = useState<"cost" | "plans">("cost");
   /**
    * Weeks, not months.
@@ -99,18 +114,49 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
     }
   };
 
+  // `id` keys the row, so the key does not change with the language; `event` is the host's.
   const statusItems = [
-    { icon: <Feather size={16} />, count: draftCount, label: "Plans", event: "OnDrafts" },
-    { icon: <Sprout size={16} />, count: inProgressCount, label: "In Progress", event: "OnJobs" },
-    { icon: <Eye size={16} />, count: reviewCount, label: "Ready For Review", event: "OnReview" },
-    { icon: <Check size={16} />, count: completedCount, label: "Completed", event: "OnJobs" },
     {
+      id: "plans",
+      icon: <Feather size={16} />,
+      count: draftCount,
+      label: t("dashboard.status.plans"),
+      event: "OnDrafts",
+    },
+    {
+      id: "inProgress",
+      icon: <Sprout size={16} />,
+      count: inProgressCount,
+      label: t("dashboard.status.inProgress"),
+      event: "OnJobs",
+    },
+    {
+      id: "review",
+      icon: <Eye size={16} />,
+      count: reviewCount,
+      label: t("dashboard.status.readyForReview"),
+      event: "OnReview",
+    },
+    {
+      id: "completed",
+      icon: <Check size={16} />,
+      count: completedCount,
+      label: t("dashboard.status.completed"),
+      event: "OnJobs",
+    },
+    {
+      id: "failed",
       icon: <MessageSquareWarning size={16} />,
       count: failedCount,
-      label: "Failed",
+      label: t("dashboard.status.failed"),
       event: "OnJobs",
     },
   ];
+
+  /** The window the trend card plots, matching `DashboardApp.TrendDailyWindowDays`. */
+  const trendName = t("dashboard.trend.currentName");
+  const formatPlansValue = (value: number): string =>
+    t("dashboard.trend.plansValue", { count: Math.round(value) });
 
   const activeTrend = trendWeekly ?? trend;
 
@@ -144,7 +190,7 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
 
             <div className="tdb-block tdb-status">
               {statusItems.map((item, index) => (
-                <React.Fragment key={item.label}>
+                <React.Fragment key={item.id}>
                   {index > 0 && <div className="tdb-status-sep" />}
                   <StatusItem
                     icon={item.icon}
@@ -195,7 +241,7 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
                       data-clickable="true"
                       data-tone={index % 4}
                       key={key}
-                      aria-label={`View calculation breakdown for ${kpi.label}`}
+                      aria-label={t("dashboard.kpi.breakdownAriaLabel", { label: kpi.label })}
                       onClick={() => fireKpiEvent(kpiId)}
                     >
                       {body}
@@ -212,7 +258,7 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
             {loading && (
               <div className="tdb-block tdb-trend">
                 <div className="tdb-trend-chart">
-                  <ChartSkeleton label="Loading cost and plan trend" />
+                  <ChartSkeleton label={t("dashboard.trend.loading")} />
                 </div>
               </div>
             )}
@@ -227,7 +273,7 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
                       data-active={tab === "cost"}
                       onClick={() => setTab("cost")}
                     >
-                      Total Cost
+                      {t("dashboard.trend.costTab")}
                     </button>
                     <button
                       type="button"
@@ -235,18 +281,18 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
                       data-active={tab === "plans"}
                       onClick={() => setTab("plans")}
                     >
-                      Total Plans
+                      {t("dashboard.trend.plansTab")}
                     </button>
                   </div>
                   <div className="tdb-trend-sep" />
                   <div className="tdb-legend">
                     <span className="tdb-legend-item">
                       <span className="tdb-legend-dot" />
-                      {TREND_NAME}
+                      {trendName}
                     </span>
                     <span className="tdb-legend-item">
                       <span className="tdb-legend-line-avg" />
-                      7-day average
+                      {t("dashboard.trend.rollingLegend")}
                     </span>
                   </div>
                 </div>
@@ -255,7 +301,7 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
                     dates={activeTrend!.dates}
                     values={trendData.values}
                     rolling={trendData.rolling}
-                    currentName={TREND_NAME}
+                    currentName={trendName}
                     formatTick={trendData.formatTick}
                     formatValue={trendData.formatValue}
                   />
@@ -267,10 +313,10 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
           <div className="tdb-col tdb-col-side">
             <div className="tdb-update-slot">{slots?.UpdateNotice}</div>
             <div className="tdb-block tdb-side-block">
-              <div className="tdb-block-title">Git Activity</div>
+              <div className="tdb-block-title">{t("dashboard.gitActivity.title")}</div>
               <div className="tdb-side-body">
                 {loading ? (
-                  <ChartSkeleton label="Loading Git activity" />
+                  <ChartSkeleton label={t("dashboard.gitActivity.loading")} />
                 ) : (
                   <ActivityGrid months={activity} />
                 )}
@@ -278,7 +324,7 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
             </div>
             <div className="tdb-block tdb-side-block">
               <div className="tdb-side-head">
-                <div className="tdb-block-title">Pull Requests</div>
+                <div className="tdb-block-title">{t("dashboard.pullRequests.title")}</div>
                 <div className="tdb-tabs tdb-side-tabs">
                   <button
                     type="button"
@@ -286,7 +332,7 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
                     data-active={prPeriod === "week"}
                     onClick={() => setPrPeriod("week")}
                   >
-                    Week
+                    {t("dashboard.pullRequests.weekTab")}
                   </button>
                   <button
                     type="button"
@@ -294,13 +340,13 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
                     data-active={prPeriod === "month"}
                     onClick={() => setPrPeriod("month")}
                   >
-                    Month
+                    {t("dashboard.pullRequests.monthTab")}
                   </button>
                 </div>
               </div>
               <div className="tdb-side-body">
                 {loading ? (
-                  <ChartSkeleton label="Loading merged pull requests" />
+                  <ChartSkeleton label={t("dashboard.pullRequests.loading")} />
                 ) : (
                   <PillBars items={activePrs} />
                 )}
@@ -309,7 +355,7 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
             {hasSlotContent(slots?.TunnelQr) && (
               <div className="tdb-block tdb-side-block tdb-tunnel">
                 <div className="tdb-side-head">
-                  <div className="tdb-block-title">Tunnel</div>
+                  <div className="tdb-block-title">{t("dashboard.tunnel.title")}</div>
                   {slots?.TunnelMenu}
                 </div>
                 <div className="tdb-tunnel-body">{slots?.TunnelQr}</div>
@@ -320,14 +366,16 @@ export const TendrilDashboard: React.FC<TendrilDashboardProps> = ({
           {/* The factory and jobs cards share the grid's second row so their
               tops and bottoms always align across the two columns. */}
           <div className="tdb-block tdb-factory">
-            <div className="tdb-block-title">Software Factory</div>
+            <div className="tdb-block-title">{t("dashboard.factory.title")}</div>
             <div className="tdb-factory-body">{slots?.ProcessViewer}</div>
           </div>
 
           <div className="tdb-block tdb-side-block tdb-jobs">
-            <div className="tdb-block-title">Active Jobs</div>
+            <div className="tdb-block-title">{t("dashboard.jobs.title")}</div>
             <div className="tdb-jobs-list hidden-scrollbar">
-              {jobs.length === 0 && <div className="tdb-empty-note">No jobs running</div>}
+              {jobs.length === 0 && (
+                <div className="tdb-empty-note">{t("dashboard.jobs.empty")}</div>
+              )}
               {jobs.map((job) => (
                 <button
                   key={job.id}

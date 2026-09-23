@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { describeBridgeError, type Annotation, type PlanDetail } from "../../types/api";
 import { bridge } from "../../api/bridge";
 import { onPlanEvent } from "../../api/events";
+import { useTranslation } from "../../i18n";
 
 /**
  * The plan's annotations: loading them, keeping them live, and writing an edit back.
@@ -18,6 +19,7 @@ export function usePlanAnnotations(
   plan: PlanDetail,
   setActionError: (message: string | null) => void,
 ) {
+  const { t } = useTranslation("plans");
   /**
    * The plan's inline annotations, which is what `PlanMarkdown` needs to render its highlights and
    * what the PendingAnnotations execute guard counts.
@@ -125,7 +127,7 @@ export function usePlanAnnotations(
       .then(setAnnotations)
       .catch((err: unknown) => {
         setAnnotations(previous);
-        setActionError(`Failed to save annotation: ${describeBridgeError(err)}`);
+        setActionError(t("detail.errors.saveAnnotation", { error: describeBridgeError(err) }));
       });
   };
 

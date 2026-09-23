@@ -44,6 +44,13 @@ import {
   type ShellSidebarList,
 } from "../state/sidebarListStore";
 import { AGENT_APP_ID, appDescriptor, isFullBleedApp, type SessionPane } from "../state/navigation";
+import { i18n, useTranslation, type TFunction } from "../i18n";
+
+/**
+ * `common`'s `t` in the language current at each call, for the item builders below when a caller -
+ * a test, say - hands them none. The shell passes its own, so a language change re-renders the rows.
+ */
+const commonT = i18n.getFixedT(null, "common");
 
 /**
  * V1 `TendrilAppShell.PageTabId`. Identifies the strip's leading tab, which reveals the page behind
@@ -141,21 +148,22 @@ export interface ShellNavBadges {
 export const buildNavItems = (
   activeNav: string,
   badges: ShellNavBadges = {},
+  t: TFunction<"common"> = commonT,
 ): ShellNavItemDto[] => {
   const badge = (count: number | undefined) =>
     count !== undefined && count > 0 ? String(count) : undefined;
 
   return [
-    { id: "dashboard", label: "Dashboard", icon: "ChartBar" },
-    { id: "plans", label: "Plans", icon: "Feather", badge: badge(badges.plans) },
-    { id: "review", label: "Review", icon: "ThumbsUp", badge: badge(badges.review) },
+    { id: "dashboard", label: t("sidebar.nav.dashboard"), icon: "ChartBar" },
+    { id: "plans", label: t("sidebar.nav.plans"), icon: "Feather", badge: badge(badges.plans) },
+    { id: "review", label: t("sidebar.nav.review"), icon: "ThumbsUp", badge: badge(badges.review) },
     {
       id: "recommendations",
-      label: "Recommendations",
+      label: t("sidebar.nav.recommendations"),
       icon: "Lightbulb",
       badge: badge(badges.recommendations),
     },
-    { id: "jobs", label: "Jobs", icon: "Activity", badge: badge(badges.jobs) },
+    { id: "jobs", label: t("sidebar.nav.jobs"), icon: "Activity", badge: badge(badges.jobs) },
   ].map((item) => ({ ...item, isActive: item.id === activeNav }));
 };
 
@@ -164,6 +172,8 @@ export const buildNavItems = (
  * and either an action or a submenu.
  */
 export interface ShellMenuItemDto {
+  /** The row's identity - its React key - which the label cannot be: the label is translated. */
+  id: string;
   label: string;
   icon: React.ReactNode;
   onSelect?: () => void;
@@ -179,23 +189,28 @@ export interface ShellMenuItemDto {
 export const buildSettingsMenuItems = ({
   onSelectNav,
   onCheckForUpdates,
+  t = commonT,
 }: {
   onSelectNav: (navId: string) => void;
   onCheckForUpdates?: () => void;
+  t?: TFunction<"common">;
 }): ShellMenuItemDto[] => {
   const items: ShellMenuItemDto[] = [
     {
-      label: "Configuration",
+      id: "configuration",
+      label: t("sidebar.settingsMenu.configuration"),
       icon: <Construction aria-hidden="true" />,
       onSelect: () => onSelectNav("settings"),
     },
     {
-      label: "Pull Requests",
+      id: "pull-requests",
+      label: t("sidebar.settingsMenu.pullRequests"),
       icon: <GitPullRequest aria-hidden="true" />,
       onSelect: () => onSelectNav("pull-requests"),
     },
     {
-      label: "Icebox",
+      id: "icebox",
+      label: t("sidebar.settingsMenu.icebox"),
       icon: <Snowflake aria-hidden="true" />,
       onSelect: () => onSelectNav("icebox"),
     },
@@ -204,28 +219,34 @@ export const buildSettingsMenuItems = ({
   // V1 always has an update check; V2's host supplies one only where it can perform it.
   if (onCheckForUpdates) {
     items.push({
-      label: "Check for Updates",
+      id: "check-for-updates",
+      label: t("sidebar.settingsMenu.checkForUpdates"),
       icon: <CircleArrowUp aria-hidden="true" />,
       onSelect: onCheckForUpdates,
     });
   }
 
   items.push({
-    label: "Help",
+    id: "help",
+    label: t("sidebar.settingsMenu.help"),
     icon: <CircleHelp aria-hidden="true" />,
     children: [
       {
-        label: "Documentation",
+        id: "documentation",
+        label: t("sidebar.settingsMenu.documentation"),
         icon: <ExternalLink aria-hidden="true" />,
         onSelect: () => void openUrl(DOCS_URL),
       },
       {
+        // A brand name, so the one row that is not translated.
+        id: "discord",
         label: "Discord",
         icon: <BrandIcon name="Discord" />,
         onSelect: () => void openUrl(DISCORD_URL),
       },
       {
-        label: "Report Issue",
+        id: "report-issue",
+        label: t("sidebar.settingsMenu.reportIssue"),
         icon: <Bug aria-hidden="true" />,
         onSelect: () => void openUrl(ISSUES_URL),
       },
@@ -239,7 +260,7 @@ export const buildSettingsMenuItems = ({
 const renderMenuItems = (items: ShellMenuItemDto[]): React.ReactNode =>
   items.map((item) =>
     item.children ? (
-      <DropdownMenuSub key={item.label}>
+      <DropdownMenuSub key={item.id}>
         <DropdownMenuSubTrigger>
           {item.icon}
           {item.label}
@@ -247,7 +268,7 @@ const renderMenuItems = (items: ShellMenuItemDto[]): React.ReactNode =>
         <DropdownMenuSubContent>{renderMenuItems(item.children)}</DropdownMenuSubContent>
       </DropdownMenuSub>
     ) : (
-      <DropdownMenuItem key={item.label} onSelect={item.onSelect}>
+      <DropdownMenuItem key={item.id} onSelect={item.onSelect}>
         {item.icon}
         {item.label}
       </DropdownMenuItem>
@@ -381,6 +402,8 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
   onOpenChat,
   children,
 }) => {
+  const { t } = useTranslation("common");
+
   /* V1 `TendrilAppShell.Build()` line-for-line: a published list is rendered while
      `UsesSidebarList` holds, so moving between two sidebar-section apps (Review to Plans) does not
      blank the sidebar; anything else falls back to the section's own Search button.
@@ -463,14 +486,18 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
     }
   };
 
-  const navItems = buildNavItems(activeNav, {
-    plans: draftCount,
-    review: reviewCount,
-    recommendations: recommendationsCount,
-    jobs: jobCount,
-  });
+  const navItems = buildNavItems(
+    activeNav,
+    {
+      plans: draftCount,
+      review: reviewCount,
+      recommendations: recommendationsCount,
+      jobs: jobCount,
+    },
+    t,
+  );
 
-  const settingsMenuItems = buildSettingsMenuItems({ onSelectNav, onCheckForUpdates });
+  const settingsMenuItems = buildSettingsMenuItems({ onSelectNav, onCheckForUpdates, t });
 
   /* V1 `BuildStripTabs`: the strip is one non-closable `$page` tab, which reveals the page behind
      the session panes, followed by the session tabs. Nothing else is ever in it - a page is not a
@@ -570,7 +597,11 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
                 id="shell-sidebar-header"
                 title="Tendril"
                 logo={<TendrilLogo />}
-                version={serviceInfo?.apiVersion ? `v ${serviceInfo.apiVersion}` : undefined}
+                version={
+                  serviceInfo?.apiVersion
+                    ? t("sidebar.version", { version: serviceInfo.apiVersion })
+                    : undefined
+                }
                 eventHandler={noop}
               />
             ),
@@ -589,7 +620,7 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
                     chat page is showing, with session count badge. */}
                 <ShellAgentButton
                   id="shell-chat-btn"
-                  label="Chat"
+                  label={t("sidebar.chat")}
                   icon="MessageCircle"
                   badge={chatCount && chatCount > 0 ? String(chatCount) : undefined}
                   isActive={activeNav === "chat" || activeNav === "agent"}
@@ -649,7 +680,7 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
                     rail. Requested explicitly; not drift. */}
                 <ShellSettingsButton
                   id="shell-inbox-btn"
-                  label="Inbox"
+                  label={t("sidebar.inbox")}
                   icon="Inbox"
                   showLabel={false}
                   isActive={activeNav === "inbox"}
@@ -660,7 +691,7 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
                   <DropdownMenuTrigger asChild>
                     <ShellSettingsButton
                       id="shell-settings-btn"
-                      label="Settings"
+                      label={t("sidebar.settings")}
                       icon="Settings"
                       showLabel={false}
                       isActive={activeNav === "settings"}

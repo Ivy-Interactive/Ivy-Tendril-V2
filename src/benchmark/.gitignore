@@ -1,0 +1,5 @@
+# Cargo output of the standalone IPC shim crate (it builds into <ws>/builds/v2-shim normally, but a
+# direct `cargo build` in place must not leave artifacts in the repo).
+v2-shim/target/
+v2-shim/Cargo.lock
+*.log

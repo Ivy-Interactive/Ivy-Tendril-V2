@@ -205,3 +205,11 @@ pub struct ExecuteReviewActionParams {
     #[serde(alias = "worktreeDir", alias = "worktree_dir")]
     pub worktree: Option<String>,
 }
+
+/// `GET /api/projects/:name/review-actions?planId=...`. The plan is required: a condition is
+/// evaluated against a plan folder, and without one there is nothing to answer about.
+#[derive(Debug, Deserialize, Default)]
+pub struct ReviewActionConditionsParams {
+    #[serde(alias = "planId", alias = "plan")]
+    pub plan_id: Option<StringOrInt>,
+}

@@ -108,12 +108,12 @@ pub fn default_profiles(agent: &str) -> [TierDefault; 3] {
             (Some("gemini-3.8-flash"), Some("medium")),
         ),
         // Cursor bakes the effort into the model id, so these three pairs compose into three
-        // different ids rather than three `--effort` values: `claude-opus-5-thinking-max`,
+        // different ids rather than three `--effort` values: `claude-opus-5-5-thinking-max`,
         // `claude-sonnet-5-high` and `gemini-3.8-flash-low`. Deep picks the Thinking family because
-        // it is the only Opus row on Cursor with a `max` rung at all -- plain `claude-opus-5` stops
+        // it is the only Opus row on Cursor with a `max` rung at all -- plain `claude-opus-5-5` stops
         // at `high`, and `format_cursor_model` would fold `max` down onto it.
         "cursor" => tiers(
-            (Some("claude-opus-5-thinking"), Some("max")),
+            (Some("claude-opus-5-5-thinking"), Some("max")),
             (Some("claude-sonnet-5"), Some("high")),
             (Some("gemini-3.8-flash"), Some("low")),
         ),
@@ -123,9 +123,9 @@ pub fn default_profiles(agent: &str) -> [TierDefault; 3] {
         "openaiproxy" | "proxy" => openai_proxy_tiers(proxy_base_url().as_deref()),
         // claude, and any id we do not know: Claude is the default provider.
         _ => tiers(
-            (Some("opus"), Some("max")),
-            (Some("sonnet"), Some("high")),
-            (Some("haiku"), Some("low")),
+            (Some("claude-opus-5-5"), Some("max")),
+            (Some("claude-sonnet-5"), Some("high")),
+            (Some("claude-haiku-4-5"), Some("low")),
         ),
     }
 }
@@ -156,7 +156,7 @@ fn tiers(
 
 fn ivy_tiers() -> [TierDefault; 3] {
     tiers(
-        (Some("claude-opus-5"), Some("max")),
+        (Some("claude-opus-5-5"), Some("max")),
         (Some("gemini-3.8-flash"), Some("medium")),
         (Some("gemini-3.8-flash"), Some("low")),
     )
@@ -178,7 +178,7 @@ pub fn openai_proxy_tiers(base_url: Option<&str>) -> [TierDefault; 3] {
     }
     if base.contains("api.anthropic.com") {
         return tiers(
-            (Some("claude-opus-5"), Some("max")),
+            (Some("claude-opus-5-5"), Some("max")),
             (Some("claude-sonnet-5"), Some("high")),
             (Some("claude-haiku-4-5"), Some("low")),
         );

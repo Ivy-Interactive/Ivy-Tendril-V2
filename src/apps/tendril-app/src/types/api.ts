@@ -81,6 +81,16 @@ export interface PlanArtifacts {
   other: string[];
 }
 
+/**
+ * One file in a plan's `Artifacts/` folder, as the Review app's artifact sheet shows it. Mirrors
+ * `tendril_core::plans::PlanArtifactContent`: only `text` carries content, and `binary` / `tooLarge`
+ * say why there is none (the daemon does not read a file past its 1 MiB preview cap).
+ */
+export type PlanArtifactContent =
+  | { kind: "text"; text: string; size: number }
+  | { kind: "binary"; size: number }
+  | { kind: "tooLarge"; size: number };
+
 /** Mirrors `JobStatus` in tendril-core `models/job.rs`. */
 export type JobStatus =
   | "Pending"
@@ -233,6 +243,28 @@ export interface ReviewActionConfig {
   condition: string;
   command: string;
   paths?: string[];
+}
+
+/**
+ * Whether one review action's condition holds for a plan, as the daemon decided it
+ * (`GET /api/projects/:name/review-actions?planId=...`).
+ *
+ * The daemon evaluates it against the plan folder, as V1's `ContentView` did with
+ * `PlatformHelper.EvaluatePowerShellCondition(action.Condition, folderPath)` — a `Test-Path` needs a
+ * filesystem and a POSIX condition needs a shell, and the webview has neither.
+ */
+export interface ReviewActionConditionResult {
+  name: string;
+  /** The condition as configured. */
+  condition: string;
+  /**
+   * `met`: holds, or there is no condition. `notMet`: evaluated and does not hold, which is what V1
+   * disabled the button on. `unknown`: could not be evaluated at all (unsupported syntax, a timeout).
+   * Typed as `string` too, because an older or newer daemon's value must not be read as one of these.
+   */
+  state: "met" | "notMet" | "unknown" | (string & {});
+  /** Why the condition could not be evaluated. Present only for `unknown`. */
+  reason?: string | null;
 }
 
 export interface ProjectSummary {

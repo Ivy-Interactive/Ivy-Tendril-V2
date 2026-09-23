@@ -1,0 +1,254 @@
+{
+  "blade": {
+    "back": "Retour",
+    "backTo": "Retour à {{title}}",
+    "close": "Fermer {{title}}",
+    "refresh": "Actualiser {{title}}"
+  },
+  "bladeContainer": {
+    "ariaLabel": "Volets"
+  },
+  "calendar": {
+    "dayButton": {
+      "selected": "{{date}}, sélectionné",
+      "today": "Aujourd'hui, {{date}}",
+      "todaySelected": "Aujourd'hui, {{date}}, sélectionné"
+    },
+    "gridcell": {
+      "today": "Aujourd'hui, {{date}}"
+    },
+    "monthDropdown": "Choisir le mois",
+    "monthPlaceholder": "M",
+    "navLabel": "Navigation {{label}}",
+    "nextMonth": "Aller au mois suivant",
+    "previousMonth": "Aller au mois précédent",
+    "weekNumber": "Semaine {{week}}",
+    "weekNumberHeader": "Numéro de semaine",
+    "yearDropdown": "Choisir l'année",
+    "yearPlaceholder": "AAAA"
+  },
+  "callout": {
+    "dismiss": "Masquer"
+  },
+  "charts": {
+    "axis": {
+      "billions": "{{value}} Md",
+      "millions": "{{value}} M",
+      "thousands": "{{value}} k"
+    },
+    "radarDefaultSeries": "Données",
+    "scatterLineSeries": "Courbe {{name}}"
+  },
+  "chatMessageList": {
+    "scrollToBottom": "Faire défiler jusqu'en bas"
+  },
+  "clipboard": {
+    "copyFailed": "Impossible de copier dans le presse-papiers."
+  },
+  "copyToClipboard": {
+    "ariaLabel": "Copier dans le presse-papiers",
+    "copied": "Copié"
+  },
+  "dataTable": {
+    "columnHeader": {
+      "clearSort": "Effacer le tri sur {{column}}",
+      "reorder": "Réorganiser la colonne",
+      "reorderAt": "Réorganiser la colonne, position {{position}} sur {{total}}",
+      "resize": "Redimensionner la colonne",
+      "sortAscending": "Trier par {{column}} (ordre croissant)",
+      "sortDescending": "Trier par {{column}} (ordre décroissant)"
+    },
+    "columnOptions": "Options de la colonne",
+    "editCell": "Modifier {{column}}",
+    "empty": "Aucun résultat.",
+    "filter": {
+      "clear": "Effacer",
+      "clearAriaLabel": "Effacer le filtre",
+      "errors": {
+        "afterIs": "Après « {{keyword}} », utilisez « {{blank}} », « {{notBlank}} », « {{null}} » ou « {{notNull}} ».",
+        "afterNot": "Après « {{keyword}} », utilisez « {{contains}} », « {{in}} » ou « {{equals}} ».",
+        "expectedColumn": "Nom de colonne attendu à la position {{position}}, « {{text}} » trouvé.",
+        "expectedValue": "Valeur entre guillemets attendue à la position {{position}}, par ex. {{example}}. Trouvé : « {{text}} ».",
+        "expectedWord": "Après « {{after}} », « {{word}} » est attendu.",
+        "inNeedsList": "« {{keyword}} » attend une liste : {{example}}.",
+        "incomplete": "L'expression se termine avant d'être complète.",
+        "needsComparison": "« {{column}} » nécessite une comparaison, par ex. {{equalsExample}} ou {{containsExample}}.",
+        "noFilterableColumn": "Aucune colonne de ce tableau ne peut être filtrée.",
+        "unclosedBracket": "Crochet « [ » non fermé à la position {{position}}.",
+        "unclosedGroup": "Parenthèse « ( » non fermée — chaque groupe doit se terminer par une « ) ».",
+        "unclosedList": "Parenthèse « ( » non fermée dans une liste « {{keyword}} ».",
+        "unclosedQuote": "Guillemet non fermé à la position {{position}}.",
+        "unexpectedCharacter": "« {{text}} » inattendu à la position {{position}}.",
+        "unexpectedSymbol": "« {{text}} » inattendu à la position {{position}}.",
+        "unexpectedToken": "« {{text}} » inattendu à la position {{position}}. Reliez les conditions avec {{and}} ou {{or}}.",
+        "unknownColumn": "Colonne inconnue « {{text}} ». Colonnes filtrables : {{names}}.",
+        "unknownComparison": "Comparaison inconnue « {{text}} » à la position {{position}}. Utilisez {{operators}} ou {{last}}."
+      },
+      "filterableColumns": "Colonnes filtrables",
+      "help": "Une seule expression, validée avec Entrée. Les conditions se combinent avec <code>{{and}}</code> / <code>{{or}}</code> et se regroupent entre parenthèses.",
+      "input": "Expression de filtre",
+      "noFilterableColumns": "Aucune colonne filtrable",
+      "syntax": "Syntaxe du filtre",
+      "syntaxTitle": "Ce qui peut être filtré, et comment",
+      "toggle": "Filtrer",
+      "toggleTitle": "Filtrer les données du tableau"
+    },
+    "loadingMore": "Chargement de la suite…",
+    "pagination": {
+      "ariaLabel": "Pagination du tableau",
+      "firstPage": "Aller à la première page",
+      "lastPage": "Aller à la dernière page",
+      "nextPage": "Aller à la page suivante",
+      "noRows": "Aucune ligne",
+      "page": "Page {{page}} sur {{pageCount}}",
+      "previousPage": "Aller à la page précédente",
+      "rowsPerPage": "Lignes par page",
+      "showing": "Affichage de {{start}}–{{end}} sur {{total}}"
+    },
+    "rowActions": "Actions sur la ligne",
+    "selectAllRows": "Sélectionner toutes les lignes",
+    "selectRow": "Sélectionner la ligne {{id}}"
+  },
+  "dialog": {
+    "close": "Fermer"
+  },
+  "diagram": {
+    "invalidGraphviz": "Syntaxe Graphviz DOT non valide",
+    "invalidMermaid": "Syntaxe de diagramme Mermaid non valide",
+    "loading": "Chargement du diagramme…",
+    "loadingGraphviz": "Chargement de Graphviz…",
+    "loadingMermaid": "Chargement de Mermaid…",
+    "renderFailed": "Impossible d'afficher le diagramme"
+  },
+  "errorDisplay": {
+    "copyDetails": "Copier les détails",
+    "message": "Message",
+    "stackTrace": "Trace de la pile",
+    "type": "Type"
+  },
+  "errorSheet": {
+    "description": "Une erreur s'est produite dans l'application. Les détails sont affichés ci-dessous.",
+    "title": "Un problème est survenu"
+  },
+  "format": {
+    "bytes": {
+      "b": "{{value}} o",
+      "gb": "{{value}} Go",
+      "kb": "{{value}} Ko",
+      "mb": "{{value}} Mo",
+      "pb": "{{value}} Po",
+      "tb": "{{value}} To"
+    },
+    "duration": {
+      "hoursMinutes": "{{hours}} h {{minutes}} min",
+      "minutesSeconds": "{{minutes}} min {{seconds}} s",
+      "seconds": "{{seconds}} s"
+    },
+    "tokenCount": {
+      "millions": "{{value}} M",
+      "thousands": "{{value}} k"
+    },
+    "tokens": {
+      "millions": "{{value}} M",
+      "thousands": "{{value}} k"
+    }
+  },
+  "imageOverlay": {
+    "ariaLabel": "Visionneuse d'images",
+    "close": "Fermer",
+    "next": "Image suivante",
+    "position": "{{current}} / {{total}}",
+    "previous": "Image précédente"
+  },
+  "invalidIcon": {
+    "ariaLabel": "Erreur de validation"
+  },
+  "jsonRenderer": {
+    "invalid": "Chaîne JSON non valide"
+  },
+  "loading": {
+    "ariaLabel": "Chargement",
+    "text": "Chargement…"
+  },
+  "madeWithIvy": {
+    "label": "CRÉÉ AVEC"
+  },
+  "markdown": {
+    "alerts": {
+      "caution": "Attention",
+      "important": "Important",
+      "note": "Remarque",
+      "tip": "Astuce",
+      "warning": "Avertissement"
+    },
+    "footnotes": {
+      "backToReference": "Retour à la référence {{ref}}",
+      "backToReferenceRepeat": "Retour à la référence {{ref}}-{{reref}}",
+      "label": "Notes de bas de page"
+    },
+    "taskCompleted": "Tâche terminée",
+    "taskPending": "Tâche en attente"
+  },
+  "multiselect": {
+    "bulkSelection": "Sélection groupée",
+    "clearAll": "Tout effacer",
+    "empty": "Aucune option disponible",
+    "placeholder": "Sélectionner des options…",
+    "remove": "Retirer",
+    "selectAll": "Tout sélectionner",
+    "toggleDropdown": "Afficher ou masquer la liste"
+  },
+  "pagination": {
+    "ariaLabel": "pagination",
+    "morePages": "Autres pages",
+    "next": "Suivant",
+    "nextAriaLabel": "Aller à la page suivante",
+    "previous": "Précédent",
+    "previousAriaLabel": "Aller à la page précédente"
+  },
+  "progress": {
+    "ariaLabel": "Progression"
+  },
+  "sheet": {
+    "close": "Fermer"
+  },
+  "sidebar": {
+    "toggle": "Afficher ou masquer la barre latérale"
+  },
+  "slider": {
+    "ariaLabel": "Curseur"
+  },
+  "stackedProgress": {
+    "indeterminate": "Indéterminé",
+    "segmentFallback": "Segment {{number}}",
+    "select": "Sélectionner {{label}}",
+    "tooltip": "{{label}} : {{value}}",
+    "total": "Total : {{total}}",
+    "valueText": "{{label}} : {{value}} sur {{total}}"
+  },
+  "starRating": {
+    "rate_one": "Attribuer {{count}} étoile",
+    "rate_many": "Attribuer {{count}} étoiles",
+    "rate_other": "Attribuer {{count}} étoiles"
+  },
+  "statusLine": {
+    "estimatedTooltip": "Estimation d'après le flux reçu jusqu'ici",
+    "tokensAbbreviated": "{{value}} tokens",
+    "tokensAbbreviatedEstimated": "~{{value}} tokens",
+    "tokensEstimated_one": "~{{value}} token",
+    "tokensEstimated_many": "~{{value}} tokens",
+    "tokensEstimated_other": "~{{value}} tokens",
+    "tokens_one": "{{value}} token",
+    "tokens_many": "{{value}} tokens",
+    "tokens_other": "{{value}} tokens"
+  },
+  "toolbar": {
+    "moreActions": "Plus d'actions"
+  },
+  "tuiBadge": {
+    "remove": "Retirer"
+  },
+  "xmlRenderer": {
+    "invalid": "Chaîne XML non valide"
+  }
+}

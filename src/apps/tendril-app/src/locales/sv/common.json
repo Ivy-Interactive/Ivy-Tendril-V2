@@ -1,0 +1,265 @@
+{
+  "actions": {
+    "cancel": "Avbryt",
+    "close": "Stäng",
+    "confirm": "Bekräfta",
+    "copy": "Kopiera",
+    "delete": "Ta bort",
+    "retry": "Försök igen",
+    "save": "Spara"
+  },
+  "status": {
+    "copied": "Kopierat",
+    "error": "Fel",
+    "loading": "Läser in…",
+    "none": "Ingen",
+    "unknown": "Okänd"
+  },
+  "enums": {
+    "jobStatus": {
+      "pending": "Väntar",
+      "queued": "Köad",
+      "running": "Körs",
+      "completed": "Slutförd",
+      "failed": "Misslyckad",
+      "timeout": "Timeout",
+      "stopped": "Stoppad",
+      "blocked": "Blockerad"
+    },
+    "jobType": {
+      "executePlan": "ExecutePlan",
+      "createPlan": "CreatePlan",
+      "retryPlan": "RetryPlan",
+      "updatePlan": "UpdatePlan",
+      "expandPlan": "ExpandPlan",
+      "splitPlan": "SplitPlan",
+      "createPr": "CreatePr",
+      "createIssue": "CreateIssue",
+      "setupProject": "SetupProject",
+      "addProject": "AddProject",
+      "syncRepo": "SyncRepo"
+    },
+    "planState": {
+      "draft": "Utkast",
+      "creating": "Skapas",
+      "updating": "Uppdateras",
+      "executing": "Exekveras",
+      "review": "Granskning",
+      "failed": "Misslyckad",
+      "completed": "Slutförd",
+      "skipped": "Överhoppad",
+      "blocked": "Blockerad",
+      "icebox": "Isbox"
+    }
+  },
+  "appTitles": {
+    "dashboard": "Översiktspanel",
+    "plans": "Planer",
+    "review": "Granskning",
+    "recommendations": "Rekommendationer",
+    "jobs": "Jobb",
+    "chat": "Chatt",
+    "inbox": "Inkorg",
+    "settings": "Inställningar",
+    "pullRequests": "Pull requests",
+    "icebox": "Isbox",
+    "reviewAction": "Granskningsåtgärd",
+    "agent": "Agent",
+    "plan": "Plan {{id}}",
+    "job": "Jobb {{id}}"
+  },
+  "navigation": {
+    "errors": {
+      "tabGone": "Fliken finns inte längre."
+    }
+  },
+  "sidebar": {
+    "version": "v {{version}}",
+    "nav": {
+      "dashboard": "Översiktspanel",
+      "plans": "Planer",
+      "review": "Granskning",
+      "recommendations": "Rekommendationer",
+      "jobs": "Jobb"
+    },
+    "chat": "Chatt",
+    "inbox": "Inkorg",
+    "settings": "Inställningar",
+    "settingsMenu": {
+      "configuration": "Konfiguration",
+      "pullRequests": "Pull requests",
+      "icebox": "Isbox",
+      "checkForUpdates": "Sök efter uppdateringar",
+      "help": "Hjälp",
+      "documentation": "Dokumentation",
+      "reportIssue": "Rapportera problem"
+    }
+  },
+  "shortcuts": {
+    "gotoChat": "Växla till chatt",
+    "gotoInbox": "Öppna inkorgen för GitHub-ärenden",
+    "newPlan": "Öppna dialogrutan för ny plan",
+    "planSearch": "Sök planer",
+    "showShortcuts": "Visa kortkommandon"
+  },
+  "shortcutsHelp": {
+    "title": "Kortkommandon",
+    "empty": "Inga kortkommandon är aktiva."
+  },
+  "updateCheck": {
+    "available": {
+      "title": "Uppdatering tillgänglig",
+      "description": "Version {{version}} är tillgänglig."
+    },
+    "upToDate": {
+      "title": "Allt är uppdaterat",
+      "description": "Du har den senaste versionen (v{{version}})."
+    },
+    "failed": {
+      "title": "Det gick inte att söka efter uppdateringar"
+    }
+  },
+  "updateNotice": {
+    "available": "v{{latest}} är tillgänglig (du har v{{current}})",
+    "copyCommand": "Kopiera kommando",
+    "dismiss": "Avfärda"
+  },
+  "offlineBanner": {
+    "reconnecting": "Tendril-Service är frånkopplad. Ansluter automatiskt igen om {{seconds}} s…",
+    "unreachable": "Det går inte att nå Tendril-Service-daemonen.",
+    "cachedState": "(Använder cachelagrat tillstånd)",
+    "reconnect": "Anslut igen nu"
+  },
+  "planPage": {
+    "loading": "Läser in plan {{id}}…",
+    "loadError": "Det gick inte att läsa in plan {{id}}: {{error}}"
+  },
+  "jobPage": {
+    "placeholderType": "Agentjobb"
+  },
+  "shellErrors": {
+    "restartFailed": "Det gick inte att starta om tjänsten: {{error}}",
+    "repairFailed": "Det gick inte att reparera tjänsten: {{error}}",
+    "dismissNavError": "Stäng navigeringsfelet"
+  },
+  "stopQueued": {
+    "title": "Stoppa köade jobb",
+    "body_one": "Vill du stoppa {{count}} köat jobb? Jobb som körs påverkas inte.",
+    "body_other": "Vill du stoppa alla {{count}} köade jobb? Jobb som körs påverkas inte.",
+    "confirm": "Stoppa alla",
+    "toast": {
+      "title": "Jobb",
+      "description_one": "Stoppade {{count}} köat jobb.",
+      "description_other": "Stoppade {{count}} köade jobb."
+    }
+  },
+  "stopAll": {
+    "title": "Stoppa alla jobb",
+    "body_one": "Vill du stoppa {{count}} aktivt jobb? Agenter som körs avslutas och deras planer återgår till sitt tidigare tillstånd. Det går inte att ångra.",
+    "body_other": "Vill du stoppa alla {{count}} aktiva jobb? Agenter som körs avslutas och deras planer återgår till sitt tidigare tillstånd. Det går inte att ångra.",
+    "confirm": "Stoppa alla",
+    "toast": {
+      "title": "Jobben har stoppats",
+      "description_one": "Stoppade {{count}} jobb",
+      "description_other": "Stoppade {{count}} jobb"
+    }
+  },
+  "errorBanner": {
+    "dismiss": "Stäng felmeddelandet"
+  },
+  "recommendationCard": {
+    "state": {
+      "pending": "Väntar",
+      "accepted": "Accepterad",
+      "acceptedWithNotes": "Accepterad med anteckningar",
+      "declined": "Avvisad"
+    },
+    "impact": {
+      "small": "Liten",
+      "medium": "Medel",
+      "high": "Hög"
+    },
+    "declineReason": "Anledning till avvisning: {{reason}}",
+    "notes": "Anteckningar: {{notes}}",
+    "accept": "Acceptera",
+    "decline": "Avvisa"
+  },
+  "service": {
+    "state": {
+      "connected": "Ansluten",
+      "disconnected": "Frånkopplad",
+      "unauthenticated": "Inte autentiserad",
+      "notRunning": "Körs inte",
+      "foreignMaster": "Främmande master"
+    },
+    "ownership": {
+      "adoptedExternal": "Extern (övertagen)",
+      "managed": "Hanterad"
+    }
+  },
+  "serviceStatus": {
+    "connectedExternal": "Ansluten (extern)",
+    "portUnavailable": "Ej tillgänglig",
+    "restart": "Starta om tjänsten",
+    "repair": "Reparera tjänsten",
+    "diagnostics": "Diagnostik"
+  },
+  "serviceSettings": {
+    "controls": {
+      "title": "Övervakning och styrning av tjänsten",
+      "hint": "Hantera den lokala daemonens livscykel, övertagande av ägarskap och återställning efter krasch."
+    },
+    "actions": {
+      "restart": "Starta om tjänsten",
+      "repair": "Reparera tjänsten",
+      "switchToExternal": "Byt till extern daemon",
+      "adoptManaged": "Byt till hanterad daemon",
+      "install": "Installera bakgrundstjänst",
+      "installTooltip": "Kopiera den medföljande daemonen till {{path}} och starta den när du loggar in",
+      "disableAutostart": "Inaktivera start vid inloggning",
+      "disableAutostartTooltip": "Hindra daemonen från att starta vid inloggning. De installerade binärfilerna ligger kvar där de är.",
+      "refreshLogs": "Uppdatera loggar",
+      "loadingLogs": "Läser in loggar…"
+    },
+    "messages": {
+      "restartInitiated": "Omstart av tjänsten har påbörjats.",
+      "restartFailed": "Omstarten misslyckades: {{error}}",
+      "repairFailed": "Reparationen misslyckades: {{error}}",
+      "installFailed": "Installationen misslyckades: {{error}}",
+      "disableAutostartFailed": "Det gick inte att inaktivera start vid inloggning: {{error}}",
+      "switchedToManaged": "Tjänstens ägarskapsläge har ändrats till hanterat.",
+      "switchedToExternal": "Tjänstens ägarskapsläge har ändrats till externt.",
+      "switchFailed": "Det gick inte att byta läge: {{error}}"
+    },
+    "provision": {
+      "installed": "Installerade {{binaries, list(type: unit)}} i {{dir}}.",
+      "upToDate": "Redan den senaste versionen i {{dir}}: {{binaries, list(type: unit)}}.",
+      "missing": "Den här versionen innehåller inte {{binaries, list(type: unit)}}.",
+      "registered": "Registrerad för att starta när du loggar in ({{detail}}).",
+      "alreadyRegistered": "Redan registrerad för att starta när du loggar in.",
+      "registerFailed": "Det gick inte att registrera start vid inloggning: {{detail}}",
+      "skipped": "Start vid inloggning hoppades över: {{detail}}",
+      "nothing": "Inget att installera."
+    },
+    "details": {
+      "ownership": "Ägarskap",
+      "ownershipFallback": "Extern / fristående",
+      "endpoint": "Slutpunkt",
+      "pid": "Process-PID",
+      "crashCount": "Antal krascher",
+      "notAvailable": "Ej tillgänglig"
+    },
+    "logs": {
+      "title": "Daemon-diagnostik och tjänsteloggar",
+      "hint": "Känsliga tokens är maskerade. Läses från {{path}}.",
+      "empty": "Inga loggar har registrerats ännu i {{file}}.",
+      "loadFailed": "Det gick inte att läsa in tjänsteloggarna: {{error}}"
+    }
+  },
+  "errors": {
+    "requestFailed": "Begäran till {{path}} misslyckades ({{status}})",
+    "reviewActionFailed": "Granskningsåtgärden {{endpoint}} misslyckades ({{status}}): {{detail}}",
+    "subscribeFailed": "Det gick inte att prenumerera på {{url}}: HTTP {{status}}",
+    "agentTerminalFailed": "Agentterminalen {{endpoint}} misslyckades: HTTP {{status}}"
+  }
+}

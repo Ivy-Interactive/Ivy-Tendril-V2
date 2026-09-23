@@ -16,7 +16,18 @@ export const bladeVariant = cva(
   },
 );
 
-/** Width hints. Anything outside this set is applied as an inline CSS length instead. */
+/**
+ * Width hints. Anything outside this set is applied as an inline CSS length instead.
+ *
+ * `flex` fills whatever the row has left, and must not have a say in how much that is. The row is
+ * `w-max` so a stack can outgrow its pane, which makes it ask each blade how wide it would like to
+ * be; a fixed hint answers with its width, but a bare `flex-1` answered with its content's
+ * max-content width — every paragraph on one line. `contain-inline-size` makes the blade answer as
+ * if it were empty, so the row is sized by the pane and the fixed blades alone, and `flex-1` then
+ * hands the flex blade what is left. `min-w-80` is the floor under that: `sm`, the narrowest hint,
+ * so a flex blade beside a wide stack keeps a usable width and the row scrolls instead of the blade
+ * being squeezed to nothing.
+ */
 export const bladeWidthVariant = cva("", {
   variants: {
     width: {
@@ -24,7 +35,7 @@ export const bladeWidthVariant = cva("", {
       md: "w-104 shrink-0",
       lg: "w-136 shrink-0",
       xl: "w-176 shrink-0",
-      flex: "flex-1 min-w-0",
+      flex: "min-w-80 flex-1 contain-inline-size",
     },
   },
   defaultVariants: {

@@ -1,4 +1,5 @@
 import type React from "react";
+import { formatCompact, formatCurrency, formatDate, formatNumber, i18n } from "@/i18n/uiShell";
 
 export type IvyEventHandler = (eventName: string, widgetId: string, args: unknown[]) => void;
 
@@ -134,14 +135,35 @@ export const niceTicks = (max: number, count = 3): number[] => {
   return ticks;
 };
 
+const WHOLE_UNITS: Intl.NumberFormatOptions = {
+  minimumFractionDigits: 0,
+  maximumFractionDigits: 0,
+};
+
+/**
+ * Compact digits for a tick of 1,000 or more: whole units below a million ("$30K"), one decimal from
+ * a million up, so neighbouring ticks such as 1.5M and 2M do not both read "2M".
+ */
+const compactTickDigits = (value: number): Intl.NumberFormatOptions =>
+  value >= 1_000_000 ? { minimumFractionDigits: 0, maximumFractionDigits: 1 } : WHOLE_UNITS;
+
+/*
+ * Axis ticks, in the current language at each call: "$30K", "$40", "2K", "150" in English, the
+ * language's own currency placement and thousands abbreviation elsewhere. Whole units only below a
+ * million, rounded half up as `Math.round` did; a zero tick stays a bare "0".
+ */
 export const formatCurrencyTick = (value: number): string => {
-  if (value >= 1000) return `$${Math.round(value / 1000)}K`;
-  return value === 0 ? "0" : `$${Math.round(value)}`;
+  if (value >= 1000) {
+    return formatCurrency(value, "USD", { notation: "compact", ...compactTickDigits(value) });
+  }
+  return value === 0
+    ? formatNumber(0)
+    : formatCurrency(value, "USD", { ...WHOLE_UNITS, useGrouping: false });
 };
 
 export const formatCountTick = (value: number): string => {
-  if (value >= 1000) return `${Math.round(value / 1000)}K`;
-  return String(Math.round(value));
+  if (value >= 1000) return formatCompact(value, compactTickDigits(value));
+  return formatNumber(value, { ...WHOLE_UNITS, useGrouping: false });
 };
 
 /** Arithmetic mean of non-empty number arrays, returning null when empty. */
@@ -168,23 +190,6 @@ export const computeRollingAverage = (
       : values.slice(index - window + 1, index + 1).reduce((acc, value) => acc + value, 0) / window,
   );
 
-const MONTH_NAMES = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
-];
-
-const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-
 /**
  * Splits `yyyy-MM-dd` by hand rather than through `new Date(iso)`: the string form parses as UTC
  * midnight and reports the previous day in every negative-offset time zone.
@@ -197,19 +202,34 @@ const parseIsoDate = (iso: string): { year: number; month: number; day: number }
   return { year: Number(parts[1]), month, day: Number(parts[3]) };
 };
 
-/** Axis tick for a day: "Sep 7", or "Sep 7 '25" when the year has to be spelled out. */
+/** A parsed day as a local-midnight `Date`, which is what `Intl` formats back to the same day. */
+const localDate = ({ year, month, day }: { year: number; month: number; day: number }): Date =>
+  new Date(year, month - 1, day);
+
+/**
+ * Axis tick for a day, in the current language at each call: "Sep 7", or "Sep 7 '25" when the year
+ * has to be spelled out.
+ */
 export const formatAxisDate = (iso: string, includeYear = false): string => {
   const parsed = parseIsoDate(iso);
   if (!parsed) return iso;
-  const base = `${MONTH_NAMES[parsed.month - 1]} ${parsed.day}`;
-  return includeYear ? `${base} '${String(parsed.year).slice(-2)}` : base;
+  const base = formatDate(localDate(parsed), { month: "short", day: "numeric" });
+  return includeYear
+    ? i18n.t("uiShell:trendChart.axisDateWithYear", {
+        date: base,
+        year: String(parsed.year).slice(-2),
+      })
+    : base;
 };
 
-/** Tooltip title for a day: "Sun, Sep 7, 2026". */
+/** Tooltip title for a day, in the current language at each call: "Sun, Sep 7, 2026". */
 export const formatTooltipDate = (iso: string): string => {
   const parsed = parseIsoDate(iso);
   if (!parsed) return iso;
-  // Local Date constructor, for the weekday only; the parts above are already parsed.
-  const weekday = DAY_NAMES[new Date(parsed.year, parsed.month - 1, parsed.day).getDay()];
-  return `${weekday}, ${MONTH_NAMES[parsed.month - 1]} ${parsed.day}, ${parsed.year}`;
+  return formatDate(localDate(parsed), {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 };

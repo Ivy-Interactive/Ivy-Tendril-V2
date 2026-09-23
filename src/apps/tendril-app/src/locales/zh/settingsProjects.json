@@ -1,0 +1,359 @@
+{
+  "view": {
+    "ariaLabel": "项目配置",
+    "subtitle": "项目配置",
+    "rename": "重命名项目"
+  },
+  "notifications": {
+    "saved": "已保存",
+    "cloned": "已克隆",
+    "renamed": "已重命名"
+  },
+  "saveError": "保存项目失败：{{error}}",
+  "rowActions": {
+    "edit": "编辑"
+  },
+  "bladeFooter": {
+    "add": "添加"
+  },
+  "basic": {
+    "title": "基本",
+    "hint": "项目的颜色，以及提供给每个处理此项目的智能体的 AI 上下文。",
+    "color": {
+      "label": "颜色",
+      "hint": "Ivy 颜色名称，与 config.yaml 中存储的形式一致。"
+    },
+    "context": {
+      "label": "上下文",
+      "placeholder": "智能体应了解的有关此项目的信息…"
+    },
+    "saved": "项目已保存"
+  },
+  "repositories": {
+    "title": "仓库",
+    "hint": "源仓库，以及每个计划所基于的基准分支。",
+    "empty": "暂无仓库。",
+    "baseBranch": {
+      "ariaLabel": "{{path}} 的基准分支",
+      "placeholder": "基准分支",
+      "saved": "已保存 {{path}} 的基准分支"
+    },
+    "remove": {
+      "ariaLabel": "移除 {{path}}",
+      "consequence": "磁盘上的检出副本不会受到影响，此操作只会让此项目的新计划不再基于它创建。",
+      "removed": "已移除 {{path}}"
+    },
+    "add": {
+      "ariaLabel": "仓库 URL 或本地路径",
+      "placeholder": "仓库 URL 或本地路径",
+      "button": "添加仓库",
+      "cloning": "正在克隆…",
+      "invalidPath": "仓库路径无效。",
+      "added": "已添加 {{path}}",
+      "cloned": "仓库已克隆到 {{path}}",
+      "failed": "添加仓库失败：{{error}}"
+    },
+    "note": "远程 URL 会被克隆到 TENDRIL_HOME 中，该行显示的是克隆位置而不是 URL；本地路径则按输入原样存储。"
+  },
+  "reviewActions": {
+    "title": "审查操作",
+    "hint": "审查期间显示的快速启动按钮，用于预览或运行应用。",
+    "addButton": "添加审查操作",
+    "addTitle": "添加审查操作",
+    "editTitle": "编辑审查操作",
+    "columns": {
+      "name": "操作名称",
+      "command": "命令",
+      "condition": "条件"
+    },
+    "empty": "此项目没有审查操作。",
+    "removal": {
+      "consequence": "此项目中处于待审查状态的计划将不再提供该操作，其余操作会在运行顺序中依次前移补位。"
+    },
+    "saved": "审查操作“{{name}}”已保存",
+    "deleted": "审查操作“{{name}}”已删除"
+  },
+  "verifications": {
+    "title": "验证",
+    "hint": "计划标记为完成前必须通过的质量检查。拖动以设置运行顺序。",
+    "addButton": "添加验证",
+    "addTitle": "添加验证",
+    "empty": "config.yaml 中未定义任何验证，因此没有可启用的项。添加一项验证即可创建它并在此处启用。",
+    "updated": "已更新 {{project}} 的验证",
+    "orderSaved": "验证运行顺序已保存",
+    "added": "验证已添加",
+    "addFailed": "添加验证失败：{{error}}"
+  },
+  "ports": {
+    "title": "端口",
+    "hint": "具名服务端口。默认端口被占用时，计划会改用空闲端口。",
+    "addButton": "添加端口",
+    "addTitle": "添加端口",
+    "editTitle": "编辑端口",
+    "columns": {
+      "name": "名称",
+      "defaultPort": "默认端口",
+      "description": "描述"
+    },
+    "empty": "尚未配置服务端口。定义具名端口，以便在并发的计划审查之间动态分配端口。",
+    "mergeLimitation": "端口是一个映射，而 PUT /api/config 会对映射进行深度合并，因此可以在此处添加或修改端口，但无法删除或重命名端口。",
+    "saved": "端口“{{name}}”已保存"
+  },
+  "envFiles": {
+    "title": "环境文件",
+    "hint": "在每个计划工作区中重新创建的文件；计划工作区创建时不包含未跟踪的 .env 文件。",
+    "addButton": "添加环境文件",
+    "addTitle": "添加环境文件",
+    "editTitle": "编辑环境文件",
+    "columns": {
+      "path": "路径",
+      "template": "模板",
+      "overrides": "覆盖项"
+    },
+    "empty": "尚未配置环境文件。定义环境文件，以便生成 .env 模板并将变量注入计划工作区。",
+    "removal": {
+      "consequence": "其变量将不再注入新的计划工作区。已在现有工作区中生成的文件保持不变。"
+    },
+    "saved": "环境文件“{{path}}”已保存",
+    "deleted": "环境文件“{{path}}”已删除"
+  },
+  "agentBehavior": {
+    "title": "智能体行为",
+    "autoImplement": {
+      "label": "产物审查 / 自动实施策略",
+      "options": {
+        "autoImplementPlans": "自动实施计划",
+        "alwaysAskReview": "始终请求审查"
+      }
+    },
+    "saved": "智能体行为已保存"
+  },
+  "security": {
+    "title": "安全",
+    "hint": "此项目的沙箱、文件与网络规则以及终端确认设置。",
+    "preset": {
+      "label": "安全预设",
+      "hint": "选择“自定义”以外的任何预设都会覆盖下方的沙箱及文件/网络字段。",
+      "options": {
+        "custom": "自定义",
+        "permissive": "宽松",
+        "restricted": "受限",
+        "strict": "严格"
+      }
+    },
+    "sandboxMode": {
+      "label": "沙箱模式",
+      "hint": "“继承全局设置”表示不使用沙箱。当前生效：{{effective}}。",
+      "options": {
+        "inheritGeneral": "继承全局设置",
+        "enabled": "启用",
+        "disabled": "禁用"
+      }
+    },
+    "outsideFileAccess": {
+      "label": "外部文件访问",
+      "hint": "选择“拒绝”会忽略下方的所有文件规则。当前生效：{{effective}}。",
+      "options": {
+        "allow": "允许",
+        "ask": "询问",
+        "deny": "拒绝"
+      }
+    },
+    "terminalAutoExecution": {
+      "label": "终端自动执行",
+      "hint": "不受安全预设影响。当前生效：{{effective}}。",
+      "options": {
+        "inheritGeneral": "继承全局设置",
+        "alwaysProceed": "始终执行",
+        "alwaysAsk": "始终询问"
+      }
+    },
+    "filePermissions": {
+      "label": "文件权限",
+      "hint": "每行一条 `{{syntax}}`。{{allow}} 添加可写目录；{{deny}} 禁止对该路径执行 {{write}} 和 {{edit}}。"
+    },
+    "networkRules": {
+      "label": "网络访问规则",
+      "hintAllowed": "每行一条 `{{syntax}}`。只需一条 {{deny}} 即可完全关闭网络访问。当前生效：允许。",
+      "hintDenied": "每行一条 `{{syntax}}`。只需一条 {{deny}} 即可完全关闭网络访问。当前生效：拒绝。"
+    },
+    "allowedCommands": {
+      "label": "允许的终端命令",
+      "hint": "每行一条命令，每条均以 `{{syntax}}` 的形式允许。"
+    },
+    "enforcement": {
+      "enforces": "{{agent}} 强制执行：{{controls, list(style: narrow)}}。",
+      "enforcesNone": "{{agent}} 不强制执行以上任何控制项。",
+      "ignored": "{{agent}} 会忽略：{{controls, list(style: narrow)}}。这些键仍会被写入，并由支持它们的智能体遵循。",
+      "controls": {
+        "sandbox": "沙箱模式",
+        "network": "网络访问",
+        "terminalPrompt": "终端确认",
+        "fileRules": "文件与命令规则"
+      }
+    },
+    "saved": "已保存 {{project}} 的安全设置"
+  },
+  "mcpServers": {
+    "title": "本地权限",
+    "hint": "此项目的自定义 Model Context Protocol 服务器。",
+    "addButton": "添加 MCP 服务器",
+    "addTitle": "添加 MCP 服务器",
+    "editTitle": "编辑 MCP 服务器",
+    "columns": {
+      "name": "名称",
+      "command": "命令",
+      "disabled": "已禁用"
+    },
+    "disabledValue": {
+      "yes": "是",
+      "no": "否"
+    },
+    "empty": "此项目尚未配置 MCP 服务器。",
+    "removal": {
+      "consequence": "处理此项目的智能体将不再获得它提供的工具。此操作只会移除项目对它的引用，不会删除服务器定义本身。"
+    },
+    "saved": "MCP 服务器“{{name}}”已保存",
+    "deleted": "MCP 服务器“{{name}}”已删除"
+  },
+  "skills": {
+    "title": "自定义",
+    "hint": "为处理此项目的智能体提供的自定义技能与提示词指令。",
+    "addButton": "添加自定义技能",
+    "addTitle": "添加自定义技能",
+    "editTitle": "编辑自定义技能",
+    "columns": {
+      "name": "名称",
+      "description": "描述",
+      "path": "路径"
+    },
+    "empty": "此项目尚未配置自定义技能。",
+    "removal": {
+      "consequence": "处理此项目的智能体将不再获得该技能。此操作只会移除项目对它的引用，不会删除技能自身的文件。"
+    },
+    "saved": "技能“{{name}}”已保存",
+    "deleted": "技能“{{name}}”已删除",
+    "memoryNote": "项目记忆以 Markdown 文件形式存放在 {{path}} 下。守护进程未提供访问它们的路由，因此暂时无法在此处编辑。"
+  },
+  "dangerZone": {
+    "title": "危险区域",
+    "remove": {
+      "button": "移除项目",
+      "description": "从 config.yaml 中移除该项目。克隆的仓库、计划文件夹和历史记录会保留在磁盘上，因此按名称重新添加该项目即可将其恢复。"
+    },
+    "delete": {
+      "button": "删除项目",
+      "description": "永久删除该项目的计划、{{path}} 下克隆的仓库、数据库记录及其配置条目。此操作无法撤销，执行前需要您先输入项目名称。"
+    }
+  },
+  "reviewActionBlade": {
+    "name": {
+      "label": "名称",
+      "placeholder": "操作名称…"
+    },
+    "command": {
+      "label": "命令",
+      "placeholder": "例如 dotnet test"
+    },
+    "condition": {
+      "label": "条件",
+      "placeholder": "例如 {{example}}"
+    }
+  },
+  "verificationBlade": {
+    "name": {
+      "label": "名称",
+      "placeholder": "验证名称…",
+      "duplicate": "已存在名为“{{name}}”的验证。"
+    },
+    "prompt": {
+      "label": "提示词",
+      "placeholder": "验证提示词…"
+    }
+  },
+  "mcpServerBlade": {
+    "name": {
+      "label": "名称",
+      "placeholder": "服务器名称（例如 sqlite）…"
+    },
+    "command": {
+      "label": "命令",
+      "placeholder": "可执行命令（例如 npx）…"
+    },
+    "arguments": {
+      "label": "参数",
+      "placeholder": "参数（例如 -y @modelcontextprotocol/server-sqlite）…",
+      "hint": "按空白字符拆分，与 EditMcpServerBladeView 的拆分方式一致。"
+    },
+    "environment": {
+      "label": "环境变量",
+      "hint": "每行一个 KEY=VALUE。"
+    },
+    "disabled": "禁用"
+  },
+  "skillBlade": {
+    "name": {
+      "label": "名称",
+      "placeholder": "技能名称（例如 code-review）…"
+    },
+    "description": {
+      "label": "描述",
+      "placeholder": "简短描述…"
+    },
+    "instructions": {
+      "label": "指令",
+      "placeholder": "给智能体的 Markdown 指令…"
+    },
+    "path": {
+      "label": "文件/文件夹路径",
+      "placeholder": "技能文件夹/文件的路径（例如 %TENDRIL_HOME%/Skills/my-skill）…"
+    },
+    "disabled": "禁用"
+  },
+  "portBlade": {
+    "name": {
+      "label": "名称",
+      "placeholder": "例如 backend",
+      "hint": "端口标识符，可在环境覆盖项中通过 {{placeholder}} 占位符引用。"
+    },
+    "defaultPort": {
+      "label": "默认端口",
+      "invalid": "默认端口必须介于 1 到 65535 之间。",
+      "hint": "首选端口。如果它已被占用，Tendril 会改为分配一个空闲端口。"
+    },
+    "description": {
+      "label": "描述",
+      "placeholder": "在此端口上监听的服务…"
+    }
+  },
+  "envFileBlade": {
+    "path": {
+      "label": "路径",
+      "placeholder": "例如 apps/web/.env",
+      "hint": "在计划工作区中重新创建的环境文件的相对路径。"
+    },
+    "template": {
+      "label": "模板",
+      "placeholder": "例如 .env.example",
+      "hint": "可选的基础模板，会在应用覆盖项之前复制到工作区中。"
+    },
+    "overrides": {
+      "label": "覆盖项",
+      "hint": "KEY=VALUE 行，支持 {{ports}}、{{env}} 和 {{variable}} 占位符。"
+    }
+  },
+  "nameEditor": {
+    "ariaLabel": "项目名称",
+    "confirm": "确认重命名",
+    "cancel": "取消重命名",
+    "duplicate": "已存在名为“{{name}}”的项目。",
+    "renamed": "已将项目重命名为“{{name}}”"
+  },
+  "removalKinds": {
+    "repository": "仓库",
+    "reviewAction": "审查操作",
+    "environmentFile": "环境文件",
+    "mcpServer": "MCP 服务器",
+    "customSkill": "自定义技能"
+  }
+}

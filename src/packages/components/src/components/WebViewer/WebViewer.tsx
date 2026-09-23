@@ -8,6 +8,7 @@ import { DEVICE_LABELS, DEVICE_VIEWPORTS, toDeviceKey, type DeviceKey } from "./
 import { TuiBadge } from "../ui/TuiBadge";
 import { TooltipScope } from "../ui/TuiTooltip";
 import { useProxyOrigin } from "@/contexts/webviewer-context";
+import { Trans, useTranslation } from "@/i18n/uiShell";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -89,10 +90,23 @@ function renumber(markers: CommentMarker[]): CommentMarker[] {
   return markers.map((m, i) => ({ ...m, number: i + 1 }));
 }
 
-function quote(text: string): string {
+/** The element's own text on one line, cut to fit the comment box's title. */
+function snippet(text: string): string {
   const oneLine = text.replace(/\s+/g, " ").trim();
-  const truncated = oneLine.length > 60 ? oneLine.slice(0, 57) + "..." : oneLine;
-  return `"${truncated}"`;
+  return oneLine.length > 60 ? oneLine.slice(0, 57) + "..." : oneLine;
+}
+
+/**
+ * The comment box's title is one sentence with the element's tag and text inside it, so a
+ * translator can put them before the verb. Its context says which of the two it has.
+ */
+function commentTitleContext(meta: { tag?: string; text?: string } | null): string | undefined {
+  const tag = Boolean(meta?.tag);
+  const text = Boolean(meta?.text);
+  if (tag && text) return "tagText";
+  if (tag) return "tag";
+  if (text) return "text";
+  return undefined;
 }
 
 function sourceLabel(debug: DebugPayload | null): string | null {
@@ -197,6 +211,7 @@ export const WebViewer: React.FC<WebViewerProps> = ({
   eventHandler,
   events = [],
 }) => {
+  const { t } = useTranslation("uiShell");
   const propDevice = toDeviceKey(device);
   const [devKey, setDevKey] = useState<DeviceKey>(propDevice);
   useEffect(() => {
@@ -441,6 +456,7 @@ export const WebViewer: React.FC<WebViewerProps> = ({
           });
         }
       } catch (err) {
+        // A line on the page's console channel, beside the page's own log: not UI, so not translated.
         emit("console", {
           level: "error",
           text: "Screenshot save failed: " + (err instanceof Error ? err.message : String(err)),
@@ -525,6 +541,7 @@ export const WebViewer: React.FC<WebViewerProps> = ({
           void saveCapture(data.dataUrl, data.mode, data.w, data.h);
           return;
         case "capture-error":
+          // The console channel again (see `saveCapture`): left in English.
           emit("console", {
             level: "error",
             text: "Screenshot capture failed: " + (data.error || "unknown error"),
@@ -756,8 +773,9 @@ export const WebViewer: React.FC<WebViewerProps> = ({
           {!currentUrl ? (
             <div className="wvr-empty">
               {toolbar
-                ? "Enter a URL in the address bar to load a page."
-                : "No URL -- set the Url prop to load a page."}
+                ? t("webViewer.empty")
+                : // Only a host that wired the viewer without a toolbar or a URL sees this: developer text.
+                  "No URL -- set the Url prop to load a page."}
             </div>
           ) : frameSrc ? (
             <iframe
@@ -765,7 +783,7 @@ export const WebViewer: React.FC<WebViewerProps> = ({
               key={frameKey}
               className="wvr-frame"
               src={toViewUrl(frameSrc, viewerId, devKey, origin)}
-              title="Web content"
+              title={t("webViewer.frameTitle")}
               style={iframeStyle}
               onLoad={() => {
                 setLoadedKey(frameKey);
@@ -791,25 +809,36 @@ export const WebViewer: React.FC<WebViewerProps> = ({
                     {comments.find((m) => m.id === pending.markerId)?.number}
                   </span>
                 )}
-                Comment on
-                {pending.meta?.tag && (
-                  <TuiBadge className="wvr-comment-tag" size="md" mono>
-                    {pending.meta.tag}
-                  </TuiBadge>
-                )}
-                {pending.meta?.text && (
-                  <span className="wvr-comment-snippet">{quote(pending.meta.text)}</span>
-                )}
+                <Trans
+                  ns="uiShell"
+                  i18nKey="webViewer.comment.title"
+                  context={commentTitleContext(pending.meta)}
+                  values={{
+                    tag: pending.meta?.tag,
+                    text: pending.meta?.text ? snippet(pending.meta.text) : undefined,
+                  }}
+                  components={{
+                    // <Trans> replaces the placeholder child with the translated text.
+                    tag: (
+                      <TuiBadge className="wvr-comment-tag" size="md" mono>
+                        {null}
+                      </TuiBadge>
+                    ),
+                    snippet: <span className="wvr-comment-snippet" />,
+                  }}
+                />
               </div>
               {pending.resolving && (
                 <div className="wvr-comment-field">
-                  <div className="wvr-comment-label">source</div>
-                  <div className="wvr-comment-value wvr-comment-muted">resolving source map…</div>
+                  <div className="wvr-comment-label">{t("webViewer.comment.sourceLabel")}</div>
+                  <div className="wvr-comment-value wvr-comment-muted">
+                    {t("webViewer.comment.resolvingSource")}
+                  </div>
                 </div>
               )}
               {!pending.resolving && sourceLabel(pending.debug) && (
                 <div className="wvr-comment-field">
-                  <div className="wvr-comment-label">source</div>
+                  <div className="wvr-comment-label">{t("webViewer.comment.sourceLabel")}</div>
                   <div className="wvr-comment-value wvr-comment-source">
                     {sourceLabel(pending.debug)}
                   </div>
@@ -822,7 +851,7 @@ export const WebViewer: React.FC<WebViewerProps> = ({
               )}
               {(pending.debug?.ownerChain?.length ?? 0) > 0 && (
                 <div className="wvr-comment-field">
-                  <div className="wvr-comment-label">components</div>
+                  <div className="wvr-comment-label">{t("webViewer.comment.componentsLabel")}</div>
                   <div className="wvr-comment-value">
                     {(pending.debug?.ownerChain ?? [])
                       .map((owner) => owner.name)
@@ -846,13 +875,13 @@ export const WebViewer: React.FC<WebViewerProps> = ({
                 )}
               {pending.xpath && (
                 <div className="wvr-comment-field">
-                  <div className="wvr-comment-label">xpath</div>
+                  <div className="wvr-comment-label">{t("webViewer.comment.xpathLabel")}</div>
                   <div className="wvr-comment-value">{pending.xpath}</div>
                 </div>
               )}
               {pending.selector && (
                 <div className="wvr-comment-field">
-                  <div className="wvr-comment-label">selector</div>
+                  <div className="wvr-comment-label">{t("webViewer.comment.selectorLabel")}</div>
                   <div className="wvr-comment-value">{pending.selector}</div>
                 </div>
               )}
@@ -865,7 +894,7 @@ export const WebViewer: React.FC<WebViewerProps> = ({
                   if (e.key === "Escape") cancelComment();
                   if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) submitComment();
                 }}
-                placeholder="Type a comment… (Ctrl+Enter to submit)"
+                placeholder={t("webViewer.comment.placeholder", { shortcut: "Ctrl+Enter" })}
                 rows={4}
               />
               <div className="wvr-comment-actions">
@@ -876,14 +905,16 @@ export const WebViewer: React.FC<WebViewerProps> = ({
                     className="tui-btn tui-btn--danger wvr-comment-delete"
                     onClick={deleteComment}
                   >
-                    Delete
+                    {t("webViewer.comment.delete")}
                   </button>
                 )}
                 <button type="button" className="tui-btn tui-btn--ghost" onClick={cancelComment}>
-                  Cancel
+                  {t("webViewer.comment.cancel")}
                 </button>
                 <button type="button" className="tui-btn tui-btn--primary" onClick={submitComment}>
-                  {pending.mode === "edit" ? "Save" : "Add"}
+                  {pending.mode === "edit"
+                    ? t("webViewer.comment.save")
+                    : t("webViewer.comment.add")}
                 </button>
               </div>
             </div>

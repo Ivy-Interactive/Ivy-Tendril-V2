@@ -1,0 +1,239 @@
+{
+  "rail": {
+    "ariaLabel": "Categorias da caixa de entrada",
+    "myIssues": "Minhas issues",
+    "reviews": "Solicitações de revisão",
+    "projects": "Projetos",
+    "noProjects": "Nenhum projeto nas configurações"
+  },
+  "header": {
+    "title": {
+      "myIssues": "Minhas Issues",
+      "reviews": "Solicitações de Revisão",
+      "projectIssues": "Issues de {{project}}",
+      "projectIssues_noProject": "Issues do Projeto"
+    },
+    "refresh": "Atualizar",
+    "autoAccept": {
+      "on": "Aceitação Automática: Ativada",
+      "off": "Aceitação Automática: Desativada",
+      "onTooltip": "As issues atribuídas recentemente iniciam um plano assim que são encontradas",
+      "offTooltip": "As issues atribuídas recentemente são marcadas abaixo como Aguardando decisão para você aceitar ou descartar",
+      "settings": "Configurações de Aceitação Automática"
+    },
+    "checkNow": {
+      "label": "Verificar Agora",
+      "checking": "Verificando...",
+      "tooltip": "Importar agora as issues do GitHub atribuídas a você, sem esperar a próxima verificação agendada"
+    }
+  },
+  "bulk": {
+    "selectAll": "Selecionar Tudo",
+    "deselectAll": "Desmarcar Tudo",
+    "summary": "{{selected}} de {{total}} selecionadas",
+    "openChat": {
+      "label": "Abrir Chat",
+      "labelWithCount": "Abrir Chat ({{selected}})",
+      "tooltip": "Discutir as issues selecionadas com o agente de código"
+    },
+    "fireOff": {
+      "label": "Iniciar no Tendril",
+      "labelWithCount": "Iniciar no Tendril ({{selected}})"
+    }
+  },
+  "freshness": {
+    "repo": {
+      "label": "Repositório:",
+      "ariaLabel": "Filtrar por repositório"
+    },
+    "updated": "Atualizado {{when}}",
+    "updated_justNow": "Atualizado agora mesmo",
+    "notYetUpdated": "Ainda não atualizado",
+    "autoRefresh": {
+      "label": "Atualização automática:",
+      "ariaLabel": "Intervalo de atualização automática",
+      "off": "Desativada"
+    }
+  },
+  "fireNotice": {
+    "success_one": "{{count}} issue iniciada no Tendril",
+    "success_many": "{{count}} issues iniciadas no Tendril",
+    "success_other": "{{count}} issues iniciadas no Tendril",
+    "partial": "{{fired}} de {{total}} iniciadas. Falha na #{{number}}: {{error}}",
+    "partial_unknownIssue": "{{fired}} de {{total}} iniciadas. Falha em uma issue: {{error}}"
+  },
+  "sweep": {
+    "alreadyRunning": "Uma verificação já está em execução.",
+    "notMaster": "Este daemon não é o mestre, portanto não fez a verificação.",
+    "imported": "{{imported}} importadas, {{skipped}} ignoradas.",
+    "accepted_one": "{{count}} iniciou um plano imediatamente.",
+    "accepted_many": "{{count}} iniciaram um plano imediatamente.",
+    "accepted_other": "{{count}} iniciaram um plano imediatamente.",
+    "accepted_partial_one": "{{count}} iniciou um plano imediatamente (as demais aguardam sua decisão).",
+    "accepted_partial_many": "{{count}} iniciaram um plano imediatamente (as demais aguardam sua decisão).",
+    "accepted_partial_other": "{{count}} iniciaram um plano imediatamente (as demais aguardam sua decisão).",
+    "errors_one": "{{count}} erro: {{error}}",
+    "errors_many": "{{count}} erros: {{error}}",
+    "errors_other": "{{count}} erros: {{error}}",
+    "join": "{{previous}} {{next}}"
+  },
+  "chatTitle_one": "{{count}} issue",
+  "chatTitle_many": "{{count}} issues",
+  "chatTitle_other": "{{count}} issues",
+  "errors": {
+    "noRemotes": "Nenhum remote git resolvido para o projeto {{project}}.",
+    "noRemotes_noProject": "Nenhum remote git resolvido para o projeto (nenhum selecionado).",
+    "loadFailed": "Falha ao carregar as issues do GitHub"
+  },
+  "loading": "Carregando issues do GitHub...",
+  "empty": {
+    "reviews": {
+      "title": "Tudo em Dia!",
+      "description": "Nenhum pull request aguarda sua revisão no momento."
+    },
+    "issues": {
+      "title": "Nenhuma Issue Encontrada",
+      "description": "Nenhuma issue corresponde à visualização selecionada."
+    },
+    "filtered": "Nenhuma issue corresponde aos critérios de busca e filtro atuais."
+  },
+  "filters": {
+    "search": {
+      "ariaLabel": "Buscar issues",
+      "placeholder": "Buscar por título, #número, autor ou descrição..."
+    },
+    "awaiting": {
+      "label": "Aguardando",
+      "tooltip": "Mostrar apenas as issues atribuídas que aguardam sua decisão"
+    },
+    "labelPlaceholder": "Filtrar por rótulo...",
+    "assigneePlaceholder": "Filtrar por responsável..."
+  },
+  "issueTable": {
+    "columns": {
+      "issue": "Issue",
+      "repository": "Repositório",
+      "labels": "Rótulos",
+      "assignees": "Responsáveis"
+    },
+    "awaitingMark": {
+      "ariaLabel": "Aguardando decisão",
+      "tooltip": "Aguardando sua decisão. Encontrada pela verificação de issues atribuídas {{when}}; Aceitar inicia um plano em {{project}}.",
+      "tooltip_justNow": "Aguardando sua decisão. Encontrada pela verificação de issues atribuídas agora mesmo; Aceitar inicia um plano em {{project}}."
+    },
+    "actions": {
+      "fireOff": {
+        "label": "Iniciar no Tendril",
+        "tooltip": "Iniciar esta issue no Tendril"
+      },
+      "viewDetails": {
+        "label": "Ver Detalhes",
+        "tooltip": "Ver detalhes da issue"
+      },
+      "openGitHub": {
+        "label": "Abrir no GitHub",
+        "tooltip": "Abrir issue no GitHub"
+      },
+      "accept": {
+        "label": "Aceitar",
+        "tooltip": "Aceitar: iniciar um plano para esta issue em {{project}}"
+      },
+      "more": {
+        "label": "Mais ações",
+        "tooltip": "Abrir no GitHub ou descartar"
+      },
+      "dismiss": {
+        "label": "Descartar"
+      }
+    }
+  },
+  "reviewTable": {
+    "columns": {
+      "pullRequest": "Pull Request",
+      "repository": "Repositório",
+      "updated": "Atualizado"
+    },
+    "actions": {
+      "openGitHub": {
+        "label": "Revisar no GitHub",
+        "tooltip": "Abrir pull request no GitHub"
+      },
+      "viewDetails": {
+        "label": "Ver Detalhes",
+        "tooltip": "Ver detalhes da revisão"
+      }
+    }
+  },
+  "sheet": {
+    "titleFallback": "Issue",
+    "assigned": "Atribuída a: {{assignees}}",
+    "openOnGitHub": "Abrir no GitHub",
+    "dismiss": {
+      "label": "Descartar",
+      "tooltip": "Descartar definitivamente: a verificação de issues atribuídas não vai propor esta issue novamente"
+    },
+    "accept": {
+      "label": "Aceitar",
+      "tooltip": "Iniciar um plano para esta issue em {{project}}"
+    },
+    "fireOff": "Iniciar no Tendril",
+    "noDescription": "Nenhuma descrição fornecida."
+  },
+  "pullRequests": {
+    "title": "Pull Requests",
+    "status": {
+      "open": "Aberto",
+      "merged": "Mesclado",
+      "closed": "Fechado",
+      "unknown": "Desconhecido"
+    },
+    "statusTooltip": {
+      "unknown": "Desconhecido: o daemon não conseguiu resolver este pull request (última verificação em {{lastChecked}}). Ressincronize para tentar novamente.",
+      "unknown_neverChecked": "Desconhecido: o daemon não conseguiu resolver este pull request (nunca verificado). Ressincronize para tentar novamente.",
+      "merged": "Mesclado (última verificação em {{lastChecked}}). Pull requests mesclados nunca são verificados novamente.",
+      "merged_neverChecked": "Mesclado (nunca verificado). Pull requests mesclados nunca são verificados novamente.",
+      "other": "{{status}} (última verificação em {{lastChecked}}).",
+      "other_neverChecked": "{{status}} (nunca verificado)."
+    },
+    "syncNotice": {
+      "unreachableAll": "Nenhum status pôde ser atualizado: não foi possível acessar o GitHub para {{repos}}. Verifique se a CLI `{{cli}}` está instalada e autenticada (`{{command}}`).",
+      "unreachableSome": "Alguns status não foram alterados: não foi possível acessar o GitHub para {{repos}}. Verifique se a CLI `{{cli}}` está instalada e autenticada (`{{command}}`).",
+      "nothingToRefresh": "Nada para atualizar: {{fresh}} verificados recentemente, {{merged}} já mesclados.",
+      "alreadyRunning": "Uma sincronização já está em execução."
+    },
+    "columns": {
+      "plan": "Plano",
+      "project": "Projeto",
+      "status": "Status",
+      "pr": "PR",
+      "tokens": "Tokens",
+      "cost": "Custo",
+      "repository": "Repositório",
+      "branch": "Branch"
+    },
+    "actions": {
+      "viewPlan": "Ver Plano",
+      "followUp": "Dar Continuidade",
+      "openPr": "Abrir PR",
+      "resync": "Ressincronizar"
+    },
+    "empty": {
+      "title": "Nenhum pull request",
+      "description": "Nenhum plano tem um pull request registrado ainda. Crie um na aba Revisão e ele aparecerá aqui.",
+      "loadFailed": "Não foi possível carregar a lista de pull requests, então não há nada para mostrar.",
+      "filtered": "Nenhum pull request corresponde à busca ou aos critérios de filtro atuais."
+    },
+    "search": {
+      "ariaLabel": "Buscar pull requests",
+      "placeholder": "Buscar por plano, projeto, repositório ou branch..."
+    },
+    "statusFilterPlaceholder": "Filtrar por status...",
+    "resyncAll": "Ressincronizar Tudo",
+    "resyncing": "Ressincronizando...",
+    "sheet": {
+      "titleFallback": "Plano",
+      "loadingRevision": "Carregando revisão...",
+      "notFound": "Plano não encontrado ou vazio."
+    }
+  }
+}

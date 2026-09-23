@@ -4,6 +4,7 @@ import { ChevronLeft, RotateCw, X } from "lucide-react";
 import { buttonVariant } from "@/components/ui/button/variant";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/i18n/uiCommon";
 
 import { bladeHeaderVariant, bladeVariant, bladeWidthVariant } from "./variant";
 import { isBladeWidthHint, type ResolvedBlade } from "./types";
@@ -61,6 +62,7 @@ export const Blade = React.forwardRef<HTMLElement, BladeProps>(function Blade(
   },
   ref,
 ) {
+  const { t } = useTranslation("uiCommon");
   const headingId = `${id}-title`;
   const subtitleId = `${id}-subtitle`;
 
@@ -134,7 +136,7 @@ export const Blade = React.forwardRef<HTMLElement, BladeProps>(function Blade(
           {showCloseAffordance && collapsed && (
             <button
               type="button"
-              aria-label={parentTitle ? `Back to ${parentTitle}` : "Back"}
+              aria-label={parentTitle ? t("blade.backTo", { title: parentTitle }) : t("blade.back")}
               className={buttonVariant({ variant: "ghost", size: "icon" })}
               onClick={onRequestClose}
             >
@@ -172,7 +174,7 @@ export const Blade = React.forwardRef<HTMLElement, BladeProps>(function Blade(
           {onRefresh && (
             <button
               type="button"
-              aria-label={`Refresh ${title}`}
+              aria-label={t("blade.refresh", { title })}
               className={buttonVariant({ variant: "ghost", size: "icon" })}
               onClick={onRefresh}
             >
@@ -182,7 +184,7 @@ export const Blade = React.forwardRef<HTMLElement, BladeProps>(function Blade(
           {showCloseAffordance && !collapsed && (
             <button
               type="button"
-              aria-label={`Close ${title}`}
+              aria-label={t("blade.close", { title })}
               className={buttonVariant({ variant: "ghost", size: "icon" })}
               onClick={onRequestClose}
             >
@@ -191,8 +193,13 @@ export const Blade = React.forwardRef<HTMLElement, BladeProps>(function Blade(
           )}
         </div>
       </header>
-      <div className="min-h-0 flex-1 bg-background">
-        <ScrollArea type="hover" className="h-full">
+      <div className="min-h-0 flex-1 bg-background contain-inline-size">
+        {/* `fitWidth`: the body is laid out at the blade's width, not at the widest thing in it.
+            Without it Radix's shrink-to-fit wrapper took its width from the content, so one table
+            with a long path in a `nowrap` column widened every callout and detail row with it,
+            past the blade's right edge — clipped there, since this area only scrolls downwards.
+            With it that table scrolls inside its own frame and nothing else moves. */}
+        <ScrollArea type="hover" fitWidth className="h-full">
           <div className="p-4">{content}</div>
         </ScrollArea>
       </div>

@@ -115,9 +115,9 @@ fn tier_defaults_apply_with_no_coding_agents_configured() {
     assert!(s.coding_agents.is_empty());
 
     for (agent, tier, model, effort) in [
-        ("claude", "deep", Some("opus"), Some("max")),
-        ("claude", "balanced", Some("sonnet"), Some("high")),
-        ("claude", "quick", Some("haiku"), Some("low")),
+        ("claude", "deep", Some("claude-opus-5-5"), Some("max")),
+        ("claude", "balanced", Some("claude-sonnet-5"), Some("high")),
+        ("claude", "quick", Some("claude-haiku-4-5"), Some("low")),
         ("codex", "deep", Some("gpt-5.6-sol"), Some("high")),
         ("opencode", "deep", None, Some("high")),
         ("copilot", "balanced", None, Some("medium")),
@@ -127,13 +127,13 @@ fn tier_defaults_apply_with_no_coding_agents_configured() {
             Some("gemini-3.8-flash"),
             Some("medium"),
         ),
-        ("ivy", "deep", Some("claude-opus-5"), Some("max")),
-        // Cursor's tiers name the Thinking family at the top, because plain Opus 5 stops at `high`
+        ("ivy", "deep", Some("claude-opus-5-5"), Some("max")),
+        // Cursor's tiers name the Thinking family at the top, because plain Opus 5.5 stops at `high`
         // on Cursor and a `deep` tier that silently clamps is not a deep tier.
         (
             "cursor",
             "deep",
-            Some("claude-opus-5-thinking"),
+            Some("claude-opus-5-5-thinking"),
             Some("max"),
         ),
         ("cursor", "balanced", Some("claude-sonnet-5"), Some("high")),
@@ -265,7 +265,7 @@ codingAgents:
     );
 
     let r = resolve(&s, "claude", "ExecutePlan", Some("deep"));
-    assert_eq!(r.model.as_deref(), Some("opus"));
+    assert_eq!(r.model.as_deref(), Some("claude-opus-5-5"));
     assert_eq!(r.effort.as_deref(), Some("max"));
     assert_eq!(r.profile.as_deref(), Some("deep"));
 }

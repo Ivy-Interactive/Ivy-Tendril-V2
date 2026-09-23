@@ -1,6 +1,7 @@
 import * as React from "react";
 
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/i18n/uiCommon";
 import {
   clampColumnWidth,
   DATA_TABLE_DEFAULT_COLUMN_WIDTH,
@@ -57,6 +58,7 @@ export function DataTableColumnResizer({
   onResize,
   onReset,
 }: DataTableColumnResizerProps) {
+  const { t } = useTranslation("uiCommon");
   const handleRef = React.useRef<HTMLDivElement | null>(null);
 
   /**
@@ -151,7 +153,7 @@ export function DataTableColumnResizer({
       ref={handleRef}
       role="separator"
       aria-orientation="vertical"
-      aria-label="Resize column"
+      aria-label={t("dataTable.columnHeader.resize")}
       aria-describedby={describedBy}
       /* Only reported once the width is actually known. An `aria-valuenow` of 0 on a column that
          merely has not been resized yet would be a lie a screen reader reads out. */

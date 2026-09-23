@@ -3,6 +3,7 @@ import { open } from "@tauri-apps/plugin-dialog";
 import { bridge } from "../../api/bridge";
 import { useWebviewFileDrop } from "../../hooks/useWebviewFileDrop";
 import type { ChatAttachment } from "../../types/chat";
+import { i18n } from "../../i18n";
 
 /**
  * Everything the composer does with a file: the chips, the staging copies, and the four drag
@@ -18,14 +19,17 @@ import type { ChatAttachment } from "../../types/chat";
  */
 const isAbsolutePath = (path: string): boolean => /^(?:\/|[A-Za-z]:[\\/]|\\\\)/.test(path);
 
-/** What the conversation has to tell this hook: whose session a copy is staged under, and whether
- * this instance may register the webview-wide drop listener. */
 export interface ChatAttachmentsOptions {
   activeSessionId: string | undefined;
-  embedded: boolean;
+  embedded?: boolean;
+  targetRef?: React.RefObject<HTMLElement | null>;
 }
 
-export function useChatAttachments({ activeSessionId, embedded }: ChatAttachmentsOptions) {
+export function useChatAttachments({
+  activeSessionId,
+  embedded: _embedded = false,
+  targetRef,
+}: ChatAttachmentsOptions) {
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [isDraggingOver, setIsDraggingOver] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -120,11 +124,12 @@ export function useChatAttachments({ activeSessionId, embedded }: ChatAttachment
     void stageAttachments(incoming.map((a) => a.path).filter(isAbsolutePath));
   };
 
-  // Webview-wide, not subtree-wide: see the table above. An embedded panel registers nothing.
+  // Scoped via targetRef so drops within the chat area are accepted while drops outside are ignored.
   const nativeDropActive = useWebviewFileDrop({
     onPaths: addAttachmentPaths,
     onDragStateChange: setIsDraggingOver,
-    enabled: !embedded,
+    targetRef,
+    enabled: true,
   });
 
   const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -138,7 +143,8 @@ export function useChatAttachments({ activeSessionId, embedded }: ChatAttachment
     try {
       const selected = await open({
         multiple: true,
-        title: "Select Files to Attach",
+        // Read when the picker opens, so it is in the language current then.
+        title: i18n.t("chat:attachments.pickerTitle"),
       });
       if (selected === null) {
         return;

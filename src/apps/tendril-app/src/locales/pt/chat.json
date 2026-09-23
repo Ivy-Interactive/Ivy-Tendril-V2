@@ -1,0 +1,269 @@
+{
+  "agentPicker": {
+    "tooltip": "Agente, modelo e esforço",
+    "triggerLabel": "Agente: {{agent}}",
+    "menuLabel": "Agentes",
+    "optionsTooltip": "Modelo e esforço",
+    "optionsLabel": "Opções de {{agent}}",
+    "settingsLabel": "Configurações de {{agent}}",
+    "model": "Modelo",
+    "effort": "Nível de Esforço",
+    "unlistedValue": "Padrão",
+    "effortLevels": {
+      "default": "Padrão",
+      "none": "Nenhum",
+      "low": "Baixo",
+      "medium": "Médio",
+      "high": "Alto",
+      "xhigh": "Muito Alto",
+      "max": "Máximo"
+    }
+  },
+  "composerAttachment": {
+    "remove": "Remover {{name}}"
+  },
+  "lightbox": {
+    "fallbackTitle": "Pré-visualização da imagem",
+    "fallbackAlt": "Pré-visualização do anexo",
+    "closeLabel": "Fechar pré-visualização"
+  },
+  "newChatButtons": {
+    "label": "Novo chat",
+    "tooltip": "Novo chat",
+    "tooltip_terminal": "Novo chat (terminal)",
+    "override_chat": "Nova sessão de chat na interface",
+    "override_terminal": "Novo chat no terminal"
+  },
+  "planChat": {
+    "headline": "Peça ao Tendril para Alterar Qualquer Coisa"
+  },
+  "systemEvent": {
+    "linked": {
+      "completed": "{{type}} <plan>{{plan}}</plan> concluído.",
+      "completed_plan": "Plano <plan>{{plan}}</plan> concluído.",
+      "completed_pullRequest": "Pull request <plan>{{plan}}</plan> concluído.",
+      "failed": "Falha em {{type}} <plan>{{plan}}</plan>.",
+      "failed_plan": "Falha no plano <plan>{{plan}}</plan>.",
+      "failed_pullRequest": "Falha no pull request <plan>{{plan}}</plan>.",
+      "timeout": "Tempo esgotado em {{type}} <plan>{{plan}}</plan>.",
+      "timeout_plan": "Tempo esgotado no plano <plan>{{plan}}</plan>.",
+      "timeout_pullRequest": "Tempo esgotado no pull request <plan>{{plan}}</plan>.",
+      "cancelled": "{{type}} <plan>{{plan}}</plan> cancelado.",
+      "cancelled_plan": "Plano <plan>{{plan}}</plan> cancelado.",
+      "cancelled_pullRequest": "Pull request <plan>{{plan}}</plan> cancelado.",
+      "unknown": "{{status}}: {{type}} <plan>{{plan}}</plan>.",
+      "unknown_plan": "{{status}}: plano <plan>{{plan}}</plan>.",
+      "unknown_pullRequest": "{{status}}: pull request <plan>{{plan}}</plan>."
+    },
+    "quoted": {
+      "completed": "{{type}} \"{{subject}}\" concluído",
+      "completed_plan": "Plano \"{{subject}}\" concluído",
+      "completed_pullRequest": "Pull request \"{{subject}}\" concluído",
+      "failed": "Falha em {{type}} \"{{subject}}\"",
+      "failed_plan": "Falha no plano \"{{subject}}\"",
+      "failed_pullRequest": "Falha no pull request \"{{subject}}\"",
+      "timeout": "Tempo esgotado em {{type}} \"{{subject}}\"",
+      "timeout_plan": "Tempo esgotado no plano \"{{subject}}\"",
+      "timeout_pullRequest": "Tempo esgotado no pull request \"{{subject}}\"",
+      "cancelled": "{{type}} \"{{subject}}\" cancelado",
+      "cancelled_plan": "Plano \"{{subject}}\" cancelado",
+      "cancelled_pullRequest": "Pull request \"{{subject}}\" cancelado",
+      "unknown": "{{status}}: {{type}} \"{{subject}}\"",
+      "unknown_plan": "{{status}}: plano \"{{subject}}\"",
+      "unknown_pullRequest": "{{status}}: pull request \"{{subject}}\""
+    },
+    "started": "Plano \"{{plan}}\" iniciado",
+    "fullStop": "{{sentence}}.",
+    "openPlan": "Abrir plano"
+  },
+  "terminal": {
+    "untitled": "Agente",
+    "newChat": "Novo Chat",
+    "starting": "Iniciando {{agent}}…",
+    "startingUnknown": "Iniciando agente…"
+  },
+  "jobsMenu": {
+    "triggerLabel": "Ver tarefas em execução",
+    "triggerTitle": "Ver tarefas",
+    "triggerTitleRunning_one": "{{count}} tarefa em execução",
+    "triggerTitleRunning_many": "{{count}} tarefas em execução",
+    "triggerTitleRunning_other": "{{count}} tarefas em execução",
+    "pillRunning_one": "{{count}} em execução",
+    "pillRunning_many": "{{count}} em execução",
+    "pillRunning_other": "{{count}} em execução",
+    "pillJobs_one": "{{count}} tarefa",
+    "pillJobs_many": "{{count}} tarefas",
+    "pillJobs_other": "{{count}} tarefas",
+    "pillWithFailures_one": "{{jobs}} ({{count}} com falha)",
+    "pillWithFailures_many": "{{jobs}} ({{count}} com falha)",
+    "pillWithFailures_other": "{{jobs}} ({{count}} com falha)",
+    "listLabel": "Tarefas",
+    "title": "Tarefas em Execução ({{count}})",
+    "title_spawned": "Tarefas Iniciadas ({{count}})",
+    "summaryRunning_one": "{{count}} em execução",
+    "summaryRunning_many": "{{count}} em execução",
+    "summaryRunning_other": "{{count}} em execução",
+    "summaryCompleted_one": "{{count}} concluída",
+    "summaryCompleted_many": "{{count}} concluídas",
+    "summaryCompleted_other": "{{count}} concluídas",
+    "summaryFailed_one": "{{count}} com falha",
+    "summaryFailed_many": "{{count}} com falha",
+    "summaryFailed_other": "{{count}} com falha",
+    "genericJobType": "Tarefa",
+    "openPlan": "Abrir plano",
+    "review": "Pedir ao agente para revisar os resultados"
+  },
+  "chatHeader": {
+    "titleInputLabel": "Nome do chat",
+    "optionsLabel": "Opções do chat",
+    "optionsMenuLabel": "Opções do chat",
+    "editName": "Editar nome",
+    "deleteChat": "Excluir chat"
+  },
+  "messageRow": {
+    "openAttachment": "Abrir {{name}}",
+    "submittingAnswer": "Enviando resposta..."
+  },
+  "view": {
+    "dropOverlay": "Solte os arquivos aqui para anexá-los à mensagem",
+    "noActiveChat": "Nenhum Chat Ativo",
+    "working": "Trabalhando...",
+    "jumpToQuestion_down": "Ir para a pergunta pendente ↓",
+    "jumpToQuestion_up": "Ir para a pergunta pendente ↑",
+    "scrollToStreamingTail": "Rolar até o fim da transmissão",
+    "scrollToBottom": "Rolar até o final"
+  },
+  "composer": {
+    "attach": "Anexar arquivo",
+    "promptLabel": "Prompt do chat",
+    "placeholder": "Pergunte qualquer coisa ao Tendril...",
+    "voice": "Entrada por voz",
+    "voiceErrorDismiss": "Descartar erro da entrada por voz",
+    "nothingTranscribed": "Nada foi transcrito. Tente novamente.",
+    "clearAttachments": "Limpar tudo",
+    "queue": "Enfileirar mensagem",
+    "stop": "Parar agente",
+    "stopping": "Parando agente",
+    "stopTooltip": "Parar agente",
+    "stoppingTooltip": "Parando agente...",
+    "send": "Enviar mensagem"
+  },
+  "emptyState": {
+    "headline": "O Que Vamos Produzir Hoje?"
+  },
+  "greeting": {
+    "morning": "Bom Dia!",
+    "afternoon": "Boa Tarde!",
+    "evening": "Boa Noite!"
+  },
+  "deleteSession": {
+    "title": "Excluir Sessão",
+    "body": "Tem certeza de que deseja excluir \"{{title}}\"? Esta ação não pode ser desfeita.",
+    "bodyUntitled": "Tem certeza de que deseja excluir esta sessão de chat? Esta ação não pode ser desfeita."
+  },
+  "jobsReview": {
+    "prompt": "Revise os resultados das tarefas que esta conversa iniciou e diga-me o que mudou:\n{{jobs}}"
+  },
+  "search": {
+    "title": "Buscar Chats",
+    "inputLabel": "Buscar chats",
+    "placeholder": "Buscar chats",
+    "empty": "Nenhum chat encontrado."
+  },
+  "queue": {
+    "title": "Mensagens em Fila",
+    "hint": "Envia quando o agente terminar de trabalhar",
+    "collapse": "Recolher mensagens em fila",
+    "expand": "Expandir mensagens em fila",
+    "editInputLabel": "Editar prompt em fila",
+    "save": "Salvar prompt em fila",
+    "cancelEdit": "Cancelar edição",
+    "attachments_one": "{{count}} anexo",
+    "attachments_many": "{{count}} anexos",
+    "attachments_other": "{{count}} anexos",
+    "sendNow": "Enviar agora",
+    "edit": "Editar prompt em fila",
+    "remove": "Remover da fila"
+  },
+  "samplePrompts": {
+    "chat": {
+      "review": {
+        "label_one": "Revisar o plano em espera",
+        "label_many": "Revisar os {{count}} planos em espera",
+        "label_other": "Revisar os {{count}} planos em espera",
+        "prompt_one": "{{count}} plano está aguardando revisão: {{plans}}. Resuma o que ele entrega e diga-me se devo mesclá-lo.",
+        "prompt_many": "{{count}} planos estão aguardando revisão: {{plans}}. Resuma o que cada um entrega e diga-me qual mesclar primeiro.",
+        "prompt_other": "{{count}} planos estão aguardando revisão: {{plans}}. Resuma o que cada um entrega e diga-me qual mesclar primeiro."
+      },
+      "failed": {
+        "label": "Por que o #{{id}} falhou?",
+        "prompt": "O plano #{{id}} {{title}} falhou. Leia os logs e os relatórios de verificação dele e explique o que deu errado."
+      },
+      "blocked": {
+        "label": "O que está bloqueando o #{{id}}?",
+        "prompt": "O plano #{{id}} {{title}} está bloqueado. Liste os planos dos quais ele depende e o que ainda falta para cada um."
+      },
+      "jobs": {
+        "label": "O que minhas tarefas estão fazendo?",
+        "prompt_one": "{{count}} tarefa está em execução. Resuma no que ela está trabalhando.",
+        "prompt_many": "{{count}} tarefas estão em execução. Resuma no que cada uma está trabalhando.",
+        "prompt_other": "{{count}} tarefas estão em execução. Resuma no que cada uma está trabalhando."
+      },
+      "addProject": {
+        "label": "Adicionar um novo projeto",
+        "prompt": "Adicione um novo projeto ao meu Tendril"
+      },
+      "editVerifications": {
+        "label": "Editar verificações",
+        "prompt": "Edite as verificações dos meus projetos"
+      },
+      "teamVault": {
+        "label": "Criar um Team Vault",
+        "prompt": "Crie um Team Vault compartilhado"
+      },
+      "nextWork": {
+        "label": "No que devo trabalhar a seguir?",
+        "prompt": "Analise meus planos em rascunho em todos os projetos e recomende quais dois executar a seguir, com justificativas."
+      },
+      "shipped": {
+        "label": "O que foi entregue esta semana?",
+        "prompt": "Resuma os planos que chegaram ao estado {{state}} nos últimos sete dias, agrupados por projeto."
+      }
+    },
+    "plan": {
+      "failedVerification": {
+        "label": "Por que {{name}} falhou?",
+        "prompt": "A verificação {{name}} falhou para este plano. Leia o relatório dela em {{report}} e explique a falha e como corrigi-la."
+      },
+      "prFeedback": {
+        "label": "Resumir o feedback do PR",
+        "prompt": "Leia os comentários de revisão em {{pr}} e liste as alterações que eles pedem."
+      },
+      "blocked": {
+        "label": "O que está bloqueando isto?",
+        "prompt": "Este plano está bloqueado por {{dependencies}}. Diga-me o que ainda falta para cada dependência."
+      },
+      "tightenScope": {
+        "label": "Restringir o escopo",
+        "prompt": "Leia a revisão mais recente deste plano e aponte tudo o que estiver fora do escopo ou pouco especificado."
+      },
+      "explainSolution": {
+        "label": "Explicar a solução",
+        "prompt": "Explique a seção {{section}} deste plano em termos simples e liste todos os arquivos que ela vai alterar."
+      },
+      "risks": {
+        "label": "O que pode dar errado?",
+        "prompt": "Quais são as partes mais arriscadas deste plano e o que devo verificar na revisão?"
+      }
+    }
+  },
+  "sidebar": {
+    "title": "Chats",
+    "searchLabel": "Buscar chats",
+    "newLabel": "Novo chat",
+    "untitled": "Novo Chat"
+  },
+  "attachments": {
+    "pickerTitle": "Selecionar Arquivos para Anexar"
+  }
+}

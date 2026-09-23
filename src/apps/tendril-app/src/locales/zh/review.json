@@ -1,0 +1,206 @@
+{
+  "sidebar": {
+    "title": "审查",
+    "badges": {
+      "verified": "已验证",
+      "unverified": "未验证"
+    }
+  },
+  "shortcuts": {
+    "previousPlan": "上一个计划",
+    "nextPlan": "下一个计划"
+  },
+  "empty": {
+    "title": "没有待审查的计划",
+    "description": "已完成的计划将显示在这里等待审查"
+  },
+  "workspace": {
+    "meta_other": "{{index}}/{{total}} 个计划",
+    "sourceLabel": {
+      "pr": "PR",
+      "issue": "Issue"
+    }
+  },
+  "actions": {
+    "requestChanges": "请求修改",
+    "resetToDraft": "重置为草稿",
+    "deletePlan": "删除计划",
+    "openPlanPage": "打开完整规范和差异",
+    "partialDelivery": "接受部分交付"
+  },
+  "primary": {
+    "updatePr": "更新 PR",
+    "createPr": "创建 PR",
+    "deletePlan": "删除计划",
+    "completePlan": "完成计划",
+    "completing": "正在完成…",
+    "pushing": "正在推送…",
+    "unavailable": "{{action}} 不可用：{{reason}}"
+  },
+  "completionBlocked": {
+    "title": "无需更改",
+    "body": "执行前验证发现无需任何更改，因为相关 Issue 或需求已经解决。您可以删除此计划，或将其移至已跳过或待办箱。"
+  },
+  "errors": {
+    "markRecommendation": "无法将“{{title}}”标记为“{{state}}”：{{error}}",
+    "nothingSelected": "请至少选择一条要实施的建议。",
+    "noLongerPending": "所选建议已不再处于待处理状态。请刷新后重试。",
+    "implementFailed": "无法实施所选建议：{{error}}",
+    "reviewActionFailed": "审查操作“{{name}}”失败：{{error}}",
+    "completeFailed": "无法完成计划 {{planId}}：{{error}}",
+    "updatePrFailed": "无法更新计划 {{planId}} 的 PR：{{error}}"
+  },
+  "recommendationState": {
+    "pending": "待处理",
+    "accepted": "已接受",
+    "acceptedWithNotes": "已接受并附备注",
+    "declined": "已拒绝"
+  },
+  "tabs": {
+    "summary": "摘要",
+    "plan": "计划",
+    "details": "详情",
+    "git": "Git",
+    "changes": "更改",
+    "artifacts": "产物",
+    "recommendations": "建议"
+  },
+  "verifications": {
+    "none": "没有验证",
+    "viewReport": "查看 {{name}} 报告"
+  },
+  "verificationStatus": {
+    "pending": "待处理",
+    "pass": "通过",
+    "fail": "失败",
+    "skipped": "已跳过"
+  },
+  "summary": {
+    "loading": "正在加载摘要…",
+    "fallback": {
+      "heading": "摘要",
+      "body": "未找到此计划的摘要。请查看验证以了解更多信息。",
+      "retry": "使用 `{{resetToDraft}}` 或 `{{requestChanges}}` 重试该计划。"
+    }
+  },
+  "plan": {
+    "noSpecification": "没有可用的计划规范。"
+  },
+  "details": {
+    "copyToClipboard": "复制到剪贴板",
+    "fields": {
+      "planId": "计划 ID",
+      "folder": "文件夹",
+      "initialPrompt": "初始提示词",
+      "revision": "修订版本",
+      "profile": "配置文件",
+      "relatedPlans": "关联计划",
+      "dependsOn": "依赖于",
+      "issue": "Issue",
+      "created": "创建时间",
+      "level": "级别",
+      "project": "项目",
+      "state": "状态"
+    },
+    "repositories": {
+      "heading": "仓库",
+      "empty": "未指定仓库"
+    },
+    "commits": {
+      "heading": "提交",
+      "empty": "暂无提交"
+    },
+    "verifications": {
+      "heading": "验证（{{n}}）",
+      "empty": "没有验证"
+    }
+  },
+  "git": {
+    "loading": "正在加载 Git 状态…"
+  },
+  "changes": {
+    "loading": "正在加载更改…",
+    "empty": "此计划没有记录任何文件更改。"
+  },
+  "artifacts": {
+    "heading": "计划产物",
+    "description": "执行期间生成的输出、示例文件和截图。",
+    "loading": "正在加载产物…",
+    "empty": "未找到此计划的产物。",
+    "screenshots": "截图（{{n}}）",
+    "otherFiles": "其他产物文件（{{n}}）",
+    "copyPath": "复制路径",
+    "open": "打开",
+    "openTitle": "在侧边面板中打开"
+  },
+  "recommendations": {
+    "empty": "没有建议。",
+    "implement": "实施",
+    "starting": "正在启动…",
+    "implementHint": "接受已勾选的建议，并以其作为修改请求重试该计划。",
+    "select": "选择 {{title}}"
+  },
+  "noteDialog": {
+    "submit": "提交",
+    "accept": {
+      "title": "接受建议",
+      "ariaLabel": "接受建议",
+      "noteLabel": "操作者备注（可选）：",
+      "noteAriaLabel": "可选备注",
+      "placeholder": "输入可选备注…"
+    },
+    "decline": {
+      "title": "拒绝建议",
+      "ariaLabel": "拒绝建议",
+      "noteLabel": "拒绝原因：",
+      "noteAriaLabel": "拒绝原因",
+      "placeholder": "输入拒绝原因…"
+    }
+  },
+  "actionsBar": {
+    "tooltip": {
+      "barDisabled": "已禁用：{{reason}}",
+      "barDisabledDefault": "已禁用：审查操作当前不可用",
+      "conditionNotMet": "已禁用：条件不满足",
+      "conditionNotMetWithCondition": "已禁用：条件不满足（{{condition}}）",
+      "runCommand": "运行：{{command}}",
+      "runCommandWithPorts": "运行：{{command}}（端口：{{ports}}）",
+      "runAction": "运行 {{name}}",
+      "runActionWithPorts": "运行 {{name}}（端口：{{ports}}）",
+      "port": "{{name}}：{{port}}",
+      "conditionError": "已禁用：无法评估条件：{{reason}}",
+      "conditionErrorWithCondition": "已禁用：无法评估条件（{{condition}}）：{{reason}}",
+      "starting": "正在启动 {{name}}…",
+      "checking": "正在检查条件：{{condition}}"
+    }
+  },
+  "actionView": {
+    "sendComments_other": "将 {{count}} 条评论作为修改请求发送给智能体",
+    "starting": "正在启动 {{name}}…"
+  },
+  "recommendationsPage": {
+    "sidebarTitle": "改进建议",
+    "empty": {
+      "title": "没有建议",
+      "description": "已完成计划中的建议将显示在这里"
+    },
+    "position_other": "<highlight>{{index}}/{{total}}</highlight> 条建议",
+    "decline": "拒绝",
+    "accept": "接受",
+    "accepting": "正在接受…",
+    "acceptWithNotes": "接受并附备注",
+    "createIssue": "创建 Issue",
+    "viewPlan": "查看计划",
+    "refresh": "刷新",
+    "errors": {
+      "load": "加载建议失败：{{error}}",
+      "update": "更新建议“{{title}}”失败：{{error}}",
+      "jobNotStarted": "已将“{{title}}”标记为已接受，但 {{jobType}} 任务未能启动：{{error}}"
+    }
+  },
+  "impact": {
+    "small": "小",
+    "medium": "中",
+    "high": "高"
+  }
+}

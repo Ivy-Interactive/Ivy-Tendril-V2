@@ -139,9 +139,7 @@
   line-height: normal;
   white-space: nowrap;
   cursor: pointer;
-  transition:
-    opacity var(--duration-base) var(--ease-standard),
-    background-color var(--duration-fast) var(--ease-standard);
+  transition: background-color var(--duration-fast) var(--ease-standard);
 }
 
 .pws-btn--primary {
@@ -338,7 +336,6 @@
   white-space: nowrap;
   opacity: var(--opacity-muted);
   cursor: pointer;
-  transition: opacity var(--duration-fast) var(--ease-standard);
 }
 
 .pws-tab:hover {

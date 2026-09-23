@@ -66,4 +66,4 @@ agy skill list
 
 ## 许可证
 
-Tendril 技能和插件遵循仓库根目录下的 [Functional Source License (FSL-1.1-ALv2)](../LICENSE) 许可证。
+Tendril 技能和插件遵循仓库根目录下的 [Functional Source License (FSL-1.1-ALv2)](../../LICENSE) 许可证。

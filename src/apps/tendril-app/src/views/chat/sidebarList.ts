@@ -1,15 +1,30 @@
 import type { ShellSidebarList } from "../../state/sidebarListStore";
 import type { ChatSession } from "../../types/chat";
+import { NEW_CHAT_TITLE } from "../../state/chatLauncher";
+import { i18n, type TFunction } from "../../i18n";
 import { shortPlanId } from "./samplePrompts";
+
+const chatT = i18n.getFixedT(null, "chat");
 
 /**
  * `ChatApp.BuildSidebarList` and the two labels it draws a row from. The shell owns the list; this
  * only describes it, so it is a pure function of the sessions and stays out of the conversation.
  */
 
-/** The chat's own name, falling back to the label a chat carries before it is titled. */
-export const displayTitle = (session: ChatSession | null | undefined): string =>
-  session && session.title.trim() ? session.title : "New Chat";
+/**
+ * The chat's own name, falling back to the label a chat carries before it is titled.
+ *
+ * {@link NEW_CHAT_TITLE} is what an untitled session is *stored* under - the daemon matches that
+ * exact English title to decide a chat still needs naming - so a session holding it is shown under the
+ * translated label, the same as one with no title at all. The stored title itself never changes.
+ */
+export const displayTitle = (
+  session: ChatSession | null | undefined,
+  t: TFunction<"chat"> = chatT,
+): string =>
+  session && session.title.trim() && session.title !== NEW_CHAT_TITLE
+    ? session.title
+    : t("sidebar.untitled");
 
 /** The plan a session belongs to, shown as its row tag; null for a free-standing chat. */
 const planTag = (session: ChatSession): string | null =>
@@ -45,12 +60,13 @@ export const buildChatSidebarList = (
   selectedId: string | null,
   rowState: (sessionId: string) => "working" | "completed" | null,
   actions: ChatSidebarListActions,
+  t: TFunction<"chat"> = chatT,
 ): ShellSidebarList => ({
   appId: "chat",
-  title: "Chats",
+  title: t("sidebar.title"),
   items: sessions.map((session) => ({
     id: session.id,
-    title: displayTitle(session),
+    title: displayTitle(session, t),
     tag: planTag(session) ?? undefined,
     state: rowState(session.id) ?? undefined,
     pinned: session.isPinned,
@@ -58,9 +74,9 @@ export const buildChatSidebarList = (
   selectedId,
   searchable: true,
   onSearch: actions.onSearch,
-  searchLabel: "Search chats",
+  searchLabel: t("sidebar.searchLabel"),
   onNew: actions.onNew,
-  newLabel: "New chat",
+  newLabel: t("sidebar.newLabel"),
   collapsedMenu: true,
   onRename: actions.onRename,
   onDelete: actions.onDelete,

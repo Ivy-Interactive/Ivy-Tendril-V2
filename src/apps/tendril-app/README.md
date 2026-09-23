@@ -97,6 +97,12 @@ Set the secret using the GitHub CLI:
 gh secret set COMPONENTS_STORYBOOK_TOKEN --repo SpaceCorps/Tendril-App
 ```
 
+## Localization
+
+The UI is translated into the ten locales the docs site ships, through the runtime in
+`@ivy-interactive/components/i18n`. [`docs/i18n.md`](docs/i18n.md) covers adding strings, plurals,
+formatting, what must stay in English, and translating.
+
 ## Tests
 
 ```sh

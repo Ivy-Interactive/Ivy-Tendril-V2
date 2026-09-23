@@ -1,0 +1,309 @@
+{
+  "actions": {
+    "cancel": "Avbryt",
+    "close": "Stäng"
+  },
+  "status": {
+    "starting": "Startar…"
+  },
+  "planStates": {
+    "draft": "Utkast",
+    "creating": "Skapas",
+    "updating": "Uppdateras",
+    "executing": "Exekveras",
+    "review": "Granskning",
+    "failed": "Misslyckad",
+    "completed": "Slutförd",
+    "skipped": "Överhoppad",
+    "blocked": "Blockerad",
+    "icebox": "Isbox"
+  },
+  "confirm": {
+    "working": "Arbetar…"
+  },
+  "autoAcceptSettings": {
+    "title": "Inställningar för automatisk acceptans",
+    "save": "Spara",
+    "saving": "Sparar…",
+    "intro": "Importera nyligen tilldelade GitHub-ärenden till Tendril-planer automatiskt med jämna mellanrum.",
+    "autoAcceptLabel": "Acceptera tilldelade ärenden automatiskt",
+    "intervalLabel": "Kontrollintervall",
+    "intervalOption_one": "{{count}} minut",
+    "intervalOption_other": "{{count}} minuter",
+    "checkNow": "Kontrollera nu",
+    "checking": "Kontrollerar…",
+    "checkAlreadyRunning": "En kontroll körs redan.",
+    "checkSummary": "Importerade {{imported}}, hoppade över {{skipped}}."
+  },
+  "createIssue": {
+    "title": "Skapa GitHub-ärende för #{{planId}}",
+    "titleForSubject": "Skapa GitHub-ärende från {{kind}}",
+    "titleForSubject_recommendation": "Skapa GitHub-ärende från rekommendation",
+    "description": "CreateIssue skriver ärendetexten utifrån planen och öppnar ärendet med `gh` i det valda arkivet.",
+    "descriptionForSubject": "CreateIssue öppnar det här med `gh` i det valda arkivet. Ärendet registreras mot plan #{{planId}} men beskriver {{kind}} snarare än planens eget arbete.",
+    "descriptionForSubject_recommendation": "CreateIssue öppnar det här med `gh` i det valda arkivet. Ärendet registreras mot plan #{{planId}} men beskriver rekommendationen snarare än planens eget arbete.",
+    "submit": "Skapa ärende",
+    "issueTitle": {
+      "label": "Titel",
+      "placeholder": "Vad ärendet handlar om",
+      "required": "En titel krävs: planens egen titel används inte här."
+    },
+    "body": {
+      "label": "Brödtext",
+      "placeholder": "Vad som ska göras och varför…",
+      "hint": "Redigera texten innan du registrerar ärendet om formuleringen är kortfattad. Agenten formaterar den som Markdown och behåller dina ord i stället för att skriva om dem."
+    },
+    "repository": {
+      "label": "Arkiv",
+      "none": "Varken planen eller dess projekt anger något arkiv, så det finns ingenstans att köra <code>{{command}}</code>. Lägg först till ett arkiv i planen.",
+      "hint": "Den lokala arkivsökväg som ärendet öppnas mot, inte en slug i formen ägare/namn."
+    },
+    "assignee": {
+      "label": "Tilldelad"
+    },
+    "labels": {
+      "label": "Etiketter",
+      "hint": "Kommaseparerade. Tilldelad och etiketter är fritext: tjänsten exponerar ärendemetadata, inte organisationens tilldelningsbara användare, så det finns ingen lista att välja från."
+    },
+    "comment": {
+      "label": "Kommentar",
+      "placeholder": "Ytterligare kontext att lägga till i ärendetexten…"
+    }
+  },
+  "createPr": {
+    "title": "Skapa PR för #{{planId}}",
+    "description": "CreatePr pushar planens gren, öppnar PR:en och — om du inte anger något annat — slår samman den och tar bort grenen.",
+    "submit": "Skapa PR",
+    "toggles": {
+      "solveMergeConflicts": {
+        "label": "Lös sammanslagningskonflikter"
+      },
+      "merge": {
+        "label": "Slå samman",
+        "hint": "Om rutan inte är markerad öppnas PR:en utan att slås samman."
+      },
+      "deleteBranch": {
+        "label": "Ta bort gren",
+        "label_multiple": "Ta bort grenar",
+        "hint": "Tar bort grenen som pushats till origin efter en lyckad sammanslagning.",
+        "hint_multiple": "Tar bort grenarna som pushats till origin efter en lyckad sammanslagning."
+      },
+      "includeArtifacts": {
+        "label": "Inkludera artefakter"
+      },
+      "draft": {
+        "label": "Skapa som utkast",
+        "hint": "En utkast-PR kan inte slås samman."
+      }
+    },
+    "reviewers": {
+      "label": "Granskare",
+      "hint": "Kommaseparerade GitHub-användarnamn. V2 har inget separat fält för tilldelad — CLI:et lägger in den tilldelade i granskarlistan, så de går via samma kanal."
+    },
+    "comment": {
+      "label": "Kommentar",
+      "placeholder": "Sådant som granskaren bör känna till innan diffen läses…"
+    }
+  },
+  "deleteProject": {
+    "title": "Radera projekt",
+    "confirm": "Radera projekt",
+    "intro": "Det här raderar permanent projektet <name>{{name}}</name> och allt det äger på disken. Det går inte att ångra.",
+    "plans": "Alla planer i projektet, med deras revisioner och verifieringsrapporter.",
+    "folder": "<code>{{root}}</code><code>{{name}}</code> — projektets klonade arkiv, färdigheter, MCP-definitioner och minnen, inklusive commits som aldrig har pushats.",
+    "database": "Projektets planer, jobb och rekommendationer i Tendrils databas.",
+    "config": "Projektets post i config.yaml.",
+    "logsKept": "Jobbloggar behålls: de lagras per jobb-ID och inte per projekt.",
+    "removeInstead": "Om du vill ta bort projektet från Tendril utan att röra något på disken avbryter du och använder Avregistrera projekt i stället.",
+    "typeToConfirm": "Skriv <name>{{name}}</name> för att bekräfta",
+    "typeToConfirmAriaLabel": "Skriv {{name}} för att bekräfta"
+  },
+  "dirtyRepo": {
+    "title": "Lokala ändringar upptäcktes",
+    "description_one": "⚠ {{count}} arkiv har ändringar som inte har committats. De tas inte med i det worktree som agenten arbetar i.",
+    "description_other": "⚠ {{count}} arkiv har ändringar som inte har committats. De tas inte med i det worktree som agenten arbetar i.",
+    "proceed": "Exekvera ändå",
+    "changeCount_one": "{{count}} ocommittad ändring",
+    "changeCount_other": "{{count}} ocommittade ändringar",
+    "moreChanges_one": "+{{count}} till",
+    "moreChanges_other": "+{{count}} till"
+  },
+  "jobDebug": {
+    "title": "Jobbfelsökning",
+    "loading": "Läser in jobbdetaljer…",
+    "copy": "Kopiera detaljer",
+    "copied": "Kopierat",
+    "copyFailed": "Det gick inte att kopiera till urklipp",
+    "values": {
+      "duration": "{{seconds}} s",
+      "cost": "{{cost, currency(minimumFractionDigits: 4; maximumFractionDigits: 4; useGrouping: false)}}",
+      "tokens": "{{tokens, number}}"
+    },
+    "fields": {
+      "jobId": "Jobb-ID",
+      "planId": "Plan-ID",
+      "planTitle": "Prompt/titel",
+      "status": "Status",
+      "type": "Typ",
+      "project": "Projekt",
+      "provider": "Leverantör",
+      "model": "Modell",
+      "started": "Startad",
+      "completed": "Slutförd",
+      "lastOutput": "Senaste utdata",
+      "duration": "Varaktighet",
+      "cost": "Kostnad",
+      "tokens": "Tokens",
+      "processId": "Process-ID",
+      "detached": "Frikopplad",
+      "workingDirectory": "Arbetskatalog",
+      "arguments": "Argument",
+      "args": "Argument",
+      "failureReason": "Felorsak",
+      "permissionDenials": "Nekade behörigheter",
+      "planFolder": "Planmapp",
+      "jobLog": "Jobblogg",
+      "jobPrompt": "Jobbprompt",
+      "jobRawLog": "Jobbets råa logg",
+      "jobEventwireLog": "Jobbets Eventwire-logg"
+    }
+  },
+  "noProjects": {
+    "title": "Inga projekt",
+    "description": "Varje plan hör till ett projekt, och det finns inga projekt i det här Tendril home ännu.",
+    "openSettings": "Gå till Projekt",
+    "body": "Lägg till ett projekt under <location>Inställningar → Projekt</location> — ett namn, dess arkiv och de verifieringar som dess planer kör — och skapa sedan planen igen."
+  },
+  "pendingAnnotations": {
+    "title": {
+      "changes": "Ej införlivade ändringar",
+      "answers": "Ej införlivade svar",
+      "annotations": "Ej införlivade annoteringar"
+    },
+    "description": {
+      "items_one": "⚠ Den här planen har {{count}} post som ingen UpdatePlan-körning har införlivat ännu.",
+      "items_other": "⚠ Den här planen har {{count}} poster som ingen UpdatePlan-körning har införlivat ännu.",
+      "annotations_one": "⚠ Den här planen har {{count}} annotering som inte har införlivats ännu. Om du exekverar nu ignoreras den.",
+      "annotations_other": "⚠ Den här planen har {{count}} annoteringar som inte har införlivats ännu. Om du exekverar nu ignoreras de.",
+      "answers_one": "⚠ Den här planen har {{count}} besvarad fråga som inte har införlivats ännu. Om du exekverar nu läser agenten svaret som det är i stället för som en del av planen.",
+      "answers_other": "⚠ Den här planen har {{count}} besvarade frågor som inte har införlivats ännu. Om du exekverar nu läser agenten svaren som de är i stället för som en del av planen.",
+      "both": "⚠ Den här planen har {{annotations}} och {{answers}} som inte har införlivats ännu. Om du exekverar nu ignoreras annoteringarna, och agenten läser svaren som de är i stället för som en del av planen.",
+      "annotationCount_one": "{{count}} annotering",
+      "annotationCount_other": "{{count}} annoteringar",
+      "answerCount_one": "{{count}} besvarad fråga",
+      "answerCount_other": "{{count}} besvarade frågor"
+    },
+    "updatePlan": "Uppdatera plan",
+    "decline": {
+      "discardAnnotations": "Kassera annoteringar och exekvera",
+      "withoutUpdating": "Exekvera utan att uppdatera",
+      "anyway": "Exekvera ändå"
+    },
+    "updateAndExecute": "Uppdatera plan och exekvera",
+    "body": "Om du exekverar nu körs planen som den är skriven, så de här anteckningarna påverkar inte vad agenten gör. Om du kör UpdatePlan först arbetas de in i planens brödtext."
+  },
+  "resetToDraft": {
+    "title": "Återställ plan #{{planId}} till utkast",
+    "confirm": "Återställ till utkast",
+    "body": "Planen återgår till <state>Utkast</state> och dess worktrees tas bort, vilket kasserar allt arbete i dem som inte har committats. Commits som redan har pushats påverkas inte."
+  },
+  "partialDelivery": {
+    "title": "Verifieringen misslyckades",
+    "confirm": "Slutför som delleverans",
+    "body": "Plan #{{planId}} registreras som <state>Slutförd</state> och flaggas som en delleverans, trots att följande verifieringar misslyckades:"
+  },
+  "deletePlan": {
+    "title": "Ta bort plan",
+    "confirm": "Ta bort",
+    "body": "Vill du ta bort plan #{{planId}} permanent? Planmappen, alla revisioner och alla verifieringsrapporter tas bort, och det går inte att ångra. Om du vill behålla mappen kan du i stället markera planen som överhoppad eller lägga den på is.",
+    "skip": "Markera som överhoppad",
+    "archive": "Lägg på is"
+  },
+  "planSearch": {
+    "title": "Sök planer",
+    "inputLabel": "Sök planer",
+    "placeholder": "Sök planer",
+    "searching": "Söker…",
+    "empty": "Inga planer hittades."
+  },
+  "removeProject": {
+    "title": "Avregistrera projekt",
+    "confirm": "Avregistrera projekt",
+    "question": "Vill du avregistrera projektet <name>{{name}}</name>?",
+    "consequence": "Det här tar bort projektet från config.yaml. Dess klonade arkiv, planmappar och historik finns kvar på disken, så ingenting raderas från din dator – men Tendril slutar lista projektet, och dess befintliga planer och jobb kommer att hänvisa till ett projekt som Tendril inte längre känner till."
+  },
+  "shareTunnel": {
+    "title": "Dela arbete",
+    "intro": "Dela ditt arbete med kollegor via en säker, skrivskyddad Cloudflare-tunnel. Granskare kan granska planer och diffar och lämna kommentarer utan att ha åtkomst till din terminal eller dina inställningar.",
+    "errorTitle": "Fel",
+    "connecting": {
+      "title": "Tunneln startar",
+      "body": "Startar delningstunneln… Det tar vanligtvis 15–30 sekunder."
+    },
+    "active": {
+      "title": "Delning aktiv",
+      "body": "Din delningstunnel är aktiv med behörighet att läsa och kommentera."
+    },
+    "copyLink": "Kopiera länk",
+    "openInBrowser": "Öppna i webbläsaren",
+    "stop": "Sluta dela",
+    "start": "Starta delningstunnel",
+    "errors": {
+      "start": "Det gick inte att starta delningstunneln: {{error}}",
+      "stop": "Det gick inte att stoppa delningstunneln: {{error}}",
+      "copy": "Det gick inte att kopiera länken: {{error}}"
+    },
+    "notifications": {
+      "stoppedTitle": "Inaktiverad",
+      "stoppedMessage": "Delningstunneln har stoppats",
+      "copiedTitle": "Länken har kopierats",
+      "copiedMessage": "Delnings-URL:en har kopierats till urklipp"
+    }
+  },
+  "suggestChanges": {
+    "notAllowed": {
+      "title": "Plan #{{planId}} tar inte emot ändringar",
+      "state": "Planen har tillståndet {{state}}. En ändringsförfrågan tas bara emot när planen har tillståndet Granskning eller redan håller på att tillämpa en.",
+      "commentsKept_one": "{{count}} kommentar finns fortfarande kvar här — skicka den när planen är tillbaka i Granskning.",
+      "commentsKept_other": "{{count}} kommentarer finns fortfarande kvar här — skicka dem när planen är tillbaka i Granskning."
+    },
+    "fromApp": {
+      "title": "Uppdatera plan #{{planId}}",
+      "submit": "Uppdatera",
+      "queue": "Köa uppdatering",
+      "summary_one": "{{count}} kommentar från den körande appen skickas till agenten som en ändringsförfrågan.",
+      "summary_other": "{{count}} kommentarer från den körande appen skickas till agenten som en ändringsförfrågan.",
+      "queueNote_one": "Plan #{{planId}} har redan {{count}} jobb på gång, så det här köas bakom det och startar när det är klart.",
+      "queueNote_other": "Plan #{{planId}} har redan {{count}} jobb på gång, så det här köas bakom dem och startar när de är klara.",
+      "untaggedElement": "element"
+    },
+    "diff": {
+      "title": "Begär ändringar för plan #{{planId}}",
+      "description": "Ge förslag eller instruktioner för ändringar i implementeringen. RetryPlan fortsätter i det befintliga worktreet och tillämpar dem som en ändring ovanpå det arbete som redan har committats.",
+      "submit": "Begär ändringar",
+      "submitWithInline_one": "Begär ändringar ({{count}} inline)",
+      "submitWithInline_other": "Begär ändringar ({{count}} inline)",
+      "inlineNote_one": "{{count}} inline-kommentar i fildiffar tas med i din feedback.",
+      "inlineNote_other": "{{count}} inline-kommentarer i fildiffar tas med i din feedback.",
+      "requestLabel": "Ändringsförfrågan",
+      "requestPlaceholder": "Beskriv vad som behöver ändras, rättas eller skrivas om i worktreet…"
+    }
+  },
+  "unansweredQuestions": {
+    "title": "Obesvarade frågor",
+    "description_one": "⚠ Den här planen har {{count}} obesvarad fråga. Om du exekverar nu överlåts den till agenten, som väljer det rekommenderade alternativet där det finns ett och annars bestämmer själv.",
+    "description_other": "⚠ Den här planen har {{count}} obesvarade frågor. Om du exekverar nu överlåts de till agenten, som väljer det rekommenderade alternativet där det finns ett och annars bestämmer själv.",
+    "updatePlan": "Uppdatera plan…",
+    "proceed": "Exekvera ändå",
+    "updateAndExecute": "Uppdatera plan och exekvera"
+  },
+  "updatePlan": {
+    "title": "Uppdatera plan #{{planId}}",
+    "description": "Ge instruktioner för hur planen ska revideras. UpdatePlan skriver om planen till en ny revision — koden rörs inte.",
+    "submit": "Uppdatera",
+    "alreadyRunning": "UpdatePlan körs redan för den här planen. Vänta…",
+    "instructionsLabel": "Instruktioner",
+    "instructionsAriaLabel": "Instruktioner för uppdateringen",
+    "instructionsPlaceholder": "Arbeta in de besvarade frågorna och begränsa sedan omfattningen till enbart vaktkedjan…"
+  }
+}

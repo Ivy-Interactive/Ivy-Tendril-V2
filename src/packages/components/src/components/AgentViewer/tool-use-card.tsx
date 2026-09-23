@@ -1,4 +1,5 @@
 import React, { useState } from "react";
+import { type TFunction, useTranslation } from "@/i18n/uiShell";
 
 interface ToolCall {
   name: string;
@@ -23,7 +24,11 @@ function getStringParam(input: Record<string, unknown>, keys: string[]): string 
   return undefined;
 }
 
-function displayInput(name: string, input: Record<string, unknown>): string {
+/**
+ * The IN block's text. The parameter names read below are the agents' own protocol names; only the
+ * labels in front of the values are translated.
+ */
+function displayInput(t: TFunction, name: string, input: Record<string, unknown>): string {
   if (!input) return "";
   const normName = name.toLowerCase();
 
@@ -41,7 +46,7 @@ function displayInput(name: string, input: Record<string, unknown>): string {
       normName === "replace_file_content" ||
       normName === "multi_replace_file_content"
     ) {
-      let s = `File: ${filePath}`;
+      let s = t("toolCard.file", { path: filePath });
       const content = getStringParam(input, [
         "content",
         "CodeContent",
@@ -54,16 +59,20 @@ function displayInput(name: string, input: Record<string, unknown>): string {
       return s;
     }
     if (normName === "read" || normName === "view_file") {
-      return `File: ${filePath}`;
+      return t("toolCard.file", { path: filePath });
     }
   }
 
   const url = getStringParam(input, ["Url", "url"]);
-  if (url) return `URL: ${url}`;
+  if (url) return t("toolCard.url", { url });
 
   const query = getStringParam(input, ["Query", "query"]);
   const searchPath = getStringParam(input, ["SearchPath", "search_path"]);
-  if (query) return searchPath ? `Query: ${query} in ${searchPath}` : `Query: ${query}`;
+  if (query) {
+    return searchPath
+      ? t("toolCard.queryInPath", { query, path: searchPath })
+      : t("toolCard.query", { query });
+  }
 
   return JSON.stringify(input, null, 2);
 }
@@ -124,6 +133,7 @@ function getToolStatus(tool: ToolCall): ToolStatus {
 }
 
 export const ToolUseCard: React.FC<ToolUseCardProps> = ({ tool }) => {
+  const { t } = useTranslation("uiShell");
   const status = getToolStatus(tool);
   const [open, setOpen] = useState(false);
 
@@ -164,14 +174,14 @@ export const ToolUseCard: React.FC<ToolUseCardProps> = ({ tool }) => {
       {open && (
         <div className="aov-tool-body">
           <div className="aov-tool-section">
-            <span className="aov-tool-label">IN</span>
+            <span className="aov-tool-label">{t("toolCard.input")}</span>
             <pre className="aov-tool-pre">
-              <code>{displayInput(tool.name, tool.input)}</code>
+              <code>{displayInput(t, tool.name, tool.input)}</code>
             </pre>
           </div>
           {tool.result != null && tool.result.length > 0 && (
             <div className="aov-tool-section">
-              <span className="aov-tool-label">OUT</span>
+              <span className="aov-tool-label">{t("toolCard.output")}</span>
               <pre className="aov-tool-pre">
                 <code>{tool.result}</code>
               </pre>

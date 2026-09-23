@@ -18,7 +18,8 @@ import { chatStore } from "../state/chatStore";
 import type { ChatAttachment, ChatMessage, InProgressQuestionAnswers } from "../types/chat";
 import type { Job } from "../types/api";
 import { patchQuestionsMarkdown } from "../utils/questionMarkdown";
-import { formatSystemEvent } from "../utils/systemEvents";
+import { formatSystemEvent, systemEventContext } from "../utils/systemEvents";
+import { Trans, useTranslation } from "../i18n";
 import { resolveJobState, type JobDisplayState } from "../utils/jobStatus";
 import type { LightboxImage } from "../components/chat/ImageLightbox";
 import { TurnActivity, buildTurnSegments, parseTurnStream } from "../components/chat/TurnActivity";
@@ -114,6 +115,7 @@ const MessageAttachment: React.FC<{
   isUser: boolean;
   onOpenImage?: (image: LightboxImage) => void;
 }> = ({ attachment, isUser, onOpenImage }) => {
+  const { t } = useTranslation("chat");
   const isImage = Boolean(onOpenImage) && isImageAttachment(attachment);
   const { url, failed } = useAttachmentPreview(attachment.path, isImage);
 
@@ -136,8 +138,8 @@ const MessageAttachment: React.FC<{
       type="button"
       data-testid="attachment-thumbnail"
       onClick={() => onOpenImage?.({ url, title: attachment.name })}
-      title={`Open ${attachment.name}`}
-      aria-label={`Open ${attachment.name}`}
+      title={t("messageRow.openAttachment", { name: attachment.name })}
+      aria-label={t("messageRow.openAttachment", { name: attachment.name })}
       className={`overflow-hidden rounded-selector transition-[filter] hover:brightness-110 focus-visible:outline-none focus-visible:ring-2 ${
         isUser ? "focus-visible:ring-primary-foreground" : "focus-visible:ring-ring"
       }`}
@@ -171,6 +173,7 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
   threadMessages = [],
   isLiveTurn = false,
 }) {
+  const { t } = useTranslation("chat");
   const isUser = message.role === "user";
   const isSystem = message.role === "system";
 
@@ -258,8 +261,8 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
   );
 
   const systemEvent = useMemo(
-    () => (isSystem ? formatSystemEvent(currentMessage.content) : null),
-    [isSystem, currentMessage.content],
+    () => (isSystem ? formatSystemEvent(currentMessage.content, t) : null),
+    [isSystem, currentMessage.content, t],
   );
 
   const jobState = useMemo(
@@ -305,26 +308,38 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
       >
         {icon}
         <span className="min-w-0 leading-tight wrap-anywhere">
-          {systemEvent.text}
-          {systemEvent.plan && (
-            <>
-              {" "}
-              {onOpenPlan ? (
-                <button
-                  type="button"
-                  data-testid="chat-system-event-plan"
-                  onClick={() => onOpenPlan(systemEvent.plan!.id)}
-                  title="Open plan"
-                  className="cursor-pointer border-0 bg-transparent p-0 text-inherit underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  {systemEvent.plan.label}
-                </button>
-              ) : (
-                <span className="underline">{systemEvent.plan.label}</span>
-              )}
-            </>
+          {/* One sentence with the plan inside it, so a language can put the plan where its grammar
+              wants it. Without a plan the sentence is plain text, closed with a full stop unless it
+              is the daemon's own (an `info` event). */}
+          {systemEvent.plan && systemEvent.sentence ? (
+            <Trans
+              ns="chat"
+              i18nKey={`systemEvent.linked.${systemEvent.sentence.outcome}`}
+              context={systemEventContext(systemEvent.sentence.subject)}
+              values={{
+                plan: systemEvent.plan.label,
+                status: systemEvent.sentence.status,
+                type: systemEvent.sentence.type,
+              }}
+              components={{
+                plan: onOpenPlan ? (
+                  <button
+                    type="button"
+                    data-testid="chat-system-event-plan"
+                    onClick={() => onOpenPlan(systemEvent.plan!.id)}
+                    title={t("systemEvent.openPlan")}
+                    className="cursor-pointer border-0 bg-transparent p-0 text-inherit underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  />
+                ) : (
+                  <span className="underline" />
+                ),
+              }}
+            />
+          ) : systemEvent.kind !== "info" ? (
+            t("systemEvent.fullStop", { sentence: systemEvent.text })
+          ) : (
+            systemEvent.text
           )}
-          {systemEvent.plan || systemEvent.kind !== "info" ? "." : ""}
           {systemEvent.detail && (
             <span className="mt-0.5 block text-xs text-muted-foreground" title={systemEvent.detail}>
               {systemEvent.detail}
@@ -389,7 +404,7 @@ export const ChatMessageRow: React.FC<ChatMessageRowProps> = React.memo(function
                   className="mt-2 flex min-h-6 items-center gap-1.5 text-xs text-muted-foreground"
                 >
                   <Spinner size="sm" />
-                  <span>Submitting answer...</span>
+                  <span>{t("messageRow.submittingAnswer")}</span>
                 </div>
               )}
               {parsedTurn && <TurnMetrics metrics={parsedTurn.metrics} isLiveTurn={isLiveTurn} />}

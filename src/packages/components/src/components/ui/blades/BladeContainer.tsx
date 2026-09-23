@@ -3,6 +3,7 @@ import * as React from "react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/i18n/uiCommon";
 
 import { Blade } from "./Blade";
 import { BladesContext } from "./context";
@@ -43,12 +44,14 @@ export const BladeContainer = React.forwardRef<BladeContainerHandle, BladeContai
       collapseBreakpoint = 768,
       transitionDuration = 200,
       className,
-      "aria-label": ariaLabel = "Blades",
+      "aria-label": ariaLabelProp,
       onKeyDown,
       ...props
     },
     ref,
   ) {
+    const { t } = useTranslation("uiCommon");
+    const ariaLabel = ariaLabelProp ?? t("bladeContainer.ariaLabel");
     const animate = transitionDuration > 0;
     const {
       blades: stackBlades,
@@ -229,15 +232,20 @@ export const BladeContainer = React.forwardRef<BladeContainerHandle, BladeContai
             ref={scrollAreaRef}
             type="hover"
             horizontal
+            fitWidth
             className="h-full w-full overflow-y-hidden"
-            viewportClassName="[&>div]:!block [&>div]:!h-full"
+            viewportClassName="[&>div]:!h-full"
           >
             {/* `w-max` is what lets a stack of fixed-width blades grow past the container and be
-                scrolled through. `min-w-full` is what stops it collapsing *below* the container: a
-                `width: "flex"` blade is `flex-1`, and inside a bare max-content row that resolves to
-                the blade's own max-content width, so the row — and the blade — came out narrower or
-                wider than the pane rather than equal to it. A blade that wants to be wider than the
-                pane still is, and still scrolls. */}
+                scrolled through. `min-w-full` is what stops it collapsing *below* the container.
+                Neither stops it growing past the container on a `width: "flex"` blade's say-so:
+                in a max-content row every item is asked for its max-content width, and a flex
+                blade's is its content's widest unwrapped line — so the row, and the blade with it,
+                came out as wide as a long sentence, and the scroll-into-view below then scrolled
+                the start of every line off the left edge. `bladeWidthVariant`'s `flex` answers that
+                question as if the blade were empty (`contain-inline-size`, over a `min-w-80` floor),
+                which leaves a flex blade exactly the room the row has to spare. A stack of
+                fixed-width blades that is wider than the pane still is, and still scrolls. */}
             <div
               ref={rowRef}
               className={cn("flex h-full", isCollapsed ? "w-full" : "w-max min-w-full")}

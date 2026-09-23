@@ -1,0 +1,230 @@
+{
+  "workspace": {
+    "moreActions": {
+      "label": "Fler åtgärder",
+      "tooltip": "Mer",
+      "menuAriaLabel": "Fler åtgärder"
+    },
+    "source": "Källa",
+    "verifications": "Verifieringar",
+    "questions": "Frågor",
+    "resizer": {
+      "tooltip": "Dra för att ändra storlek, dubbelklicka för att återställa",
+      "ariaLabel": "Ändra storlek på chatten"
+    },
+    "chatAriaLabel": "Planchatt"
+  },
+  "diffView": {
+    "empty": "Ingen diff att visa",
+    "fileCount_one": "{{count}} fil",
+    "fileCount_other": "{{count}} filer",
+    "jumpToFile": {
+      "ariaLabel": "Hoppa till fil",
+      "placeholder": "Hoppa till fil…"
+    },
+    "untitledFile": "Diff {{index}}",
+    "untitledPath": "Diff",
+    "viewed": "Visad",
+    "commentToggle": {
+      "noneTooltip": "Inga kommentarer på den här filen",
+      "showTooltip_one": "Visa {{count}} kommentar",
+      "showTooltip_other": "Visa {{count}} kommentarer",
+      "hideTooltip_one": "Dölj {{count}} kommentar",
+      "hideTooltip_other": "Dölj {{count}} kommentarer",
+      "showAriaLabel": "Visa kommentarer",
+      "hideAriaLabel": "Dölj kommentarer"
+    },
+    "comment": {
+      "draftAuthor": "Agentinstruktion (utkast)",
+      "resolvedBadge": "✓ Löst",
+      "edit": "Redigera",
+      "reopenTooltip": "Öppna kommentaren igen",
+      "resolveTooltip": "Markera kommentaren som löst",
+      "unresolve": "Markera som olöst",
+      "resolve": "Lös",
+      "deleteTooltip": "Ta bort kommentar",
+      "deleteAriaLabel": "Ta bort kommentar",
+      "delete": "Ta bort"
+    },
+    "commentForm": {
+      "title": "Agentinstruktion",
+      "editTitle": "Redigera agentinstruktion",
+      "placeholder": "Ange en instruktion till agenten för den här raden…",
+      "cancel": "Avbryt",
+      "add": "Lägg till kommentar",
+      "update": "Uppdatera kommentar"
+    }
+  },
+  "changesView": {
+    "empty": "Inga filändringar.",
+    "treeAriaLabel": "Ändrade filer",
+    "fileCount_one": "{{count}} fil",
+    "fileCount_other": "{{count}} filer",
+    "jumpToFile": {
+      "ariaLabel": "Hoppa till fil",
+      "placeholder": "Hoppa till fil…"
+    }
+  },
+  "gitView": {
+    "atRisk": {
+      "title": "Commits i riskzonen",
+      "unreachable_one": "{{count}} commit kan inte nås från någon gren, tagg eller något fjärrarkiv: <hashes/>. Den finns bara som ett löst objekt, så nästa <code>{{gcCommand}}</code> i arkivet förstör den. Ge den en referens för att behålla den: <code>{{recoverCommand}}</code>.",
+      "unreachable_other": "{{count}} commits kan inte nås från någon gren, tagg eller något fjärrarkiv: <hashes/>. De finns bara som lösa objekt, så nästa <code>{{gcCommand}}</code> i arkivet förstör dem. Ge en commit en referens för att behålla den: <code>{{recoverCommand}}</code>.",
+      "missing_one": "{{count}} commit finns inte alls i planens arkiv: <hashes/>. Antingen har objektet redan rensats bort, eller så är arkivet där den skapades inte ett av planens arkiv.",
+      "missing_other": "{{count}} commits finns inte alls i planens arkiv: <hashes/>. Antingen har objektet redan rensats bort, eller så är arkivet där det skapades inte ett av planens arkiv.",
+      "hashSeparator": ", ",
+      "badge": {
+        "unreachable": "onåbar",
+        "missing": "hittades inte"
+      }
+    },
+    "commitTable": {
+      "commit": "Commit",
+      "message": "Meddelande",
+      "files": "Filer",
+      "unresolved": "(commiten kunde inte slås upp)"
+    },
+    "worktrees": {
+      "heading": "Worktrees",
+      "emptyFinished": "Worktrees togs bort när planen nådde sitt slutliga tillstånd.",
+      "emptyNeverCreated": "Worktrees skapades aldrig, eller så togs de bort av rensningen av inaktiva worktrees när planen hade varit inaktiv längre än sitt tidsfönster.",
+      "emptyUnknown": "Worktrees togs bort, eller skapades aldrig.",
+      "copyPath": "Kopiera sökvägen till {{name}}",
+      "repository": "Arkiv",
+      "base": "Bas",
+      "worktree": "Worktree",
+      "head": "Head",
+      "detachedHead": "frikopplat HEAD",
+      "uncommittedChanges": "Det här worktreet har ändringar som inte har committats. De tillhör ingen commit, så ingenting skyddar dem.",
+      "noCommits": "(inga commits)"
+    },
+    "commits": {
+      "heading": "Commits",
+      "description": "Registrerade på planen men nås inte från något worktree som planen fortfarande har — oftast för att worktreet togs bort när PR:en slogs samman."
+    },
+    "pullRequests": {
+      "heading": "Pull requests",
+      "repository": "Arkiv",
+      "pr": "PR"
+    },
+    "empty": "Den här planen har inga worktrees, commits eller pull requests än."
+  },
+  "alert": {
+    "note": "Obs",
+    "tip": "Tips",
+    "important": "Viktigt",
+    "warning": "Varning",
+    "caution": "Se upp"
+  },
+  "diagram": {
+    "loading": "Läser in diagram…",
+    "invalidGraphviz": "Ogiltig Graphviz DOT-syntax",
+    "invalidMermaid": "Ogiltig syntax för Mermaid-diagram"
+  },
+  "codeBlock": {
+    "copy": "Kopiera till urklipp"
+  },
+  "image": {
+    "loadFailed": "Bilden kunde inte läsas in",
+    "close": "Stäng"
+  },
+  "search": {
+    "placeholder": "Sök i dokumentet…",
+    "ariaLabel": "Sök i dokumentet",
+    "noMatches": "Inga träffar",
+    "position": "{{current}} av {{total}}",
+    "previous": "Föregående träff",
+    "next": "Nästa träff",
+    "close": "Stäng sökningen"
+  },
+  "annotation": {
+    "quote": "”{{text}}”",
+    "quoteTruncated": "”{{text}}…”",
+    "add": {
+      "placeholder": "Lägg till en kommentar…",
+      "cancel": "Avbryt",
+      "submit": "Lägg till"
+    },
+    "edit": {
+      "resolvedBadge": "✓ Löst",
+      "placeholder": "Redigera kommentar…",
+      "reopenTooltip": "Öppna annoteringen igen",
+      "resolveTooltip": "Markera annoteringen som löst",
+      "unresolve": "Markera som olöst",
+      "resolve": "Lös",
+      "deleteTooltip": "Ta bort annotering",
+      "delete": "Ta bort",
+      "cancel": "Avbryt",
+      "save": "Spara"
+    },
+    "selectionToolbar": {
+      "addComment": "Lägg till kommentar"
+    }
+  },
+  "wireframe": {
+    "invalid": "Det här wireframe-blocket är inte giltigt.",
+    "placeholder": "Wireframe: <strong>{{name}}</strong>. Öppna planen för att visa den.",
+    "lastGoodBuild": "Visar den senaste versionen som gick att bygga",
+    "paused": "Liveuppdateringar har pausats",
+    "openFullSize": "Öppna i full storlek",
+    "building": "Bygger wireframe…",
+    "missing": "Den här planen har ingen wireframe med namnet <strong>{{name}}</strong>.",
+    "buildFailed": "Den här wireframen går inte att bygga.",
+    "unavailable": "Förhandsvisningen av wireframen är inte tillgänglig just nu.",
+    "retry": "Försök igen",
+    "close": "Stäng",
+    "errors": {
+      "empty": "Blocket namnger ingen wireframe. Lägg till en rad som `{{example}}`.",
+      "notYaml": "Blocket är inte giltig YAML.",
+      "notMapping": "Skriv blocket som `{{example}}`, eventuellt med {{height}} och {{viewport}}.",
+      "unknownKey": "Okänd nyckel ”{{key}}”. Använd {{name}}, {{height}} eller {{viewport}}.",
+      "badName": "{{name}} måste vara en slug med gemener, till exempel {{example}}.",
+      "badHeight": "{{height}} måste vara ett heltal pixlar mellan 1 och {{max}}.",
+      "badViewport": "{{viewport}} måste vara {{desktop}}, {{tablet}} eller {{mobile}}."
+    }
+  },
+  "questions": {
+    "recommended": "Rekommenderas",
+    "optional": "Valfri",
+    "selectAll": "Välj alla som stämmer",
+    "other": "Annat",
+    "otherPlaceholder": "Skriv ditt svar",
+    "otherAriaLabel": "Annat svar för {{question}}",
+    "notAnswered": {
+      "skipped": "Inte besvarad (inte obligatorisk)",
+      "agentDecided": "Inte besvarad (agenten avgjorde)"
+    },
+    "clear": "Rensa",
+    "clearAllAriaLabel": "Rensa alla svar i det här blocket",
+    "clearOneAriaLabel": "Rensa svar",
+    "submit": "Skicka svar",
+    "submitNote": {
+      "noAnswers": "Besvara en fråga för att kunna skicka.",
+      "oneUnanswered": "Obesvarad: ”{{title}}”. Om du skickar nu avgör jag den själv.",
+      "manyUnanswered_one": "{{count}} fråga är obesvarad. Om du skickar nu avgör jag den själv.",
+      "manyUnanswered_other": "{{count}} frågor är obesvarade. Om du skickar nu avgör jag dem själv."
+    }
+  },
+  "answersCard": {
+    "ariaLabel": "Skickade svar",
+    "title": "Svar",
+    "notAnswered": {
+      "skipped": "Inte besvarad (inte obligatorisk)",
+      "agentDecided": "Inte besvarad (agenten avgjorde)"
+    }
+  },
+  "verificationList": {
+    "dragHandle": "Draghandtag",
+    "required": "Obligatorisk",
+    "a11y": {
+      "roleDescription": "sorterbar",
+      "instructions": "Tryck på blanksteg för att plocka upp ett flyttbart objekt. Använd piltangenterna för att flytta objektet medan du drar. Tryck på blanksteg igen för att släppa objektet på den nya platsen, eller tryck på Esc för att avbryta.",
+      "pickedUp": "Plockade upp det flyttbara objektet {{active}}.",
+      "movedOver": "Det flyttbara objektet {{active}} flyttades över släppområdet {{over}}.",
+      "movedAway": "Det flyttbara objektet {{active}} är inte längre över något släppområde.",
+      "droppedOver": "Det flyttbara objektet {{active}} släpptes över släppområdet {{over}}",
+      "dropped": "Det flyttbara objektet {{active}} släpptes.",
+      "cancelled": "Dragningen avbröts. Det flyttbara objektet {{active}} släpptes."
+    }
+  }
+}

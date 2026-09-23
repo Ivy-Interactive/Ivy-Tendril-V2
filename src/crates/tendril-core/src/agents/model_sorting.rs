@@ -809,6 +809,14 @@ mod tests {
             Version::new(5, 1)
         );
         assert_eq!(
+            anthropic_version("claude-opus-5-5", "Claude Opus 5.5"),
+            Version::new(5, 5)
+        );
+        assert_eq!(
+            anthropic_version("claude-opus-5.5", "Claude Opus 5.5"),
+            Version::new(5, 5)
+        );
+        assert_eq!(
             anthropic_version("claude-opus-5", "Claude Opus 5"),
             Version::new(5, 0)
         );

@@ -48,4 +48,4 @@ Depois de instalado, use comandos de barra (slash commands) diretamente na sua s
 
 ## Licença
 
-As skills e plugins do Tendril são licenciados sob a [Functional Source License (FSL-1.1-ALv2)](../LICENSE) na raiz do repositório.
+As skills e plugins do Tendril são licenciados sob a [Functional Source License (FSL-1.1-ALv2)](../../LICENSE) na raiz do repositório.

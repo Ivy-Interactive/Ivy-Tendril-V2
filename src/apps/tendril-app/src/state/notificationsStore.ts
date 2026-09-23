@@ -1,4 +1,5 @@
 import { bridge } from "../api/bridge";
+import { i18n } from "../i18n";
 import { NotificationBurstSummarizer, type JobNotification } from "./notificationBurst";
 
 /**
@@ -90,9 +91,11 @@ class NotificationsStore {
    * Failures of an operator action — a refused Execute, a failed refresh — are never coalesced and
    * always in-app: they belong next to the app, not in Notification Center, and they are not part of
    * a job-exit wave.
+   *
+   * `title` defaults to the shared "Error", translated when the toast is raised.
    */
-  public notifyError(message: string, title = "Error"): void {
-    void showToast({ title, message, isSuccess: false });
+  public notifyError(message: string, title?: string): void {
+    void showToast({ title: title ?? i18n.t("common:status.error"), message, isSuccess: false });
   }
 
   /** The success sibling of `notifyError`, for confirmations of an action the operator just took. */

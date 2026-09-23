@@ -1,3 +1,5 @@
+import type { TranslationKey } from "@ivy-interactive/components/i18n";
+import type { AppResources, TFunction } from "../../i18n";
 import type { TendrilConfig } from "../../types/api";
 import {
   asArray,
@@ -31,17 +33,15 @@ import {
  *   list.
  * - Inside a project, **mappings deep-merge**. `ports` is a mapping, so a port can be added and
  *   changed but **not deleted or renamed** - a removed key survives in the merged file and a rename
- *   leaves the old key behind alongside the new one. `PORTS_ARE_MERGED` is that limitation as a
- *   constant so the UI can say so instead of pretending.
+ *   leaves the old key behind alongside the new one. `settingsProjects:ports.mergeLimitation` is
+ *   that limitation as one sentence, shown by the ports table and the port editor alike, so the UI
+ *   can say so instead of pretending.
  * - Renaming or deleting a **project** is not possible over `PUT /api/config` at all: a renamed
  *   entry matches nothing and is appended next to the original, and omission is not deletion. Both
  *   go through their own daemon route instead - `PUT /api/projects/:name` with `newName`, and
  *   `DELETE /api/projects/:name` - which the bridge reaches as `renameProject` and `removeProject`.
  *   Deleting a project's *data* is a third route again, `DELETE /api/projects/:name/data`.
  */
-
-export const PORTS_ARE_MERGED =
-  "Ports are a mapping, and PUT /api/config deep-merges mappings, so a port can be added or changed here but not removed or renamed.";
 
 export interface RepoRef {
   path: string;
@@ -112,10 +112,71 @@ export const SANDBOX_MODES = ["InheritGeneral", "Enabled", "Disabled"];
 export const SECURITY_PRESETS = ["Custom", "Permissive", "Restricted", "Strict"];
 export const OUTSIDE_FILE_POLICIES = ["Allow", "Ask", "Deny"];
 export const TERMINAL_AUTO_EXECUTIONS = ["InheritGeneral", "AlwaysProceed", "AlwaysAsk"];
-export const AUTO_IMPLEMENT_OPTIONS: { value: string; label: string }[] = [
-  { value: "AutoImplementPlans", label: "Auto-Implement Plans" },
-  { value: "AlwaysAskReview", label: "Always Ask Review" },
-];
+export const AUTO_IMPLEMENT_VALUES = ["AutoImplementPlans", "AlwaysAskReview"];
+
+type ProjectsKey = TranslationKey<AppResources, "settingsProjects">;
+
+/** The security selects, and the auto-implement one, whose values are labelled below. */
+export type ProjectOptionGroup =
+  | "securityPreset"
+  | "sandboxMode"
+  | "outsideFileAccess"
+  | "terminalAutoExecution"
+  | "autoImplement";
+
+/**
+ * The display label of each value, by select. The values are what `config.yaml` holds and what
+ * `effectiveSandboxMode` and friends compare, so they never change; only the text on screen goes
+ * through the catalog. The English label of a security value is the value itself, which is what
+ * these selects showed before.
+ */
+const OPTION_LABEL_KEYS: Record<ProjectOptionGroup, Readonly<Record<string, ProjectsKey>>> = {
+  securityPreset: {
+    Custom: "security.preset.options.custom",
+    Permissive: "security.preset.options.permissive",
+    Restricted: "security.preset.options.restricted",
+    Strict: "security.preset.options.strict",
+  },
+  sandboxMode: {
+    InheritGeneral: "security.sandboxMode.options.inheritGeneral",
+    Enabled: "security.sandboxMode.options.enabled",
+    Disabled: "security.sandboxMode.options.disabled",
+  },
+  outsideFileAccess: {
+    Allow: "security.outsideFileAccess.options.allow",
+    Ask: "security.outsideFileAccess.options.ask",
+    Deny: "security.outsideFileAccess.options.deny",
+  },
+  terminalAutoExecution: {
+    InheritGeneral: "security.terminalAutoExecution.options.inheritGeneral",
+    AlwaysProceed: "security.terminalAutoExecution.options.alwaysProceed",
+    AlwaysAsk: "security.terminalAutoExecution.options.alwaysAsk",
+  },
+  autoImplement: {
+    AutoImplementPlans: "agentBehavior.autoImplement.options.autoImplementPlans",
+    AlwaysAskReview: "agentBehavior.autoImplement.options.alwaysAskReview",
+  },
+};
+
+/** One value's label. A value this build does not know is shown as it is, never as a key. */
+export const projectOptionLabel = (
+  t: TFunction<"settingsProjects">,
+  group: ProjectOptionGroup,
+  value: string,
+): string => {
+  const key = Object.hasOwn(OPTION_LABEL_KEYS[group], value)
+    ? OPTION_LABEL_KEYS[group][value]
+    : undefined;
+  return key === undefined ? value : t(key);
+};
+
+/** A select's options: the stored values, each with its label in the current language. */
+export const projectOptions = (
+  t: TFunction<"settingsProjects">,
+  group: ProjectOptionGroup,
+  values: readonly string[],
+): { value: string; label: string }[] =>
+  values.map((value) => ({ value, label: projectOptionLabel(t, group, value) }));
 
 /** The seven flattened agent security keys of one project, plus its review policy. */
 export interface ProjectSecurityForm {

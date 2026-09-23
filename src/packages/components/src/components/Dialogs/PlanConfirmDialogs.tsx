@@ -1,4 +1,5 @@
 import { Button } from "../ui/button";
+import { Trans, useTranslation } from "@/i18n/uiDialogs";
 import { ConfirmDialog } from "./ConfirmDialog";
 
 /**
@@ -44,23 +45,26 @@ export function ResetToDraftDialog({
   isBusy,
   error,
 }: ResetToDraftDialogProps) {
+  const { t } = useTranslation("uiDialogs");
   return (
     <ConfirmDialog
       isOpen={isOpen}
       onClose={onClose}
       // `DialogHeader($"Reset Plan #{id} to Draft")`, and V1's Warning (not destructive) confirm.
-      title={`Reset Plan #${planId} to Draft`}
+      title={t("resetToDraft.title", { planId })}
       testId="reset-to-draft-dialog"
-      confirmLabel="Reset to Draft"
+      confirmLabel={t("resetToDraft.confirm")}
       confirmVariant="warning"
       onConfirm={onConfirm}
       isBusy={isBusy}
       error={error}
       body={
         <p>
-          The plan returns to <span className="text-foreground">Draft</span> and its worktrees are
-          removed, discarding any uncommitted work inside them. Commits already pushed are not
-          affected.
+          <Trans
+            ns="uiDialogs"
+            i18nKey="resetToDraft.body"
+            components={{ state: <span className="text-foreground" /> }}
+          />
         </p>
       }
     />
@@ -90,13 +94,14 @@ export function PartialDeliveryDialog({
   isBusy,
   error,
 }: PartialDeliveryDialogProps) {
+  const { t } = useTranslation("uiDialogs");
   return (
     <ConfirmDialog
       isOpen={isOpen}
       onClose={onClose}
-      title="Verification Failed"
+      title={t("partialDelivery.title")}
       testId="partial-delivery-dialog"
-      confirmLabel="Complete as Partial Delivery"
+      confirmLabel={t("partialDelivery.confirm")}
       confirmVariant="destructive"
       onConfirm={onConfirm}
       isBusy={isBusy}
@@ -104,8 +109,12 @@ export function PartialDeliveryDialog({
       body={
         <>
           <p>
-            Plan #{planId} is recorded as <span className="text-foreground">Completed</span> and
-            flagged as a partial delivery, despite these failing verifications:
+            <Trans
+              ns="uiDialogs"
+              i18nKey="partialDelivery.body"
+              values={{ planId }}
+              components={{ state: <span className="text-foreground" /> }}
+            />
           </p>
           <ul className="space-y-1" data-testid="failing-verifications">
             {failedVerifications.map((name) => (
@@ -145,25 +154,20 @@ export function DeletePlanDialog({
   isBusy,
   error,
 }: DeletePlanDialogProps) {
+  const { t } = useTranslation("uiDialogs");
   return (
     <ConfirmDialog
       isOpen={isOpen}
       onClose={onClose}
-      title="Delete Plan"
+      title={t("deletePlan.title")}
       testId="delete-plan-dialog"
       width="rem40"
-      confirmLabel="Delete"
+      confirmLabel={t("deletePlan.confirm")}
       confirmVariant="destructive"
       onConfirm={onConfirm}
       isBusy={isBusy}
       error={error}
-      body={
-        <p>
-          Are you sure you want to permanently delete plan #{planId}? This removes the plan folder,
-          all revisions and all verification reports, and cannot be undone. To keep the folder, move
-          the plan to Skipped or Icebox instead.
-        </p>
-      }
+      body={<p>{t("deletePlan.body", { planId })}</p>}
       secondaryAction={
         <>
           <Button
@@ -172,7 +176,7 @@ export function DeletePlanDialog({
             data-testid="dialog-skip"
             disabled={isBusy}
           >
-            Move to Skipped
+            {t("deletePlan.skip")}
           </Button>
           <Button
             variant="outline"
@@ -180,7 +184,7 @@ export function DeletePlanDialog({
             data-testid="dialog-archive"
             disabled={isBusy}
           >
-            Move to Icebox
+            {t("deletePlan.archive")}
           </Button>
         </>
       }

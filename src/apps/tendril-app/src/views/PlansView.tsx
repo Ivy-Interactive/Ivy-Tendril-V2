@@ -8,6 +8,8 @@ import { isPlanId, resolvePlanSelection } from "../state/plansStore";
 import { draftQueueFor, normalizePlanState } from "../utils/planQueues";
 import { resolveLevelColor, type LevelColors } from "../utils/levelColor";
 import { useLevelColors } from "../components/LevelBadge";
+import { i18n, useTranslation } from "../i18n";
+import { planStateLabel } from "../i18n/enumLabels";
 
 /**
  * Which plans this page lists, and the state-name normalisation every read point needs, both from
@@ -125,7 +127,8 @@ export const parseProjects = (project: string | undefined): string[] =>
 export const planRowBadges = (plan: PlanSummary, levelColors?: LevelColors): ShellBadgeDto[] => {
   const badges: ShellBadgeDto[] = [];
   const state = normalizePlanState(plan.state);
-  if (state !== "Draft") badges.push({ label: state, kind: "warning" });
+  // The label is the state's, translated at the call; the comparison stays on the raw value.
+  if (state !== "Draft") badges.push({ label: planStateLabel(state), kind: "warning" });
   for (const project of parseProjects(plan.project)) {
     badges.push({ label: project, kind: "project" });
   }
@@ -142,6 +145,9 @@ export const planRowBadges = (plan: PlanSummary, levelColors?: LevelColors): She
  * `PlansApp.BuildSidebarList`, field for field: `new ShellSidebarListState("plans", "Plans", items,
  * selected?.FolderName, planId => new PlansAppArgs(planId))`.
  *
+ * The title and the state badges are translated when the list is built, so a caller that memoizes
+ * the list keys it on the language too.
+ *
  * Nothing else is set, which is a decision rather than an omission: the list keeps the default
  * `Searchable` with no `OnSearch` (so the shell's search icon opens the plan search dialog) and no
  * `OnNew` (New Plan is the shell's own button, above the nav).
@@ -153,7 +159,7 @@ export const buildPlansSidebarList = (
   levelColors?: LevelColors,
 ): ShellSidebarList => ({
   appId: "plans",
-  title: "Plans",
+  title: i18n.t("plans:sidebar.title"),
   items: plans.map((plan) => ({
     id: plan.id,
     title: plan.title,
@@ -196,9 +202,10 @@ export const PlansView: React.FC<PlansViewProps> = ({
    * (`TendrilAppShell.PageTabTitle`).
    */
   const [openedPlanId, setOpenedPlanId] = useState<string | null>(selectedPlanId);
+  const { t } = useTranslation("plans");
 
   useShortcut("plans:new-plan", NEW_PLAN_SHORTCUT, () => onNewPlan?.(), {
-    description: "New Plan",
+    description: t("plansView.newPlanShortcut"),
     disabled: !onNewPlan,
   });
 
@@ -278,6 +285,8 @@ export const PlansView: React.FC<PlansViewProps> = ({
      grey one — see `planRowBadges`. */
   const levelColors = useLevelColors();
 
+  // `t` is a dependency only for its identity: it changes with the language, and the list's title and
+  // badges are translated inside the builder.
   const sidebarList = useMemo(
     () =>
       buildPlansSidebarList(
@@ -289,7 +298,7 @@ export const PlansView: React.FC<PlansViewProps> = ({
         },
         levelColors,
       ),
-    [listPlans, selectedId, onSelectPlan, levelColors],
+    [listPlans, selectedId, onSelectPlan, levelColors, t],
   );
 
   /* Published on every render, which `ShellSidebarListSignal`'s own doc comment says the shell
@@ -314,8 +323,8 @@ export const PlansView: React.FC<PlansViewProps> = ({
               wallpaper, with New Plan opening the Create Plan dialog straight from it. */}
           <NoContentView
             data-testid="plans-empty"
-            title="No plans"
-            description="Plans you create will appear here"
+            title={t("plansView.empty.title")}
+            description={t("plansView.empty.description")}
             cta={
               <TendrilProcessWallpaper
                 plans={plans}
@@ -331,7 +340,7 @@ export const PlansView: React.FC<PlansViewProps> = ({
           data-testid="plans-no-selection"
           className="flex h-full items-center justify-center text-sm text-muted-foreground"
         >
-          Select a plan from the sidebar
+          {t("plansView.noSelection")}
         </div>
       )}
     </div>

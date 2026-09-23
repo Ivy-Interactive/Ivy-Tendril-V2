@@ -4,6 +4,7 @@ import { ChevronDown, Flag, Folder, Plus, WandSparkles, X, type LucideIcon } fro
 import { TuiBadge } from "../ui/TuiBadge";
 import { useOutsideClick } from "../../hooks/use-outside-click";
 import { useMenuKeyboard } from "../../hooks/use-menu-keyboard";
+import { useTranslation } from "@/i18n/uiShell";
 import "./badge-select.css";
 
 type IvyEventHandler = (eventName: string, widgetId: string, args: unknown[]) => void;
@@ -104,7 +105,7 @@ export function BadgeSelect({
   id,
   options = EMPTY_OPTIONS,
   value = EMPTY_VALUE,
-  placeholder = "Select...",
+  placeholder: placeholderProp,
   icon,
   multiple = true,
   tooltip,
@@ -113,6 +114,9 @@ export function BadgeSelect({
   events = EMPTY_EVENTS,
   eventHandler,
 }: BadgeSelectProps) {
+  const { t } = useTranslation("uiShell");
+  const placeholder = placeholderProp ?? t("badgeSelect.placeholder");
+  const triggerLabel = placeholder || tooltip || t("badgeSelect.ariaLabel");
   const [open, setOpen] = useState(false);
   const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
   const [visibleCount, setVisibleCount] = useState(Number.MAX_SAFE_INTEGER);
@@ -324,7 +328,7 @@ export function BadgeSelect({
                   size="md"
                   style={{ display: i < visibleCount ? undefined : "none" }}
                   onRemove={canRemove ? () => remove(v) : undefined}
-                  removeLabel={`Remove ${opt?.label ?? v}`}
+                  removeLabel={t("badgeSelect.remove", { label: opt?.label ?? v })}
                 >
                   <span className="bselect-badge-label">{opt?.label ?? v}</span>
                 </TuiBadge>
@@ -348,7 +352,7 @@ export function BadgeSelect({
         <button
           ref={triggerRef as React.RefObject<HTMLButtonElement>}
           type="button"
-          aria-label={placeholder || tooltip || "Select"}
+          aria-label={triggerLabel}
           className="bselect-trigger"
           aria-expanded={open}
           aria-haspopup="listbox"
@@ -361,7 +365,7 @@ export function BadgeSelect({
           ref={triggerRef as React.RefObject<HTMLDivElement>}
           role="combobox"
           tabIndex={0}
-          aria-label={placeholder || tooltip || "Select"}
+          aria-label={triggerLabel}
           className="bselect-trigger"
           aria-expanded={open}
           aria-haspopup="listbox"

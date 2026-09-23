@@ -1,0 +1,226 @@
+{
+  "gate": {
+    "github": "请登录 GitHub 以创建或连接保管库",
+    "vault": "请先连接保管库",
+    "busy": "操作已在进行中"
+  },
+  "dialogShell": {
+    "cancel": "取消"
+  },
+  "assetCategories": {
+    "skills": {
+      "label": "技能",
+      "badge": "技能"
+    },
+    "mcpServers": {
+      "label": "MCP 服务器",
+      "badge": "MCP"
+    },
+    "memories": {
+      "label": "项目记忆",
+      "badge": "记忆"
+    },
+    "reviewActions": {
+      "label": "审查操作",
+      "badge": "操作"
+    },
+    "verifications": {
+      "label": "验证",
+      "badge": "验证"
+    }
+  },
+  "assetChecklist": {
+    "selectAll": "全选",
+    "selectAllAriaLabel": "全选 {{label}}",
+    "selectAllAriaLabel_scoped": "全选 {{scope}} 的 {{label}}",
+    "deselectAll": "取消全选",
+    "deselectAllAriaLabel": "取消全选 {{label}}",
+    "deselectAllAriaLabel_scoped": "取消全选 {{scope}} 的 {{label}}"
+  },
+  "githubAccountTypes": {
+    "user": "用户",
+    "organization": "组织"
+  },
+  "emptyState": {
+    "title": "团队配置保管库",
+    "description": "通过带版本控制的 Git 仓库，在团队内共享和同步 Tendril 项目、自定义技能、MCP 服务器及安全规则。",
+    "create": "创建 GitHub 保管库",
+    "connect": "连接现有 Git 保管库"
+  },
+  "createDialog": {
+    "title": "在 GitHub 上创建团队保管库",
+    "description": "创建一个私有 GitHub 仓库，与团队共享 Tendril 项目配置、自定义技能和 MCP 服务器。",
+    "submit": "创建保管库",
+    "name": {
+      "label": "仓库名称"
+    },
+    "owner": {
+      "label": "所有者 / 组织",
+      "placeholder": "选择所有者",
+      "inputPlaceholder": "例如用户名或组织名"
+    },
+    "accountOption": "{{login}}（{{type}}）",
+    "private": "私有仓库"
+  },
+  "connectDialog": {
+    "title": "连接现有团队保管库",
+    "description": "连接现有的 Tendril 保管库仓库，与团队同步项目、技能和配置。",
+    "submit": "连接保管库",
+    "discovering": "🔍 正在您的 GitHub 账户和组织中搜索现有保管库…",
+    "detected": {
+      "label": "检测到的 GitHub 保管库",
+      "placeholder": "选择仓库"
+    },
+    "repoOption": "{{fullName}}（{{accountType}}）",
+    "repoOption_private": "{{fullName}}（{{accountType}}，私有）",
+    "url": {
+      "label": "Git 仓库 URL"
+    },
+    "displayName": {
+      "label": "显示名称（可选）",
+      "placeholder": "例如：核心团队保管库（可选）"
+    }
+  },
+  "importDialog": {
+    "title": "从保管库导入“{{name}}”",
+    "mergeTitle": "将“{{name}}”与本地项目合并",
+    "submit": "导入项目",
+    "mergeSubmit": "关联并合并",
+    "collision": "已存在名为“{{name}}”的本地项目。请选择其他名称（例如 {{suggestion}}）。",
+    "mergeCallout": "合并会将此保管库项目与您现有的本地项目“{{name}}”关联。本地仓库路径和无冲突的设置将被保留，同时会整合所选的保管库资源（验证、操作、技能、MCP、记忆）。",
+    "renameNotice": "已存在名为“{{name}}”的本地项目。为避免冲突，我们建议此次导入使用“{{suggestion}}”。",
+    "name": {
+      "label": "本地项目名称"
+    },
+    "source": "保管库来源：{{name}}",
+    "changelog": "变更日志：{{changelog}}",
+    "repos": {
+      "heading": "仓库",
+      "description": "将关联磁盘上现有的本地文件夹，或从 GitHub 自动克隆缺失的仓库。",
+      "existing": "✓ 现有本地文件夹",
+      "willClone": "将从 GitHub 克隆",
+      "pathAriaLabel": "{{repo}} 的本地路径"
+    },
+    "assets": {
+      "heading": "要导入的资源",
+      "empty": {
+        "skills": "此保管库项目中没有自定义技能。",
+        "mcpServers": "此保管库项目中没有 MCP 服务器。",
+        "memories": "此保管库项目中没有项目记忆 Markdown 文件。",
+        "reviewActions": "此保管库项目中没有审查操作。",
+        "verifications": "此保管库项目中没有验证。"
+      }
+    },
+    "permissions": "导入安全与权限策略"
+  },
+  "pushDialog": {
+    "title": "将项目添加到 {{vault}}（创建 PR）",
+    "submit": "发布并创建 PR",
+    "projects": {
+      "heading": "要发布的项目和资源",
+      "none": "所有本地项目均已由保管库跟踪。请先创建一个新的本地项目，再将其添加到此处。",
+      "assetsAriaLabel": "{{project}} 的资源"
+    },
+    "empty": {
+      "skills": "此项目未配置自定义技能。",
+      "mcpServers": "此项目未配置 MCP 服务器。",
+      "memories": "未找到此项目的记忆 Markdown 文件。",
+      "reviewActions": "此项目未配置审查操作。",
+      "verifications": "此项目未配置验证。"
+    },
+    "summary": {
+      "skills_other": "{{selected}}/{{count}} 个技能",
+      "mcpServers_other": "{{selected}}/{{count}} 个 MCP",
+      "memories_other": "{{selected}}/{{count}} 条记忆",
+      "reviewActions_other": "{{selected}}/{{count}} 个操作",
+      "verifications_other": "{{selected}}/{{count}} 项验证",
+      "none": "0 个资源"
+    },
+    "permissions": "包含安全与权限策略",
+    "release": {
+      "heading": "发布详情",
+      "version": {
+        "label": "版本标签（UTC 时间戳）"
+      },
+      "changelog": {
+        "label": "变更日志 / 发布说明",
+        "placeholder": "更新内容、新技能、MCP 服务器或安全策略变更的摘要…"
+      },
+      "reviewers": {
+        "label": "请求 PR 审查人员",
+        "placeholder": "例如 alice, bob（以逗号分隔的 GitHub 用户名）"
+      }
+    },
+    "prOpened": "已成功创建 Pull Request：{{url}}"
+  },
+  "confirmDelete": {
+    "title": "从保管库中删除“{{projectName}}”？",
+    "submit": "创建删除 PR",
+    "warning": "此操作将从保管库仓库中移除项目“{{projectName}}”及其所有关联的清单、技能、MCP 配置和记忆。",
+    "note": "将针对保管库仓库创建一个新分支和 Pull Request 来执行此删除操作。"
+  },
+  "projectsTable": {
+    "addTrackedProject": "添加跟踪项目",
+    "loading": "正在加载共享项目…",
+    "empty": {
+      "title": "没有共享项目",
+      "description": "此保管库中还没有任何共享项目。添加一个本地项目即可与团队共享。"
+    },
+    "columns": {
+      "project": "项目",
+      "version": "版本",
+      "actions": "操作",
+      "syncStatus": "同步状态",
+      "contents": "内容",
+      "changelog": "变更日志 / 上下文"
+    },
+    "actions": {
+      "import": "导入",
+      "linkMerge": "关联并合并",
+      "importAs": "导入为…",
+      "update": "更新",
+      "publish": "发布",
+      "openPr": "创建 PR",
+      "publishTooltip": "创建 PR 以更新保管库中的“{{name}}”",
+      "delete": "从保管库中删除“{{name}}”"
+    },
+    "syncStatus": {
+      "upToDate": "✓ 已同步",
+      "modified": "本地有更改",
+      "updateAvailable": "有可用更新",
+      "localOnly": "仅本地",
+      "notImported": "未导入",
+      "conflict": "名称冲突"
+    },
+    "contents": {
+      "repos_other": "{{count}} 个仓库",
+      "skills_other": "{{count}} 个技能",
+      "mcps_other": "{{count}} 个 MCP",
+      "memories_other": "{{count}} 条记忆",
+      "reviewActions_other": "{{count}} 个操作",
+      "verifications_other": "{{count}} 项验证"
+    }
+  },
+  "statusCard": {
+    "fallbackName": "团队保管库",
+    "sync": {
+      "behind_other": "落后 {{count}}",
+      "ahead_other": "领先 {{count}}",
+      "inSync": "已同步"
+    },
+    "details": {
+      "vault": "保管库",
+      "branch": "分支",
+      "status": "状态",
+      "lastSynced": "上次同步"
+    },
+    "openOnGitHub": "在 GitHub 上打开",
+    "syncedStatus": "✓ {{status}}",
+    "lastSynced": {
+      "never": "从未",
+      "value": "{{date}} {{time}} UTC"
+    },
+    "alwaysInSync": "始终保持同步",
+    "disconnect": "断开保管库连接"
+  }
+}

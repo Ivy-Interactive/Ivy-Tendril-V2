@@ -48,4 +48,4 @@ Nach der Installation können Sie Slash-Befehle direkt in Ihrer Claude Code-Sitz
 
 ## Lizenz
 
-Tendril Skills und Plugins sind unter der im Repository-Stammverzeichnis befindlichen [Functional Source License (FSL-1.1-ALv2)](../LICENSE) lizenziert.
+Tendril Skills und Plugins sind unter der im Repository-Stammverzeichnis befindlichen [Functional Source License (FSL-1.1-ALv2)](../../LICENSE) lizenziert.

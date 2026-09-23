@@ -2,6 +2,7 @@ import type { DoctorCheck, DoctorCheckStatus } from "../../types/api";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { Badge, Button } from "@ivy-interactive/components/ui";
 import { ErrorBanner } from "../../components/ErrorBanner";
+import { Trans, useTranslation, type TFunction } from "../../i18n";
 
 /**
  * This module owns two things V1 keeps in two different places:
@@ -29,22 +30,40 @@ export const CHECK_STATUS_CLASSES: Record<DoctorCheckStatus, string> = {
   Fail: "border-destructive/40 bg-destructive/10 text-destructive",
 };
 
-/** The bracketed tag doctor prints; mirrors `CheckStatus::tag()` in `tendril-core`. */
-const STATUS_LABELS: Record<DoctorCheckStatus, string> = {
-  Ok: "OK",
-  Warn: "WARN",
-  Fail: "FAIL",
-};
+/**
+ * The bracketed tag doctor prints; mirrors `CheckStatus::tag()` in `tendril-core`. Keyed by the
+ * protocol value, which stays as it is; only the label is translated. A status this build does not
+ * know is shown raw rather than as a key.
+ */
+const STATUS_LABEL_KEYS = {
+  Ok: "prerequisites.status.ok",
+  Warn: "prerequisites.status.warn",
+  Fail: "prerequisites.status.fail",
+} as const satisfies Record<DoctorCheckStatus, string>;
 
 export function CheckBadge({ status }: { status: DoctorCheckStatus }) {
+  const { t } = useTranslation("onboarding");
+  const labelKey = Object.hasOwn(STATUS_LABEL_KEYS, status) ? STATUS_LABEL_KEYS[status] : null;
   return (
     <Badge
       variant="outline"
       className={`px-1.5 py-0.5 text-2xs font-bold uppercase ${CHECK_STATUS_CLASSES[status]}`}
     >
-      {STATUS_LABELS[status]}
+      {labelKey ? t(labelKey) : status}
     </Badge>
   );
+}
+
+/**
+ * V1 `InstallMissingDialog`'s body, collapsed to one line: what is missing and what to do. Shared by
+ * the prerequisite list and the wizard's pick gate, which say the same thing about the same checks.
+ * `check.name` is the daemon's label for the tool, shown as it is.
+ */
+export function missingToolsMessage(t: TFunction<"onboarding">, missing: DoctorCheck[]): string {
+  return t("prerequisites.missing", {
+    count: missing.length,
+    names: missing.map((check) => check.name),
+  });
 }
 
 /**
@@ -73,6 +92,7 @@ export interface PrerequisiteChecksProps {
  * set - because V2's registry reports every probe in one call instead of sequentially.
  */
 export function PrerequisiteChecks({ checks, loading, error, onRecheck }: PrerequisiteChecksProps) {
+  const { t } = useTranslation("onboarding");
   const openInstall = (url: string) => {
     void openUrl(url).catch(() => {});
   };
@@ -83,9 +103,7 @@ export function PrerequisiteChecks({ checks, loading, error, onRecheck }: Prereq
     <div className="space-y-3" data-testid="onboarding-prerequisites">
       <div className="flex items-center justify-between gap-3">
         <p className="text-sm text-muted-foreground">
-          {blocking.length > 0
-            ? `Tendril needs ${blocking.map((check) => check.name).join(", ")} but it isn't installed. Install it, then press Re-check.`
-            : "The tools Tendril launches on your machine."}
+          {blocking.length > 0 ? missingToolsMessage(t, blocking) : t("prerequisites.description")}
         </p>
         <Button
           type="button"
@@ -96,14 +114,14 @@ export function PrerequisiteChecks({ checks, loading, error, onRecheck }: Prereq
           data-testid="onboarding-recheck"
           className="shrink-0 text-xs"
         >
-          {loading ? "Checking…" : "Re-check"}
+          {loading ? t("prerequisites.checking") : t("prerequisites.recheck")}
         </Button>
       </div>
 
       {error && <ErrorBanner data-testid="onboarding-checks-error">{error}</ErrorBanner>}
 
       {!error && checks.length === 0 && !loading && (
-        <p className="text-xs text-muted-foreground">No checks reported.</p>
+        <p className="text-xs text-muted-foreground">{t("prerequisites.empty")}</p>
       )}
 
       {checks.length > 0 && (
@@ -119,7 +137,9 @@ export function PrerequisiteChecks({ checks, loading, error, onRecheck }: Prereq
                 <div className="text-xs font-medium text-foreground">
                   {check.name}
                   {check.required && (
-                    <span className="ml-2 text-2xs uppercase text-muted-foreground">required</span>
+                    <span className="ml-2 text-2xs uppercase text-muted-foreground">
+                      {t("prerequisites.required")}
+                    </span>
                   )}
                 </div>
                 <div className="break-words text-xs text-muted-foreground">{check.message}</div>
@@ -133,7 +153,7 @@ export function PrerequisiteChecks({ checks, loading, error, onRecheck }: Prereq
                   data-testid={`onboarding-install-${check.name}`}
                   className="shrink-0 text-xs"
                 >
-                  Install
+                  {t("prerequisites.install")}
                 </Button>
               )}
             </li>
@@ -158,19 +178,18 @@ export interface DataStorageStepProps {
  * startup and `PUT /api/config` writes keys *inside* config.yaml, not the directory that holds it.
  */
 export function DataStorageStep({ tendrilHome }: DataStorageStepProps) {
+  const { t } = useTranslation("onboarding");
   return (
     <div className="space-y-4" data-testid="onboarding-step-data-storage">
-      <h3 className="text-base font-semibold text-foreground">Where should we store your data?</h3>
-      <p className="text-sm text-muted-foreground">
-        Tendril keeps your config and plans in this folder.
-      </p>
+      <h3 className="text-base font-semibold text-foreground">{t("dataStorage.title")}</h3>
+      <p className="text-sm text-muted-foreground">{t("dataStorage.description")}</p>
 
       <div className="space-y-1">
         <label
           className="block text-xs font-medium text-foreground"
           htmlFor="onboarding-tendril-home-input"
         >
-          Tendril Home <span className="text-destructive">*</span>
+          {t("dataStorage.homeLabel")} <span className="text-destructive">*</span>
         </label>
         <input
           id="onboarding-tendril-home-input"
@@ -182,12 +201,17 @@ export function DataStorageStep({ tendrilHome }: DataStorageStepProps) {
         />
         {tendrilHome ? (
           <p className="text-xs text-muted-foreground">
-            The running daemon resolved this folder. Set{" "}
-            <code className="font-mono">TENDRIL_HOME</code> before starting Tendril to move it.
+            {/* The variable name is an identifier, so it is a value rather than catalog text. */}
+            <Trans
+              ns="onboarding"
+              i18nKey="dataStorage.homeHint"
+              values={{ envVar: "TENDRIL_HOME" }}
+              components={{ code: <code className="font-mono" /> }}
+            />
           </p>
         ) : (
           <p className="text-xs text-destructive" data-testid="onboarding-tendril-home-error">
-            Please provide a valid path.
+            {t("dataStorage.homeMissing")}
           </p>
         )}
       </div>

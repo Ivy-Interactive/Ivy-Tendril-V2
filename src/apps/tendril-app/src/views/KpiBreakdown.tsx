@@ -15,11 +15,18 @@
  * The one rule every panel obeys: an unpriced cost renders as an em dash, never `$0.00`. The
  * `Option<f64>` the query returns means "these rows carried tokens without a charge", and if that
  * distinction dies at the last render then the whole `PricedRows` guard behind it was pointless.
+ *
+ * Every string is the `dashboard` catalog's. `buildKpiBlade` is handed the view's `t`, so the blade
+ * is rebuilt in the new language whenever the Dashboard re-renders for one; the figures go through
+ * the current language's formatters at the same moment.
  */
 
 import type React from "react";
 import { Callout, DataTable, DetailItem, Details } from "@ivy-interactive/components/ui";
 import type { BladeDescriptor, DataTableColumn } from "@ivy-interactive/components/ui";
+import { formatList, formatNumber } from "@ivy-interactive/components/i18n";
+import { useTranslation, type TFunction } from "../i18n";
+import { planStateLabel } from "../i18n/enumLabels";
 import type {
   AgentCostBreakdown,
   DashboardActivity,
@@ -28,8 +35,16 @@ import type {
   RecentPlanCost,
   ShippedFeatureDay,
 } from "../types/api";
-import { KPI_WINDOW_DAYS, NO_VALUE, formatCurrency } from "../utils/dashboardMetrics";
+import {
+  KPI_WINDOW_DAYS,
+  NO_VALUE,
+  formatCurrency,
+  formatPercentValue,
+  formatWholeDollars,
+} from "../utils/dashboardMetrics";
 import { toDayNumber, toIsoDate, todayDayNumber } from "../utils/rollingAverage";
+
+type DashboardT = TFunction<"dashboard">;
 
 export interface KpiBreakdownData {
   activity: DashboardActivity | null;
@@ -46,6 +61,22 @@ const WINDOW_DAYS = KPI_WINDOW_DAYS;
 
 /** `KpiBreakdownSheet`'s own window for the average-cost-per-plan card. */
 const PLAN_WINDOW_DAYS = 7;
+
+/**
+ * The plan states the average-cost-per-plan query counts. Raw values: shown through their labels,
+ * never as they are.
+ */
+const PLAN_STATES_INCLUDED = ["Completed", "Failed", "Review"] as const;
+
+/**
+ * The daemon's name for spend it could not tie to an agent: a row's `agent` value, matched and keyed
+ * on as it is. It is shown by its label, in the table and in the callout that names it alike.
+ */
+const UNKNOWN_AGENT = "Unknown";
+
+/** An agent as the table shows it: its own name, or the label of the daemon's "Unknown" row. */
+const agentLabel = (t: DashboardT, agent: string): string =>
+  agent === UNKNOWN_AGENT ? t("breakdown.agents.unknownAgent") : agent;
 
 /** An amount that may not exist. `null` is unknown and renders as a dash. */
 const cost = (value: number | null | undefined): string =>
@@ -76,27 +107,32 @@ const unclassifiedCost = (row: DashboardDailyCost): number =>
  */
 const roundedCost = (value: number | null | undefined): string => {
   if (value == null) return NO_VALUE;
-  return value >= 100 ? `$${Math.round(value).toLocaleString("en-US")}` : formatCurrency(value);
+  return value >= 100 ? formatWholeDollars(value) : formatCurrency(value);
 };
 
-/** `FormatHelper.FormatPercent`: at most one decimal, so 38 reads as "38%" and not "38.0%". */
-const percent = (value: number): string => `${Number(value.toFixed(1))}%`;
+/**
+ * `FormatHelper.FormatPercent`: at most one decimal, so 38 reads as "38%" and not "38.0%". `+ 0` so
+ * a -0 reads "0%", as the template literal wrote it, and not `Intl`'s "-0%".
+ */
+const percent = (value: number): string => formatPercentValue(Number(value.toFixed(1)) + 0, 1);
+
+/** A share rounded to a whole percent, `Math.round` deciding as it always did (`+ 0`: never "-0%"). */
+const wholePercent = (value: number): string => formatPercentValue(Math.round(value) + 0);
 
 /** `FormatHelper.FormatCount`: thousands separators, which is how every count in V1 is written. */
-const count = (value: number): string => value.toLocaleString("en-US");
+const count = (value: number): string => formatNumber(value);
 
 /**
  * `KpiBreakdownSheet.CalculateDelta`. "N/A" when either side is missing, because a change from
  * nothing is not a percentage; two decimals below 10% where the digits still carry information.
  */
-const delta = (current: number, previous: number): string => {
-  if (previous <= 0 || current <= 0) return "N/A";
+const delta = (t: DashboardT, current: number, previous: number): string => {
+  if (previous <= 0 || current <= 0) return t("breakdown.delta.notAvailable");
   const pct = ((current - previous) / previous) * 100;
-  const magnitude =
-    Math.abs(pct) >= 10
-      ? String(Math.round(Math.abs(pct)))
-      : String(Number(Math.abs(pct).toFixed(2)));
-  return `${pct >= 0 ? "+" : "-"}${magnitude}%`;
+  const wide = Math.abs(pct) >= 10;
+  const magnitude = wide ? Math.round(Math.abs(pct)) : Number(Math.abs(pct).toFixed(2));
+  // Signed after rounding, so a change that rounds to nothing keeps the sign it had: "-0%".
+  return formatPercentValue(pct >= 0 ? magnitude : -magnitude, wide ? 0 : 2, "always");
 };
 
 /** Inclusive sum of `value` over the dates in `[fromDay, toDay]`. */
@@ -122,11 +158,14 @@ const windows = (today: number) => {
   return { windowStart, priorEnd, priorStart: priorEnd - (WINDOW_DAYS - 1) };
 };
 
-const EmptyNote: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <Callout.Info title="No Data" className="m-4">
-    {children}
-  </Callout.Info>
-);
+const EmptyNote: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { t } = useTranslation("dashboard");
+  return (
+    <Callout.Info title={t("breakdown.empty.title")} className="m-4">
+      {children}
+    </Callout.Info>
+  );
+};
 
 /** A titled section, the shape `Layout.Vertical() | Text.H4(...) | table` renders as. */
 const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
@@ -139,39 +178,52 @@ const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title
 // --- Spend by Coding Agent ---------------------------------------------------
 
 const agentCostColumns = (
+  t: DashboardT,
   totalCost: number,
   totalTokens: number,
 ): DataTableColumn<AgentCostBreakdown>[] => [
-  { name: "agent", header: "Coding Agent", accessor: (r) => r.agent },
+  {
+    name: "agent",
+    header: t("breakdown.agents.columns.agent"),
+    accessor: (r) => r.agent,
+    cell: (value) => (typeof value === "string" ? agentLabel(t, value) : null),
+  },
   {
     name: "cost",
-    header: "Spend",
+    header: t("breakdown.agents.columns.cost"),
     align: "Right",
     accessor: (r) => r.cost,
     cell: (value) => roundedCost(value as number),
   },
   {
     name: "costShare",
-    header: "Spend Share",
+    header: t("breakdown.agents.columns.costShare"),
     align: "Right",
     accessor: (r) => (totalCost > 0 ? (r.cost / totalCost) * 100 : null),
-    cell: (value) => (value == null ? "N/A" : percent(value as number)),
+    cell: (value) =>
+      value == null ? t("breakdown.agents.shareNotAvailable") : percent(value as number),
   },
   {
     name: "tokens",
-    header: "Tokens",
+    header: t("breakdown.agents.columns.tokens"),
     align: "Right",
     accessor: (r) => r.tokens,
     cell: (value) => count(value as number),
   },
   {
     name: "tokenShare",
-    header: "Token Share",
+    header: t("breakdown.agents.columns.tokenShare"),
     align: "Right",
     accessor: (r) => (totalTokens > 0 ? (r.tokens / totalTokens) * 100 : null),
-    cell: (value) => (value == null ? "N/A" : percent(value as number)),
+    cell: (value) =>
+      value == null ? t("breakdown.agents.shareNotAvailable") : percent(value as number),
   },
-  { name: "planCount", header: "Plans", align: "Right", accessor: (r) => r.planCount },
+  {
+    name: "planCount",
+    header: t("breakdown.agents.columns.planCount"),
+    align: "Right",
+    accessor: (r) => r.planCount,
+  },
 ];
 
 /**
@@ -183,33 +235,43 @@ const agentCostColumns = (
 const AgentBreakdown: React.FC<{ agentCosts: readonly AgentCostBreakdown[] }> = ({
   agentCosts,
 }) => {
+  const { t } = useTranslation("dashboard");
+
   if (agentCosts.length === 0) {
     return (
-      <Section title="Spend by Coding Agent">
-        <EmptyNote>No agent-attributed spend in this window.</EmptyNote>
+      <Section title={t("breakdown.agents.title")}>
+        <EmptyNote>{t("breakdown.agents.empty")}</EmptyNote>
       </Section>
     );
   }
 
   const totalCost = agentCosts.reduce((acc, a) => acc + a.cost, 0);
   const totalTokens = agentCosts.reduce((acc, a) => acc + a.tokens, 0);
-  const unknownCost = agentCosts.find((a) => a.agent === "Unknown")?.cost ?? null;
+  const unknownCost = agentCosts.find((a) => a.agent === UNKNOWN_AGENT)?.cost ?? null;
 
   return (
-    <Section title="Spend by Coding Agent">
+    <Section title={t("breakdown.agents.title")}>
       <DataTable
-        columns={agentCostColumns(totalCost, totalTokens)}
+        columns={agentCostColumns(t, totalCost, totalTokens)}
         rows={[...agentCosts]}
         getRowId={(row) => row.agent}
         paginated={false}
       />
       {unknownCost != null && (
-        <Callout.Info title="Partial Attribution" className="m-4">
-          Rows predating agent capture appear as Unknown and cannot be attributed to a specific
-          agent.
-          {totalCost > 0 &&
-            ` That is ${percent((unknownCost / totalCost) * 100)} of the spend in this window` +
-              `${unknownCost >= totalCost - CENT ? ", so the split below it carries no information" : ""}.`}
+        <Callout.Info title={t("breakdown.agents.partialAttribution.title")} className="m-4">
+          {totalCost > 0
+            ? t(
+                unknownCost >= totalCost - CENT
+                  ? "breakdown.agents.partialAttribution.bodyUninformative"
+                  : "breakdown.agents.partialAttribution.bodyWithShare",
+                {
+                  agent: agentLabel(t, UNKNOWN_AGENT),
+                  share: percent((unknownCost / totalCost) * 100),
+                },
+              )
+            : t("breakdown.agents.partialAttribution.body", {
+                agent: agentLabel(t, UNKNOWN_AGENT),
+              })}
         </Callout.Info>
       )}
     </Section>
@@ -218,39 +280,64 @@ const AgentBreakdown: React.FC<{ agentCosts: readonly AgentCostBreakdown[] }> = 
 
 // --- featuresShipped ---------------------------------------------------------
 
-const featureDayColumns: DataTableColumn<ShippedFeatureDay>[] = [
-  { name: "date", header: "Date", width: "140px", accessor: (r) => r.date },
+const featureDayColumns = (t: DashboardT): DataTableColumn<ShippedFeatureDay>[] => [
+  {
+    name: "date",
+    header: t("breakdown.featuresShipped.byDay.columns.date"),
+    width: "140px",
+    accessor: (r) => r.date,
+  },
   {
     name: "count",
-    header: "Features",
+    header: t("breakdown.featuresShipped.byDay.columns.count"),
     align: "Right",
     accessor: (r) => r.count,
     cell: (value) => count(value as number),
   },
 ];
 
-const mergedPrColumns: DataTableColumn<RecentMergedPr>[] = [
-  { name: "planId", header: "Plan", width: "80px", accessor: (r) => r.planId },
-  { name: "title", header: "Title", accessor: (r) => r.title, wrapText: true },
+const mergedPrColumns = (t: DashboardT): DataTableColumn<RecentMergedPr>[] => [
+  {
+    name: "planId",
+    header: t("breakdown.featuresShipped.mergedPrs.columns.plan"),
+    width: "80px",
+    accessor: (r) => r.planId,
+  },
+  {
+    name: "title",
+    header: t("breakdown.featuresShipped.mergedPrs.columns.title"),
+    accessor: (r) => r.title,
+    wrapText: true,
+  },
   {
     name: "repo",
-    header: "Repo",
+    header: t("breakdown.featuresShipped.mergedPrs.columns.repo"),
     accessor: (r) => r.repo,
+    // Wrapped, like the title beside it. A repo is a local path with no spaces, and an unwrapped
+    // cell's minimum width is the whole of it: once the sheet stopped growing to fit its content,
+    // the table gave that path its full length and squeezed the title to a word per line. Letting
+    // both break shares the width between them and keeps the path readable in full.
+    wrapText: true,
     // A plan can have merged a PR without a Repos row, and an empty cell says so more honestly
     // than a guessed path would.
     cell: (value) => (typeof value === "string" && value !== "" ? value : NO_VALUE),
   },
-  { name: "updated", header: "Merged", width: "170px", accessor: (r) => r.updated },
+  {
+    name: "updated",
+    header: t("breakdown.featuresShipped.mergedPrs.columns.merged"),
+    width: "170px",
+    accessor: (r) => r.updated,
+  },
   {
     name: "prUrl",
-    header: "PR URL",
+    header: t("breakdown.featuresShipped.mergedPrs.columns.prUrl"),
     width: "60px",
     sortable: false,
     accessor: (r) => r.prUrl,
     cell: (value) =>
       typeof value === "string" ? (
         <a href={value} target="_blank" rel="noreferrer" className="text-xs underline">
-          open
+          {t("breakdown.featuresShipped.mergedPrs.open")}
         </a>
       ) : null,
   },
@@ -258,32 +345,37 @@ const mergedPrColumns: DataTableColumn<RecentMergedPr>[] = [
 
 // --- forecastMonth -----------------------------------------------------------
 
-const dailyCostColumns: DataTableColumn<DashboardDailyCost>[] = [
-  { name: "date", header: "Date", width: "110px", accessor: (r) => r.date },
+const dailyCostColumns = (t: DashboardT): DataTableColumn<DashboardDailyCost>[] => [
+  {
+    name: "date",
+    header: t("breakdown.forecastMonth.daily.columns.date"),
+    width: "110px",
+    accessor: (r) => r.date,
+  },
   {
     name: "cost",
-    header: "Total Spend",
+    header: t("breakdown.forecastMonth.daily.columns.cost"),
     align: "Right",
     accessor: (r) => r.cost,
     cell: (value) => roundedCost(value as number),
   },
   {
     name: "apiCost",
-    header: "API Spend",
+    header: t("breakdown.forecastMonth.daily.columns.apiCost"),
     align: "Right",
     accessor: (r) => r.apiCost,
     cell: (value) => roundedCost(value as number),
   },
   {
     name: "subsidizedCost",
-    header: "Subsidized Spend",
+    header: t("breakdown.forecastMonth.daily.columns.subsidizedCost"),
     align: "Right",
     accessor: (r) => r.subsidizedCost,
     cell: (value) => roundedCost(value as number),
   },
   {
     name: "tokens",
-    header: "Total Tokens",
+    header: t("breakdown.forecastMonth.daily.columns.tokens"),
     align: "Right",
     // The greater of the two token counts, the guard V1 applies here: the rollup under-reports
     // whenever a row carried tokens it missed.
@@ -292,34 +384,56 @@ const dailyCostColumns: DataTableColumn<DashboardDailyCost>[] = [
   },
   {
     name: "subsidizedShare",
-    header: "Subsidized %",
+    header: t("breakdown.forecastMonth.daily.columns.subsidizedShare"),
     align: "Right",
     accessor: (r) => {
       const total = Math.max(r.tokens, r.apiTokens + r.subsidizedTokens);
       if (total > 0) return (r.subsidizedTokens / total) * 100;
       return r.cost > 0 ? (r.subsidizedCost / r.cost) * 100 : 0;
     },
-    cell: (value) => `${Math.round(value as number)}%`,
+    cell: (value) => wholePercent(value as number),
   },
 ];
 
 // --- avgCostPlan -------------------------------------------------------------
 
-const planCostColumns: DataTableColumn<RecentPlanCost>[] = [
-  { name: "planId", header: "Plan", width: "80px", accessor: (r) => r.planId },
-  { name: "title", header: "Title", accessor: (r) => r.title, wrapText: true },
-  { name: "state", header: "State", width: "110px", accessor: (r) => r.state },
-  { name: "created", header: "Created", width: "170px", accessor: (r) => r.created },
+const planCostColumns = (t: DashboardT): DataTableColumn<RecentPlanCost>[] => [
+  {
+    name: "planId",
+    header: t("breakdown.avgCostPlan.plans.columns.plan"),
+    width: "80px",
+    accessor: (r) => r.planId,
+  },
+  {
+    name: "title",
+    header: t("breakdown.avgCostPlan.plans.columns.title"),
+    accessor: (r) => r.title,
+    wrapText: true,
+  },
+  {
+    name: "state",
+    header: t("breakdown.avgCostPlan.plans.columns.state"),
+    width: "110px",
+    // Sorted on the raw state, shown by its label.
+    accessor: (r) => r.state,
+    cell: (value) => (typeof value === "string" ? planStateLabel(value) : null),
+  },
+  {
+    name: "created",
+    header: t("breakdown.avgCostPlan.plans.columns.created"),
+    width: "170px",
+    accessor: (r) => r.created,
+  },
   {
     name: "tokens",
-    header: "Tokens",
+    header: t("breakdown.avgCostPlan.plans.columns.tokens"),
     align: "Right",
     accessor: (r) => r.tokens,
     cell: (value) => count(value as number),
   },
   {
     name: "cost",
-    header: "Total Cost",
+    header: t("breakdown.avgCostPlan.plans.columns.cost"),
     align: "Right",
     accessor: (r) => r.cost,
     // The whole point of the null: a plan whose rows carried tokens without a charge cost an
@@ -348,22 +462,24 @@ export const isKpiBreakdownId = (value: string): value is KpiBreakdownId =>
   (KPI_BREAKDOWN_IDS as readonly string[]).includes(value);
 
 /** Panel titles, from `DashboardApp.GetKpiSheetTitle`. */
-const TITLES: Record<KpiBreakdownId, string> = {
-  featuresShipped: "Features Shipped",
-  costPerFeature: "Avg Cost Per Feature",
-  forecastMonth: "Forecast This Month",
-  avgCostPlan: "Avg Cost/Plan",
-};
+const kpiTitle = (t: DashboardT, kpiId: KpiBreakdownId): string => t(`breakdown.titles.${kpiId}`);
 
-/** The blade for one KPI, or `null` when the id is not one we drill into. */
-export function buildKpiBlade(kpiId: string, data: KpiBreakdownData): BladeDescriptor | null {
+/**
+ * The blade for one KPI, or `null` when the id is not one we drill into. `t` is the calling view's,
+ * so the blade is rebuilt - in the new language - on the render a language change causes.
+ */
+export function buildKpiBlade(
+  kpiId: string,
+  data: KpiBreakdownData,
+  t: DashboardT,
+): BladeDescriptor | null {
   if (!isKpiBreakdownId(kpiId)) return null;
   const { activity, shippedFeatures, mergedPrs, planCosts, agentCosts } = data;
   const today = data.today ?? todayDayNumber();
   const { windowStart, priorStart, priorEnd } = windows(today);
   const blade = (subtitle: string, content: React.ReactNode): BladeDescriptor => ({
     id: kpiId,
-    title: TITLES[kpiId],
+    title: kpiTitle(t, kpiId),
     subtitle,
     width: "lg",
     content,
@@ -380,41 +496,50 @@ export function buildKpiBlade(kpiId: string, data: KpiBreakdownData): BladeDescr
         })
         .sort((a, b) => b.date.localeCompare(a.date));
 
-      return blade("Merged PRs and solved issues behind the count", [
-        <Callout.Info key="note" title="Output Metric" className="m-4">
-          Features Shipped counts merged PRs and solved issues without a PR over the last{" "}
-          {WINDOW_DAYS} days. A plan with three PRs counts three features; an issue-only plan counts
-          one.
+      return blade(t("breakdown.featuresShipped.subtitle"), [
+        <Callout.Info key="note" title={t("breakdown.featuresShipped.note.title")} className="m-4">
+          {t("breakdown.featuresShipped.note.body", { count: WINDOW_DAYS })}
         </Callout.Info>,
         <Details key="details" className="px-4 pb-4">
-          <DetailItem label="Metric">Features Shipped</DetailItem>
-          <DetailItem label="Formula">
-            Merged PRs + solved issues, last {WINDOW_DAYS} days
+          <DetailItem label={t("breakdown.details.metric")}>
+            {t("breakdown.featuresShipped.metric")}
           </DetailItem>
-          <DetailItem label={`Last ${WINDOW_DAYS} Days`}>{count(features)}</DetailItem>
-          <DetailItem label={`Prior ${WINDOW_DAYS} Days`}>{count(priorFeatures)}</DetailItem>
-          <DetailItem label={`${WINDOW_DAYS}-Day Period Delta`}>
-            {delta(features, priorFeatures)}
+          <DetailItem label={t("breakdown.details.formula")}>
+            {t("breakdown.featuresShipped.formula", { count: WINDOW_DAYS })}
+          </DetailItem>
+          <DetailItem label={t("breakdown.featuresShipped.last", { count: WINDOW_DAYS })}>
+            {count(features)}
+          </DetailItem>
+          <DetailItem label={t("breakdown.featuresShipped.prior", { count: WINDOW_DAYS })}>
+            {count(priorFeatures)}
+          </DetailItem>
+          <DetailItem label={t("breakdown.featuresShipped.periodDelta", { days: WINDOW_DAYS })}>
+            {delta(t, features, priorFeatures)}
           </DetailItem>
         </Details>,
-        <Section key="days" title={`Features by Day (Last ${WINDOW_DAYS} Days)`}>
+        <Section
+          key="days"
+          title={t("breakdown.featuresShipped.byDay.title", { count: WINDOW_DAYS })}
+        >
           {inWindow.length === 0 ? (
-            <EmptyNote>No features shipped in the {WINDOW_DAYS}-day window.</EmptyNote>
+            <EmptyNote>
+              {t("breakdown.featuresShipped.byDay.empty", { days: WINDOW_DAYS })}
+            </EmptyNote>
           ) : (
             <DataTable
-              columns={featureDayColumns}
+              columns={featureDayColumns(t)}
               rows={inWindow}
               getRowId={(row) => row.date}
               defaultPageSize={25}
             />
           )}
         </Section>,
-        <Section key="prs" title="Recent Merged Pull Requests">
+        <Section key="prs" title={t("breakdown.featuresShipped.mergedPrs.title")}>
           {mergedPrs.length === 0 ? (
-            <EmptyNote>No merged pull requests recorded yet.</EmptyNote>
+            <EmptyNote>{t("breakdown.featuresShipped.mergedPrs.empty")}</EmptyNote>
           ) : (
             <DataTable
-              columns={mergedPrColumns}
+              columns={mergedPrColumns(t)}
               rows={[...mergedPrs]}
               getRowId={(row) => row.prUrl}
               defaultPageSize={25}
@@ -433,30 +558,41 @@ export function buildKpiBlade(kpiId: string, data: KpiBreakdownData): BladeDescr
       const perFeature = features > 0 ? spend / features : 0;
       const priorPerFeature = priorFeatures > 0 ? priorSpend / priorFeatures : 0;
 
-      return blade("The two figures the quotient is taken from", [
-        <Callout.Info key="note" title="Unit Cost" className="m-4">
-          Avg Cost per Feature divides {WINDOW_DAYS}-day spend by {WINDOW_DAYS}-day features
-          shipped, so the card shows the exact quotient of the two cards beside it.
+      return blade(t("breakdown.costPerFeature.subtitle"), [
+        <Callout.Info key="note" title={t("breakdown.costPerFeature.note.title")} className="m-4">
+          {t("breakdown.costPerFeature.note.body", { days: WINDOW_DAYS })}
         </Callout.Info>,
         <Details key="details" className="px-4 pb-4">
-          <DetailItem label="Metric">Avg Cost per Feature</DetailItem>
-          <DetailItem label="Formula">
-            {WINDOW_DAYS}-day spend / {WINDOW_DAYS}-day features shipped
+          <DetailItem label={t("breakdown.details.metric")}>
+            {t("breakdown.costPerFeature.metric")}
           </DetailItem>
-          <DetailItem label={`Last ${WINDOW_DAYS} Days (Spend)`}>{cost(spend)}</DetailItem>
-          <DetailItem label={`Last ${WINDOW_DAYS} Days (Features)`}>{count(features)}</DetailItem>
-          <DetailItem label={`Last ${WINDOW_DAYS} Days (Cost/Feature)`}>
-            {features > 0 ? cost(perFeature) : "n/a"}
+          <DetailItem label={t("breakdown.details.formula")}>
+            {t("breakdown.costPerFeature.formula", { days: WINDOW_DAYS })}
           </DetailItem>
-          <DetailItem label={`Prior ${WINDOW_DAYS} Days (Spend)`}>{cost(priorSpend)}</DetailItem>
-          <DetailItem label={`Prior ${WINDOW_DAYS} Days (Features)`}>
+          <DetailItem label={t("breakdown.costPerFeature.lastSpend", { count: WINDOW_DAYS })}>
+            {cost(spend)}
+          </DetailItem>
+          <DetailItem label={t("breakdown.costPerFeature.lastFeatures", { count: WINDOW_DAYS })}>
+            {count(features)}
+          </DetailItem>
+          <DetailItem
+            label={t("breakdown.costPerFeature.lastCostPerFeature", { count: WINDOW_DAYS })}
+          >
+            {features > 0 ? cost(perFeature) : t("breakdown.costPerFeature.noValue")}
+          </DetailItem>
+          <DetailItem label={t("breakdown.costPerFeature.priorSpend", { count: WINDOW_DAYS })}>
+            {cost(priorSpend)}
+          </DetailItem>
+          <DetailItem label={t("breakdown.costPerFeature.priorFeatures", { count: WINDOW_DAYS })}>
             {count(priorFeatures)}
           </DetailItem>
-          <DetailItem label={`Prior ${WINDOW_DAYS} Days (Cost/Feature)`}>
-            {priorFeatures > 0 ? cost(priorPerFeature) : "n/a"}
+          <DetailItem
+            label={t("breakdown.costPerFeature.priorCostPerFeature", { count: WINDOW_DAYS })}
+          >
+            {priorFeatures > 0 ? cost(priorPerFeature) : t("breakdown.costPerFeature.noValue")}
           </DetailItem>
-          <DetailItem label={`${WINDOW_DAYS}-Day Period Delta`}>
-            {delta(perFeature, priorPerFeature)}
+          <DetailItem label={t("breakdown.costPerFeature.periodDelta", { days: WINDOW_DAYS })}>
+            {delta(t, perFeature, priorPerFeature)}
           </DetailItem>
         </Details>,
         <AgentBreakdown key="agents" agentCosts={agentCosts} />,
@@ -465,8 +601,8 @@ export function buildKpiBlade(kpiId: string, data: KpiBreakdownData): BladeDescr
 
     case "forecastMonth": {
       if (activity == null) {
-        return blade("Both projection bases, and the days behind them", [
-          <EmptyNote key="empty">No activity on record.</EmptyNote>,
+        return blade(t("breakdown.forecastMonth.subtitle"), [
+          <EmptyNote key="empty">{t("breakdown.forecastMonth.empty")}</EmptyNote>,
         ]);
       }
 
@@ -491,66 +627,95 @@ export function buildKpiBlade(kpiId: string, data: KpiBreakdownData): BladeDescr
         .sort((a, b) => b.date.localeCompare(a.date));
       const windowUnclassified = inWindow.reduce((acc, d) => acc + unclassifiedCost(d), 0);
 
-      return blade("Both projection bases, and the days behind them", [
-        <Callout.Info key="note" title="Usage & Subsidized Analysis" className="m-4">
+      return blade(t("breakdown.forecastMonth.subtitle"), [
+        <Callout.Info key="note" title={t("breakdown.forecastMonth.note.title")} className="m-4">
           {forecast.subsidizedTokenPercent > 0
-            ? `Forecast This Month projects month-end spend using daily activity over the last ${WINDOW_DAYS} days. ${Math.round(forecast.subsidizedTokenPercent)}% of tokens in this window were subsidized via subscription (${roundedCost(forecast.totalSubsidizedSpend)} equivalent value) with ${roundedCost(forecast.totalApiSpend)} in direct API charges.`
-            : `Forecast This Month projects month-end spend using daily activity over the last ${WINDOW_DAYS} days. Direct API projections estimate billed out-of-pocket spend, while total projections reflect overall token market value.`}
+            ? t("breakdown.forecastMonth.note.bodySubsidized", {
+                count: WINDOW_DAYS,
+                percent: wholePercent(forecast.subsidizedTokenPercent),
+                subsidizedValue: roundedCost(forecast.totalSubsidizedSpend),
+                apiCharges: roundedCost(forecast.totalApiSpend),
+              })
+            : t("breakdown.forecastMonth.note.body", { count: WINDOW_DAYS })}
         </Callout.Info>,
         // Both bases side by side rather than one headline figure. Neither is right on its own: the
         // calendar basis assumes the idle days keep coming, the activity basis assumes every day is
         // a working day, and for bursty usage the gap between them *is* the uncertainty.
         <Details key="details" className="px-4 pb-4">
-          <DetailItem label="Metric">Forecast This Month</DetailItem>
-          <DetailItem label="Direct API Forecast (Calendar Basis)">
+          <DetailItem label={t("breakdown.details.metric")}>
+            {t("breakdown.forecastMonth.metric")}
+          </DetailItem>
+          <DetailItem label={t("breakdown.forecastMonth.apiCalendar")}>
             {roundedCost(forecast.apiCalendarProjection)}
           </DetailItem>
-          <DetailItem label="Direct API Forecast (Activity Basis)">
+          <DetailItem label={t("breakdown.forecastMonth.apiActivity")}>
             {roundedCost(forecast.apiActivityProjection)}
           </DetailItem>
-          <DetailItem label="Total Forecast (Calendar Basis)">
+          <DetailItem label={t("breakdown.forecastMonth.totalCalendar")}>
             {roundedCost(forecast.calendarProjection)}
           </DetailItem>
-          <DetailItem label="Total Forecast (Activity Basis)">
+          <DetailItem label={t("breakdown.forecastMonth.totalActivity")}>
             {roundedCost(forecast.activityProjection)}
           </DetailItem>
-          <DetailItem label="Subsidized Token Share">
-            {Math.round(forecast.subsidizedTokenPercent)}% of tokens
+          <DetailItem label={t("breakdown.forecastMonth.subsidizedTokenShare")}>
+            {t("breakdown.forecastMonth.subsidizedTokenShareValue", {
+              percent: wholePercent(forecast.subsidizedTokenPercent),
+            })}
           </DetailItem>
-          <DetailItem label="Subsidized Value Share">
-            {Math.round(forecast.subsidizedCostPercent)}% of value
+          <DetailItem label={t("breakdown.forecastMonth.subsidizedValueShare")}>
+            {t("breakdown.forecastMonth.subsidizedValueShareValue", {
+              percent: wholePercent(forecast.subsidizedCostPercent),
+            })}
           </DetailItem>
-          <DetailItem label="Month-to-Date Direct API Spend">{roundedCost(mtdApi)}</DetailItem>
-          <DetailItem label="Month-to-Date Subsidized Value">
+          <DetailItem label={t("breakdown.forecastMonth.mtdApiSpend")}>
+            {roundedCost(mtdApi)}
+          </DetailItem>
+          <DetailItem label={t("breakdown.forecastMonth.mtdSubsidizedValue")}>
             {roundedCost(mtdSubsidized)}
           </DetailItem>
           {mtdUnclassified > CENT && (
-            <DetailItem label="Month-to-Date Unattributed Spend">
+            <DetailItem label={t("breakdown.forecastMonth.mtdUnattributedSpend")}>
               {roundedCost(mtdUnclassified)}
             </DetailItem>
           )}
-          <DetailItem label="Month-to-Date Total Market Value">{roundedCost(mtdTotal)}</DetailItem>
-          <DetailItem label="Calendar Days in Window">{forecast.calendarDays} day(s)</DetailItem>
-          <DetailItem label="Active Days with Spend">{forecast.activityDays} day(s)</DetailItem>
-          <DetailItem label="Days Remaining">{daysRemaining} day(s)</DetailItem>
-          <DetailItem label="Days in Month">{forecast.daysInMonth} day(s)</DetailItem>
+          <DetailItem label={t("breakdown.forecastMonth.mtdTotalMarketValue")}>
+            {roundedCost(mtdTotal)}
+          </DetailItem>
+          <DetailItem label={t("breakdown.forecastMonth.calendarDays")}>
+            {t("breakdown.forecastMonth.dayCount", { count: forecast.calendarDays })}
+          </DetailItem>
+          <DetailItem label={t("breakdown.forecastMonth.activeDays")}>
+            {t("breakdown.forecastMonth.dayCount", { count: forecast.activityDays })}
+          </DetailItem>
+          <DetailItem label={t("breakdown.forecastMonth.daysRemaining")}>
+            {t("breakdown.forecastMonth.dayCount", { count: daysRemaining })}
+          </DetailItem>
+          <DetailItem label={t("breakdown.forecastMonth.daysInMonth")}>
+            {t("breakdown.forecastMonth.dayCount", { count: forecast.daysInMonth })}
+          </DetailItem>
         </Details>,
-        <Section key="daily" title={`Daily Spend (Last ${WINDOW_DAYS} Days)`}>
+        <Section
+          key="daily"
+          title={t("breakdown.forecastMonth.daily.title", { count: WINDOW_DAYS })}
+        >
           {inWindow.length === 0 ? (
-            <EmptyNote>No daily spend records found in the {WINDOW_DAYS}-day window.</EmptyNote>
+            <EmptyNote>{t("breakdown.forecastMonth.daily.empty", { days: WINDOW_DAYS })}</EmptyNote>
           ) : (
             <>
               <DataTable
-                columns={dailyCostColumns}
+                columns={dailyCostColumns(t)}
                 rows={inWindow}
                 getRowId={(row) => row.date}
                 defaultPageSize={25}
               />
               {windowUnclassified > CENT && (
-                <Callout.Info title="Incomplete Split" className="m-4">
-                  {roundedCost(windowUnclassified)} of the spend in this window carries no cost
-                  source, so it is in Total Spend but in neither the API nor the Subsidized column.
-                  The two columns therefore under-report and must not be read as a complete split.
+                <Callout.Info
+                  title={t("breakdown.forecastMonth.daily.incompleteSplit.title")}
+                  className="m-4"
+                >
+                  {t("breakdown.forecastMonth.daily.incompleteSplit.body", {
+                    amount: roundedCost(windowUnclassified),
+                  })}
                 </Callout.Info>
               )}
             </>
@@ -571,36 +736,48 @@ export function buildKpiBlade(kpiId: string, data: KpiBreakdownData): BladeDescr
           ? priced.reduce((acc, plan) => acc + (plan.cost ?? 0), 0) / priced.length
           : 0;
       const priorAvg = activity?.prevWeekAvgCost ?? 0;
+      const stateLabels = PLAN_STATES_INCLUDED.map((state) => planStateLabel(state));
 
-      return blade("Recent plans; a dash means the rows were never priced", [
-        <Callout.Info key="note" title="7-Day Rolling Average" className="m-4">
-          Average Cost per Plan calculates the mean execution and agent spend for plans created in
-          the last {PLAN_WINDOW_DAYS} days that reached Completed, Failed, or Review state. Unpriced
-          plans (e.g. subscription runs where cost is null) are excluded from the divisor so they do
-          not artificially deflate the average.
+      return blade(t("breakdown.avgCostPlan.subtitle"), [
+        <Callout.Info key="note" title={t("breakdown.avgCostPlan.note.title")} className="m-4">
+          {t("breakdown.avgCostPlan.note.body", {
+            count: PLAN_WINDOW_DAYS,
+            // "Completed, Failed, or Review" in English.
+            states: formatList(stateLabels, { type: "disjunction" }),
+          })}
         </Callout.Info>,
         <Details key="details" className="px-4 pb-4">
-          <DetailItem label="Metric">Average Cost per Plan</DetailItem>
-          <DetailItem label="Window">
-            {PLAN_WINDOW_DAYS} days (plans created in last {PLAN_WINDOW_DAYS} days)
+          <DetailItem label={t("breakdown.details.metric")}>
+            {t("breakdown.avgCostPlan.metric")}
           </DetailItem>
-          <DetailItem label="Plan States Included">Completed, Failed, Review</DetailItem>
-          <DetailItem label={`Current ${PLAN_WINDOW_DAYS}-Day Average`}>
+          <DetailItem label={t("breakdown.avgCostPlan.window")}>
+            {t("breakdown.avgCostPlan.windowValue", { count: PLAN_WINDOW_DAYS })}
+          </DetailItem>
+          <DetailItem label={t("breakdown.avgCostPlan.statesIncluded")}>
+            {/* "Completed, Failed, Review" in English: a plain list, no "and". */}
+            {formatList(stateLabels, { type: "unit", style: "short" })}
+          </DetailItem>
+          <DetailItem label={t("breakdown.avgCostPlan.currentAverage", { days: PLAN_WINDOW_DAYS })}>
             {priced.length > 0 ? cost(currentAvg) : NO_VALUE}
           </DetailItem>
-          <DetailItem label={`Prior ${PLAN_WINDOW_DAYS}-Day Average (Days 8-14)`}>
+          <DetailItem label={t("breakdown.avgCostPlan.priorAverage", { days: PLAN_WINDOW_DAYS })}>
             {priorAvg > 0 ? cost(priorAvg) : NO_VALUE}
           </DetailItem>
-          <DetailItem label={`${PLAN_WINDOW_DAYS}-Day Period Delta`}>
-            {delta(currentAvg, priorAvg)}
+          <DetailItem label={t("breakdown.avgCostPlan.periodDelta", { days: PLAN_WINDOW_DAYS })}>
+            {delta(t, currentAvg, priorAvg)}
           </DetailItem>
         </Details>,
-        <Section key="plans" title={`Plans in Rolling Window (Last ${PLAN_WINDOW_DAYS} Days)`}>
+        <Section
+          key="plans"
+          title={t("breakdown.avgCostPlan.plans.title", { count: PLAN_WINDOW_DAYS })}
+        >
           {planCosts.length === 0 ? (
-            <EmptyNote>No plans created in the {PLAN_WINDOW_DAYS}-day rolling window.</EmptyNote>
+            <EmptyNote>
+              {t("breakdown.avgCostPlan.plans.empty", { days: PLAN_WINDOW_DAYS })}
+            </EmptyNote>
           ) : (
             <DataTable
-              columns={planCostColumns}
+              columns={planCostColumns(t)}
               rows={[...planCosts]}
               getRowId={(row) => String(row.planId)}
               defaultPageSize={25}

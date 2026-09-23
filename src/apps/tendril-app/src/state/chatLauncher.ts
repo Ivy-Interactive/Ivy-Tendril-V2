@@ -25,7 +25,13 @@ import { uiStore } from "./uiStore";
  * `chatSessionCount` exists as its own leaf module.
  */
 
-/** The title every new-chat entry point gives a session, V1's `ChatLauncher.StartNew`. */
+/**
+ * The title every new-chat entry point gives a session, V1's `ChatLauncher.StartNew`.
+ *
+ * Stored, not shown: the daemon treats this exact title as "not named yet" and replaces it with one
+ * it generates, so it stays English in every language. What the UI shows for it is the translated
+ * `chat:sidebar.untitled` (`displayTitle`).
+ */
 export const NEW_CHAT_TITLE = "New Chat";
 
 /**
@@ -168,15 +174,3 @@ export const chatLauncher = new ChatLauncher();
 /** The live `chatMode`, for the shell rows whose behaviour depends on it (V1's `OpenChat`). */
 export const useChatMode = (): ChatMode =>
   useSyncExternalStore(chatLauncher.subscribe, chatLauncher.getMode, chatLauncher.getMode);
-
-/**
- * The mode a direct-choice button beside "New chat" offers, and how to label it.
- *
- * The labels are the Appearance pane's own ("Chat" and "Terminal", with `MessageCircle` and
- * `Terminal`): a user who set the default in Settings has to recognise these two buttons as the same
- * two choices, so they say the same words.
- */
-export const CHAT_MODE_LABELS: Record<ChatMode, string> = {
-  chat: "New chat",
-  terminal: "New terminal chat",
-};

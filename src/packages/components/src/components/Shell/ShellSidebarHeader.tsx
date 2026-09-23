@@ -4,6 +4,7 @@ import { useShell } from "./ShellContext.tsx";
 import { type ShellWidgetProps, modKeyLabel } from "./types.ts";
 import { ShellTooltip } from "./ShellTooltip.tsx";
 import { IconButton } from "../ui/IconButton";
+import { useTranslation } from "@/i18n/uiShell";
 import "./shell.css";
 
 interface ShellSidebarHeaderProps extends ShellWidgetProps {
@@ -31,18 +32,20 @@ export const ShellSidebarHeader: React.FC<ShellSidebarHeaderProps> = ({
   logoUrl,
   logo,
 }) => {
+  const { t } = useTranslation("uiShell");
   const { collapsed, toggle } = useShell();
   const shortcut = `${modKeyLabel()}+B`;
+  const openLabel = t("sidebarHeader.openSidebar");
 
   return (
     <div className="tsh-header">
       <div className="tsh-row tsh-header-row">
         <div className="tsh-header-brand">
-          <ShellTooltip content="Open sidebar" shortcut={shortcut} enabled={collapsed} side="right">
+          <ShellTooltip content={openLabel} shortcut={shortcut} enabled={collapsed} side="right">
             <button
               className="tsh-logo-toggle"
               onClick={toggle}
-              aria-label="Open sidebar"
+              aria-label={openLabel}
               aria-hidden={!collapsed}
               tabIndex={collapsed ? 0 : -1}
             >
@@ -63,7 +66,7 @@ export const ShellSidebarHeader: React.FC<ShellSidebarHeaderProps> = ({
         </div>
         <IconButton
           className="tsh-header-toggle"
-          label="Close sidebar"
+          label={t("sidebarHeader.closeSidebar")}
           shortcut={shortcut}
           tooltip={collapsed ? false : undefined}
           tooltipSide="right"

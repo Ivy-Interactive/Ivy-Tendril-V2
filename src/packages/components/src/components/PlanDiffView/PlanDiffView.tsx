@@ -21,6 +21,7 @@ import { prismTheme } from "@/lib/prismTheme";
 import { getInitials } from "../PlanMarkdown/annotationUtils";
 import { Tooltip } from "../ui/TuiTooltip";
 import { NativeSelect } from "../ui/native-select";
+import { useTranslation } from "@/i18n/uiPlanWorkspace";
 
 export type LanguageModule = { default: Syntax } | Syntax;
 export type CustomLanguageLoader = () => Promise<LanguageModule>;
@@ -574,6 +575,7 @@ const CommentWidgetContainer: React.FC<CommentWidgetContainerProps> = ({
   onStartEdit,
   onCancelEdit,
 }) => {
+  const { t } = useTranslation("uiPlanWorkspace");
   const [inputText, setInputText] = useState("");
   // KaTeX loads on demand, so a review comment containing maths typesets on the render this
   // subscription triggers rather than never. See `src/hooks/use-math-ready.ts`.
@@ -609,11 +611,13 @@ const CommentWidgetContainer: React.FC<CommentWidgetContainerProps> = ({
                       </div>
                     )}
                     <span className="font-medium text-foreground truncate">
-                      {comment.author?.trim() ? comment.author.trim() : "Agent Instruction (Draft)"}
+                      {comment.author?.trim()
+                        ? comment.author.trim()
+                        : t("diffView.comment.draftAuthor")}
                     </span>
                     {isResolved && (
                       <span className="inline-flex items-center gap-0.5 px-1.5 py-0.2 text-2xs font-medium rounded bg-success/10 text-success border border-success/20">
-                        ✓ Resolved
+                        {t("diffView.comment.resolvedBadge")}
                       </span>
                     )}
                   </div>
@@ -625,7 +629,7 @@ const CommentWidgetContainer: React.FC<CommentWidgetContainerProps> = ({
                           className="hover:underline hover:text-foreground cursor-pointer"
                           onClick={() => onStartEdit(comment)}
                         >
-                          Edit
+                          {t("diffView.comment.edit")}
                         </button>
                         <span>&bull;</span>
                       </>
@@ -633,7 +637,11 @@ const CommentWidgetContainer: React.FC<CommentWidgetContainerProps> = ({
                     {canResolve && (
                       <>
                         <Tooltip
-                          content={isResolved ? "Reopen comment" : "Mark comment as resolved"}
+                          content={
+                            isResolved
+                              ? t("diffView.comment.reopenTooltip")
+                              : t("diffView.comment.resolveTooltip")
+                          }
                         >
                           <button
                             type="button"
@@ -649,21 +657,23 @@ const CommentWidgetContainer: React.FC<CommentWidgetContainerProps> = ({
                               })
                             }
                           >
-                            {isResolved ? "Unresolve" : "Resolve"}
+                            {isResolved
+                              ? t("diffView.comment.unresolve")
+                              : t("diffView.comment.resolve")}
                           </button>
                         </Tooltip>
                         {canDelete && <span>&bull;</span>}
                       </>
                     )}
                     {canDelete && (
-                      <Tooltip content="Delete comment">
+                      <Tooltip content={t("diffView.comment.deleteTooltip")}>
                         <button
                           type="button"
                           className="hover:underline text-destructive cursor-pointer"
                           onClick={() => onDeleteComment(comment)}
-                          aria-label="Delete comment"
+                          aria-label={t("diffView.comment.deleteAriaLabel")}
                         >
-                          Delete
+                          {t("diffView.comment.delete")}
                         </button>
                       </Tooltip>
                     )}
@@ -680,13 +690,13 @@ const CommentWidgetContainer: React.FC<CommentWidgetContainerProps> = ({
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between pb-1">
             <span className="text-xs font-medium text-foreground">
-              {isEditing ? "Edit Agent Instruction" : "Agent Instruction"}
+              {isEditing ? t("diffView.commentForm.editTitle") : t("diffView.commentForm.title")}
             </span>
           </div>
 
           <textarea
             className="w-full min-h-[80px] p-2 text-sm font-sans bg-background border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary resize-y"
-            placeholder="Enter instruction for the agent at this line..."
+            placeholder={t("diffView.commentForm.placeholder")}
             value={isEditing ? (editingText ?? "") : inputText}
             onChange={(e) => {
               if (isEditing) {
@@ -710,7 +720,7 @@ const CommentWidgetContainer: React.FC<CommentWidgetContainerProps> = ({
                 }
               }}
             >
-              Cancel
+              {t("diffView.commentForm.cancel")}
             </button>
             <button
               type="button"
@@ -728,7 +738,7 @@ const CommentWidgetContainer: React.FC<CommentWidgetContainerProps> = ({
                 }
               }}
             >
-              {isEditing ? "Update Comment" : "Add Comment"}
+              {isEditing ? t("diffView.commentForm.update") : t("diffView.commentForm.add")}
             </button>
           </div>
         </div>
@@ -757,6 +767,7 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
   customLanguageLoaders,
   customExtensionMappings,
 }) => {
+  const { t } = useTranslation("uiPlanWorkspace");
   useCustomExtensionMappings(customExtensionMappings);
   const dispatchEvent = eventHandler || onIvyEvent;
   const files = useMemo(() => {
@@ -895,11 +906,12 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
       const elementId = filePath || `${id}-${file.newPath || file.oldPath || `diff-${fileIndex}`}`;
       const label = isRename
         ? `${getBasename(oldName)} → ${getBasename(newName)}`
-        : getBasename(newName || oldName || filePath) || `Diff ${fileIndex + 1}`;
+        : getBasename(newName || oldName || filePath) ||
+          t("diffView.untitledFile", { index: fileIndex + 1 });
 
       return { oldName, newName, isRename, hasHeader, elementId, label };
     });
-  }, [files, id, oldRevision, newRevision, filePath, collapsible]);
+  }, [files, id, oldRevision, newRevision, filePath, collapsible, t]);
 
   const scrollToFile = useCallback((elementId: string) => {
     if (typeof document === "undefined") return;
@@ -978,7 +990,7 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
   if (!diff || files.length === 0) {
     return (
       <div ref={containerRef} style={style} className="text-muted-foreground p-4 text-sm">
-        No diff to display
+        {t("diffView.empty")}
       </div>
     );
   }
@@ -1009,9 +1021,11 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
     >
       {showFileDropdown && (
         <div className="sticky top-0 z-20 flex items-center gap-2 px-3 py-1.5 bg-muted border-b border-border font-sans">
-          <span className="text-xs text-muted-foreground shrink-0">{fileMeta.length} files</span>
+          <span className="text-xs text-muted-foreground shrink-0">
+            {t("diffView.fileCount", { count: fileMeta.length })}
+          </span>
           <NativeSelect
-            aria-label="Jump to file"
+            aria-label={t("diffView.jumpToFile.ariaLabel")}
             density="Small"
             className="font-sans"
             wrapperClassName="flex-1 min-w-0"
@@ -1021,7 +1035,7 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
             }}
           >
             <option value="" disabled>
-              Jump to file…
+              {t("diffView.jumpToFile.placeholder")}
             </option>
             {fileMeta.map((meta, fileIndex) => (
               <option key={fileIndex} value={meta.elementId}>
@@ -1143,7 +1157,7 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
                     </div>
                   ) : (
                     <div className="truncate">
-                      {renderFilePath(newName || oldName || filePath || "Diff")}
+                      {renderFilePath(newName || oldName || filePath || t("diffView.untitledPath"))}
                     </div>
                   )}
                 </div>
@@ -1191,7 +1205,7 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
                         </svg>
                       )}
                     </span>
-                    Viewed
+                    {t("diffView.viewed")}
                   </button>
 
                   {/* Comment count / visibility toggle */}
@@ -1204,15 +1218,19 @@ export const PlanDiffView: React.FC<PlanDiffViewProps> = ({
                         triggerDisabled={fileCommentCount === 0}
                         content={
                           fileCommentCount === 0
-                            ? "No comments on this file"
+                            ? t("diffView.commentToggle.noneTooltip")
                             : hidden
-                              ? `Show ${fileCommentCount} comment(s)`
-                              : `Hide ${fileCommentCount} comment(s)`
+                              ? t("diffView.commentToggle.showTooltip", { count: fileCommentCount })
+                              : t("diffView.commentToggle.hideTooltip", { count: fileCommentCount })
                         }
                       >
                         <button
                           type="button"
-                          aria-label={hidden ? "Show comments" : "Hide comments"}
+                          aria-label={
+                            hidden
+                              ? t("diffView.commentToggle.showAriaLabel")
+                              : t("diffView.commentToggle.hideAriaLabel")
+                          }
                           aria-pressed={!hidden}
                           disabled={fileCommentCount === 0}
                           className="flex items-center gap-1 p-1 rounded hover:bg-secondary/60 text-muted-foreground hover:text-foreground transition-colors cursor-pointer disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted-foreground"

@@ -1,0 +1,136 @@
+{
+  "actions": {
+    "back": "Back",
+    "next": "Next",
+    "skip": "Skip",
+    "finish": "Finish",
+    "createProject": "Create Project"
+  },
+  "wizard": {
+    "title": "Welcome to Tendril",
+    "stepsLabel": "Setup steps",
+    "steps": {
+      "codingAgent": "Coding Agent",
+      "dataStorage": "Data Storage",
+      "firstProject": "Your First Project",
+      "complete": "Complete"
+    },
+    "skipSetup": "Skip setup",
+    "progress": {
+      "label": "Setting up",
+      "checkingAgent": "Checking {{agent}}...",
+      "finishing": "Finishing setup...",
+      "cloning": "Cloning repositories...",
+      "settingUp": "Setting up your project..."
+    },
+    "errors": {
+      "checksUnavailable": "Health checks unavailable: {{error}}",
+      "agentProbeFailed": "Please make sure your agent is present and you are authorized. ({{error}})",
+      "finishFailed": "Could not finish setup: {{error}}",
+      "skipFailed": "Could not skip setup: {{error}}",
+      "setupNotStarted": "Project created, but {{jobType}} could not start: {{error}}",
+      "createFailed": "Could not create the project: {{error}}",
+      "createAbandoned": "Stopped waiting for the project to be created. The daemon may still be cloning; check your projects before creating it again."
+    }
+  },
+  "codingAgent": {
+    "title": "What is your coding agent?",
+    "description": "Tendril is a coding orchestrator that runs on top of your own coding agent. Pick the agent you'd like to use:"
+  },
+  "prerequisites": {
+    "missing_one": "Tendril needs {{names, list}} but it isn't installed. Install it, then press Re-check.",
+    "missing_other": "Tendril needs {{names, list}} but they aren't installed. Install them, then press Re-check.",
+    "description": "The tools Tendril launches on your machine.",
+    "recheck": "Re-check",
+    "checking": "Checking…",
+    "empty": "No checks reported.",
+    "required": "required",
+    "install": "Install",
+    "status": {
+      "ok": "OK",
+      "warn": "WARN",
+      "fail": "FAIL"
+    }
+  },
+  "dataStorage": {
+    "title": "Where should we store your data?",
+    "description": "Tendril keeps your config and plans in this folder.",
+    "homeLabel": "Tendril Home",
+    "homeHint": "The running daemon resolved this folder. Set <code>{{envVar}}</code> before starting Tendril to move it.",
+    "homeMissing": "Please provide a valid path."
+  },
+  "repoPicker": {
+    "label": "Add one or more Git repositories",
+    "inputLabel": "Repository URL or Local Path",
+    "placeholder": "Repository URL or Local Path",
+    "add": "Add Repository",
+    "willClone": "will be cloned on Create Project",
+    "remove": "Remove {{path}}",
+    "invalidPath": "Invalid repository path."
+  },
+  "firstProject": {
+    "title": "Setup your first project",
+    "description": "A project groups one or more repositories together so Tendril can plan and verify changes across them.",
+    "browse": "Browse",
+    "browseTitle": "Select repository folder",
+    "browseUnavailable": "Folder picker unavailable ({{error}}). Type a path instead.",
+    "nameLabel": "Project Name",
+    "nameExists": {
+      "title": "A project with this name already exists.",
+      "body": "To resolve this conflict, you can either enter a different name above, or proceed using the existing project's configuration (its repository path and settings will be preserved).",
+      "useExisting": "Use Existing Project Configuration"
+    },
+    "registered": "{{name}} is registered. Next shows its setup run."
+  },
+  "validation": {
+    "invalidProjectName": "Invalid project name '{{name}}'. Use only letters, digits, dots, dashes and underscores (no slashes or spaces).",
+    "invalidProjectNameWithSuggestion": "Invalid project name '{{name}}'. Use only letters, digits, dots, dashes and underscores (no slashes or spaces). Suggested: '{{suggestion}}'."
+  },
+  "agentRun": {
+    "title": "Setting up your project",
+    "wizardHint": "Tendril is detecting your tech stack and configuring your agentic harness. This will take a few minutes, so treat yourself to a ☕ while you wait.",
+    "noRun": "No setup run is attached to this project. You can configure its verifications and review actions from the project's own screen once setup is finished.",
+    "timedOut": "Setup timed out.",
+    "failed": "Setup failed."
+  },
+  "harness": {
+    "title": "Review Harness",
+    "description": "What the setup agent configured for your project. Everything here is editable from the project's own screen.",
+    "verifications": {
+      "title": "Verifications",
+      "hint": "The steps run after each plan execution to validate changes."
+    },
+    "reviewActions": {
+      "title": "Review Actions",
+      "hint": "Commands that make it easy to start your project for manual testing."
+    },
+    "loadError": "Could not read your project's harness ({{error}}). This says nothing about what the setup agent configured - open the project from the Projects row to see it.",
+    "empty": "Nothing is configured yet. If the setup agent is still running, its results appear here once it finishes - reopen the project from the Projects row to see them."
+  },
+  "complete": {
+    "title": "Ready to Go!",
+    "description": "Your project is configured. Click Finish to start using Tendril.",
+    "newsletter": {
+      "title": "Newsletter",
+      "description": "Be the first to know when we have a new release!"
+    }
+  },
+  "addProject": {
+    "title": "Add a Project",
+    "hint": "Name the project and point it at one or more Git repositories. Tendril then inspects them and configures the review harness.",
+    "nameLabel": "Name",
+    "namePlaceholder": "Project name...",
+    "creating": "Creating...",
+    "createInBackground": "Create in Background",
+    "nameRequired": "A project needs a name.",
+    "nameInvalidChars": "A project name cannot contain / \\ : * ? \" < > or |.",
+    "nameExists": "A project named '{{name}}' already exists.",
+    "createFailed": "Failed to create project: {{error}}",
+    "setupNotStarted": "Project created, but the setup agent could not start: {{error}}. The project is registered and can be configured from its own row.",
+    "agentHint": "Tendril is detecting your tech stack and configuring your agentic harness. This takes a few minutes.",
+    "verificationRequired": "required",
+    "noVerifications": "No verifications were configured. Add them from the project's settings.",
+    "noReviewActions": "No review actions were configured. Add them from the project's settings.",
+    "harnessEmpty": "The project is registered. If the setup agent is still running, its results appear here once it finishes - reopen the project from the Projects row to see them."
+  }
+}

@@ -7,6 +7,20 @@ import { useMathReady } from "@/hooks/use-math-ready";
 import { AlertBlockquote } from "../PlanMarkdown/AlertBlockquote.tsx";
 import { tagQuestionBlocks } from "../PlanMarkdown/questionsSource.ts";
 import { QuestionsAnswerContext } from "../PlanMarkdown/questionsContext.ts";
+import { useFormatters, useTranslation } from "@/i18n/uiShell";
+import { formatRunCost } from "./metrics-footer.tsx";
+
+/**
+ * Seconds to one decimal, ungrouped, rounded by `toFixed` first (see `formatRunCost` for why): the
+ * figures `(ms / 1000).toFixed(1)` printed, in the current language's digits.
+ */
+const SECONDS_FORMAT: Intl.NumberFormatOptions = {
+  minimumFractionDigits: 1,
+  maximumFractionDigits: 1,
+  useGrouping: false,
+};
+const formatSeconds = (format: ReturnType<typeof useFormatters>, ms: number): string =>
+  format.number(Number((ms / 1000).toFixed(1)), SECONDS_FORMAT);
 
 interface ResultSummaryProps {
   wire: ResultWire;
@@ -16,6 +30,8 @@ export const ResultSummary: React.FC<ResultSummaryProps> = ({ wire }) => {
   // KaTeX loads on demand, so a result containing maths renders its TeX source first and typesets it
   // on the render this subscription triggers. See `src/hooks/use-math-ready.ts`.
   useMathReady();
+  const { t } = useTranslation("uiShell");
+  const format = useFormatters();
 
   const isError = !wire.is_success;
   const usage = wire.usage;
@@ -25,28 +41,37 @@ export const ResultSummary: React.FC<ResultSummaryProps> = ({ wire }) => {
     // A cost Tendril worked out from the token counts carries the "~" an estimate always carries here
     // and in `JobsView`, so a figure nobody was billed cannot be read as one they were.
     const estimated = usage.cost_source === "estimated";
+    const cost = formatRunCost(usage.cost_usd);
     statsList.push(
       <span
         key="cost"
         data-estimated={estimated}
         title={
           estimated
-            ? "Priced from the token counts at this model's list price, which cannot know your plan or tier"
-            : "Billed by the agent"
+            ? t("resultSummary.cost.estimatedTooltip")
+            : t("resultSummary.cost.billedTooltip")
         }
       >
-        Cost: {estimated ? "~" : ""}${usage.cost_usd.toFixed(4)}
+        {estimated
+          ? t("resultSummary.cost.estimated", { cost })
+          : t("resultSummary.cost.billed", { cost })}
       </span>,
     );
   }
   if (wire.duration_ms != null && wire.duration_ms > 0) {
-    statsList.push(<span key="dur">Duration: {(wire.duration_ms / 1000).toFixed(1)}s</span>);
+    statsList.push(
+      <span key="dur">
+        {t("resultSummary.duration", { seconds: formatSeconds(format, wire.duration_ms) })}
+      </span>,
+    );
   }
   if (usage != null && (usage.input_tokens > 0 || usage.output_tokens > 0)) {
     statsList.push(
       <span key="tok">
-        Tokens: {usage.input_tokens.toLocaleString()} in / {usage.output_tokens.toLocaleString()}{" "}
-        out
+        {t("resultSummary.tokens", {
+          input: format.number(usage.input_tokens),
+          output: format.number(usage.output_tokens),
+        })}
       </span>,
     );
   }
@@ -55,19 +80,27 @@ export const ResultSummary: React.FC<ResultSummaryProps> = ({ wire }) => {
   if (usage != null && (usage.cache_read_tokens > 0 || usage.cache_write_tokens > 0)) {
     statsList.push(
       <span key="cache">
-        Cache: {usage.cache_read_tokens.toLocaleString()} read /{" "}
-        {usage.cache_write_tokens.toLocaleString()} write
+        {t("resultSummary.cache", {
+          read: format.number(usage.cache_read_tokens),
+          write: format.number(usage.cache_write_tokens),
+        })}
       </span>,
     );
   }
   if (usage?.premium_requests != null && usage.premium_requests > 0) {
-    statsList.push(<span key="prem">Premium: {usage.premium_requests}</span>);
+    statsList.push(
+      <span key="prem">{t("resultSummary.premium", { value: usage.premium_requests })}</span>,
+    );
   }
   if (wire.exit_code != null && wire.exit_code !== 0) {
-    statsList.push(<span key="exit">Exit: {wire.exit_code}</span>);
+    statsList.push(<span key="exit">{t("resultSummary.exitCode", { code: wire.exit_code })}</span>);
   }
   if (wire.permission_denials != null && wire.permission_denials.length > 0) {
-    statsList.push(<span key="denied">Denied: {wire.permission_denials.length}</span>);
+    statsList.push(
+      <span key="denied">
+        {t("resultSummary.denied", { value: wire.permission_denials.length })}
+      </span>,
+    );
   }
 
   const hasResponse = Boolean(wire.response && wire.response.trim().length > 0);
@@ -86,7 +119,7 @@ export const ResultSummary: React.FC<ResultSummaryProps> = ({ wire }) => {
     <div className={`aov-result ${isError ? "error" : ""}`}>
       {isError && (
         <div className="aov-result-header">
-          <span className="aov-result-title">❌ Error</span>
+          <span className="aov-result-title">{t("resultSummary.errorTitle")}</span>
         </div>
       )}
       {/* What went wrong, which V1's `result-summary.tsx` renders and V2's port dropped: a failed run
@@ -97,7 +130,9 @@ export const ResultSummary: React.FC<ResultSummaryProps> = ({ wire }) => {
         <div className="aov-result-body aov-result-error">
           {hasError
             ? errorText
-            : `Agent process was terminated or timed out (exit code ${wire.exit_code ?? "unknown"}).`}
+            : wire.exit_code == null
+              ? t("resultSummary.terminatedUnknownCode")
+              : t("resultSummary.terminated", { code: wire.exit_code })}
         </div>
       )}
       {hasResponse && (

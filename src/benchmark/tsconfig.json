@@ -1,0 +1,26 @@
+{
+  // Node 26 runs these files directly (type stripping), so this config only typechecks:
+  // noEmit, erasable syntax only, and `.ts` extensions in relative imports.
+  // Run from the repo root: node_modules/.pnpm/node_modules/.bin/tsc -p src/benchmark/tsconfig.json
+  "compilerOptions": {
+    "target": "esnext",
+    "lib": ["esnext", "dom", "dom.iterable"],
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
+    "erasableSyntaxOnly": true,
+    "verbatimModuleSyntax": true,
+    "strict": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "skipLibCheck": true,
+    "resolveJsonModule": true,
+    "types": ["node"],
+    // src/benchmark is deliberately not a pnpm workspace package, so nothing links @types/node next
+    // to it. Borrow the copy the app package already depends on, with pnpm's hoisted dir as fallback.
+    "typeRoots": ["../apps/tendril-app/node_modules/@types", "../../node_modules/.pnpm/node_modules/@types"]
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["v2-shim", "results", "charts", "report/fixtures", "node_modules"]
+}

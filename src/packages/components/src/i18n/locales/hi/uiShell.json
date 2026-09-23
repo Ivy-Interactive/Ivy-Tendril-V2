@@ -1,0 +1,274 @@
+{
+  "agentButton": {
+    "label": "एजेंट",
+    "newChatTooltip": "नई चैट",
+    "flyout": {
+      "empty": "अभी तक कोई चैट नहीं",
+      "newChat": "नई चैट"
+    }
+  },
+  "newPlanButton": {
+    "label": "नई योजना"
+  },
+  "settingsButton": {
+    "label": "सेटिंग्स"
+  },
+  "nav": {
+    "resizeAriaLabel": "नेविगेशन का आकार बदलें"
+  },
+  "railFlyout": {
+    "previous": "पिछला",
+    "next": "अगला"
+  },
+  "sectionItems": {
+    "state": {
+      "working": "प्रगति में",
+      "completed": "पूर्ण"
+    },
+    "menu": {
+      "label": "{{title}} विकल्प",
+      "tooltip": "विकल्प",
+      "pin": "चैट पिन करें",
+      "unpin": "चैट अनपिन करें",
+      "rename": "नाम संपादित करें",
+      "delete": "हटाएं"
+    },
+    "titleEditor": {
+      "ariaLabel": "आइटम का नाम"
+    }
+  },
+  "sidebarHeader": {
+    "openSidebar": "साइडबार खोलें",
+    "closeSidebar": "साइडबार बंद करें"
+  },
+  "sidebarSection": {
+    "searchLabel": "योजनाएं खोजें",
+    "searchButton": "खोजें"
+  },
+  "tabs": {
+    "closeAriaLabel": "{{title}} बंद करें",
+    "newSession": "नया एजेंट सत्र"
+  },
+  "shell": {
+    "toggleSidebarShortcut": "साइडबार टॉगल करें",
+    "resizer": {
+      "ariaLabel": "साइडबार का आकार बदलें",
+      "title": "साइडबार का आकार बदलने के लिए ड्रैग करें, रीसेट करने के लिए डबल-क्लिक करें"
+    }
+  },
+  "agentStatus": {
+    "starting": "शुरू हो रहा है…",
+    "completed": "पूर्ण",
+    "failed": "विफल",
+    "thinking": "सोच रहा है…",
+    "working": "काम कर रहा है…",
+    "runningCommand": "कमांड चला रहा है",
+    "reading": "पढ़ रहा है",
+    "readingFile": "{{file}} पढ़ रहा है",
+    "editing": "संपादित कर रहा है",
+    "editingFile": "{{file}} संपादित कर रहा है",
+    "searching": "खोज रहा है",
+    "runningTool": "{{name}} चला रहा है"
+  },
+  "resultSummary": {
+    "errorTitle": "❌ त्रुटि",
+    "terminated": "एजेंट प्रक्रिया समाप्त कर दी गई या उसका समय समाप्त हो गया (एग्ज़िट कोड {{code}})।",
+    "terminatedUnknownCode": "एजेंट प्रक्रिया समाप्त कर दी गई या उसका समय समाप्त हो गया (एग्ज़िट कोड अज्ञात)।",
+    "cost": {
+      "billed": "लागत: {{cost}}",
+      "estimated": "लागत: ~{{cost}}",
+      "billedTooltip": "एजेंट द्वारा बिल की गई",
+      "estimatedTooltip": "इस मॉडल की सूची कीमत पर टोकन गणना से आंकी गई, जो आपके सब्सक्रिप्शन प्लान या टियर को नहीं जान सकती"
+    },
+    "duration": "अवधि: {{seconds}} सेकंड",
+    "tokens": "टोकन: {{input}} इनपुट / {{output}} आउटपुट",
+    "cache": "कैश: {{read}} रीड / {{write}} राइट",
+    "premium": "प्रीमियम: {{value}}",
+    "exitCode": "एग्ज़िट: {{code}}",
+    "denied": "अस्वीकृत: {{value}}"
+  },
+  "metrics": {
+    "elapsed": {
+      "label": "आउटपुट समय",
+      "reportedTooltip": "आउटपुट समय: एजेंट द्वारा बताई गई अवधि",
+      "measuredTooltip": "आउटपुट समय: पहले इवेंट से अंतिम इवेंट तक मापा गया",
+      "runningTooltip": "आउटपुट समय: पहले इवेंट से मापा गया"
+    },
+    "tokens": {
+      "label": "टोकन",
+      "estimatedTooltip": "टोकन: अब तक की स्ट्रीम से अनुमानित; समाप्त होने पर एजेंट अपनी गणना बताता है",
+      "reportedTooltip": "टोकन: एजेंट द्वारा बताए गए"
+    },
+    "cost": {
+      "label": "लागत",
+      "estimatedTooltip": "लागत: इस मॉडल की सूची कीमत पर टोकन गणना से आंकी गई, जो आपके सब्सक्रिप्शन प्लान या टियर को नहीं जान सकती",
+      "billedTooltip": "लागत: एजेंट द्वारा बिल की गई"
+    }
+  },
+  "toolCard": {
+    "file": "फ़ाइल: {{path}}",
+    "url": "URL: {{url}}",
+    "query": "क्वेरी: {{query}}",
+    "queryInPath": "क्वेरी: {{path}} में {{query}}",
+    "input": "इनपुट",
+    "output": "आउटपुट"
+  },
+  "toolGroup": {
+    "count_one": "{{count}} टूल कॉल",
+    "count_other": "{{count}} टूल कॉल"
+  },
+  "agentNode": {
+    "session": "सत्र: {{session}}",
+    "sessionWithModel": "सत्र: {{session}} ({{model}})",
+    "errorTitle": "❌ त्रुटि"
+  },
+  "badgeSelect": {
+    "placeholder": "चुनें…",
+    "ariaLabel": "चुनें",
+    "remove": "{{label}} निकालें"
+  },
+  "contentInput": {
+    "placeholder": "आज मैं आपकी कैसे मदद कर सकता हूँ?",
+    "send": "भेजें",
+    "moreOptions": "अधिक विकल्प",
+    "attachFiles": "फ़ाइलें अटैच करें",
+    "voiceInput": "वॉइस इनपुट ट्रांसक्रिप्शन",
+    "dismissError": "त्रुटि खारिज करें",
+    "removeFile": "फ़ाइल निकालें",
+    "attachment": {
+      "document": "दस्तावेज़",
+      "lineCount_one": "{{count}} पंक्ति",
+      "lineCount_other": "{{count}} पंक्तियां",
+      "sizeBytes": "{{size}} B",
+      "sizeKilobytes": "{{size}} KB",
+      "sizeMegabytes": "{{size}} MB"
+    },
+    "errors": {
+      "uploadStatus": "अपलोड स्थिति {{status}} के साथ विफल हुआ",
+      "uploadFailed": "फ़ाइल अपलोड करने में विफल: {{error}}",
+      "readFailed": "फ़ाइल पढ़ने में विफल",
+      "emptyTranscription": "ट्रांसक्रिप्शन में प्रॉम्प्ट बनाने के लिए पर्याप्त जानकारी नहीं थी। कृपया फिर से प्रयास करें और स्पष्ट रूप से बोलें।"
+    }
+  },
+  "voice": {
+    "errors": {
+      "insecureContext": "वॉइस इनपुट के लिए सुरक्षित कनेक्शन आवश्यक है। Tendril को HTTPS पर या localhost पर खोलें, और फिर से प्रयास करें।",
+      "mediaDevicesUnavailable": "इस विंडो में वॉइस इनपुट उपलब्ध नहीं है। macOS पर, अपडेट करने के बाद Ivy Tendril को बंद करके फिर से खोलें, फिर पूछे जाने पर माइक्रोफ़ोन एक्सेस की अनुमति दें। आप \"{{command}}\" चलाकर अपने ब्राउज़र में भी वॉइस इनपुट का उपयोग कर सकते हैं।",
+      "audioCaptureUnsupported": "यह ब्राउज़र वॉइस इनपुट के लिए ऑडियो कैप्चर नहीं कर सकता।",
+      "captureInitFailed": "ऑडियो कैप्चर आरंभ करना विफल रहा: {{error}}",
+      "websocket": "ट्रांसक्रिप्शन सर्विस से कनेक्ट करते समय WebSocket त्रुटि हुई।",
+      "closedUnexpectedly": "WebSocket कनेक्शन अप्रत्याशित रूप से बंद हो गया (कोड {{code}}: {{reason}})",
+      "closedUnexpectedlyNoReason": "WebSocket कनेक्शन अप्रत्याशित रूप से बंद हो गया (कोड {{code}}: कोई कारण नहीं बताया गया)",
+      "connectionFailed": "माइक्रोफ़ोन एक्सेस अस्वीकृत हुआ या कनेक्शन विफल रहा: {{error}}",
+      "microphoneDenied": "माइक्रोफ़ोन एक्सेस अस्वीकार कर दिया गया। System Settings > Privacy and Security > Microphone में Ivy Tendril के लिए माइक्रोफ़ोन एक्सेस की अनुमति दें, और फिर से प्रयास करें।",
+      "microphoneNotFound": "कोई माइक्रोफ़ोन नहीं मिला। कोई इनपुट डिवाइस कनेक्ट करें और फिर से प्रयास करें।"
+    }
+  },
+  "dashboard": {
+    "status": {
+      "plans": "योजनाएं",
+      "inProgress": "प्रगति में",
+      "readyForReview": "समीक्षा के लिए तैयार",
+      "completed": "पूर्ण",
+      "failed": "विफल"
+    },
+    "kpi": {
+      "breakdownAriaLabel": "{{label}} की गणना का ब्रेकडाउन देखें",
+      "loadingAriaLabel": "मेट्रिक्स लोड हो रहे हैं"
+    },
+    "trend": {
+      "loading": "लागत और योजना रुझान लोड हो रहा है",
+      "costTab": "कुल लागत",
+      "plansTab": "कुल योजनाएं",
+      "currentName": "पिछले 4 सप्ताह",
+      "rollingLegend": "7-दिन का औसत",
+      "plansValue_one": "{{count}} योजना",
+      "plansValue_other": "{{count}} योजनाएं"
+    },
+    "gitActivity": {
+      "title": "Git गतिविधि",
+      "loading": "Git गतिविधि लोड हो रही है"
+    },
+    "pullRequests": {
+      "title": "पुल रिक्वेस्ट्स",
+      "weekTab": "सप्ताह",
+      "monthTab": "महीना",
+      "loading": "मर्ज किए गए पुल रिक्वेस्ट लोड हो रहे हैं"
+    },
+    "tunnel": {
+      "title": "टनल"
+    },
+    "factory": {
+      "title": "सॉफ़्टवेयर फ़ैक्ट्री"
+    },
+    "jobs": {
+      "title": "सक्रिय जॉब्स",
+      "empty": "कोई जॉब नहीं चल रही"
+    }
+  },
+  "trendChart": {
+    "axisDateWithYear": "{{date}} '{{year}}",
+    "currentRow": "{{name}}: {{value}}",
+    "rollingRow": "7-दिन का औसत: {{value}}"
+  },
+  "activityGrid": {
+    "empty": "अभी तक कोई मर्ज किया गया पुल रिक्वेस्ट नहीं",
+    "weekOf": "{{date}} का सप्ताह",
+    "merged_one": "{{count}} पुल रिक्वेस्ट मर्ज किया गया",
+    "merged_other": "{{count}} पुल रिक्वेस्ट मर्ज किए गए"
+  },
+  "pullRequestBars": {
+    "empty": "अभी तक कोई मर्ज किया गया पुल रिक्वेस्ट नहीं",
+    "weekOf": "{{date}} का सप्ताह",
+    "barLabel": "{{period}}: {{merged}}",
+    "merged_one": "{{count}} पुल रिक्वेस्ट मर्ज किया गया",
+    "merged_other": "{{count}} पुल रिक्वेस्ट मर्ज किए गए",
+    "tooltipMerged_one": "{{count}} PR मर्ज किया गया",
+    "tooltipMerged_other": "{{count}} PR मर्ज किए गए"
+  },
+  "processViewer": {
+    "newPlan": "नई योजना",
+    "plans": "योजनाएं",
+    "review": "समीक्षा",
+    "creatingPr": "PR {{value}}"
+  },
+  "terminal": {
+    "loading": "लोड हो रहा है…"
+  },
+  "webViewer": {
+    "toolbar": {
+      "ariaLabel": "ब्राउज़र नियंत्रण",
+      "back": "वापस",
+      "forward": "आगे",
+      "reload": "फिर से लोड करें",
+      "startSelecting": "टिप्पणी करने के लिए कोई एलिमेंट चुनें",
+      "stopSelecting": "चयन बंद करें",
+      "viewport": "व्यूपोर्ट: {{device}}",
+      "address": "पता",
+      "addressPlaceholder": "URL दर्ज करें"
+    },
+    "devices": {
+      "desktop": "डेस्कटॉप",
+      "tablet": "टैबलेट",
+      "mobile": "मोबाइल"
+    },
+    "empty": "पेज लोड करने के लिए पता बार में URL दर्ज करें।",
+    "frameTitle": "वेब सामग्री",
+    "comment": {
+      "title": "टिप्पणी",
+      "title_tag": "<tag>{{tag}}</tag> पर टिप्पणी",
+      "title_text": "<snippet>\"{{text}}\"</snippet> पर टिप्पणी",
+      "title_tagText": "<tag>{{tag}}</tag><snippet>\"{{text}}\"</snippet> पर टिप्पणी",
+      "sourceLabel": "स्रोत",
+      "resolvingSource": "सोर्स मैप से स्रोत खोजा जा रहा है…",
+      "componentsLabel": "कंपोनेंट्स",
+      "xpathLabel": "XPath",
+      "selectorLabel": "सेलेक्टर",
+      "placeholder": "टिप्पणी लिखें… (सबमिट करने के लिए {{shortcut}})",
+      "delete": "हटाएं",
+      "cancel": "रद्द करें",
+      "save": "सहेजें",
+      "add": "जोड़ें"
+    }
+  }
+}

@@ -1,0 +1,3308 @@
+{
+  "suite": "size",
+  "runId": "20260922-235629-quick",
+  "profile": "quick",
+  "startedAt": "2026-09-22T23:56:31.241+02:00",
+  "finishedAt": "2026-09-22T23:56:48.774+02:00",
+  "env": {
+    "loadavgStart": [
+      5.02001953125,
+      7.396484375,
+      7.7333984375
+    ],
+    "loadavgEnd": [
+      4.42333984375,
+      7.14794921875,
+      7.63818359375
+    ],
+    "loadSamples": [
+      5.02001953125,
+      4.69775390625,
+      4.7216796875,
+      4.42333984375,
+      4.42333984375
+    ],
+    "quietWaitMs": 0
+  },
+  "metrics": [
+    {
+      "suite": "size",
+      "scenario": "installer",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        388890560
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "file": "~/Desktop/tendril-benchmark/artifacts/v1/IvyTendril-1.2.4-osx-arm64.pkg",
+        "sha256": "c1f26218234fea9ab4b8a0bbb1776c67a0663aced1f25c53b0d89d5546ebfddb",
+        "githubDigestMatches": true,
+        "format": "flat pkg (xar) with a gzip cpio payload, built by Velopack vpk pack",
+        "release": "Ivy-Interactive/Ivy-Tendril v1.2.4"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "installed-app",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        1167911573
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "path": "~/Desktop/tendril-benchmark/artifacts/v1/pkg-expanded/1.pkg/Payload/Ivy Tendril.app",
+        "files": 5534,
+        "symlinks": 1,
+        "source": "expanded v1.2.4 pkg payload (pkgutil --expand-full)",
+        "installedCopy": {
+          "path": "/Applications/Ivy Tendril.app",
+          "bytes": 1167911573,
+          "files": 5534,
+          "sameTotals": true
+        }
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "installed-app",
+      "app": "v1",
+      "dataset": null,
+      "metric": "files",
+      "unit": "count",
+      "samples": [
+        5534
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "installed-app/Resources/dotnet",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        651300995
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "installed-app",
+        "component": "Resources/dotnet",
+        "group": "bundled toolchains",
+        "files": 4905,
+        "largest": [
+          {
+            "rel": "Contents/Resources/dotnet/sdk/10.0.100/FSharp/FSharp.Compiler.Service.dll",
+            "bytes": 44498744
+          },
+          {
+            "rel": "Contents/Resources/dotnet/sdk/10.0.100/Microsoft.CodeAnalysis.CSharp.dll",
+            "bytes": 21324088
+          },
+          {
+            "rel": "Contents/Resources/dotnet/sdk/10.0.100/Roslyn/bincore/Microsoft.CodeAnalysis.CSharp.dll",
+            "bytes": 21324088
+          },
+          {
+            "rel": "Contents/Resources/dotnet/shared/Microsoft.NETCore.App/10.0.0/System.Private.CoreLib.dll",
+            "bytes": 17065232
+          },
+          {
+            "rel": "Contents/Resources/dotnet/packs/Microsoft.NETCore.App.Host.osx-arm64/10.0.0/runtimes/osx-arm64/native/singlefilehost",
+            "bytes": 10653728
+          },
+          {
+            "rel": "Contents/Resources/dotnet/sdk/10.0.100/Microsoft.CodeAnalysis.dll",
+            "bytes": 9240848
+          },
+          {
+            "rel": "Contents/Resources/dotnet/sdk/10.0.100/Roslyn/bincore/Microsoft.CodeAnalysis.dll",
+            "bytes": 9240848
+          },
+          {
+            "rel": "Contents/Resources/dotnet/shared/Microsoft.NETCore.App/10.0.0/System.Private.Xml.dll",
+            "bytes": 9000200
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "installed-app/Resources/PowerShell",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        196209555
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "installed-app",
+        "component": "Resources/PowerShell",
+        "group": "bundled toolchains",
+        "files": 613,
+        "largest": [
+          {
+            "rel": "Contents/Resources/PowerShell/System.Management.Automation.dll",
+            "bytes": 22054912
+          },
+          {
+            "rel": "Contents/Resources/PowerShell/Microsoft.CodeAnalysis.CSharp.dll",
+            "bytes": 20782080
+          },
+          {
+            "rel": "Contents/Resources/PowerShell/System.Private.CoreLib.dll",
+            "bytes": 14174496
+          },
+          {
+            "rel": "Contents/Resources/PowerShell/System.Private.Xml.dll",
+            "bytes": 9275552
+          },
+          {
+            "rel": "Contents/Resources/PowerShell/Microsoft.CodeAnalysis.dll",
+            "bytes": 8729600
+          },
+          {
+            "rel": "Contents/Resources/PowerShell/System.Management.Automation.xml",
+            "bytes": 7678387
+          },
+          {
+            "rel": "Contents/Resources/PowerShell/System.Private.ServiceModel.dll",
+            "bytes": 7284736
+          },
+          {
+            "rel": "Contents/Resources/PowerShell/libcoreclr.dylib",
+            "bytes": 6474064
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "installed-app/MacOS/Ivy.Tendril",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        165830496
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "installed-app",
+        "component": "MacOS/Ivy.Tendril",
+        "group": "core app",
+        "files": 1
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "installed-app/MacOS/ivy-agent",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        138823456
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "installed-app",
+        "component": "MacOS/ivy-agent",
+        "group": "agent sidecar",
+        "files": 1
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "installed-app/MacOS/UpdateMac",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        7529712
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "installed-app",
+        "component": "MacOS/UpdateMac",
+        "group": "updater",
+        "files": 1
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "installed-app/MacOS/native dylibs",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        6036672
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "installed-app",
+        "component": "MacOS/native dylibs",
+        "group": "core app",
+        "files": 5,
+        "largest": [
+          {
+            "rel": "Contents/MacOS/librustino_native.dylib",
+            "bytes": 3127648
+          },
+          {
+            "rel": "Contents/MacOS/libe_sqlite3.dylib",
+            "bytes": 1669760
+          },
+          {
+            "rel": "Contents/MacOS/libMonoPosixHelper.dylib",
+            "bytes": 599024
+          },
+          {
+            "rel": "Contents/MacOS/librustserver.dylib",
+            "bytes": 587696
+          },
+          {
+            "rel": "Contents/MacOS/libporta_pty.dylib",
+            "bytes": 52544
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "installed-app/other",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        2180687
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "installed-app",
+        "component": "other",
+        "group": "other",
+        "files": 8,
+        "largest": [
+          {
+            "rel": "Contents/_CodeSignature/CodeResources",
+            "bytes": 2135309
+          },
+          {
+            "rel": "Contents/Resources/icon.icns",
+            "bytes": 26759
+          },
+          {
+            "rel": "Contents/Resources/example.config.yaml",
+            "bytes": 11287
+          },
+          {
+            "rel": "Contents/CodeResources",
+            "bytes": 2619
+          },
+          {
+            "rel": "Contents/Resources/certs/localhost.pfx",
+            "bytes": 2375
+          },
+          {
+            "rel": "Contents/Info.plist",
+            "bytes": 1166
+          },
+          {
+            "rel": "Contents/Resources/certs/localhost.crt",
+            "bytes": 779
+          },
+          {
+            "rel": "Contents/Resources/sq.version",
+            "bytes": 393
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "installed-app-after-first-launch",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        1167911573
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "note": "V1 copies nothing on first launch (it only points a tendril symlink in ~/.local/bin or /usr/local/bin at the app)"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "core-app",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        171867168
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parts": {
+          "MacOS/Ivy.Tendril": 165830496,
+          "MacOS/native dylibs": 6036672
+        },
+        "note": "the self-contained single-file app (runtime, server, UI host, frontend) plus the native libraries beside it (webview host, SQLite, pty, ...)"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "agent-sidecar",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        138823456
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "file": "Contents/MacOS/ivy-agent",
+        "version": "ivy-agent 0.1.5 (Bun-compiled)"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "bundled-toolchains",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        847510550
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parts": {
+          "Resources/dotnet (.NET SDK 10.0.100)": 651300995,
+          "Resources/PowerShell (7.4.2)": 196209555
+        }
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "updater",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        7529712
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "file": "Contents/MacOS/UpdateMac",
+        "note": "Velopack updater (universal x86_64 + arm64)"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "server-binary",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        165830496
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "file": "~/Desktop/tendril-benchmark/artifacts/v1/pkg-expanded/1.pkg/Payload/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril",
+        "sha256": "9039d8488f38eb6d37ba2d1b67fc55690c507e424ec8277c6bda2d1ad0054816",
+        "note": "one self-contained .NET single-file executable; it is also the desktop UI host"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "core-app (strip -x, informational)",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        170957648
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "informational": true,
+        "strippedDylibs": {
+          "libMonoPosixHelper.dylib": 595536,
+          "libe_sqlite3.dylib": 1591392,
+          "libporta_pty.dylib": 52576,
+          "librustino_native.dylib": 2404000,
+          "librustserver.dylib": 483648
+        },
+        "note": "Ivy.Tendril counted unstripped: strip would drop its appended single-file bundle"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "Ivy.Tendril single-file bundle",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        165830496
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "file": "~/Desktop/tendril-benchmark/artifacts/v1/pkg-expanded/1.pkg/Payload/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril",
+        "bundleVersion": "6.0",
+        "entries": 393,
+        "compressedEntries": 0,
+        "bundleId": "kezvmoMpejZE"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "Ivy.Tendril single-file bundle/native host (singlefilehost, coreclr linked in)",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        10506240
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "Ivy.Tendril single-file bundle",
+        "component": "native host (singlefilehost, coreclr linked in)",
+        "group": "runtime"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "Ivy.Tendril single-file bundle/.NET shared framework",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        98548304
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "Ivy.Tendril single-file bundle",
+        "component": ".NET shared framework",
+        "group": "runtime",
+        "files": 313,
+        "largest": [
+          {
+            "rel": "System.Private.CoreLib.dll",
+            "bytes": 17088296
+          },
+          {
+            "rel": "System.Private.Xml.dll",
+            "bytes": 9002792
+          },
+          {
+            "rel": "System.Linq.Expressions.dll",
+            "bytes": 4650832
+          },
+          {
+            "rel": "System.Data.Common.dll",
+            "bytes": 3228968
+          },
+          {
+            "rel": "Microsoft.AspNetCore.Server.Kestrel.Core.dll",
+            "bytes": 2624848
+          },
+          {
+            "rel": "System.Security.Cryptography.dll",
+            "bytes": 2459944
+          },
+          {
+            "rel": "System.Private.DataContractSerialization.dll",
+            "bytes": 2397008
+          },
+          {
+            "rel": "Microsoft.AspNetCore.Mvc.Core.dll",
+            "bytes": 2179920
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "Ivy.Tendril single-file bundle/Ivy framework",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        22048768
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "Ivy.Tendril single-file bundle",
+        "component": "Ivy framework",
+        "group": "framework",
+        "files": 6,
+        "largest": [
+          {
+            "rel": "Ivy.dll",
+            "bytes": 20966912
+          },
+          {
+            "rel": "Ivy.StackAnalyzer.dll",
+            "bytes": 576512
+          },
+          {
+            "rel": "Ivy.Desktop.dll",
+            "bytes": 420864
+          },
+          {
+            "rel": "Ivy.DesignSystem.dll",
+            "bytes": 50176
+          },
+          {
+            "rel": "Ivy.Plugin.Abstractions.dll",
+            "bytes": 23552
+          },
+          {
+            "rel": "Ivy.NativeJsonDiff.dll",
+            "bytes": 10752
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "Ivy.Tendril single-file bundle/Tendril assemblies",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        13453472
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "Ivy.Tendril single-file bundle",
+        "component": "Tendril assemblies",
+        "group": "app",
+        "files": 5,
+        "largest": [
+          {
+            "rel": "Ivy.Tendril.Widgets.dll",
+            "bytes": 9445376
+          },
+          {
+            "rel": "Ivy.Tendril.dll",
+            "bytes": 3351040
+          },
+          {
+            "rel": "Ivy.Tendril.Agents.dll",
+            "bytes": 563712
+          },
+          {
+            "rel": "Ivy.Tendril.deps.json",
+            "bytes": 92894
+          },
+          {
+            "rel": "Ivy.Tendril.runtimeconfig.json",
+            "bytes": 450
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "Ivy.Tendril single-file bundle/third-party NuGet",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        20220944
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "Ivy.Tendril single-file bundle",
+        "component": "third-party NuGet",
+        "group": "third-party",
+        "files": 69,
+        "largest": [
+          {
+            "rel": "OpenAI.dll",
+            "bytes": 4655568
+          },
+          {
+            "rel": "System.Reactive.dll",
+            "bytes": 1349584
+          },
+          {
+            "rel": "ModelContextProtocol.Core.dll",
+            "bytes": 1177600
+          },
+          {
+            "rel": "AngleSharp.dll",
+            "bytes": 1071104
+          },
+          {
+            "rel": "Spectre.Console.dll",
+            "bytes": 834048
+          },
+          {
+            "rel": "Vanara.PInvoke.Kernel32.dll",
+            "bytes": 742912
+          },
+          {
+            "rel": "Newtonsoft.Json.dll",
+            "bytes": 723368
+          },
+          {
+            "rel": "Microsoft.Extensions.AI.Abstractions.dll",
+            "bytes": 669768
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "Ivy.Tendril single-file bundle/manifest, padding and signature",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        1052768
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "Ivy.Tendril single-file bundle",
+        "component": "manifest, padding and signature",
+        "group": "other"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/eager-js",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        11910132
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 40,
+        "entry": "index-UNJdwkvn.js",
+        "ivyClosureFiles": 39,
+        "closureEqualsModulepreloads": true,
+        "note": "Ivy entry chunk plus its static-import closure, plus the Tendril widgets IIFE: the root shell (TendrilShell) is an external widget, so it loads before the Tendril UI can paint",
+        "resdumpRuntime": "10.0.7",
+        "dllSha256": {
+          "Ivy.dll": "5265ad48156d4ff8897a53a821f0d6365199bfa6f53ae33aa1e83b187abd2c00",
+          "Ivy.Tendril.Widgets.dll": "66a55d7d3e26b451da4faf3dc8551c849164b18a781e094e043f5052965f357c"
+        },
+        "ivyDllIdenticalToNuget_1_4_0": true,
+        "widgetsJsIdenticalToCloneBuild": true,
+        "largest": [
+          {
+            "name": "ivy-tendril-widgets.js",
+            "raw": 8748821,
+            "gzip9": 2787975,
+            "brotli11": 2250973
+          },
+          {
+            "name": "assets/vendor-markdown-j8DISmi2.js",
+            "raw": 916592,
+            "gzip9": 274840,
+            "brotli11": 174326
+          },
+          {
+            "name": "assets/esm-CW99UHjx.js",
+            "raw": 610739,
+            "gzip9": 217537,
+            "brotli11": 174263
+          },
+          {
+            "name": "assets/index-UNJdwkvn.js",
+            "raw": 601683,
+            "gzip9": 180903,
+            "brotli11": 148244
+          },
+          {
+            "name": "assets/Icon-vpl85bzZ.js",
+            "raw": 496140,
+            "gzip9": 130183,
+            "brotli11": 106866
+          },
+          {
+            "name": "assets/vendor-react-C8LG2oMQ.js",
+            "raw": 370342,
+            "gzip9": 112580,
+            "brotli11": 77053
+          },
+          {
+            "name": "assets/vendor-signalr-CbxNn6FB.js",
+            "raw": 54987,
+            "gzip9": 13955,
+            "brotli11": 12416
+          },
+          {
+            "name": "assets/dist-CSoaWWi8.js",
+            "raw": 31503,
+            "gzip9": 11799,
+            "brotli11": 10653
+          },
+          {
+            "name": "assets/utils-DYEl0ZtB.js",
+            "raw": 28446,
+            "gzip9": 9342,
+            "brotli11": 8199
+          },
+          {
+            "name": "assets/Combination-C9E2h9Q5.js",
+            "raw": 15541,
+            "gzip9": 5905,
+            "brotli11": 5295
+          },
+          {
+            "name": "assets/tooltip-BsvDxyPI.js",
+            "raw": 9992,
+            "gzip9": 3703,
+            "brotli11": 3314
+          },
+          {
+            "name": "assets/tslib.es6-3ydd16_i.js",
+            "raw": 4529,
+            "gzip9": 1731,
+            "brotli11": 1564
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/eager-js",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes_gzip9",
+      "unit": "bytes",
+      "samples": [
+        3761873
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 40,
+        "entry": "index-UNJdwkvn.js",
+        "ivyClosureFiles": 39,
+        "closureEqualsModulepreloads": true,
+        "note": "Ivy entry chunk plus its static-import closure, plus the Tendril widgets IIFE: the root shell (TendrilShell) is an external widget, so it loads before the Tendril UI can paint",
+        "resdumpRuntime": "10.0.7",
+        "dllSha256": {
+          "Ivy.dll": "5265ad48156d4ff8897a53a821f0d6365199bfa6f53ae33aa1e83b187abd2c00",
+          "Ivy.Tendril.Widgets.dll": "66a55d7d3e26b451da4faf3dc8551c849164b18a781e094e043f5052965f357c"
+        },
+        "ivyDllIdenticalToNuget_1_4_0": true,
+        "widgetsJsIdenticalToCloneBuild": true
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/eager-js",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes_brotli11",
+      "unit": "bytes",
+      "samples": [
+        2983421
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 40,
+        "entry": "index-UNJdwkvn.js",
+        "ivyClosureFiles": 39,
+        "closureEqualsModulepreloads": true,
+        "note": "Ivy entry chunk plus its static-import closure, plus the Tendril widgets IIFE: the root shell (TendrilShell) is an external widget, so it loads before the Tendril UI can paint",
+        "resdumpRuntime": "10.0.7",
+        "dllSha256": {
+          "Ivy.dll": "5265ad48156d4ff8897a53a821f0d6365199bfa6f53ae33aa1e83b187abd2c00",
+          "Ivy.Tendril.Widgets.dll": "66a55d7d3e26b451da4faf3dc8551c849164b18a781e094e043f5052965f357c"
+        },
+        "ivyDllIdenticalToNuget_1_4_0": true,
+        "widgetsJsIdenticalToCloneBuild": true
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/eager-js/Ivy entry closure",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        3161311
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "frontend/eager-js",
+        "component": "Ivy entry closure",
+        "group": "framework",
+        "files": 39
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/eager-js/Tendril widgets IIFE",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        8748821
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "frontend/eager-js",
+        "component": "Tendril widgets IIFE",
+        "group": "app",
+        "files": 1
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/eager-css",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        331583
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 3,
+        "members": [
+          "assets/vendor-markdown-BaMtePpW.css",
+          "assets/index-BX7x0Kuw.css",
+          "ivy-tendril-widgets.css"
+        ],
+        "largest": [
+          {
+            "name": "ivy-tendril-widgets.css",
+            "raw": 154816,
+            "gzip9": 26473,
+            "brotli11": 22532
+          },
+          {
+            "name": "assets/index-BX7x0Kuw.css",
+            "raw": 148351,
+            "gzip9": 23281,
+            "brotli11": 19035
+          },
+          {
+            "name": "assets/vendor-markdown-BaMtePpW.css",
+            "raw": 28416,
+            "gzip9": 7809,
+            "brotli11": 6842
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/eager-css",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes_gzip9",
+      "unit": "bytes",
+      "samples": [
+        57563
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 3,
+        "members": [
+          "assets/vendor-markdown-BaMtePpW.css",
+          "assets/index-BX7x0Kuw.css",
+          "ivy-tendril-widgets.css"
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/eager-css",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes_brotli11",
+      "unit": "bytes",
+      "samples": [
+        48409
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 3,
+        "members": [
+          "assets/vendor-markdown-BaMtePpW.css",
+          "assets/index-BX7x0Kuw.css",
+          "ivy-tendril-widgets.css"
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/preloaded-fonts",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        358460
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 8,
+        "members": [
+          "assets/Geist-Regular-C6H5Y334.woff2",
+          "assets/Geist-Medium-t5LLWK2i.woff2",
+          "assets/Geist-SemiBold-C7DNikzb.woff2",
+          "assets/Geist-Bold-BOY-3Qy9.woff2",
+          "assets/GeistMono-Regular-CBZwx9Gk.woff2",
+          "assets/GeistMono-Medium-FjcWtm6Q.woff2",
+          "assets/GeistMono-SemiBold-DgKZONcy.woff2",
+          "assets/GeistMono-Bold-CVFuGJZ4.woff2"
+        ],
+        "largest": [
+          {
+            "name": "assets/GeistMono-Bold-CVFuGJZ4.woff2",
+            "raw": 48004,
+            "gzip9": 48037,
+            "brotli11": 48008
+          },
+          {
+            "name": "assets/GeistMono-SemiBold-DgKZONcy.woff2",
+            "raw": 47964,
+            "gzip9": 47997,
+            "brotli11": 47968
+          },
+          {
+            "name": "assets/GeistMono-Medium-FjcWtm6Q.woff2",
+            "raw": 47836,
+            "gzip9": 47869,
+            "brotli11": 47840
+          },
+          {
+            "name": "assets/GeistMono-Regular-CBZwx9Gk.woff2",
+            "raw": 46992,
+            "gzip9": 47025,
+            "brotli11": 46996
+          },
+          {
+            "name": "assets/Geist-Bold-BOY-3Qy9.woff2",
+            "raw": 42288,
+            "gzip9": 42321,
+            "brotli11": 42292
+          },
+          {
+            "name": "assets/Geist-Medium-t5LLWK2i.woff2",
+            "raw": 42124,
+            "gzip9": 42157,
+            "brotli11": 42128
+          },
+          {
+            "name": "assets/Geist-SemiBold-C7DNikzb.woff2",
+            "raw": 42028,
+            "gzip9": 42061,
+            "brotli11": 42032
+          },
+          {
+            "name": "assets/Geist-Regular-C6H5Y334.woff2",
+            "raw": 41224,
+            "gzip9": 41257,
+            "brotli11": 41228
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/preloaded-fonts",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes_gzip9",
+      "unit": "bytes",
+      "samples": [
+        358724
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 8,
+        "members": [
+          "assets/Geist-Regular-C6H5Y334.woff2",
+          "assets/Geist-Medium-t5LLWK2i.woff2",
+          "assets/Geist-SemiBold-C7DNikzb.woff2",
+          "assets/Geist-Bold-BOY-3Qy9.woff2",
+          "assets/GeistMono-Regular-CBZwx9Gk.woff2",
+          "assets/GeistMono-Medium-FjcWtm6Q.woff2",
+          "assets/GeistMono-SemiBold-DgKZONcy.woff2",
+          "assets/GeistMono-Bold-CVFuGJZ4.woff2"
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/preloaded-fonts",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes_brotli11",
+      "unit": "bytes",
+      "samples": [
+        358492
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 8,
+        "members": [
+          "assets/Geist-Regular-C6H5Y334.woff2",
+          "assets/Geist-Medium-t5LLWK2i.woff2",
+          "assets/Geist-SemiBold-C7DNikzb.woff2",
+          "assets/Geist-Bold-BOY-3Qy9.woff2",
+          "assets/GeistMono-Regular-CBZwx9Gk.woff2",
+          "assets/GeistMono-Medium-FjcWtm6Q.woff2",
+          "assets/GeistMono-SemiBold-DgKZONcy.woff2",
+          "assets/GeistMono-Bold-CVFuGJZ4.woff2"
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/index-html",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        4742
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 1,
+        "note": "as embedded; the server injects a few meta/theme tags when it serves it",
+        "largest": [
+          {
+            "name": "index.html",
+            "raw": 4742,
+            "gzip9": 990,
+            "brotli11": 823
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/index-html",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes_gzip9",
+      "unit": "bytes",
+      "samples": [
+        990
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 1,
+        "note": "as embedded; the server injects a few meta/theme tags when it serves it"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/index-html",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes_brotli11",
+      "unit": "bytes",
+      "samples": [
+        823
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 1,
+        "note": "as embedded; the server injects a few meta/theme tags when it serves it"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/all-js",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        20569145
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 232,
+        "note": "every shipped JS file: Ivy assets (eager and lazy), Ivy external widgets, the Tendril widgets bundle, webviewer proxy assets",
+        "largest": [
+          {
+            "name": "ivy-tendril-widgets.js",
+            "raw": 8748821,
+            "gzip9": 2787975,
+            "brotli11": 2250973
+          },
+          {
+            "name": "assets/esm-Cvryr_Yh.js",
+            "raw": 1148264,
+            "gzip9": 376564,
+            "brotli11": 306349
+          },
+          {
+            "name": "assets/vendor-markdown-j8DISmi2.js",
+            "raw": 916592,
+            "gzip9": 274840,
+            "brotli11": 174326
+          },
+          {
+            "name": "assets/dist-B2AX235V.js",
+            "raw": 796462,
+            "gzip9": 622662,
+            "brotli11": 619217
+          },
+          {
+            "name": "assets/DataTableWidget-7n1L_xmQ.js",
+            "raw": 743150,
+            "gzip9": 206876,
+            "brotli11": 172751
+          },
+          {
+            "name": "assets/chunk-FOHPRMQF-COm3k-Nc.js",
+            "raw": 663382,
+            "gzip9": 143221,
+            "brotli11": 115853
+          },
+          {
+            "name": "assets/esm-CW99UHjx.js",
+            "raw": 610739,
+            "gzip9": 217537,
+            "brotli11": 174263
+          },
+          {
+            "name": "assets/index-UNJdwkvn.js",
+            "raw": 601683,
+            "gzip9": 180903,
+            "brotli11": 148244
+          },
+          {
+            "name": "assets/Icon-vpl85bzZ.js",
+            "raw": 496140,
+            "gzip9": 130183,
+            "brotli11": 106866
+          },
+          {
+            "name": "assets/cytoscape.esm-CZiz3Grx.js",
+            "raw": 435196,
+            "gzip9": 136089,
+            "brotli11": 115372
+          },
+          {
+            "name": "widgets/Xterm/Ivy_Widgets_Xterm.js",
+            "raw": 416067,
+            "gzip9": 100739,
+            "brotli11": 75409
+          },
+          {
+            "name": "widgets/Tiptap/TiptapInput.js",
+            "raw": 405666,
+            "gzip9": 124639,
+            "brotli11": 106180
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/all-js",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes_gzip9",
+      "unit": "bytes",
+      "samples": [
+        6727954
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 232,
+        "note": "every shipped JS file: Ivy assets (eager and lazy), Ivy external widgets, the Tendril widgets bundle, webviewer proxy assets"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/all-js",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes_brotli11",
+      "unit": "bytes",
+      "samples": [
+        5589876
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 232,
+        "note": "every shipped JS file: Ivy assets (eager and lazy), Ivy external widgets, the Tendril widgets bundle, webviewer proxy assets"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/all-js/Ivy assets/*.js",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        10315012
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "frontend/all-js",
+        "component": "Ivy assets/*.js",
+        "group": "framework",
+        "files": 220
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/all-js/Ivy external widgets",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        1306552
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "frontend/all-js",
+        "component": "Ivy external widgets",
+        "group": "framework",
+        "files": 8
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/all-js/Tendril widgets IIFE",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        8748821
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "frontend/all-js",
+        "component": "Tendril widgets IIFE",
+        "group": "app",
+        "files": 1
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/all-js/webviewer proxy assets",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        198760
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "frontend/all-js",
+        "component": "webviewer proxy assets",
+        "group": "webviewer",
+        "files": 3
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/all-css",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        364457
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 10,
+        "largest": [
+          {
+            "name": "ivy-tendril-widgets.css",
+            "raw": 154816,
+            "gzip9": 26473,
+            "brotli11": 22532
+          },
+          {
+            "name": "assets/index-BX7x0Kuw.css",
+            "raw": 148351,
+            "gzip9": 23281,
+            "brotli11": 19035
+          },
+          {
+            "name": "assets/vendor-markdown-BaMtePpW.css",
+            "raw": 28416,
+            "gzip9": 7809,
+            "brotli11": 6842
+          },
+          {
+            "name": "assets/DataTableWidget-6_ZD3rk8.css",
+            "raw": 15138,
+            "gzip9": 3700,
+            "brotli11": 3303
+          },
+          {
+            "name": "widgets/DiffView/ivy-widgets-diffview.css",
+            "raw": 5540,
+            "gzip9": 1164,
+            "brotli11": 969
+          },
+          {
+            "name": "widgets/ScreenshotFeedback/ivy-widgets-screenshot-feedback.css",
+            "raw": 4112,
+            "gzip9": 1205,
+            "brotli11": 965
+          },
+          {
+            "name": "widgets/ActivityHeatmap/ivy-widgets-activityheatmap.css",
+            "raw": 3032,
+            "gzip9": 892,
+            "brotli11": 738
+          },
+          {
+            "name": "widgets/AnimatedStatusLabel/ivy-widgets-animatedstatuslabel.css",
+            "raw": 1875,
+            "gzip9": 724,
+            "brotli11": 599
+          },
+          {
+            "name": "widgets/Tiptap/ivy-widgets-tiptap.css",
+            "raw": 1644,
+            "gzip9": 463,
+            "brotli11": 382
+          },
+          {
+            "name": "assets/MarkdownWidget-BRN5cY1p.css",
+            "raw": 1533,
+            "gzip9": 428,
+            "brotli11": 332
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/all-css",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes_gzip9",
+      "unit": "bytes",
+      "samples": [
+        66139
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 10
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/all-css",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes_brotli11",
+      "unit": "bytes",
+      "samples": [
+        55697
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 10
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/fonts",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        1431408
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 67,
+        "note": "woff2 does not compress further",
+        "largest": [
+          {
+            "name": "assets/KaTeX_AMS-Regular-DRggAlZN.ttf",
+            "raw": 63632,
+            "gzip9": 34543,
+            "brotli11": 32208
+          },
+          {
+            "name": "assets/KaTeX_Main-Regular-ypZvNtVU.ttf",
+            "raw": 53580,
+            "gzip9": 31483,
+            "brotli11": 29620
+          },
+          {
+            "name": "assets/KaTeX_Main-Bold-waoOVXN0.ttf",
+            "raw": 51336,
+            "gzip9": 30563,
+            "brotli11": 28913
+          },
+          {
+            "name": "assets/GeistMono-Bold-CVFuGJZ4.woff2",
+            "raw": 48004,
+            "gzip9": 48037,
+            "brotli11": 48008
+          },
+          {
+            "name": "assets/GeistMono-SemiBold-DgKZONcy.woff2",
+            "raw": 47964,
+            "gzip9": 47997,
+            "brotli11": 47968
+          },
+          {
+            "name": "assets/GeistMono-Medium-FjcWtm6Q.woff2",
+            "raw": 47836,
+            "gzip9": 47869,
+            "brotli11": 47840
+          },
+          {
+            "name": "assets/GeistMono-Regular-CBZwx9Gk.woff2",
+            "raw": 46992,
+            "gzip9": 47025,
+            "brotli11": 46996
+          },
+          {
+            "name": "assets/Geist-Bold-BOY-3Qy9.woff2",
+            "raw": 42288,
+            "gzip9": 42321,
+            "brotli11": 42292
+          },
+          {
+            "name": "assets/Geist-Medium-t5LLWK2i.woff2",
+            "raw": 42124,
+            "gzip9": 42157,
+            "brotli11": 42128
+          },
+          {
+            "name": "assets/Geist-SemiBold-C7DNikzb.woff2",
+            "raw": 42028,
+            "gzip9": 42061,
+            "brotli11": 42032
+          },
+          {
+            "name": "assets/Geist-Regular-C6H5Y334.woff2",
+            "raw": 41224,
+            "gzip9": 41257,
+            "brotli11": 41228
+          },
+          {
+            "name": "assets/KaTeX_Main-Italic-3WenGoN9.ttf",
+            "raw": 33580,
+            "gzip9": 20004,
+            "brotli11": 18877
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/fonts",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes_gzip9",
+      "unit": "bytes",
+      "samples": [
+        1225101
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 67,
+        "note": "woff2 does not compress further"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/fonts",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes_brotli11",
+      "unit": "bytes",
+      "samples": [
+        1205335
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 67,
+        "note": "woff2 does not compress further"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/sourcemaps",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        5263944
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 8,
+        "note": "embedded in Ivy.dll next to the external widgets; the Tendril widgets map is not embedded",
+        "largest": [
+          {
+            "name": "widgets/Tiptap/TiptapInput.js.map",
+            "raw": 2680445,
+            "gzip9": 482700,
+            "brotli11": 387783
+          },
+          {
+            "name": "widgets/Xterm/Ivy_Widgets_Xterm.js.map",
+            "raw": 863075,
+            "gzip9": 155889,
+            "brotli11": 119795
+          },
+          {
+            "name": "widgets/Leaflet/Ivy_Widgets_Leaflet.js.map",
+            "raw": 721104,
+            "gzip9": 169221,
+            "brotli11": 139135
+          },
+          {
+            "name": "widgets/ScreenshotFeedback/Ivy_Widgets_ScreenshotFeedback.js.map",
+            "raw": 676025,
+            "gzip9": 129461,
+            "brotli11": 104452
+          },
+          {
+            "name": "widgets/DiffView/Ivy_Widgets_DiffView.js.map",
+            "raw": 224215,
+            "gzip9": 51869,
+            "brotli11": 45812
+          },
+          {
+            "name": "widgets/QRCode/Ivy_Widgets_QRCode.js.map",
+            "raw": 71414,
+            "gzip9": 18468,
+            "brotli11": 16080
+          },
+          {
+            "name": "widgets/ActivityHeatmap/Ivy_Widgets_ActivityHeatmap.js.map",
+            "raw": 24791,
+            "gzip9": 6754,
+            "brotli11": 6009
+          },
+          {
+            "name": "widgets/AnimatedStatusLabel/Ivy_Widgets_AnimatedStatusLabel.js.map",
+            "raw": 2875,
+            "gzip9": 1023,
+            "brotli11": 905
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/sourcemaps",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes_gzip9",
+      "unit": "bytes",
+      "samples": [
+        1015385
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 8,
+        "note": "embedded in Ivy.dll next to the external widgets; the Tendril widgets map is not embedded"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/sourcemaps",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes_brotli11",
+      "unit": "bytes",
+      "samples": [
+        819971
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 8,
+        "note": "embedded in Ivy.dll next to the external widgets; the Tendril widgets map is not embedded"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/total-shipped",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        22370175
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 312,
+        "note": "every frontend file shipped, source maps excluded",
+        "largest": [
+          {
+            "name": "ivy-tendril-widgets.js",
+            "raw": 8748821,
+            "gzip9": 2787975,
+            "brotli11": 2250973
+          },
+          {
+            "name": "assets/esm-Cvryr_Yh.js",
+            "raw": 1148264,
+            "gzip9": 376564,
+            "brotli11": 306349
+          },
+          {
+            "name": "assets/vendor-markdown-j8DISmi2.js",
+            "raw": 916592,
+            "gzip9": 274840,
+            "brotli11": 174326
+          },
+          {
+            "name": "assets/dist-B2AX235V.js",
+            "raw": 796462,
+            "gzip9": 622662,
+            "brotli11": 619217
+          },
+          {
+            "name": "assets/DataTableWidget-7n1L_xmQ.js",
+            "raw": 743150,
+            "gzip9": 206876,
+            "brotli11": 172751
+          },
+          {
+            "name": "assets/chunk-FOHPRMQF-COm3k-Nc.js",
+            "raw": 663382,
+            "gzip9": 143221,
+            "brotli11": 115853
+          },
+          {
+            "name": "assets/esm-CW99UHjx.js",
+            "raw": 610739,
+            "gzip9": 217537,
+            "brotli11": 174263
+          },
+          {
+            "name": "assets/index-UNJdwkvn.js",
+            "raw": 601683,
+            "gzip9": 180903,
+            "brotli11": 148244
+          },
+          {
+            "name": "assets/Icon-vpl85bzZ.js",
+            "raw": 496140,
+            "gzip9": 130183,
+            "brotli11": 106866
+          },
+          {
+            "name": "assets/cytoscape.esm-CZiz3Grx.js",
+            "raw": 435196,
+            "gzip9": 136089,
+            "brotli11": 115372
+          },
+          {
+            "name": "widgets/Xterm/Ivy_Widgets_Xterm.js",
+            "raw": 416067,
+            "gzip9": 100739,
+            "brotli11": 75409
+          },
+          {
+            "name": "widgets/Tiptap/TiptapInput.js",
+            "raw": 405666,
+            "gzip9": 124639,
+            "brotli11": 106180
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/total-shipped",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes_gzip9",
+      "unit": "bytes",
+      "samples": [
+        8020548
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 312,
+        "note": "every frontend file shipped, source maps excluded"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/total-shipped",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes_brotli11",
+      "unit": "bytes",
+      "samples": [
+        6852048
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 312,
+        "note": "every frontend file shipped, source maps excluded"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/as-embedded-in-binary",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        27634119
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "informational": true,
+        "note": "frontend bytes the binary carries: stored uncompressed as manifest resources, source maps included, and served uncompressed (no response compression in Ivy)"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/webviewer-proxy-assets",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        198760
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 3,
+        "members": [
+          "proxy-assets/agent.js",
+          "proxy-assets/sw.js",
+          "proxy-assets/snapdom.mjs"
+        ],
+        "largest": [
+          {
+            "name": "proxy-assets/snapdom.mjs",
+            "raw": 126530,
+            "gzip9": 41088,
+            "brotli11": 35916
+          },
+          {
+            "name": "proxy-assets/agent.js",
+            "raw": 50655,
+            "gzip9": 16427,
+            "brotli11": 14080
+          },
+          {
+            "name": "proxy-assets/sw.js",
+            "raw": 21575,
+            "gzip9": 7547,
+            "brotli11": 6461
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/webviewer-proxy-assets",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes_gzip9",
+      "unit": "bytes",
+      "samples": [
+        65062
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 3,
+        "members": [
+          "proxy-assets/agent.js",
+          "proxy-assets/sw.js",
+          "proxy-assets/snapdom.mjs"
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/webviewer-proxy-assets",
+      "app": "v1",
+      "dataset": null,
+      "metric": "bytes_brotli11",
+      "unit": "bytes",
+      "samples": [
+        56457
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 3,
+        "members": [
+          "proxy-assets/agent.js",
+          "proxy-assets/sw.js",
+          "proxy-assets/snapdom.mjs"
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "installer",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        71233006
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "file": "~/Desktop/tendril-benchmark/artifacts/v2/Tendril_0.1.0_aarch64.dmg",
+        "sha256": "19728d23dc2947994564b90e4c40ce0b3f1e9348a5c3b5a0a222fe68337d9b76",
+        "format": "Format: UDZO disk image (zlib), made by tauri build",
+        "source": "built by setup at 2959bbb30050"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "installed-app",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        212966758
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "path": "~/Desktop/tendril-benchmark/artifacts/v2/Tendril.app",
+        "files": 5,
+        "symlinks": 0,
+        "source": "built by setup at 2959bbb30050"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "installed-app",
+      "app": "v2",
+      "dataset": null,
+      "metric": "files",
+      "unit": "count",
+      "samples": [
+        5
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "installed-app/MacOS/tendril-app",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        28688736
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "installed-app",
+        "component": "MacOS/tendril-app",
+        "group": "core app",
+        "files": 1
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "installed-app/MacOS/tendril",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        39740624
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "installed-app",
+        "component": "MacOS/tendril",
+        "group": "core app",
+        "files": 1
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "installed-app/MacOS/opencode",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        144470498
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "installed-app",
+        "component": "MacOS/opencode",
+        "group": "agent sidecar",
+        "files": 1
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "installed-app/other",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        66900
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "installed-app",
+        "component": "other",
+        "group": "other",
+        "files": 2,
+        "largest": [
+          {
+            "rel": "Contents/Resources/icon.icns",
+            "bytes": 65927
+          },
+          {
+            "rel": "Contents/Info.plist",
+            "bytes": 973
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "installed-app-after-first-launch",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        397177880
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parts": {
+          "Tendril.app": 212966758,
+          "<home>/bin/tendril": 39740624,
+          "<home>/bin/opencode": 144470498
+        },
+        "note": "first launch copies tendril and opencode into <home>/bin (plus a small .provisioned stamp, not counted)"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "core-app",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        68429360
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parts": {
+          "MacOS/tendril-app": 28688736,
+          "MacOS/tendril": 39740624
+        },
+        "note": "Tauri host with the frontend embedded (brotli 9) plus the daemon/CLI; Rust links statically, so there are no separate native libraries"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "agent-sidecar",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        144470498
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "file": "Contents/MacOS/opencode",
+        "version": "opencode v1.18.31 (Bun-compiled)"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "bundled-toolchains",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        0
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "note": "V2 bundles no SDK or shell"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "updater",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        0
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "note": "tauri-plugin-updater is not a dependency; no updater ships"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "server-binary",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        39740624
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "file": "~/Desktop/tendril-benchmark/artifacts/v2/Tendril.app/Contents/MacOS/tendril",
+        "sha256": "1a2b2e2e9ee0346baa4cb571fd911ea3d47a914848bd3441898d30a276e2b06e",
+        "note": "daemon and CLI (cargo build --release --bin tendril)"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "ui-host-binary",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        28688736
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "file": "~/Desktop/tendril-benchmark/artifacts/v2/Tendril.app/Contents/MacOS/tendril-app",
+        "sha256": "04eb539c312875d3939f21370d8ea0599fb1450d0bc16c788bea2bce2e80dd89",
+        "embedsDistEntry": true,
+        "note": "Tauri desktop host; V1 has no separate one (Ivy.Tendril is also its desktop host)"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "core-app (strip -x, informational)",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        53605024
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "informational": true,
+        "parts": {
+          "tendril (strip -x)": 31825440,
+          "tendril-app (strip -x)": 21779584
+        }
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "server-binary (strip -x, informational)",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        31825440
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "informational": true,
+        "note": "Cargo defaults strip debuginfo only; strip -x also drops local symbols"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "ui-host-binary (strip -x, informational)",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        21779584
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "informational": true
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/eager-js",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        1599837
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 26,
+        "entry": "index-DjhdIZR8.js",
+        "closureFiles": 26,
+        "closureEqualsModulepreloads": true,
+        "note": "entry chunk plus its static-import closure (the definition in tests/code-splitting.test.tsx)",
+        "largest": [
+          {
+            "name": "assets/browser-h9Xat9Z_.js",
+            "raw": 329117,
+            "gzip9": 98899,
+            "brotli11": 84286
+          },
+          {
+            "name": "assets/index-DjhdIZR8.js",
+            "raw": 304250,
+            "gzip9": 83431,
+            "brotli11": 70481
+          },
+          {
+            "name": "assets/PlanWorkspace-DJk6Zu49-BT_qfgJd.js",
+            "raw": 191957,
+            "gzip9": 57151,
+            "brotli11": 50692
+          },
+          {
+            "name": "assets/vendor-react-DVbiCQQK.js",
+            "raw": 189595,
+            "gzip9": 58798,
+            "brotli11": 50732
+          },
+          {
+            "name": "assets/tendril-wpaGCmdH.js",
+            "raw": 168048,
+            "gzip9": 51999,
+            "brotli11": 45817
+          },
+          {
+            "name": "assets/dist-2tKycCzZ.js",
+            "raw": 102075,
+            "gzip9": 34557,
+            "brotli11": 30560
+          },
+          {
+            "name": "assets/virtual-list-BdPvHCiB-DrSHkGCv.js",
+            "raw": 78296,
+            "gzip9": 23950,
+            "brotli11": 21455
+          },
+          {
+            "name": "assets/vendor-diff-CEx55wBM.js",
+            "raw": 69947,
+            "gzip9": 23289,
+            "brotli11": 21040
+          },
+          {
+            "name": "assets/Shell-UgDxwIJw-B8Op352x.js",
+            "raw": 43382,
+            "gzip9": 15418,
+            "brotli11": 13596
+          },
+          {
+            "name": "assets/dist-BA1FKEMM.js",
+            "raw": 37387,
+            "gzip9": 11632,
+            "brotli11": 10574
+          },
+          {
+            "name": "assets/vendor-refractor-core-BtHyBuzs.js",
+            "raw": 30740,
+            "gzip9": 11273,
+            "brotli11": 10171
+          },
+          {
+            "name": "assets/select-jZIVY9_Z-B0MxcFkG.js",
+            "raw": 25368,
+            "gzip9": 8270,
+            "brotli11": 7455
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/eager-js",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes_gzip9",
+      "unit": "bytes",
+      "samples": [
+        491139
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 26,
+        "entry": "index-DjhdIZR8.js",
+        "closureFiles": 26,
+        "closureEqualsModulepreloads": true,
+        "note": "entry chunk plus its static-import closure (the definition in tests/code-splitting.test.tsx)"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/eager-js",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes_brotli11",
+      "unit": "bytes",
+      "samples": [
+        427888
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 26,
+        "entry": "index-DjhdIZR8.js",
+        "closureFiles": 26,
+        "closureEqualsModulepreloads": true,
+        "note": "entry chunk plus its static-import closure (the definition in tests/code-splitting.test.tsx)"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/eager-js/entry closure",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        1599837
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "frontend/eager-js",
+        "component": "entry closure",
+        "group": "app",
+        "files": 26
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/eager-css",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        297897
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 3,
+        "members": [
+          "assets/vendor-diff-legcy4jI.css",
+          "assets/tendril-BrP-ENHg.css",
+          "assets/index-7a5iSt4-.css"
+        ],
+        "largest": [
+          {
+            "name": "assets/index-7a5iSt4-.css",
+            "raw": 290469,
+            "gzip9": 44380,
+            "brotli11": 36039
+          },
+          {
+            "name": "assets/tendril-BrP-ENHg.css",
+            "raw": 3939,
+            "gzip9": 1008,
+            "brotli11": 782
+          },
+          {
+            "name": "assets/vendor-diff-legcy4jI.css",
+            "raw": 3489,
+            "gzip9": 754,
+            "brotli11": 616
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/eager-css",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes_gzip9",
+      "unit": "bytes",
+      "samples": [
+        46142
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 3,
+        "members": [
+          "assets/vendor-diff-legcy4jI.css",
+          "assets/tendril-BrP-ENHg.css",
+          "assets/index-7a5iSt4-.css"
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/eager-css",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes_brotli11",
+      "unit": "bytes",
+      "samples": [
+        37437
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 3,
+        "members": [
+          "assets/vendor-diff-legcy4jI.css",
+          "assets/tendril-BrP-ENHg.css",
+          "assets/index-7a5iSt4-.css"
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/preloaded-fonts",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        0
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 0,
+        "note": "index.html preloads no fonts",
+        "largest": []
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/preloaded-fonts",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes_gzip9",
+      "unit": "bytes",
+      "samples": [
+        0
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 0,
+        "note": "index.html preloads no fonts"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/preloaded-fonts",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes_brotli11",
+      "unit": "bytes",
+      "samples": [
+        0
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 0,
+        "note": "index.html preloads no fonts"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/index-html",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        2687
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 1,
+        "largest": [
+          {
+            "name": "index.html",
+            "raw": 2687,
+            "gzip9": 780,
+            "brotli11": 616
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/index-html",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes_gzip9",
+      "unit": "bytes",
+      "samples": [
+        780
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 1
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/index-html",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes_brotli11",
+      "unit": "bytes",
+      "samples": [
+        616
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 1
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/all-js",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        10481044
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 115,
+        "note": "every shipped JS file: dist assets (eager and lazy), the pdf.js worker (.mjs), webviewer assets compiled into tendril",
+        "largest": [
+          {
+            "name": "assets/vendor-mermaid-DgbI32rT.js",
+            "raw": 3090956,
+            "gzip9": 812830,
+            "brotli11": 599106
+          },
+          {
+            "name": "assets/pdf.worker-TGcf_-kp.mjs",
+            "raw": 2228489,
+            "gzip9": 472398,
+            "brotli11": 377532
+          },
+          {
+            "name": "assets/vendor-graphviz-g1SsAENV.js",
+            "raw": 798039,
+            "gzip9": 624411,
+            "brotli11": 621029
+          },
+          {
+            "name": "assets/vendor-syntax-CM1_dBFT.js",
+            "raw": 603174,
+            "gzip9": 214464,
+            "brotli11": 171389
+          },
+          {
+            "name": "assets/vendor-pdfjs-BROW3zmu.js",
+            "raw": 431140,
+            "gzip9": 127429,
+            "brotli11": 106029
+          },
+          {
+            "name": "assets/xterm-ScmBfeDI.js",
+            "raw": 331178,
+            "gzip9": 81915,
+            "brotli11": 69644
+          },
+          {
+            "name": "assets/browser-h9Xat9Z_.js",
+            "raw": 329117,
+            "gzip9": 98899,
+            "brotli11": 84286
+          },
+          {
+            "name": "assets/index-DjhdIZR8.js",
+            "raw": 304250,
+            "gzip9": 83431,
+            "brotli11": 70481
+          },
+          {
+            "name": "assets/vendor-katex-mlvKbZE6.js",
+            "raw": 259044,
+            "gzip9": 75900,
+            "brotli11": 62990
+          },
+          {
+            "name": "assets/dist-DgC2RkDj.js",
+            "raw": 200397,
+            "gzip9": 63762,
+            "brotli11": 55521
+          },
+          {
+            "name": "assets/PlanWorkspace-DJk6Zu49-BT_qfgJd.js",
+            "raw": 191957,
+            "gzip9": 57151,
+            "brotli11": 50692
+          },
+          {
+            "name": "assets/vendor-react-DVbiCQQK.js",
+            "raw": 189595,
+            "gzip9": 58798,
+            "brotli11": 50732
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/all-js",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes_gzip9",
+      "unit": "bytes",
+      "samples": [
+        3275590
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 115,
+        "note": "every shipped JS file: dist assets (eager and lazy), the pdf.js worker (.mjs), webviewer assets compiled into tendril"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/all-js",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes_brotli11",
+      "unit": "bytes",
+      "samples": [
+        2766361
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 115,
+        "note": "every shipped JS file: dist assets (eager and lazy), the pdf.js worker (.mjs), webviewer assets compiled into tendril"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/all-js/dist assets/*.js",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        8051805
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "frontend/all-js",
+        "component": "dist assets/*.js",
+        "group": "app",
+        "files": 111
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/all-js/dist *.mjs (pdf.js worker)",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        2228489
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "frontend/all-js",
+        "component": "dist *.mjs (pdf.js worker)",
+        "group": "app",
+        "files": 1,
+        "members": [
+          "assets/pdf.worker-TGcf_-kp.mjs"
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/all-js/webviewer proxy assets",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        200750
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "parent": "frontend/all-js",
+        "component": "webviewer proxy assets",
+        "group": "webviewer",
+        "files": 3
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/all-css",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        327694
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 4,
+        "largest": [
+          {
+            "name": "assets/index-7a5iSt4-.css",
+            "raw": 290469,
+            "gzip9": 44380,
+            "brotli11": 36039
+          },
+          {
+            "name": "assets/vendor-katex-D1Bj3pDB.css",
+            "raw": 29797,
+            "gzip9": 7880,
+            "brotli11": 6890
+          },
+          {
+            "name": "assets/tendril-BrP-ENHg.css",
+            "raw": 3939,
+            "gzip9": 1008,
+            "brotli11": 782
+          },
+          {
+            "name": "assets/vendor-diff-legcy4jI.css",
+            "raw": 3489,
+            "gzip9": 754,
+            "brotli11": 616
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/all-css",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes_gzip9",
+      "unit": "bytes",
+      "samples": [
+        54022
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 4
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/all-css",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes_brotli11",
+      "unit": "bytes",
+      "samples": [
+        44327
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 4
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/fonts",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        1072948
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 59,
+        "note": "none preloaded",
+        "largest": [
+          {
+            "name": "assets/KaTeX_AMS-Regular-DRggAlZN.ttf",
+            "raw": 63632,
+            "gzip9": 34543,
+            "brotli11": 32208
+          },
+          {
+            "name": "assets/KaTeX_Main-Regular-ypZvNtVU.ttf",
+            "raw": 53580,
+            "gzip9": 31483,
+            "brotli11": 29620
+          },
+          {
+            "name": "assets/KaTeX_Main-Bold-waoOVXN0.ttf",
+            "raw": 51336,
+            "gzip9": 30563,
+            "brotli11": 28913
+          },
+          {
+            "name": "assets/KaTeX_Main-Italic-3WenGoN9.ttf",
+            "raw": 33580,
+            "gzip9": 20004,
+            "brotli11": 18877
+          },
+          {
+            "name": "assets/KaTeX_AMS-Regular-DMm9YOAa.woff",
+            "raw": 33516,
+            "gzip9": 33526,
+            "brotli11": 33397
+          },
+          {
+            "name": "assets/KaTeX_Main-BoldItalic-DzxPMmG6.ttf",
+            "raw": 32968,
+            "gzip9": 19700,
+            "brotli11": 18591
+          },
+          {
+            "name": "assets/KaTeX_Math-Italic-flOr_0UB.ttf",
+            "raw": 31308,
+            "gzip9": 19125,
+            "brotli11": 18011
+          },
+          {
+            "name": "assets/KaTeX_Math-BoldItalic-B3XSjfu4.ttf",
+            "raw": 31196,
+            "gzip9": 18992,
+            "brotli11": 17862
+          },
+          {
+            "name": "assets/KaTeX_Main-Regular-Dr94JaBh.woff",
+            "raw": 30772,
+            "gzip9": 30787,
+            "brotli11": 30776
+          },
+          {
+            "name": "assets/KaTeX_Main-Bold-Jm3AIy58.woff",
+            "raw": 29912,
+            "gzip9": 29932,
+            "brotli11": 29822
+          },
+          {
+            "name": "assets/KaTeX_AMS-Regular-BQhdFMY1.woff2",
+            "raw": 28076,
+            "gzip9": 28104,
+            "brotli11": 28080
+          },
+          {
+            "name": "assets/KaTeX_Typewriter-Regular-D3Ib7_Hf.ttf",
+            "raw": 27556,
+            "gzip9": 16279,
+            "brotli11": 15387
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/fonts",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes_gzip9",
+      "unit": "bytes",
+      "samples": [
+        866377
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 59,
+        "note": "none preloaded"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/fonts",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes_brotli11",
+      "unit": "bytes",
+      "samples": [
+        846843
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 59,
+        "note": "none preloaded"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/sourcemaps",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        0
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 0,
+        "note": "the production build emits no source maps",
+        "largest": []
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/sourcemaps",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes_gzip9",
+      "unit": "bytes",
+      "samples": [
+        0
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 0,
+        "note": "the production build emits no source maps"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/sourcemaps",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes_brotli11",
+      "unit": "bytes",
+      "samples": [
+        0
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 0,
+        "note": "the production build emits no source maps"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/total-shipped",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        11884373
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 179,
+        "note": "every frontend file shipped (dist plus webviewer assets), source maps excluded",
+        "largest": [
+          {
+            "name": "assets/vendor-mermaid-DgbI32rT.js",
+            "raw": 3090956,
+            "gzip9": 812830,
+            "brotli11": 599106
+          },
+          {
+            "name": "assets/pdf.worker-TGcf_-kp.mjs",
+            "raw": 2228489,
+            "gzip9": 472398,
+            "brotli11": 377532
+          },
+          {
+            "name": "assets/vendor-graphviz-g1SsAENV.js",
+            "raw": 798039,
+            "gzip9": 624411,
+            "brotli11": 621029
+          },
+          {
+            "name": "assets/vendor-syntax-CM1_dBFT.js",
+            "raw": 603174,
+            "gzip9": 214464,
+            "brotli11": 171389
+          },
+          {
+            "name": "assets/vendor-pdfjs-BROW3zmu.js",
+            "raw": 431140,
+            "gzip9": 127429,
+            "brotli11": 106029
+          },
+          {
+            "name": "assets/xterm-ScmBfeDI.js",
+            "raw": 331178,
+            "gzip9": 81915,
+            "brotli11": 69644
+          },
+          {
+            "name": "assets/browser-h9Xat9Z_.js",
+            "raw": 329117,
+            "gzip9": 98899,
+            "brotli11": 84286
+          },
+          {
+            "name": "assets/index-DjhdIZR8.js",
+            "raw": 304250,
+            "gzip9": 83431,
+            "brotli11": 70481
+          },
+          {
+            "name": "assets/index-7a5iSt4-.css",
+            "raw": 290469,
+            "gzip9": 44380,
+            "brotli11": 36039
+          },
+          {
+            "name": "assets/vendor-katex-mlvKbZE6.js",
+            "raw": 259044,
+            "gzip9": 75900,
+            "brotli11": 62990
+          },
+          {
+            "name": "assets/dist-DgC2RkDj.js",
+            "raw": 200397,
+            "gzip9": 63762,
+            "brotli11": 55521
+          },
+          {
+            "name": "assets/PlanWorkspace-DJk6Zu49-BT_qfgJd.js",
+            "raw": 191957,
+            "gzip9": 57151,
+            "brotli11": 50692
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/total-shipped",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes_gzip9",
+      "unit": "bytes",
+      "samples": [
+        4196769
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 179,
+        "note": "every frontend file shipped (dist plus webviewer assets), source maps excluded"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/total-shipped",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes_brotli11",
+      "unit": "bytes",
+      "samples": [
+        3658147
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 179,
+        "note": "every frontend file shipped (dist plus webviewer assets), source maps excluded"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/as-embedded-in-binary",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        4013359
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "informational": true,
+        "parts": {
+          "dist, brotli 9 per file (tauri-codegen)": 3812609,
+          "webviewer assets, raw (include_bytes!)": 200750
+        },
+        "note": "frontend bytes the binaries carry; approximate for the dist part (see the suite source)"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/webviewer-proxy-assets",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        200750
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 3,
+        "members": [
+          "webviewer/agent.js",
+          "webviewer/snapdom.mjs",
+          "webviewer/sw.js"
+        ],
+        "note": "compiled into tendril (tendril-server webviewer)",
+        "largest": [
+          {
+            "name": "webviewer/snapdom.mjs",
+            "raw": 126530,
+            "gzip9": 41088,
+            "brotli11": 35916
+          },
+          {
+            "name": "webviewer/agent.js",
+            "raw": 52629,
+            "gzip9": 17071,
+            "brotli11": 14653
+          },
+          {
+            "name": "webviewer/sw.js",
+            "raw": 21591,
+            "gzip9": 7550,
+            "brotli11": 6470
+          }
+        ]
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/webviewer-proxy-assets",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes_gzip9",
+      "unit": "bytes",
+      "samples": [
+        65709
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 3,
+        "members": [
+          "webviewer/agent.js",
+          "webviewer/snapdom.mjs",
+          "webviewer/sw.js"
+        ],
+        "note": "compiled into tendril (tendril-server webviewer)"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/webviewer-proxy-assets",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes_brotli11",
+      "unit": "bytes",
+      "samples": [
+        57039
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 3,
+        "members": [
+          "webviewer/agent.js",
+          "webviewer/snapdom.mjs",
+          "webviewer/sw.js"
+        ],
+        "note": "compiled into tendril (tendril-server webviewer)"
+      }
+    },
+    {
+      "suite": "size",
+      "scenario": "frontend/wireframe-payload",
+      "app": "v2",
+      "dataset": null,
+      "metric": "bytes",
+      "unit": "bytes",
+      "samples": [
+        3951046
+      ],
+      "better": "lower",
+      "meta": {
+        "deterministic": true,
+        "files": 129,
+        "contentBytes": 3944268,
+        "matchesCargoPayload": true,
+        "note": "vendor JS bundle, CSS, fonts, type definitions and component manifest for wireframe prototypes, embedded uncompressed in tendril (include_bytes!); V1 v1.2.4 has no counterpart"
+      }
+    }
+  ],
+  "series": [],
+  "notes": [
+    "V1: non-frontend resources left out of the frontend groups: Ivy.AGENTS.md (15587 B), RoutingConstants (415 B), Ivy.Agent.Filter.Filters.g4 (2486 B)",
+    "V1: all 19 figures that the research also measured match it to the byte",
+    "sizes are apparent bytes of regular files (symlinks not followed, never du); compressed sizes are per file (Node zlib: gzip level 9, brotli quality 11), which can differ from the gzip/brotli CLIs by a few bytes per file",
+    "V2's cargo target dirs (including the IPC shim's, which holds tauri-build's copies of the sidecars) are never walked: only the bundled .app, the .dmg and the dist are counted"
+  ],
+  "failures": []
+}

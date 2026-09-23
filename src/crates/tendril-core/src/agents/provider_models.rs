@@ -150,6 +150,7 @@ const fn priorities(kind: ModelProviderKind, tier: ProfileTier) -> &'static [&'s
     use ProfileTier as T;
     match (kind, tier) {
         (K::Ivy, T::Deep) => &[
+            "claude-opus-5-5",
             "claude-fable-5-1",
             "claude-opus-5-1",
             "claude-opus-5",
@@ -190,6 +191,7 @@ const fn priorities(kind: ModelProviderKind, tier: ProfileTier) -> &'static [&'s
         ],
 
         (K::Anthropic, T::Deep) => &[
+            "claude-opus-5-5",
             "claude-fable-5-1",
             "claude-opus-5-1",
             "claude-opus-5",
@@ -260,6 +262,7 @@ const fn priorities(kind: ModelProviderKind, tier: ProfileTier) -> &'static [&'s
         (K::Berget, _) => &["moonshotai/Kimi-K3", "kimi-k3", "kimi"],
 
         (K::OpenCode, T::Deep) => &[
+            "claude-opus-5-5",
             "claude-fable-5-1",
             "claude-opus-5-1",
             "claude-opus-5",
@@ -285,6 +288,7 @@ const fn priorities(kind: ModelProviderKind, tier: ProfileTier) -> &'static [&'s
         (K::Generic, T::Deep) => &[
             "gpt-5.6-sol",
             "gpt-6-astra",
+            "claude-opus-5-5",
             "claude-fable-5-1",
             "claude-opus-5-1",
             "claude-opus-5",
@@ -560,7 +564,7 @@ pub fn chat_endpoints(base_url: &str) -> Vec<String> {
 /// V1's `effectiveModel`: which model to ping when the caller named none.
 pub fn ping_model_for(base_url: &str) -> &'static str {
     match ModelProviderKind::detect(base_url) {
-        ModelProviderKind::Ivy => "claude-opus-5",
+        ModelProviderKind::Ivy => "claude-opus-5-5",
         ModelProviderKind::Anthropic => "claude-sonnet-5",
         ModelProviderKind::Google => "gemini-3.7-flash",
         ModelProviderKind::Berget => "moonshotai/Kimi-K3",

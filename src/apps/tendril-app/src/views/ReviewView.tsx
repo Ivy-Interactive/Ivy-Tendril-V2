@@ -1,11 +1,9 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { openPath } from "@tauri-apps/plugin-opener";
-import { convertFileSrc, isTauri } from "@tauri-apps/api/core";
 import { copyToClipboard } from "@ivy-interactive/components";
 import {
   PlanChangesView,
   PlanGitView,
-  PlanMarkdown,
   PlanWorkspace,
   useShortcut,
   type PlanActionDto,
@@ -33,6 +31,7 @@ import { useWireframeBaseUrl } from "../api/proxyOrigin";
 import { PlanActionsController } from "../controllers/planActions";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { VerificationReportSheet } from "./sheets/VerificationReportSheet";
+import { ArtifactFileSheet, ArtifactThumbnail } from "../components/ArtifactFileSheet";
 import { NoContentView } from "../components/NoContentView";
 import { VERIFICATION_BADGE_VARIANT } from "../utils/verificationStatus";
 import { PlanChatPanel } from "../components/chat/PlanChatPanel";
@@ -40,7 +39,11 @@ import { ProjectBadges } from "../components/ProjectBadges";
 import { TendrilProcessWallpaper } from "../components/TendrilProcessWallpaper";
 import { RecommendationCard } from "../components/RecommendationCard";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
-import { ReviewActionsBarView } from "../components/ReviewActionsBarView";
+import {
+  ReviewActionsBarView,
+  conditionVerdictsFrom,
+  type ReviewActionConditionVerdict,
+} from "../components/ReviewActionsBarView";
 import { formatPlanId, parseProjects } from "./PlansView";
 import { isPlanId, nextAfterRemoval, plansStore, resolvePlanSelection } from "../state/plansStore";
 import { reviewQueueFor } from "../utils/planQueues";
@@ -52,7 +55,10 @@ import { PartialDeliveryDialog } from "./dialogs/PartialDeliveryDialog";
 import { ResetToDraftDialog } from "./dialogs/ResetToDraftDialog";
 import { SuggestChangesDialog } from "./dialogs/SuggestChangesDialog";
 import { DetailRow, ExecutionFailedCallout, planLinkLabel } from "./planDetail/helpers";
+import { PlanDocumentPane } from "./planDetail/tabPanes";
 import { PlanPullRequests } from "./PlanPullRequests";
+import { useTranslation, type TFunction } from "../i18n";
+import { planStateLabel, useEnumLabels } from "../i18n/enumLabels";
 
 /** The triage dialogs this view owns, at most one open at a time. */
 type TriageDialog = "createPr" | "suggestChanges" | "delete" | "reset" | "partialDelivery";
@@ -74,17 +80,19 @@ const isVerified = (verifications: PlanVerification[] | undefined): boolean =>
  * apart by the row's state glyph, which `ShellItemState` only spells for a chat that is working or
  * finished - so without this a failed execution and a clean one read identically in the list.
  */
-const reviewRowBadges = (plan: PlanSummary): ShellBadgeDto[] => {
+const reviewRowBadges = (plan: PlanSummary, t: TFunction<"review">): ShellBadgeDto[] => {
   const badges: ShellBadgeDto[] = parseProjects(plan.project).map((project) => ({
     label: project,
     kind: "project",
   }));
   badges.push(
     isVerified(plan.verifications)
-      ? { label: "Verified", kind: "success" }
-      : { label: "Unverified", kind: "warning" },
+      ? { label: t("sidebar.badges.verified"), kind: "success" }
+      : { label: t("sidebar.badges.unverified"), kind: "warning" },
   );
-  if (plan.state !== "Review") badges.push({ label: plan.state, kind: "warning" });
+  if (plan.state !== "Review") {
+    badges.push({ label: planStateLabel(plan.state), kind: "warning" });
+  }
   return badges;
 };
 
@@ -100,14 +108,15 @@ export const buildReviewSidebarList = (
   plans: PlanSummary[],
   selectedId: string | null,
   select: (planId: string) => void,
+  t: TFunction<"review">,
 ): ShellSidebarList => ({
   appId: "review",
-  title: "Review",
+  title: t("sidebar.title"),
   items: plans.map((plan) => ({
     id: plan.id,
     title: plan.title,
     tag: formatPlanId(plan.id),
-    badges: reviewRowBadges(plan),
+    badges: reviewRowBadges(plan, t),
   })),
   selectedId,
   buildSelectArgs: (planId) => {
@@ -129,12 +138,46 @@ const CHANGES_TAB = "changes";
 const ARTIFACTS_TAB = "artifacts";
 const RECOMMENDATIONS_TAB = "recommendations";
 
-const FALLBACK_SUMMARY_MARKDOWN = `# Summary
+/**
+ * The Summary tab's markdown when the plan wrote none. Built at render time from the catalog, with
+ * the markdown itself - the heading, the `[!NOTE]` alert marker the renderer parses, the code spans -
+ * kept out of it, and quoting the two actions by the same keys their buttons read, so the labels it
+ * names are always the ones on screen.
+ */
+const fallbackSummaryMarkdown = (t: TFunction<"review">): string =>
+  [
+    `# ${t("summary.fallback.heading")}`,
+    "",
+    "> [!NOTE]",
+    `> ${t("summary.fallback.body")}`,
+    ">",
+    `> ${t("summary.fallback.retry", {
+      resetToDraft: t("actions.resetToDraft"),
+      requestChanges: t("actions.requestChanges"),
+    })}`,
+  ].join("\n");
 
-> [!NOTE]
-> No summary is found for this plan. Please check the verifications for more information.
->
-> \`Reset to Draft\` or \`Request Changes\` to retry the plan.`;
+/** The catalog key for each verification outcome. */
+const VERIFICATION_STATUS_KEYS = {
+  Pending: "verificationStatus.pending",
+  Pass: "verificationStatus.pass",
+  Fail: "verificationStatus.fail",
+  Skipped: "verificationStatus.skipped",
+} as const satisfies Record<PlanVerification["status"], string>;
+
+/** A verification outcome as a badge shows it; one this build does not know is shown as it is. */
+const verificationStatusLabel = (t: TFunction<"review">, status: string): string =>
+  Object.hasOwn(VERIFICATION_STATUS_KEYS, status)
+    ? t(VERIFICATION_STATUS_KEYS[status as keyof typeof VERIFICATION_STATUS_KEYS])
+    : status;
+
+/** The catalog key for each recommendation state, for the one message that names a state. */
+const RECOMMENDATION_STATE_KEYS = {
+  Pending: "recommendationState.pending",
+  Accepted: "recommendationState.accepted",
+  AcceptedWithNotes: "recommendationState.acceptedWithNotes",
+  Declined: "recommendationState.declined",
+} as const satisfies Record<RecommendationState, string>;
 
 /**
  * `ContentView.BuildRecommendationChangeRequest`, verbatim in shape: a numbered heading per
@@ -213,6 +256,8 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   onNewPlan,
   onNavigate,
 }) => {
+  const { t } = useTranslation("review");
+  const labels = useEnumLabels();
   const reviewPlans = useMemo(() => reviewQueueFor(plans, jobs), [plans, jobs]);
 
   /**
@@ -231,6 +276,11 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [activeDialog, setActiveDialog] = useState<TriageDialog | null>(null);
   const [openVerification, setOpenVerification] = useState<string | null>(null);
+  /**
+   * The artifact open in `ArtifactFileSheet`, by the absolute path the listing gave it - V1's
+   * `openArtifact` state in `Review/ContentView.cs`.
+   */
+  const [openArtifact, setOpenArtifact] = useState<string | null>(null);
 
   /**
    * `PlanSelectionHelper.ResolveSelection`, re-resolved on every render as V1 re-resolves it on every
@@ -272,8 +322,8 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
    * (`TendrilAppShell.PageTabTitle`).
    */
   const sidebarList = useMemo(
-    () => buildReviewSidebarList(reviewPlans, selectedId ?? null, setSelectedPlanId),
-    [reviewPlans, selectedId],
+    () => buildReviewSidebarList(reviewPlans, selectedId ?? null, setSelectedPlanId, t),
+    [reviewPlans, selectedId, t],
   );
 
   usePublishSidebarList(sidebarList);
@@ -402,6 +452,49 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     };
   }, [selectedPlan?.project]);
 
+  /**
+   * Whether each review action's condition holds for the selected plan: V1's `ReviewActionStates`,
+   * which `ContentView` computed in the query that loaded the plan with
+   * `PlatformHelper.EvaluatePowerShellCondition(action.Condition, folderPath)` and
+   * `ReviewActionsBarView.BuildActionButton` disabled on. That needs the plan folder on disk, so the
+   * daemon answers it; the bar's own evaluator has neither a filesystem nor a shell.
+   *
+   * Held with the plan it answers for, so a switch never shows one plan's verdicts on another's
+   * buttons, and `verdicts: null` records that the daemon could not answer - the bar then falls back
+   * to deciding what it can itself rather than waiting on an answer that is not coming. Asked again
+   * when the plan's `updated` moves, which is what a new worktree or commit does to it.
+   */
+  const [actionConditions, setActionConditions] = useState<{
+    planId: string;
+    verdicts: Record<string, ReviewActionConditionVerdict> | null;
+  } | null>(null);
+
+  useEffect(() => {
+    const project = selectedPlan?.project;
+    if (!selectedId || !project) return;
+
+    let cancelled = false;
+    bridge
+      .getReviewActionConditions(project, selectedId)
+      .then((results) => {
+        if (!cancelled) {
+          setActionConditions({
+            planId: selectedId,
+            verdicts: conditionVerdictsFrom(results ?? []),
+          });
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setActionConditions({ planId: selectedId, verdicts: null });
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedId, selectedPlan?.project, selectedPlan?.updated]);
+
+  const conditionsAnswer = actionConditions?.planId === selectedId ? actionConditions : null;
+
   const allocatedPorts = planDetail?.allocatedPorts ?? selectedPlan?.allocatedPorts;
 
   /**
@@ -450,6 +543,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     setGitError(null);
     setChangesData(null);
     setArtifacts(null);
+    setOpenArtifact(null);
     if (!selectedId) return;
 
     let cancelled = false;
@@ -578,7 +672,15 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
       await bridge.setRecommendationState(selectedId, title, state, declineReason, notes);
     } catch (err) {
       setRecommendations(previous);
-      setActionError(`Could not mark "${title}" as ${state}: ${describeBridgeError(err)}`);
+      setActionError(
+        t("errors.markRecommendation", {
+          title,
+          state: Object.hasOwn(RECOMMENDATION_STATE_KEYS, state)
+            ? t(RECOMMENDATION_STATE_KEYS[state])
+            : state,
+          error: describeBridgeError(err),
+        }),
+      );
     }
   };
 
@@ -652,7 +754,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     setActionError(null);
 
     if (selectedRecTitles.size === 0) {
-      setActionError("Select at least one recommendation to implement.");
+      setActionError(t("errors.nothingSelected"));
       return;
     }
 
@@ -666,7 +768,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
       );
 
       if (selected.length === 0) {
-        setActionError("Selected recommendations are no longer pending. Refresh and try again.");
+        setActionError(t("errors.noLongerPending"));
         return;
       }
 
@@ -682,9 +784,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
       onJobStarted?.(response);
       onPlanChanged?.(selectedPlan.id);
     } catch (err) {
-      setActionError(
-        `Could not implement the selected recommendations: ${describeBridgeError(err)}`,
-      );
+      setActionError(t("errors.implementFailed", { error: describeBridgeError(err) }));
     } finally {
       setPendingAction(null);
     }
@@ -706,7 +806,9 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     try {
       await bridge.executeReviewAction(selectedPlan.project, actionName, selectedPlan.id);
     } catch (err) {
-      setActionError(`Review action "${actionName}" failed: ${describeBridgeError(err)}`);
+      setActionError(
+        t("errors.reviewActionFailed", { name: actionName, error: describeBridgeError(err) }),
+      );
     }
   };
 
@@ -731,7 +833,10 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
       }
     } catch (err) {
       setActionError(
-        `Could not complete plan ${formatPlanId(selectedPlan.id)}: ${describeBridgeError(err)}`,
+        t("errors.completeFailed", {
+          planId: formatPlanId(selectedPlan.id),
+          error: describeBridgeError(err),
+        }),
       );
     } finally {
       setPendingAction(null);
@@ -794,7 +899,10 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
       onPlanChanged?.(selectedPlan.id);
     } catch (err) {
       setActionError(
-        `Could not update the PR for plan ${formatPlanId(selectedPlan.id)}: ${describeBridgeError(err)}`,
+        t("errors.updatePrFailed", {
+          planId: formatPlanId(selectedPlan.id),
+          error: describeBridgeError(err),
+        }),
       );
     } finally {
       setPendingAction(null);
@@ -803,11 +911,11 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
 
   const primaryLabel = prIsPrimary
     ? isPrUpdate
-      ? "Update PR"
-      : "Create PR"
+      ? t("primary.updatePr")
+      : t("primary.createPr")
     : deleteIsPrimary
-      ? "Delete Plan"
-      : "Complete Plan";
+      ? t("primary.deletePlan")
+      : t("primary.completePlan");
   const primaryDisabled = prIsPrimary
     ? !canPr.allowed || pendingAction !== null
     : deleteIsPrimary
@@ -864,14 +972,14 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     "review:previous-plan",
     "ArrowLeft",
     () => setSelectedPlanId(reviewPlans[selectedIndex - 1]?.id ?? null),
-    { description: "Previous plan", disabled: modalOpen || selectedIndex <= 0 },
+    { description: t("shortcuts.previousPlan"), disabled: modalOpen || selectedIndex <= 0 },
   );
   useShortcut(
     "review:next-plan",
     "ArrowRight",
     () => setSelectedPlanId(reviewPlans[selectedIndex + 1]?.id ?? null),
     {
-      description: "Next plan",
+      description: t("shortcuts.nextPlan"),
       disabled: modalOpen || selectedIndex < 0 || selectedIndex >= reviewPlans.length - 1,
     },
   );
@@ -888,7 +996,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     ? [
         {
           tag: "RequestChanges",
-          label: "Request Changes",
+          label: t("actions.requestChanges"),
           icon: "MessageSquare",
           shortcut: REQUEST_CHANGES_SHORTCUT,
           badge: draftComments.length > 0 ? String(draftComments.length) : undefined,
@@ -900,14 +1008,14 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   if (canReset.allowed)
     workspaceMenu.push({
       tag: "ResetToDraft",
-      label: "Reset to Draft",
+      label: t("actions.resetToDraft"),
       icon: "RotateCcw",
       shortcut: RESET_SHORTCUT,
     });
   if (canDeletePlan.allowed)
     workspaceMenu.push({
       tag: "Delete",
-      label: "Delete Plan",
+      label: t("actions.deletePlan"),
       icon: "Trash",
       shortcut: DELETE_SHORTCUT,
       danger: true,
@@ -917,13 +1025,17 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
    * page carries the review decision, and everything else about the plan - its spec, diff, commits
    * and artifacts, which V1 has as tabs here - is on the plan's own page. See the report.
    */
-  workspaceMenu.push({ tag: "OpenPlanPage", label: "Open Full Spec & Diff", icon: "ExternalLink" });
+  workspaceMenu.push({
+    tag: "OpenPlanPage",
+    label: t("actions.openPlanPage"),
+    icon: "ExternalLink",
+  });
 
   const secondaryActions: PlanActionDto[] = [];
   if (canPartial.allowed)
     secondaryActions.push({
       tag: "PartialDelivery",
-      label: "Accept Partial Delivery",
+      label: t("actions.partialDelivery"),
       icon: "TriangleAlert",
     });
 
@@ -932,9 +1044,9 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
         tag: "Primary",
         label:
           pendingAction === "complete"
-            ? "Completing…"
+            ? t("primary.completing")
             : pendingAction === "updatePr"
-              ? "Pushing…"
+              ? t("primary.pushing")
               : primaryLabel,
         // `Icons.GitPullRequest`, `Icons.Ban`, `Icons.CircleCheck`, in `AddPrimaryAction`'s order.
         // `Ban` was Skip Plan's; the branch now deletes, so it takes Delete's `Trash` instead.
@@ -997,17 +1109,16 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
   }, [gitData, planDetail?.commits, planDetail?.prs]);
 
   const changesCount = changesData?.files?.length ?? 0;
-  const totalArtifacts =
-    (artifacts?.screenshots?.length ?? 0) + (artifacts?.other?.length ?? 0);
+  const totalArtifacts = (artifacts?.screenshots?.length ?? 0) + (artifacts?.other?.length ?? 0);
 
   const tabs = useMemo<PlanTabDto[]>(() => {
     const list: PlanTabDto[] = [
-      { id: SUMMARY_TAB, label: "Summary" },
-      { id: PLAN_TAB, label: "Plan" },
-      { id: DETAILS_TAB, label: "Details" },
+      { id: SUMMARY_TAB, label: t("tabs.summary") },
+      { id: PLAN_TAB, label: t("tabs.plan") },
+      { id: DETAILS_TAB, label: t("tabs.details") },
       {
         id: GIT_TAB,
-        label: "Git",
+        label: t("tabs.git"),
         badge: gitItemCount > 0 ? String(gitItemCount) : undefined,
       },
     ];
@@ -1015,7 +1126,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     if (changesCount > 0 || selectedTab === CHANGES_TAB) {
       list.push({
         id: CHANGES_TAB,
-        label: "Changes",
+        label: t("tabs.changes"),
         badge: changesCount > 0 ? String(changesCount) : undefined,
       });
     }
@@ -1023,21 +1134,21 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     if (totalArtifacts > 0 || selectedTab === ARTIFACTS_TAB) {
       list.push({
         id: ARTIFACTS_TAB,
-        label: "Artifacts",
+        label: t("tabs.artifacts"),
         badge: totalArtifacts > 0 ? String(totalArtifacts) : undefined,
       });
     }
 
     list.push({
       id: RECOMMENDATIONS_TAB,
-      label: "Recommendations",
+      label: t("tabs.recommendations"),
       badge: pendingRecs.length > 0 ? String(pendingRecs.length) : undefined,
     });
 
     return list;
-  }, [gitItemCount, changesCount, totalArtifacts, pendingRecs.length, selectedTab]);
+  }, [gitItemCount, changesCount, totalArtifacts, pendingRecs.length, selectedTab, t]);
 
-  const activeTab = tabs.some((t) => t.id === selectedTab)
+  const activeTab = tabs.some((tab) => tab.id === selectedTab)
     ? selectedTab
     : (tabs[0]?.id ?? SUMMARY_TAB);
 
@@ -1055,8 +1166,8 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
             wallpaper the empty Plans page carries. */}
         <NoContentView
           data-testid="review-empty"
-          title="No plans to review"
-          description="Completed plans will appear here for review"
+          title={t("empty.title")}
+          description={t("empty.description")}
           cta={
             <TendrilProcessWallpaper
               plans={plans}
@@ -1089,10 +1200,16 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
           planId={formatPlanId(selectedPlan.id)}
           title={selectedPlan.title}
           // `.Meta($"{currentIndex + 1}/{allPlans.Count} plans")`.
-          meta={`${selectedIndex + 1}/${reviewPlans.length} plans`}
+          meta={t("workspace.meta", {
+            index: selectedIndex + 1,
+            total: reviewPlans.length,
+            count: reviewPlans.length,
+          })}
           // `.Source(SourceUrl, IsPullRequestSource ? "PR" : "Issue")`.
           sourceUrl={planDetail?.sourceUrl || undefined}
-          sourceLabel={isPrUpdate ? "PR" : "Issue"}
+          sourceLabel={
+            isPrUpdate ? t("workspace.sourceLabel.pr") : t("workspace.sourceLabel.issue")
+          }
           actions={iconActions}
           menuItems={workspaceMenu}
           secondary={secondaryActions}
@@ -1123,11 +1240,10 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
               completionBlocked ? (
                 <Callout.Info
                   key="completion-blocked"
-                  title="No Changes Needed"
+                  title={t("completionBlocked.title")}
                   data-testid="review-completion-blocked"
                 >
-                  Pre-execution validation found no changes needed because the issue or task is
-                  already resolved. You can delete this plan, or move it to Skipped or Icebox.
+                  {t("completionBlocked.body")}
                 </Callout.Info>
               ) : null,
               primaryRefusal ? (
@@ -1136,7 +1252,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                   data-testid="review-primary-refusal"
                   className="text-xs text-muted-foreground"
                 >
-                  {primaryLabel} is unavailable: {primaryRefusal}
+                  {t("primary.unavailable", { action: primaryLabel, reason: primaryRefusal })}
                 </p>
               ) : null,
               /* The project's review actions sit above the content as a bare button row
@@ -1148,7 +1264,10 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                     project={selectedPlan.project}
                     planId={selectedPlan.id}
                     actions={reviewActions}
+                    actionStates={conditionsAnswer?.verdicts ?? undefined}
+                    conditionsPending={conditionsAnswer === null}
                     allocatedPorts={allocatedPorts}
+                    worktreePaths={gitData?.worktrees?.map((w) => w.path)}
                     onExecuteAction={handleExecuteReviewAction}
                   />
                 </div>
@@ -1170,7 +1289,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                   data-testid="no-verifications"
                   className="text-sm text-muted-foreground"
                 >
-                  No verifications
+                  {t("verifications.none")}
                 </p>
               ) : (
                 <div key="rows" className="grid grid-cols-[auto_1fr] items-center gap-2">
@@ -1179,18 +1298,18 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                       <Badge
                         data-testid={`review-verification-${v.name}`}
                         variant={VERIFICATION_BADGE_VARIANT[v.status]}
-                        className="cursor-pointer justify-self-start transition-opacity hover:opacity-80"
+                        className="cursor-pointer justify-self-start hover:opacity-80"
                         onClick={() => setOpenVerification(v.name)}
-                        title={`View ${v.name} report`}
+                        title={t("verifications.viewReport", { name: v.name })}
                       >
-                        {v.status}
+                        {verificationStatusLabel(t, v.status)}
                       </Badge>
                       <button
                         type="button"
                         data-testid={`review-verification-button-${v.name}`}
                         onClick={() => setOpenVerification(v.name)}
                         className="truncate text-left text-sm font-medium text-foreground transition-colors hover:text-primary hover:underline focus:outline-none"
-                        title={`View ${v.name} report`}
+                        title={t("verifications.viewReport", { name: v.name })}
                       >
                         {v.name}
                       </button>
@@ -1223,46 +1342,40 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
               />,
             ],
             Content: [
+              /* `SummaryTabView` and `Review/Tabs/PlanTabView`: the same bare `PlanMarkdown` the
+                 Plans app's Plan tab is, rendered through the same `PlanDocumentPane`, so the summary
+                 starts where the plan page's document does. They used to get the `Cap()` treatment
+                 the Details tab below gets, which inset them a second time. */
               activeTab === SUMMARY_TAB && (
-                <div
+                <PlanDocumentPane
                   key="summary"
                   data-testid="review-tab-summary"
-                  className="flex min-h-0 flex-1 flex-col overflow-y-auto"
-                >
-                  <div className="w-full max-w-[var(--content-measure)] px-8 py-6">
-                    {summaryLoading && !summaryContent ? (
-                      <p className="text-sm text-muted-foreground">Loading summary…</p>
-                    ) : (
-                      <PlanMarkdown
-                        id="review-summary-markdown"
-                        content={typeof summaryContent === "string" && summaryContent ? summaryContent : FALLBACK_SUMMARY_MARKDOWN}
-                        article
-                        dangerouslyAllowLocalFiles
-                      />
-                    )}
-                  </div>
-                </div>
+                  placeholder={
+                    summaryLoading && !summaryContent ? (
+                      <p className="text-sm text-muted-foreground">{t("summary.loading")}</p>
+                    ) : null
+                  }
+                  id="review-summary-markdown"
+                  content={
+                    typeof summaryContent === "string" && summaryContent
+                      ? summaryContent
+                      : fallbackSummaryMarkdown(t)
+                  }
+                />
               ),
 
               activeTab === PLAN_TAB && (
-                <div
+                <PlanDocumentPane
                   key="plan"
                   data-testid="review-tab-plan"
-                  className="flex min-h-0 flex-1 flex-col overflow-y-auto"
-                >
-                  <div className="w-full max-w-[var(--content-measure)] px-8 py-6">
-                    {selectedPlan.state === "Failed" && planDetail && (
-                      <ExecutionFailedCallout plan={planDetail} jobs={jobs ?? []} />
-                    )}
-                    <PlanMarkdown
-                      id="review-plan-markdown"
-                      content={planDetail?.latestRevisionContent || "# No plan specification available."}
-                      wireframeBaseUrl={wireframeBaseUrl}
-                      article
-                      dangerouslyAllowLocalFiles
-                    />
-                  </div>
-                </div>
+                  lead={
+                    selectedPlan.state === "Failed" &&
+                    planDetail && <ExecutionFailedCallout plan={planDetail} jobs={jobs ?? []} />
+                  }
+                  id="review-plan-markdown"
+                  content={planDetail?.latestRevisionContent || `# ${t("plan.noSpecification")}`}
+                  wireframeBaseUrl={wireframeBaseUrl}
+                />
               ),
 
               activeTab === DETAILS_TAB && (
@@ -1273,48 +1386,57 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                 >
                   <div className="w-full max-w-[var(--content-measure)] space-y-4 px-8 py-6">
                     <dl>
-                      <DetailRow label="Plan ID">
+                      <DetailRow label={t("details.fields.planId")}>
                         <button
                           type="button"
                           onClick={() => void copyToClipboard(selectedPlan.id)}
-                          title="Copy to clipboard"
+                          title={t("details.copyToClipboard")}
                           className="font-mono hover:underline"
                         >
                           {selectedPlan.id}
                         </button>
                       </DetailRow>
-                      <DetailRow label="Folder" empty={!planDetail?.folderPath}>
+                      <DetailRow label={t("details.fields.folder")} empty={!planDetail?.folderPath}>
                         <button
                           type="button"
                           onClick={() => void copyToClipboard(planDetail?.folderPath ?? "")}
-                          title="Copy to clipboard"
+                          title={t("details.copyToClipboard")}
                           className="break-all font-mono hover:underline"
                         >
                           {planDetail?.folderPath}
                         </button>
                       </DetailRow>
-                      <DetailRow label="Initial Prompt" empty={!planDetail?.initialPrompt}>
+                      <DetailRow
+                        label={t("details.fields.initialPrompt")}
+                        empty={!planDetail?.initialPrompt}
+                      >
                         <span className="whitespace-pre-wrap">{planDetail?.initialPrompt}</span>
                       </DetailRow>
-                      <DetailRow label="Revision" empty={!planDetail?.revisionCount}>
+                      <DetailRow
+                        label={t("details.fields.revision")}
+                        empty={!planDetail?.revisionCount}
+                      >
                         {planDetail?.revisionCount}
                       </DetailRow>
-                      <DetailRow label="Profile" empty={!planDetail?.executionProfile}>
+                      <DetailRow
+                        label={t("details.fields.profile")}
+                        empty={!planDetail?.executionProfile}
+                      >
                         {planDetail?.executionProfile}
                       </DetailRow>
                       <DetailRow
-                        label="Related Plans"
+                        label={t("details.fields.relatedPlans")}
                         empty={!planDetail?.relatedPlans || planDetail.relatedPlans.length === 0}
                       >
                         {(planDetail?.relatedPlans ?? []).map(planLinkLabel).join(", ")}
                       </DetailRow>
                       <DetailRow
-                        label="Depends On"
+                        label={t("details.fields.dependsOn")}
                         empty={!planDetail?.dependsOn || planDetail.dependsOn.length === 0}
                       >
                         {(planDetail?.dependsOn ?? []).map(planLinkLabel).join(", ")}
                       </DetailRow>
-                      <DetailRow label="Issue" empty={!planDetail?.sourceUrl}>
+                      <DetailRow label={t("details.fields.issue")} empty={!planDetail?.sourceUrl}>
                         <a
                           href={planDetail?.sourceUrl}
                           target="_blank"
@@ -1324,41 +1446,47 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                           {planDetail?.sourceUrl}
                         </a>
                       </DetailRow>
-                      <DetailRow label="Created" empty={!planDetail?.created}>
+                      <DetailRow label={t("details.fields.created")} empty={!planDetail?.created}>
                         {(planDetail?.created ?? "").slice(0, 10)}
                       </DetailRow>
-                      <DetailRow label="Level" empty={!planDetail?.level}>
+                      <DetailRow label={t("details.fields.level")} empty={!planDetail?.level}>
                         {planDetail?.level}
                       </DetailRow>
-                      <DetailRow label="Project" empty={!selectedPlan.project}>
+                      <DetailRow label={t("details.fields.project")} empty={!selectedPlan.project}>
                         {selectedPlan.project}
                       </DetailRow>
-                      <DetailRow label="State">{selectedPlan.state}</DetailRow>
+                      <DetailRow label={t("details.fields.state")}>
+                        {labels.planState(selectedPlan.state)}
+                      </DetailRow>
                     </dl>
 
                     <div className="grid gap-4 sm:grid-cols-2">
                       <div>
                         <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-                          Repositories
+                          {t("details.repositories.heading")}
                         </h4>
                         <ul className="mt-2 space-y-1 font-mono text-sm text-muted-foreground">
                           {planDetail?.repos && planDetail.repos.length > 0 ? (
                             planDetail.repos.map((r, i) => <li key={i}>{r}</li>)
                           ) : (
-                            <li className="font-sans text-muted-foreground/70">No repositories specified</li>
+                            <li className="font-sans text-muted-foreground/70">
+                              {t("details.repositories.empty")}
+                            </li>
                           )}
                         </ul>
                       </div>
 
                       <div>
                         <h4 className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">
-                          Commits
+                          {t("details.commits.heading")}
                         </h4>
                         <ul className="mt-2 space-y-1 font-mono text-sm text-muted-foreground">
                           {planDetail?.commits && planDetail.commits.length > 0 ? (
                             planDetail.commits.map((c, i) => <li key={i}>{c}</li>)
                           ) : (
-                            <li className="font-sans text-muted-foreground/70">No commits yet</li>
+                            <li className="font-sans text-muted-foreground/70">
+                              {t("details.commits.empty")}
+                            </li>
                           )}
                         </ul>
                       </div>
@@ -1369,7 +1497,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
 
                       <div className="sm:col-span-2">
                         <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                          Verifications ({verifications.length})
+                          {t("details.verifications.heading", { n: verifications.length })}
                         </h4>
                         {verifications.length > 0 ? (
                           <div className="mt-2 grid max-w-xl grid-cols-[auto_1fr] items-center gap-2">
@@ -1377,18 +1505,18 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                               <React.Fragment key={v.name}>
                                 <Badge
                                   variant={VERIFICATION_BADGE_VARIANT[v.status]}
-                                  className="cursor-pointer justify-self-start transition-opacity hover:opacity-80"
+                                  className="cursor-pointer justify-self-start hover:opacity-80"
                                   onClick={() => setOpenVerification(v.name)}
-                                  title={`View ${v.name} report`}
+                                  title={t("verifications.viewReport", { name: v.name })}
                                 >
-                                  {v.status}
+                                  {verificationStatusLabel(t, v.status)}
                                 </Badge>
                                 <button
                                   type="button"
                                   data-testid={`details-verification-button-${v.name}`}
                                   onClick={() => setOpenVerification(v.name)}
                                   className="truncate text-left text-sm font-medium text-foreground transition-colors hover:text-primary hover:underline focus:outline-none"
-                                  title={`View ${v.name} report`}
+                                  title={t("verifications.viewReport", { name: v.name })}
                                 >
                                   {v.name}
                                 </button>
@@ -1396,7 +1524,9 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                             ))}
                           </div>
                         ) : (
-                          <p className="mt-2 text-sm text-muted-foreground/70">No verifications</p>
+                          <p className="mt-2 text-sm text-muted-foreground/70">
+                            {t("details.verifications.empty")}
+                          </p>
                         )}
                       </div>
                     </div>
@@ -1423,7 +1553,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                         onOpenUrl={(url) => void openPath(url)}
                       />
                     ) : (
-                      <p className="text-sm text-muted-foreground/70">Loading git state…</p>
+                      <p className="text-sm text-muted-foreground/70">{t("git.loading")}</p>
                     )}
                   </div>
                 </div>
@@ -1436,7 +1566,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                   className="flex min-h-0 flex-1 flex-col overflow-y-auto p-4"
                 >
                   {changesLoading && !changesData ? (
-                    <p className="text-sm text-muted-foreground">Loading changes…</p>
+                    <p className="text-sm text-muted-foreground">{t("changes.loading")}</p>
                   ) : changesData && changesData.files.length > 0 ? (
                     <PlanChangesView
                       id={`review-changes-${selectedPlan.id}`}
@@ -1447,7 +1577,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                     />
                   ) : (
                     <p data-testid="no-changes" className="text-sm text-muted-foreground">
-                      No file changes recorded for this plan.
+                      {t("changes.empty")}
                     </p>
                   )}
                 </div>
@@ -1461,42 +1591,37 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                 >
                   <div className="w-full max-w-[var(--content-measure)] space-y-6 px-8 py-6">
                     <div>
-                      <h3 className="text-sm font-semibold text-foreground">Plan Artifacts</h3>
-                      <p className="text-xs text-muted-foreground">
-                        Outputs, sample files, and screenshots captured during execution.
-                      </p>
+                      <h3 className="text-sm font-semibold text-foreground">
+                        {t("artifacts.heading")}
+                      </h3>
+                      <p className="text-xs text-muted-foreground">{t("artifacts.description")}</p>
                     </div>
 
                     {artifacts === null ? (
-                      <p className="text-sm text-muted-foreground">Loading artifacts…</p>
+                      <p className="text-sm text-muted-foreground">{t("artifacts.loading")}</p>
                     ) : totalArtifacts === 0 ? (
                       <p data-testid="no-artifacts" className="text-sm text-muted-foreground">
-                        No artifacts found for this plan.
+                        {t("artifacts.empty")}
                       </p>
                     ) : (
                       <>
                         {artifacts.screenshots && artifacts.screenshots.length > 0 && (
                           <div className="space-y-3">
                             <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                              Screenshots ({artifacts.screenshots.length})
+                              {t("artifacts.screenshots", { n: artifacts.screenshots.length })}
                             </h4>
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                               {artifacts.screenshots.map((file, idx) => {
                                 const filename = file.split(/[/\\]/).pop() ?? file;
-                                const src = isTauri() ? convertFileSrc(file) : file;
                                 return (
                                   <div
                                     key={idx}
                                     className="group relative flex flex-col rounded-md border border-border bg-card p-2 overflow-hidden shadow-sm"
                                   >
-                                    <div className="relative aspect-video w-full overflow-hidden rounded bg-muted">
-                                      <img
-                                        src={src}
-                                        alt={filename}
-                                        className="h-full w-full object-contain cursor-pointer transition-transform duration-200 group-hover:scale-105"
-                                        onClick={() => void openPath(file)}
-                                      />
-                                    </div>
+                                    <ArtifactThumbnail
+                                      path={file}
+                                      onOpen={() => setOpenArtifact(file)}
+                                    />
                                     <div className="mt-2 flex items-center justify-between gap-1">
                                       <span
                                         className="truncate text-xs font-mono text-foreground"
@@ -1511,19 +1636,19 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                                           size="sm"
                                           className="h-6 px-1.5 text-xs"
                                           onClick={() => void copyToClipboard(file)}
-                                          title="Copy path"
+                                          title={t("artifacts.copyPath")}
                                         >
-                                          Copy
+                                          {t("common:actions.copy")}
                                         </Button>
                                         <Button
                                           type="button"
                                           variant="outline"
                                           size="sm"
                                           className="h-6 px-1.5 text-xs"
-                                          onClick={() => void openPath(file)}
-                                          title="Open in system viewer"
+                                          onClick={() => setOpenArtifact(file)}
+                                          title={t("artifacts.openTitle")}
                                         >
-                                          Open
+                                          {t("artifacts.open")}
                                         </Button>
                                       </div>
                                     </div>
@@ -1537,7 +1662,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                         {artifacts.other && artifacts.other.length > 0 && (
                           <div className="space-y-2">
                             <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                              Other Artifact Files ({artifacts.other.length})
+                              {t("artifacts.otherFiles", { n: artifacts.other.length })}
                             </h4>
                             <ul className="divide-y divide-border rounded border border-border bg-card">
                               {artifacts.other.map((file, idx) => {
@@ -1561,16 +1686,17 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                                         className="h-6 px-1.5 text-xs"
                                         onClick={() => void copyToClipboard(file)}
                                       >
-                                        Copy
+                                        {t("common:actions.copy")}
                                       </Button>
                                       <Button
                                         type="button"
                                         variant="outline"
                                         size="sm"
                                         className="h-6 px-1.5 text-xs"
-                                        onClick={() => void openPath(file)}
+                                        onClick={() => setOpenArtifact(file)}
+                                        title={t("artifacts.openTitle")}
                                       >
-                                        Open
+                                        {t("artifacts.open")}
                                       </Button>
                                     </div>
                                   </li>
@@ -1597,12 +1723,12 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
 
                   {/* `Text.Muted("Loading...")` while the plan's content query is in flight. */}
                   {loadedRecsFor !== selectedId && !recsError && (
-                    <p className="text-sm text-muted-foreground">Loading...</p>
+                    <p className="text-sm text-muted-foreground">{t("common:status.loading")}</p>
                   )}
 
                   {loadedRecsFor === selectedId && !recsError && recommendations.length === 0 && (
                     <p data-testid="no-recommendations" className="text-sm text-muted-foreground">
-                      No recommendations.
+                      {t("recommendations.empty")}
                     </p>
                   )}
 
@@ -1616,7 +1742,9 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                         onClick={() => void implementSelectedRecommendations()}
                         className="h-8"
                       >
-                        {pendingAction === "implementRecs" ? "Starting…" : "Implement"}
+                        {pendingAction === "implementRecs"
+                          ? t("recommendations.starting")
+                          : t("recommendations.implement")}
                         {selectedRecTitles.size > 0 && (
                           <span className="rounded-full bg-muted px-1.5 text-xs tabular-nums">
                             {selectedRecTitles.size}
@@ -1624,8 +1752,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                         )}
                       </Button>
                       <span className="text-xs text-muted-foreground">
-                        Accepts the ticked recommendations and retries the plan with them as the
-                        change request.
+                        {t("recommendations.implementHint")}
                       </span>
                     </div>
                   )}
@@ -1640,7 +1767,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                             {isPending && (
                               <input
                                 type="checkbox"
-                                aria-label={`Select ${rec.title}`}
+                                aria-label={t("recommendations.select", { title: rec.title })}
                                 checked={selectedRecTitles.has(rec.title)}
                                 onChange={() => toggleRecSelection(rec.title)}
                                 className="mt-4 size-4 shrink-0 accent-primary"
@@ -1649,7 +1776,9 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                             <div className="min-w-0 flex-1">
                               <RecommendationCard
                                 recommendation={rec}
-                                onAccept={(title) => setActiveNoteDialog({ title, action: "Accept" })}
+                                onAccept={(title) =>
+                                  setActiveNoteDialog({ title, action: "Accept" })
+                                }
                                 onDecline={(title) =>
                                   setActiveNoteDialog({ title, action: "Decline" })
                                 }
@@ -1737,6 +1866,14 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
             verificationName={openVerification}
             initialStatus={verifications.find((v) => v.name === openVerification)?.status}
             onClose={() => setOpenVerification(null)}
+            wireframeBaseUrl={wireframeBaseUrl}
+          />
+          <ArtifactFileSheet
+            planId={selectedPlan.id}
+            path={openArtifact}
+            onClose={() => setOpenArtifact(null)}
+            planFolderPath={planDetail?.folderPath}
+            onOpenArtifact={setOpenArtifact}
             wireframeBaseUrl={wireframeBaseUrl}
           />
         </>

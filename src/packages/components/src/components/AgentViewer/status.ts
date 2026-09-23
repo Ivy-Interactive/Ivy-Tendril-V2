@@ -1,4 +1,8 @@
+import { i18n } from "@/i18n/uiShell";
 import type { PresentationEvent } from "./types.ts";
+
+/** Bound to this namespace and to the language current at each call, so safe at module level. */
+const t = i18n.getFixedT(null, "uiShell");
 
 function basename(p: string): string {
   const i = Math.max(p.lastIndexOf("/"), p.lastIndexOf("\\"));
@@ -10,12 +14,19 @@ export interface DerivedStatus {
   complete: boolean;
 }
 
+/**
+ * The status line for a run, in the language current when it is called. A `status` event's text is
+ * the agent's own and is shown as it arrived.
+ */
 export function deriveStatus(events: PresentationEvent[]): DerivedStatus {
-  if (events.length === 0) return { text: "Starting…", complete: false };
+  if (events.length === 0) return { text: t("agentStatus.starting"), complete: false };
 
   const last = events[events.length - 1];
   if (last.kind === "result") {
-    return { text: last.wire.is_success ? "Completed" : "Failed", complete: true };
+    return {
+      text: last.wire.is_success ? t("agentStatus.completed") : t("agentStatus.failed"),
+      complete: true,
+    };
   }
 
   for (let i = events.length - 1; i >= 0; i--) {
@@ -26,25 +37,30 @@ export function deriveStatus(events: PresentationEvent[]): DerivedStatus {
   }
 
   if (last.kind === "status") return { text: last.text, complete: false };
-  if (last.kind === "assistant-text") return { text: "Thinking…", complete: false };
-  if (last.kind === "thinking") return { text: "Thinking…", complete: false };
-  return { text: "Working…", complete: false };
+  if (last.kind === "assistant-text") return { text: t("agentStatus.thinking"), complete: false };
+  if (last.kind === "thinking") return { text: t("agentStatus.thinking"), complete: false };
+  return { text: t("agentStatus.working"), complete: false };
 }
 
 function labelForTool(name: string, input: Record<string, unknown>): string {
   const filePath = typeof input.file_path === "string" ? input.file_path : undefined;
+  // `name` is the agent's tool name, a protocol value: matched here, and shown untranslated.
   switch (name) {
     case "Bash":
-      return "Running command";
+      return t("agentStatus.runningCommand");
     case "Read":
-      return filePath ? `Reading ${basename(filePath)}` : "Reading";
+      return filePath
+        ? t("agentStatus.readingFile", { file: basename(filePath) })
+        : t("agentStatus.reading");
     case "Edit":
     case "Write":
-      return filePath ? `Editing ${basename(filePath)}` : "Editing";
+      return filePath
+        ? t("agentStatus.editingFile", { file: basename(filePath) })
+        : t("agentStatus.editing");
     case "Glob":
     case "Grep":
-      return "Searching";
+      return t("agentStatus.searching");
     default:
-      return `Running ${name}`;
+      return t("agentStatus.runningTool", { name });
   }
 }

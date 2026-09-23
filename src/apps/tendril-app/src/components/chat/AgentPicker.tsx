@@ -8,6 +8,7 @@ import {
   type EffortOption,
   type ModelOption,
 } from "../../types/agents";
+import { useTranslation } from "../../i18n";
 
 /**
  * V1 `Helpers/AgentBranding.IconFor`: the brand mark each coding agent carries in the picker, keyed
@@ -73,36 +74,48 @@ const PanelSelect: React.FC<{
   value: string;
   options: SelectOption[];
   onChange: (value: string) => void;
-}> = ({ title, value, options, onChange }) => (
-  <ShellTooltip content={title} side="top">
-    <label className="relative flex items-center">
-      <select
-        aria-label={title}
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        className="h-7 w-full cursor-pointer appearance-none truncate whitespace-nowrap rounded-selector border border-border bg-popover pl-2.5 pr-7 text-sm text-popover-foreground outline-none hover:bg-secondary/60 focus:border-foreground"
-      >
-        {/* A value the list does not contain still has to be showable, or the select silently
+}> = ({ title, value, options, onChange }) => {
+  const { t } = useTranslation("chat");
+  return (
+    <ShellTooltip content={title} side="top">
+      <label className="relative flex items-center">
+        <select
+          aria-label={title}
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          className="h-7 w-full cursor-pointer appearance-none truncate whitespace-nowrap rounded-selector border border-border bg-popover pl-2.5 pr-7 text-sm text-popover-foreground outline-none hover:bg-secondary/60 focus:border-foreground"
+        >
+          {/* A value the list does not contain still has to be showable, or the select silently
             snaps to its first option and reports a model the host never chose. */}
-        {!options.some((option) => option.value === value) && (
-          <option value={value}>{value || "Default"}</option>
-        )}
-        {options.map((option) => (
-          <option key={option.value} value={option.value}>
-            {option.label}
-          </option>
-        ))}
-      </select>
-      <ChevronDown
-        size={16}
-        className="pointer-events-none absolute right-2 text-muted-foreground"
-        aria-hidden="true"
-      />
-    </label>
-  </ShellTooltip>
-);
+          {!options.some((option) => option.value === value) && (
+            <option value={value}>{value || t("agentPicker.unlistedValue")}</option>
+          )}
+          {options.map((option) => (
+            <option key={option.value} value={option.value}>
+              {option.label}
+            </option>
+          ))}
+        </select>
+        <ChevronDown
+          size={16}
+          className="pointer-events-none absolute right-2 text-muted-foreground"
+          aria-hidden="true"
+        />
+      </label>
+    </ShellTooltip>
+  );
+};
 
-const DEFAULT_EFFORTS: SelectOption[] = [{ value: DEFAULT_OPTION_ID, label: "Default" }];
+/**
+ * The effort ids the daemon labels from a fixed English table (`catalog.rs`'s `effort_options` and
+ * `effort_label`). They are plain UI words rather than names, so the picker labels them by id, in the
+ * user's language; an id this build does not know keeps the daemon's `displayName`.
+ */
+const EFFORT_LEVEL_IDS = ["default", "none", "low", "medium", "high", "xhigh", "max"] as const;
+type EffortLevelId = (typeof EFFORT_LEVEL_IDS)[number];
+const isEffortLevelId = (id: string): id is EffortLevelId =>
+  (EFFORT_LEVEL_IDS as readonly string[]).includes(id);
+
 const PANEL_GAP = 8;
 const VIEWPORT_MARGIN = 8;
 
@@ -152,6 +165,7 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
   rememberedFor,
   instanceId = "agent-picker",
 }) => {
+  const { t } = useTranslation("chat");
   const [open, setOpen] = useState(false);
   const [optionsAgentId, setOptionsAgentId] = useState<string | null>(null);
   const [layerStyle, setLayerStyle] = useState<React.CSSProperties>(UNPLACED_LAYER);
@@ -214,8 +228,13 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
       supportsEffort: agent.supportsEffort || (isSelected && supportsEffort === true),
       efforts:
         effortSource.length > 0
-          ? effortSource.map((effort) => ({ value: effort.id, label: effort.displayName }))
-          : DEFAULT_EFFORTS,
+          ? effortSource.map((effort) => ({
+              value: effort.id,
+              label: isEffortLevelId(effort.id)
+                ? t(`agentPicker.effortLevels.${effort.id}`)
+                : effort.displayName,
+            }))
+          : [{ value: DEFAULT_OPTION_ID, label: t("agentPicker.effortLevels.default") }],
       effort: remembered.effort ?? (isSelected ? selectedEffort : DEFAULT_OPTION_ID),
     };
   };
@@ -306,7 +325,7 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
 
   return (
     <>
-      <ShellTooltip content="Agent, model and effort" side="top">
+      <ShellTooltip content={t("agentPicker.tooltip")} side="top">
         <button
           ref={triggerRef}
           type="button"
@@ -315,9 +334,9 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
           data-compact={compact}
           aria-haspopup="menu"
           aria-expanded={open}
-          aria-label={`Agent: ${label}`}
+          aria-label={t("agentPicker.triggerLabel", { agent: label })}
           onClick={toggleMenu}
-          className="inline-flex h-7.5 max-w-46 items-center gap-2 rounded-selector border-0 bg-transparent p-1.5 text-sm text-foreground opacity-60 transition-[opacity,background-color] hover:bg-secondary/60 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[open=true]:bg-secondary data-[open=true]:opacity-100"
+          className="inline-flex h-7.5 max-w-46 items-center gap-2 rounded-selector border-0 bg-transparent p-1.5 text-sm text-foreground opacity-60 transition-[background-color] hover:bg-secondary/60 hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring data-[open=true]:bg-secondary data-[open=true]:opacity-100"
         >
           <BrandIcon name={agentBrandIcon(selectedAgentId)} size={16} className="shrink-0" />
           {!compact && <span className="truncate whitespace-nowrap">{label}</span>}
@@ -330,7 +349,7 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
             <div
               ref={menuRef}
               role="menu"
-              aria-label="Agents"
+              aria-label={t("agentPicker.menuLabel")}
               className="flex min-w-41 flex-col gap-0.5 rounded-box border border-border bg-popover p-1.5 shadow-lg"
             >
               {rows.map((agent) => {
@@ -368,10 +387,10 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
                     {/* The row's options button shows on hover, on keyboard focus and while its
                         panel is open. */}
                     {hasSettings(settings) && (
-                      <ShellTooltip content="Model and effort" side="top">
+                      <ShellTooltip content={t("agentPicker.optionsTooltip")} side="top">
                         <button
                           type="button"
-                          aria-label={`${agent.label} options`}
+                          aria-label={t("agentPicker.optionsLabel", { agent: agent.label })}
                           aria-expanded={optionsOpen}
                           className="inline-flex size-5.5 shrink-0 items-center justify-center rounded-selector border-0 bg-transparent text-muted-foreground opacity-0 transition-[opacity,background-color,color] group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-secondary/60 hover:text-foreground aria-expanded:bg-secondary aria-expanded:text-foreground aria-expanded:opacity-100"
                           onClick={(e) => {
@@ -392,7 +411,7 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
               <div
                 ref={panelRef}
                 role="group"
-                aria-label={`${optionsAgent.label} settings`}
+                aria-label={t("agentPicker.settingsLabel", { agent: optionsAgent.label })}
                 style={{ top: panelTop, left: `calc(100% + ${PANEL_GAP}px)` }}
                 className="absolute flex min-w-41 flex-col gap-1.5 rounded-box border border-border bg-popover p-2 shadow-lg"
               >
@@ -401,7 +420,7 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
                 </div>
                 {optionsSettings.models.length > 0 && (
                   <PanelSelect
-                    title="Model"
+                    title={t("agentPicker.model")}
                     value={optionsSettings.model}
                     options={optionsSettings.models}
                     onChange={(modelId) => onModelChange(optionsAgent.id, modelId)}
@@ -409,7 +428,7 @@ export const AgentPicker: React.FC<AgentPickerProps> = ({
                 )}
                 {optionsSettings.supportsEffort && (
                   <PanelSelect
-                    title="Effort Level"
+                    title={t("agentPicker.effort")}
                     value={optionsSettings.effort}
                     options={optionsSettings.efforts}
                     onChange={(effortId) => onEffortChange(optionsAgent.id, effortId)}

@@ -22,6 +22,8 @@ import {
   Densities,
 } from "@ivy-interactive/components/ui";
 import { queryJobsPage } from "../api/tableQuery";
+import { i18n, useTranslation } from "../i18n";
+import { useEnumLabels } from "../i18n/enumLabels";
 import { describeBridgeError, type Job, type JobDetail } from "../types/api";
 import { isActiveStatus, jobsStore } from "../state/jobsStore";
 import { ErrorBanner } from "../components/ErrorBanner";
@@ -103,7 +105,7 @@ const JobDebug = React.lazy(() =>
 
 /** V1's Cost & Tokens sheet, opened by the Cost and Tokens cells. Lazy for the same reason. */
 const JobCost = React.lazy(() =>
-  import("@ivy-interactive/components/dialogs").then((m) => ({ default: m.JobCostSheet })),
+  import("./JobCostSheet").then((m) => ({ default: m.JobCostSheet })),
 );
 
 /**
@@ -156,6 +158,9 @@ export const JobsView: React.FC<JobsViewProps> = ({
   onStopAllQueued,
   onStopAll,
 }) => {
+  const { t } = useTranslation("jobs");
+  const labels = useEnumLabels();
+
   /**
    * The job whose output sheet is open. V1 opens `Sheets/OutputSheet.cs` **over** the table
    * (`JobsApp.cs:39` `showOutput`), so the list stays underneath and the operator keeps their place
@@ -316,10 +321,10 @@ export const JobsView: React.FC<JobsViewProps> = ({
   }, [structuralSignature, refreshTable]);
 
   const rows = useMemo(
-    () => buildJobRows(windowJobs, { details: jobDetails }),
+    () => buildJobRows(windowJobs, { details: jobDetails, t }),
     // `tick` is a dependency in substance: it is what makes a Running row's Timer advance.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [windowJobs, jobDetails, tick],
+    [windowJobs, jobDetails, tick, t],
   );
 
   /**
@@ -346,21 +351,25 @@ export const JobsView: React.FC<JobsViewProps> = ({
     canForceStart: jobsStore.canForceStartJob(),
   };
 
-  const runAction = async (action: () => Promise<unknown>, label: string) => {
+  /** `failure` is the action's own whole sentence, not a verb dropped into a shared one. */
+  const runAction = async (
+    action: () => Promise<unknown>,
+    failure: "errors.stopFailed" | "errors.forceStartFailed",
+  ) => {
     setActionError(null);
     try {
       await action();
     } catch (err) {
       // V1 refreshes and says nothing when `StopJob`/`ForceStartJob` fail. Saying nothing here would
       // leave the operator believing a job they could not stop had stopped.
-      setActionError(`${label} failed: ${describeBridgeError(err)}`);
+      setActionError(t(failure, { error: describeBridgeError(err) }));
     }
   };
 
   const clearPrompt = pendingClear
-    ? describeClearPrompt(pendingClear, clearCount)
+    ? describeClearPrompt(pendingClear, clearCount, t)
     : // Not rendered while `pendingClear` is null; the placeholder keeps the dialog's props unconditional.
-      { body: "", confirmLabel: "Clear", confirmDisabled: true };
+      { body: "", confirmLabel: t("clear.confirm"), confirmDisabled: true };
 
   /** Opens a clear's confirm and asks the daemon how many rows it covers. */
   const openClearDialog = (scope: JobClearScope) => {
@@ -379,8 +388,11 @@ export const JobsView: React.FC<JobsViewProps> = ({
       .catch((err: unknown) => {
         // The dialog stays open with the reason on it rather than closing: an operator who asked to
         // clear failed jobs should be told the daemon could not be reached, not silently returned to
-        // the table.
-        if (!cancelled) setClearError(`Could not count jobs: ${describeBridgeError(err)}`);
+        // the table. `i18n.t` rather than the render's `t`: this runs whenever the count fails, in
+        // the language of that moment, and a language change must not re-run the count.
+        if (!cancelled) {
+          setClearError(i18n.t("jobs:clear.countFailed", { error: describeBridgeError(err) }));
+        }
       });
     return () => {
       cancelled = true;
@@ -471,7 +483,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
 
   const queuedCount = jobs.filter((job) => job.status === "Queued").length;
   const activeCount = jobs.filter((job) => isActiveStatus(job.status)).length;
-  const segments = useMemo(() => buildStatusSegments(jobs), [jobs]);
+  const segments = useMemo(() => buildStatusSegments(jobs, labels.jobStatus), [jobs, labels]);
   const canClear = jobsStore.canClearJobs();
 
   const jobToDelete = deleteJobId ? jobs.find((job) => job.id === deleteJobId) : undefined;
@@ -481,11 +493,13 @@ export const JobsView: React.FC<JobsViewProps> = ({
   const openJob = openJobId
     ? (jobs.find((job) => job.id === openJobId) ?? jobDetails?.[openJobId])
     : undefined;
+  // Guarded: an entry the store made from a patch alone (`applyJobPatch`) has no type yet.
+  const openJobType = openJob?.type ? labels.jobType(openJob.type) : "";
   const openJobTitle = openJob
     ? openJob.planId
-      ? `${openJob.type} ${openJob.planId}`
-      : openJob.type
-    : "Job Output";
+      ? t("outputSheet.title", { type: openJobType, planId: openJob.planId })
+      : openJobType
+    : t("outputSheet.fallbackTitle");
 
   /**
    * The debug sheet's subject. Only the fetched detail will do — the list row is a `Job`, and every
@@ -501,21 +515,31 @@ export const JobsView: React.FC<JobsViewProps> = ({
    * state for that reason: there is nothing to wait for.
    */
   const costJob = costJobId
-    ? (jobDetails?.[costJobId] ?? jobs.find((job) => job.id === costJobId))
+    ? (jobDetails?.[costJobId] ??
+       windowJobs.find((job) => job.id === costJobId) ??
+       jobs.find((job) => job.id === costJobId))
     : undefined;
-  const promptJob = promptJobId
-    ? (jobDetails?.[promptJobId] ?? jobs.find((job) => job.id === promptJobId))
+  const rowJob = promptJobId
+    ? (windowJobs.find((job) => job.id === promptJobId) ??
+       jobs.find((job) => job.id === promptJobId))
     : undefined;
+  const detailJob = promptJobId ? jobDetails?.[promptJobId] : undefined;
+  const promptJob = detailJob ?? rowJob;
   /** V1 titles the prompt sheet "Full Prompt" and the cost sheet "Cost & Tokens". */
-  const costJobTitle = costJob?.planId ? `Cost & Tokens — ${costJob.planId}` : "Cost & Tokens";
+  const costJobTitle = costJob?.planId
+    ? t("costSheet.titleWithPlan", { planId: costJob.planId })
+    : t("costSheet.title");
   /** The untruncated text behind the Prompt cell - the same walk the cell does, without the cut. */
-  const promptText = promptJob ? promptSource(promptJob) : undefined;
+  const promptText =
+    (detailJob ? promptSource(detailJob) : undefined) ??
+    (rowJob ? promptSource(rowJob) : undefined) ??
+    promptJob?.prompt;
 
   return (
     <div className="flex h-full min-h-0 flex-col gap-3" data-testid="jobs-view">
       {tableError && (
         <ErrorBanner data-testid="jobs-table-error">
-          Could not read the jobs table: {tableError}
+          {t("table.queryError", { error: tableError })}
         </ErrorBanner>
       )}
 
@@ -578,12 +602,12 @@ export const JobsView: React.FC<JobsViewProps> = ({
         }}
         // The show/hide-columns menu, which is how the hidden `Id` column is reachable at all.
         showColumnOptions
-        rowActions={(row) => buildJobRowActions(row, capabilities)}
+        rowActions={(row) => buildJobRowActions(row, capabilities, t)}
         onRowAction={({ tag, row }) => {
           if (tag === "stop-job") {
-            void runAction(() => jobsStore.cancelJob(row.id), "Stop");
+            void runAction(() => jobsStore.cancelJob(row.id), "errors.stopFailed");
           } else if (tag === "force-start-job") {
-            void runAction(() => jobsStore.forceStartJob(row.id), "Force start");
+            void runAction(() => jobsStore.forceStartJob(row.id), "errors.forceStartFailed");
           } else if (tag === "debug-job") {
             openJobDebug(row.id);
           } else if (tag === "delete-job") {
@@ -600,11 +624,11 @@ export const JobsView: React.FC<JobsViewProps> = ({
              and never rendered - so an empty Jobs table there is a collapsed header. */
           filterExpression.length > 0 ? (
             <span className="text-muted-foreground" data-testid="jobs-empty-filtered">
-              No jobs match the current filters.
+              {t("table.empty.filtered")}
             </span>
           ) : (
             <span className="text-muted-foreground" data-testid="jobs-empty">
-              No jobs yet. Starting a plan, a retry or a PR creates one.
+              {t("table.empty.none")}
             </span>
           )
         }
@@ -619,7 +643,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
               {segments.length > 0 && (
                 <div className="hidden w-56 sm:block">
                   <StackedProgress
-                    aria-label="Jobs by status"
+                    aria-label={t("table.statusProgress.ariaLabel")}
                     segments={segments}
                     showLabels
                     density={Densities.Small}
@@ -637,7 +661,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
                       type="button"
                       variant="ghost"
                       size="icon-sm"
-                      aria-label="Job list actions"
+                      aria-label={t("table.headerMenu.ariaLabel")}
                       data-testid="jobs-header-menu"
                     >
                       <EllipsisVertical aria-hidden="true" />
@@ -652,13 +676,13 @@ export const JobsView: React.FC<JobsViewProps> = ({
                         onClick={() => onStopAllQueued()}
                       >
                         <Pause aria-hidden="true" />
-                        Stop All Queued ({queuedCount})
+                        {t("table.headerMenu.stopAllQueued", { count: queuedCount })}
                       </DropdownMenuItem>
                     )}
                     {activeCount > 0 && (
                       <DropdownMenuItem data-testid="jobs-stop-all" onClick={() => onStopAll()}>
                         <Pause aria-hidden="true" />
-                        Stop All ({activeCount})
+                        {t("table.headerMenu.stopAll", { count: activeCount })}
                       </DropdownMenuItem>
                     )}
                     {/* V1 offers its two clears unconditionally, and so does this - the whole list of
@@ -762,15 +786,39 @@ export const JobsView: React.FC<JobsViewProps> = ({
       </React.Suspense>
 
       {/* V1's Cost & Tokens sheet (`JobsApp.cs:51`), opened by the Cost *and* Tokens cells
-          (`JobsApp.DataTable.cs:149-162`). The panel is the sheet's own now. */}
-      <React.Suspense fallback={null}>
-        <JobCost
-          isOpen={costJobId !== null}
-          onClose={() => setCostJobId(null)}
-          title={costJobTitle}
-          job={costJob ?? undefined}
-        />
-      </React.Suspense>
+          (`JobsApp.DataTable.cs:149-162`) at the same `UxHelper.SheetWidth` as the sheets above. */}
+      <Sheet
+        open={costJobId !== null}
+        onOpenChange={(open) => {
+          if (!open) setCostJobId(null);
+        }}
+      >
+        <SheetContent
+          data-testid="job-cost-sheet-panel"
+          className="inset-y-0 flex w-full flex-col overflow-hidden p-0 sm:w-3/4 sm:max-w-none lg:w-1/2 xl:w-2/5"
+        >
+          <HeaderLayout
+            className="min-h-0 flex-1"
+            header={
+              <SheetHeader className="pr-8">
+                <SheetTitle>{costJobTitle}</SheetTitle>
+              </SheetHeader>
+            }
+          >
+            {costJob ? (
+              <React.Suspense
+                fallback={
+                  <div className="flex h-32 items-center justify-center text-muted-foreground">
+                    <Spinner size="lg" className="text-success" aria-hidden="true" />
+                  </div>
+                }
+              >
+                <JobCost job={costJob} />
+              </React.Suspense>
+            ) : null}
+          </HeaderLayout>
+        </SheetContent>
+      </Sheet>
 
       {/* V1's Full Prompt sheet (`JobsApp.cs:51`), opened by the Prompt cell. Its whole body is one
           wrapped code block, which is what `PromptSheet.cs` renders. */}
@@ -788,7 +836,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
             className="min-h-0 flex-1"
             header={
               <SheetHeader className="pr-8">
-                <SheetTitle>Full Prompt</SheetTitle>
+                <SheetTitle>{t("promptSheet.title")}</SheetTitle>
               </SheetHeader>
             }
           >
@@ -807,7 +855,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
               /* A job type that carries no prose of its own - `ExpandPlan`, `SplitPlan` - reaches the
                  sheet with nothing to show. Saying so beats an empty box. */
               <span className="text-xs text-muted-foreground" data-testid="job-prompt-empty">
-                This job recorded no prompt text.
+                {t("promptSheet.empty")}
               </span>
             )}
           </HeaderLayout>
@@ -824,7 +872,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
           setPendingClear(null);
           setClearError(null);
         }}
-        title={pendingClear?.label ?? "Clear Jobs"}
+        title={pendingClear?.label ?? t("clear.dialogTitle")}
         // The copy and the arming rule both live in {@link describeClearPrompt}: the sentence *is* the
         // safety mechanism here, so it is a function with its own tests rather than a ternary in JSX.
         body={<p data-testid="jobs-clear-body">{clearPrompt.body}</p>}
@@ -847,7 +895,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
             refreshTable();
             setPendingClear(null);
           } catch (err) {
-            setClearError(`Clear failed: ${describeBridgeError(err)}`);
+            setClearError(t("clear.failed", { error: describeBridgeError(err) }));
           } finally {
             setIsClearing(false);
           }
@@ -862,9 +910,9 @@ export const JobsView: React.FC<JobsViewProps> = ({
           setDeleteJobId(null);
           setDeleteError(null);
         }}
-        title="Delete Job"
-        body={<p>Are you sure you want to delete this job? This cannot be undone.</p>}
-        confirmLabel="Delete"
+        title={t("deleteDialog.title")}
+        body={<p>{t("deleteDialog.body")}</p>}
+        confirmLabel={t("common:actions.delete")}
         confirmVariant="destructive"
         isBusy={isDeleting}
         error={deleteError}
@@ -877,7 +925,7 @@ export const JobsView: React.FC<JobsViewProps> = ({
             await jobsStore.deleteJob(jobToDelete.id);
             setDeleteJobId(null);
           } catch (err) {
-            setDeleteError(`Delete failed: ${describeBridgeError(err)}`);
+            setDeleteError(t("errors.deleteFailed", { error: describeBridgeError(err) }));
           } finally {
             setIsDeleting(false);
           }

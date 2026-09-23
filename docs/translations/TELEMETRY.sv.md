@@ -8,9 +8,9 @@ Policyn följer koden: den har porterats från den ursprungliga Tendril-appens `
 
 ## Opt-in, inte opt-out
 
-**Telemetri är inaktiverad om du inte uttryckligen aktiverar den.** Endast ett explicit `telemetry: true` i `config.yaml` aktiverar insamlingen; en saknad nyckel och `telemetry: false` fungerar identiskt — ingen klient konstrueras, ingen händelse läggs i kö och inget nätverksanrop görs någonsin. Nyckeln läses på exakt ett ställe: `TendrilSettings::telemetry_enabled` i [config.rs](../src/crates/tendril-core/src/config.rs), och V2 introducerar aldrig nyckeln på eget bevåg: att spara en `config.yaml` som saknar den lämnar den tom i stället för att stämpla `telemetry: false`. Detta säkerställer att en fil som delas med originalappen — vilken tolkar en saknad nyckel som "på" — inte stänger av den appens telemetri. Ett explicit värde bevaras oförändrat.
+**Telemetri är inaktiverad om du inte uttryckligen aktiverar den.** Endast ett explicit `telemetry: true` i `config.yaml` aktiverar insamlingen; en saknad nyckel och `telemetry: false` fungerar identiskt — ingen klient konstrueras, ingen händelse läggs i kö och inget nätverksanrop görs någonsin. Nyckeln läses på exakt ett ställe: `TendrilSettings::telemetry_enabled` i [config.rs](../../src/crates/tendril-core/src/config.rs), och V2 introducerar aldrig nyckeln på eget bevåg: att spara en `config.yaml` som saknar den lämnar den tom i stället för att stämpla `telemetry: false`. Detta säkerställer att en fil som delas med originalappen — vilken tolkar en saknad nyckel som "på" — inte stänger av den appens telemetri. Ett explicit värde bevaras oförändrat.
 
-**Detta är en medveten avvikelse.** Originalappen är opt-out: den sätter `Telemetry` till `true` som standard och dess egen `TELEMETRY.md` anger "Telemetry is opt-out: it is on by default." V2 sätter standardvärdet till avstängt eftersom aktivering av datainsamling inte är ett beslut en portering bör fatta i det tysta åt användaren. Avvikelsen är säker i en riktning — V2 underrapporterar i förhållande till originalet, men överrapporterar aldrig. För att återställa det, ändra fältets standardvärde och `Default`-implementationen i [config.rs](../src/crates/tendril-core/src/config.rs) tillbaka till `Some(true)`.
+**Detta är en medveten avvikelse.** Originalappen är opt-out: den sätter `Telemetry` till `true` som standard och dess egen `TELEMETRY.md` anger "Telemetry is opt-out: it is on by default." V2 sätter standardvärdet till avstängt eftersom aktivering av datainsamling inte är ett beslut en portering bör fatta i det tysta åt användaren. Avvikelsen är säker i en riktning — V2 underrapporterar i förhållande till originalet, men överrapporterar aldrig. För att återställa det, ändra fältets standardvärde och `Default`-implementationen i [config.rs](../../src/crates/tendril-core/src/config.rs) tillbaka till `Some(true)`.
 
 Användare identifieras uteslutande genom ett slumpmässigt UUID som sparas i `<TendrilHome>/.anonymous-id`. Det härleds aldrig från ett användarnamn, datornamn eller arkiv. (Originalet föredrar `<LocalAppData>/Tendril/.anonymous-id`; en dator som kör båda apparna räknas därför som två installationer.)
 
@@ -70,7 +70,7 @@ Spåra aldrig:
 
 ## Bifogas till varje händelse
 
-Superegenskaper, inställda en gång per process i [client.rs](../src/crates/tendril-core/src/telemetry/client.rs):
+Superegenskaper, inställda en gång per process i [client.rs](../../src/crates/tendril-core/src/telemetry/client.rs):
 
 | Egenskap | Status | Anteckningar |
 |---|---|---|
@@ -84,7 +84,7 @@ Superegenskaper, inställda en gång per process i [client.rs](../src/crates/ten
 
 ## Granskning av nuvarande händelser
 
-Alla händelser följer denna policy. Kontexter är typade strukturer i [events.rs](../src/crates/tendril-core/src/telemetry/events.rs), så en uppsättning egenskaper är ett beslut vid kompileringstillfället snarare än en flexibel uppslagsmappning.
+Alla händelser följer denna policy. Kontexter är typade strukturer i [events.rs](../../src/crates/tendril-core/src/telemetry/events.rs), så en uppsättning egenskaper är ett beslut vid kompileringstillfället snarare än en flexibel uppslagsmappning.
 
 | Händelse | Egenskaper | Skickas från |
 |---|---|---|
@@ -99,12 +99,12 @@ Alla händelser följer denna policy. Kontexter är typade strukturer i [events.
 
 ### Definierade men inte anslutna
 
-`onboarding_completed` och `project_created` har kontextstrukturer i [events.rs](../src/crates/tendril-core/src/telemetry/events.rs) utan någon anropsplats: V2 har inget onboardingflöde, och skapande av projekt sker i CLI-processen där ingen klient installeras. De finns kvar så att en framtida plan kan lägga till en anropsplats i stället för att ändra schemat.
+`onboarding_completed` och `project_created` har kontextstrukturer i [events.rs](../../src/crates/tendril-core/src/telemetry/events.rs) utan någon anropsplats: V2 har inget onboardingflöde, och skapande av projekt sker i CLI-processen där ingen klient installeras. De finns kvar så att en framtida plan kan lägga till en anropsplats i stället för att ändra schemat.
 
 Klienten körs endast i daemon-processen. Ett CLI-anrop anropar aldrig `telemetry::install`, så `tendril plan ...` skickar ingenting.
 
 ## Implementation
 
-- [events.rs](../src/crates/tendril-core/src/telemetry/events.rs) — typade kontexter som upprätthåller denna policy vid kompileringstillfället. Nya händelser får en struktur här, inte en samling lösa egenskaper.
-- [client.rs](../src/crates/tendril-core/src/telemetry/client.rs) — PostHog-klient, anonymt ID, härledning av plan-uuid. Varje `track_*` fångar sina egna fel och skickar endast till en kö som töms av en bakgrundsaktivitet: telemetri får aldrig orsaka fel eller sakta ner ett jobb.
-- [telemetry_test.rs](../src/crates/tendril-core/tests/telemetry_test.rs) — säkerställer noll nätverksanrop vid inaktivering, exakt egenskapsuppsättning för varje ansluten händelse och härledning av plan-uuid.
+- [events.rs](../../src/crates/tendril-core/src/telemetry/events.rs) — typade kontexter som upprätthåller denna policy vid kompileringstillfället. Nya händelser får en struktur här, inte en samling lösa egenskaper.
+- [client.rs](../../src/crates/tendril-core/src/telemetry/client.rs) — PostHog-klient, anonymt ID, härledning av plan-uuid. Varje `track_*` fångar sina egna fel och skickar endast till en kö som töms av en bakgrundsaktivitet: telemetri får aldrig orsaka fel eller sakta ner ett jobb.
+- [telemetry_test.rs](../../src/crates/tendril-core/tests/telemetry_test.rs) — säkerställer noll nätverksanrop vid inaktivering, exakt egenskapsuppsättning för varje ansluten händelse och härledning av plan-uuid.

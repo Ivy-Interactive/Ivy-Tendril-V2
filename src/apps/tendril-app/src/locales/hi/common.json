@@ -1,0 +1,265 @@
+{
+  "actions": {
+    "cancel": "रद्द करें",
+    "close": "बंद करें",
+    "confirm": "पुष्टि करें",
+    "copy": "कॉपी करें",
+    "delete": "हटाएं",
+    "retry": "पुनः प्रयास करें",
+    "save": "सहेजें"
+  },
+  "status": {
+    "copied": "कॉपी हो गया",
+    "error": "त्रुटि",
+    "loading": "लोड हो रहा है…",
+    "none": "कोई नहीं",
+    "unknown": "अज्ञात"
+  },
+  "enums": {
+    "jobStatus": {
+      "pending": "लंबित",
+      "queued": "कतारबद्ध",
+      "running": "चल रही",
+      "completed": "पूर्ण",
+      "failed": "विफल",
+      "timeout": "टाइमआउट",
+      "stopped": "रोकी गई",
+      "blocked": "अवरुद्ध"
+    },
+    "jobType": {
+      "executePlan": "ExecutePlan",
+      "createPlan": "CreatePlan",
+      "retryPlan": "RetryPlan",
+      "updatePlan": "UpdatePlan",
+      "expandPlan": "ExpandPlan",
+      "splitPlan": "SplitPlan",
+      "createPr": "CreatePr",
+      "createIssue": "CreateIssue",
+      "setupProject": "SetupProject",
+      "addProject": "AddProject",
+      "syncRepo": "SyncRepo"
+    },
+    "planState": {
+      "draft": "ड्राफ़्ट",
+      "creating": "बनाई जा रही",
+      "updating": "अपडेट हो रही",
+      "executing": "निष्पादित हो रही",
+      "review": "समीक्षा",
+      "failed": "विफल",
+      "completed": "पूर्ण",
+      "skipped": "छोड़ी गई",
+      "blocked": "अवरुद्ध",
+      "icebox": "आइसबॉक्स"
+    }
+  },
+  "appTitles": {
+    "dashboard": "डैशबोर्ड",
+    "plans": "योजनाएं",
+    "review": "समीक्षा",
+    "recommendations": "सिफ़ारिशें",
+    "jobs": "जॉब्स",
+    "chat": "चैट",
+    "inbox": "इनबॉक्स",
+    "settings": "सेटिंग्स",
+    "pullRequests": "पुल रिक्वेस्ट्स",
+    "icebox": "आइसबॉक्स",
+    "reviewAction": "समीक्षा क्रिया",
+    "agent": "एजेंट",
+    "plan": "योजना {{id}}",
+    "job": "जॉब {{id}}"
+  },
+  "navigation": {
+    "errors": {
+      "tabGone": "यह टैब अब मौजूद नहीं है।"
+    }
+  },
+  "sidebar": {
+    "version": "v {{version}}",
+    "nav": {
+      "dashboard": "डैशबोर्ड",
+      "plans": "योजनाएं",
+      "review": "समीक्षा",
+      "recommendations": "सिफ़ारिशें",
+      "jobs": "जॉब्स"
+    },
+    "chat": "चैट",
+    "inbox": "इनबॉक्स",
+    "settings": "सेटिंग्स",
+    "settingsMenu": {
+      "configuration": "कॉन्फ़िगरेशन",
+      "pullRequests": "पुल रिक्वेस्ट्स",
+      "icebox": "आइसबॉक्स",
+      "checkForUpdates": "अपडेट की जांच करें",
+      "help": "सहायता",
+      "documentation": "दस्तावेज़ीकरण",
+      "reportIssue": "इश्यू रिपोर्ट करें"
+    }
+  },
+  "shortcuts": {
+    "gotoChat": "चैट पर जाएं",
+    "gotoInbox": "GitHub इश्यू इनबॉक्स खोलें",
+    "newPlan": "नई योजना का इनटेक मोडल खोलें",
+    "planSearch": "योजनाएं खोजें",
+    "showShortcuts": "कीबोर्ड शॉर्टकट दिखाएं"
+  },
+  "shortcutsHelp": {
+    "title": "कीबोर्ड शॉर्टकट",
+    "empty": "कोई कीबोर्ड शॉर्टकट सक्रिय नहीं है।"
+  },
+  "updateCheck": {
+    "available": {
+      "title": "अपडेट उपलब्ध",
+      "description": "संस्करण {{version}} उपलब्ध है।"
+    },
+    "upToDate": {
+      "title": "अप-टू-डेट",
+      "description": "आप नवीनतम संस्करण (v{{version}}) पर हैं।"
+    },
+    "failed": {
+      "title": "अपडेट की जांच विफल रही"
+    }
+  },
+  "updateNotice": {
+    "available": "v{{latest}} उपलब्ध है (आपके पास v{{current}} है)",
+    "copyCommand": "कमांड कॉपी करें",
+    "dismiss": "खारिज करें"
+  },
+  "offlineBanner": {
+    "reconnecting": "Tendril-Service डिस्कनेक्ट हो गया। {{seconds}} सेकंड में अपने-आप फिर से कनेक्ट हो रहा है…",
+    "unreachable": "Tendril-Service डेमॉन तक नहीं पहुंचा जा सकता।",
+    "cachedState": "(कैश की गई स्थिति का उपयोग किया जा रहा है)",
+    "reconnect": "अभी फिर से कनेक्ट करें"
+  },
+  "planPage": {
+    "loading": "योजना {{id}} लोड हो रही है…",
+    "loadError": "योजना {{id}} लोड नहीं की जा सकी: {{error}}"
+  },
+  "jobPage": {
+    "placeholderType": "एजेंट जॉब"
+  },
+  "shellErrors": {
+    "restartFailed": "सर्विस पुनः आरंभ करना विफल रहा: {{error}}",
+    "repairFailed": "सर्विस की मरम्मत विफल रही: {{error}}",
+    "dismissNavError": "नेविगेशन त्रुटि खारिज करें"
+  },
+  "stopQueued": {
+    "title": "कतारबद्ध जॉब्स रोकें",
+    "body_one": "{{count}} कतारबद्ध जॉब रोकें? चल रही जॉब्स पर इसका कोई असर नहीं पड़ता।",
+    "body_other": "सभी {{count}} कतारबद्ध जॉब्स रोकें? चल रही जॉब्स पर इसका कोई असर नहीं पड़ता।",
+    "confirm": "सभी रोकें",
+    "toast": {
+      "title": "जॉब्स",
+      "description_one": "{{count}} कतारबद्ध जॉब रोकी गई।",
+      "description_other": "{{count}} कतारबद्ध जॉब्स रोकी गईं।"
+    }
+  },
+  "stopAll": {
+    "title": "सभी जॉब्स रोकें",
+    "body_one": "{{count}} सक्रिय जॉब रोकें? चल रहे एजेंट्स बंद कर दिए जाएंगे और उनकी योजनाएं अपनी पिछली स्थिति में लौट जाएंगी। इसे पूर्ववत नहीं किया जा सकता।",
+    "body_other": "सभी {{count}} सक्रिय जॉब्स रोकें? चल रहे एजेंट्स बंद कर दिए जाएंगे और उनकी योजनाएं अपनी पिछली स्थिति में लौट जाएंगी। इसे पूर्ववत नहीं किया जा सकता।",
+    "confirm": "सभी रोकें",
+    "toast": {
+      "title": "जॉब्स रोकी गईं",
+      "description_one": "{{count}} जॉब रोकी गई",
+      "description_other": "{{count}} जॉब्स रोकी गईं"
+    }
+  },
+  "errorBanner": {
+    "dismiss": "त्रुटि खारिज करें"
+  },
+  "recommendationCard": {
+    "state": {
+      "pending": "लंबित",
+      "accepted": "स्वीकृत",
+      "acceptedWithNotes": "नोट्स के साथ स्वीकृत",
+      "declined": "अस्वीकृत"
+    },
+    "impact": {
+      "small": "कम",
+      "medium": "मध्यम",
+      "high": "उच्च"
+    },
+    "declineReason": "अस्वीकार करने का कारण: {{reason}}",
+    "notes": "नोट्स: {{notes}}",
+    "accept": "स्वीकार करें",
+    "decline": "अस्वीकार करें"
+  },
+  "service": {
+    "state": {
+      "connected": "कनेक्ट है",
+      "disconnected": "डिस्कनेक्ट है",
+      "unauthenticated": "प्रमाणित नहीं",
+      "notRunning": "नहीं चल रहा",
+      "foreignMaster": "अन्य मास्टर"
+    },
+    "ownership": {
+      "adoptedExternal": "अपनाया गया बाहरी",
+      "managed": "प्रबंधित"
+    }
+  },
+  "serviceStatus": {
+    "connectedExternal": "कनेक्ट है (बाहरी)",
+    "portUnavailable": "लागू नहीं",
+    "restart": "सर्विस पुनः आरंभ करें",
+    "repair": "सर्विस की मरम्मत करें",
+    "diagnostics": "डायग्नोस्टिक्स"
+  },
+  "serviceSettings": {
+    "controls": {
+      "title": "सर्विस पर्यवेक्षण और नियंत्रण",
+      "hint": "स्थानीय सहायक डेमॉन का जीवनचक्र, स्वामित्व अपनाना और क्रैश रिकवरी प्रबंधित करें।"
+    },
+    "actions": {
+      "restart": "सर्विस पुनः आरंभ करें",
+      "repair": "सर्विस की मरम्मत करें",
+      "switchToExternal": "बाहरी डेमॉन पर स्विच करें",
+      "adoptManaged": "प्रबंधित सहायक अपनाएं",
+      "install": "बैकग्राउंड सर्विस इंस्टॉल करें",
+      "installTooltip": "बंडल किए गए डेमॉन को {{path}} में कॉपी करें और उसे अपने सत्र के साथ शुरू करें",
+      "disableAutostart": "लॉगिन पर शुरू होना बंद करें",
+      "disableAutostartTooltip": "लॉगिन पर डेमॉन का शुरू होना बंद करें। इंस्टॉल की गई बाइनरी फ़ाइलें अपनी जगह पर ही रहती हैं।",
+      "refreshLogs": "लॉग रीफ़्रेश करें",
+      "loadingLogs": "लॉग लोड हो रहे हैं…"
+    },
+    "messages": {
+      "restartInitiated": "सर्विस को पुनः आरंभ किया जा रहा है।",
+      "restartFailed": "पुनः आरंभ विफल रहा: {{error}}",
+      "repairFailed": "मरम्मत विफल रही: {{error}}",
+      "installFailed": "इंस्टॉल विफल रहा: {{error}}",
+      "disableAutostartFailed": "लॉगिन पर शुरू होना बंद नहीं किया जा सका: {{error}}",
+      "switchedToManaged": "सर्विस का स्वामित्व मोड प्रबंधित पर स्विच किया गया।",
+      "switchedToExternal": "सर्विस का स्वामित्व मोड बाहरी पर स्विच किया गया।",
+      "switchFailed": "मोड स्विच विफल रहा: {{error}}"
+    },
+    "provision": {
+      "installed": "{{binaries, list(type: unit)}} को {{dir}} में इंस्टॉल किया गया।",
+      "upToDate": "{{dir}} में {{binaries, list(type: unit)}} का नवीनतम संस्करण पहले से मौजूद है।",
+      "missing": "यह बिल्ड {{binaries, list(type: unit)}} को बंडल नहीं करता।",
+      "registered": "आपके सत्र के साथ शुरू होने के लिए पंजीकृत किया गया ({{detail}})।",
+      "alreadyRegistered": "आपके सत्र के साथ शुरू होने के लिए पहले से पंजीकृत है।",
+      "registerFailed": "लॉगिन पर शुरू होने के लिए पंजीकरण नहीं हो सका: {{detail}}",
+      "skipped": "लॉगिन पर शुरू होना छोड़ दिया गया: {{detail}}",
+      "nothing": "इंस्टॉल करने के लिए कुछ नहीं है।"
+    },
+    "details": {
+      "ownership": "स्वामित्व",
+      "ownershipFallback": "बाहरी / स्टैंडअलोन",
+      "endpoint": "एंडपॉइंट",
+      "pid": "प्रोसेस PID",
+      "crashCount": "क्रैश संख्या",
+      "notAvailable": "लागू नहीं"
+    },
+    "logs": {
+      "title": "डेमॉन डायग्नोस्टिक्स और सर्विस लॉग",
+      "hint": "संवेदनशील टोकन छिपा दिए जाते हैं। {{path}} से पढ़ा गया।",
+      "empty": "{{file}} में अभी तक कोई लॉग दर्ज नहीं है।",
+      "loadFailed": "सर्विस लॉग लोड नहीं हो सके: {{error}}"
+    }
+  },
+  "errors": {
+    "requestFailed": "{{path}} पर अनुरोध विफल रहा ({{status}})",
+    "reviewActionFailed": "समीक्षा क्रिया {{endpoint}} विफल रही ({{status}}): {{detail}}",
+    "subscribeFailed": "{{url}} की सदस्यता नहीं ली जा सकी: HTTP {{status}}",
+    "agentTerminalFailed": "एजेंट टर्मिनल {{endpoint}} विफल रहा: HTTP {{status}}"
+  }
+}

@@ -323,6 +323,27 @@ pub struct PlanArtifactsDto {
     pub other: Vec<String>,
 }
 
+/// Mirrors `tendril_core::plans::PlanArtifactContent`: one artifact as the Review app's artifact
+/// sheet shows it, tagged by `kind` (`text`, `binary`, `tooLarge`). Only `text` carries content.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum PlanArtifactContentDto {
+    Text { text: String, size: u64 },
+    Binary { size: u64 },
+    TooLarge { size: u64 },
+}
+
+impl From<tendril_core::plans::PlanArtifactContent> for PlanArtifactContentDto {
+    fn from(content: tendril_core::plans::PlanArtifactContent) -> Self {
+        use tendril_core::plans::PlanArtifactContent;
+        match content {
+            PlanArtifactContent::Text { text, size } => Self::Text { text, size },
+            PlanArtifactContent::Binary { size } => Self::Binary { size },
+            PlanArtifactContent::TooLarge { size } => Self::TooLarge { size },
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct JobDto {
@@ -395,6 +416,8 @@ pub struct JobDetailDto {
     pub plan_id: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub plan_title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub prompt: Option<String>,
     pub project: String,
     pub status: String,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -491,6 +514,24 @@ pub struct ReviewActionDto {
     pub condition: String,
     #[serde(default)]
     pub command: String,
+}
+
+/// Whether one review action's condition holds for a plan, as the daemon decided it against the plan
+/// folder (`GET /api/projects/:name/review-actions?planId=...`).
+///
+/// `state` stays the daemon's string (`met`, `notMet` or `unknown`) rather than an enum here: this
+/// side only relays it, and a value a newer daemon adds should reach the webview, which treats
+/// anything it does not recognise as undecided, instead of failing the whole list here.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ReviewActionConditionDto {
+    pub name: String,
+    #[serde(default)]
+    pub condition: String,
+    pub state: String,
+    /// Why the condition could not be evaluated; only present when `state` is `unknown`.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

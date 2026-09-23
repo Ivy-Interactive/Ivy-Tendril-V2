@@ -1,0 +1,137 @@
+{
+  "actions": {
+    "back": "Atrás",
+    "next": "Siguiente",
+    "skip": "Omitir",
+    "finish": "Finalizar",
+    "createProject": "Crear proyecto"
+  },
+  "wizard": {
+    "title": "Te damos la bienvenida a Tendril",
+    "stepsLabel": "Pasos de configuración",
+    "steps": {
+      "codingAgent": "Agente de código",
+      "dataStorage": "Almacenamiento de datos",
+      "firstProject": "Tu primer proyecto",
+      "complete": "Listo"
+    },
+    "skipSetup": "Omitir configuración",
+    "progress": {
+      "label": "Configurando",
+      "checkingAgent": "Comprobando {{agent}}...",
+      "finishing": "Finalizando la configuración...",
+      "cloning": "Clonando repositorios...",
+      "settingUp": "Configurando tu proyecto..."
+    },
+    "errors": {
+      "checksUnavailable": "Comprobaciones de estado no disponibles: {{error}}",
+      "agentProbeFailed": "Asegúrate de que tu agente está instalado y de que tienes autorización. ({{error}})",
+      "finishFailed": "No se pudo finalizar la configuración: {{error}}",
+      "skipFailed": "No se pudo omitir la configuración: {{error}}",
+      "setupNotStarted": "Proyecto creado, pero {{jobType}} no se pudo iniciar: {{error}}",
+      "createFailed": "No se pudo crear el proyecto: {{error}}",
+      "createAbandoned": "Se dejó de esperar a que se creara el proyecto. Puede que el daemon siga clonando; revisa tus proyectos antes de volver a crearlo."
+    }
+  },
+  "codingAgent": {
+    "title": "¿Cuál es tu agente de código?",
+    "description": "Tendril es un orquestador de código que se ejecuta sobre tu propio agente de código. Elige el agente que quieres usar:"
+  },
+  "prerequisites": {
+    "missing_one": "Tendril necesita {{names, list}}, pero no está instalado. Instálalo y pulsa Volver a comprobar.",
+    "missing_many": "Tendril necesita {{names, list}}, pero no están instalados. Instálalos y pulsa Volver a comprobar.",
+    "missing_other": "Tendril necesita {{names, list}}, pero no están instalados. Instálalos y pulsa Volver a comprobar.",
+    "description": "Las herramientas que Tendril ejecuta en tu máquina.",
+    "recheck": "Volver a comprobar",
+    "checking": "Comprobando…",
+    "empty": "No se ha informado de ninguna comprobación.",
+    "required": "obligatorio",
+    "install": "Instalar",
+    "status": {
+      "ok": "OK",
+      "warn": "AVISO",
+      "fail": "ERROR"
+    }
+  },
+  "dataStorage": {
+    "title": "¿Dónde guardamos tus datos?",
+    "description": "Tendril guarda tu configuración y tus planes en esta carpeta.",
+    "homeLabel": "Directorio de Tendril",
+    "homeHint": "El daemon en ejecución ha resuelto esta carpeta. Para moverla, define <code>{{envVar}}</code> antes de iniciar Tendril.",
+    "homeMissing": "Indica una ruta válida."
+  },
+  "repoPicker": {
+    "label": "Añade uno o más repositorios Git",
+    "inputLabel": "URL del repositorio o ruta local",
+    "placeholder": "URL del repositorio o ruta local",
+    "add": "Añadir repositorio",
+    "willClone": "se clonará al pulsar Crear proyecto",
+    "remove": "Quitar {{path}}",
+    "invalidPath": "Ruta de repositorio no válida."
+  },
+  "firstProject": {
+    "title": "Configura tu primer proyecto",
+    "description": "Un proyecto agrupa uno o más repositorios para que Tendril pueda planificar y verificar cambios en todos ellos.",
+    "browse": "Examinar",
+    "browseTitle": "Seleccionar carpeta del repositorio",
+    "browseUnavailable": "El selector de carpetas no está disponible ({{error}}). Escribe una ruta.",
+    "nameLabel": "Nombre del proyecto",
+    "nameExists": {
+      "title": "Ya existe un proyecto con este nombre.",
+      "body": "Para resolver este conflicto, puedes introducir otro nombre arriba o continuar con la configuración del proyecto existente (se conservarán su ruta de repositorio y sus ajustes).",
+      "useExisting": "Usar la configuración del proyecto existente"
+    },
+    "registered": "{{name}} está registrado. Siguiente muestra su ejecución de configuración."
+  },
+  "validation": {
+    "invalidProjectName": "Nombre de proyecto \"{{name}}\" no válido. Usa solo letras, dígitos, puntos, guiones y guiones bajos (sin barras ni espacios).",
+    "invalidProjectNameWithSuggestion": "Nombre de proyecto \"{{name}}\" no válido. Usa solo letras, dígitos, puntos, guiones y guiones bajos (sin barras ni espacios). Sugerencia: \"{{suggestion}}\"."
+  },
+  "agentRun": {
+    "title": "Configurando tu proyecto",
+    "wizardHint": "Tendril está detectando tu stack tecnológico y configurando tu arnés agéntico. Tardará unos minutos, así que tómate un ☕ mientras esperas.",
+    "noRun": "No hay ninguna ejecución de configuración asociada a este proyecto. Cuando termine la configuración, podrás configurar sus verificaciones y acciones de revisión desde la pantalla del propio proyecto.",
+    "timedOut": "Se agotó el tiempo de espera de la configuración.",
+    "failed": "La configuración ha fallado."
+  },
+  "harness": {
+    "title": "Arnés de revisión",
+    "description": "Lo que el agente de configuración ha preparado para tu proyecto. Todo se puede editar desde la pantalla del propio proyecto.",
+    "verifications": {
+      "title": "Verificaciones",
+      "hint": "Los pasos que se ejecutan después de cada ejecución de un plan para validar los cambios."
+    },
+    "reviewActions": {
+      "title": "Acciones de revisión",
+      "hint": "Comandos que facilitan iniciar tu proyecto para hacer pruebas manuales."
+    },
+    "loadError": "No se pudo leer el arnés de tu proyecto ({{error}}). Esto no indica nada sobre lo que ha configurado el agente de configuración - abre el proyecto desde su fila en Proyectos para verlo.",
+    "empty": "Todavía no hay nada configurado. Si el agente de configuración sigue en ejecución, sus resultados aparecerán aquí cuando termine - vuelve a abrir el proyecto desde su fila en Proyectos para verlos."
+  },
+  "complete": {
+    "title": "¡Todo listo!",
+    "description": "Tu proyecto está configurado. Haz clic en Finalizar para empezar a usar Tendril.",
+    "newsletter": {
+      "title": "Boletín informativo",
+      "description": "¡Sé de los primeros en enterarte cuando publiquemos una nueva versión!"
+    }
+  },
+  "addProject": {
+    "title": "Añadir un proyecto",
+    "hint": "Ponle nombre al proyecto y apúntalo a uno o más repositorios Git. Después, Tendril los inspecciona y configura el arnés de revisión.",
+    "nameLabel": "Nombre",
+    "namePlaceholder": "Nombre del proyecto...",
+    "creating": "Creando...",
+    "createInBackground": "Crear en segundo plano",
+    "nameRequired": "Un proyecto necesita un nombre.",
+    "nameInvalidChars": "Un nombre de proyecto no puede contener / \\ : * ? \" < > ni |.",
+    "nameExists": "Ya existe un proyecto llamado \"{{name}}\".",
+    "createFailed": "Error al crear el proyecto: {{error}}",
+    "setupNotStarted": "Proyecto creado, pero el agente de configuración no se pudo iniciar: {{error}}. El proyecto está registrado y se puede configurar desde su propia fila.",
+    "agentHint": "Tendril está detectando tu stack tecnológico y configurando tu arnés agéntico. Esto tarda unos minutos.",
+    "verificationRequired": "obligatoria",
+    "noVerifications": "No se configuró ninguna verificación. Añádelas desde los ajustes del proyecto.",
+    "noReviewActions": "No se configuró ninguna acción de revisión. Añádelas desde los ajustes del proyecto.",
+    "harnessEmpty": "El proyecto está registrado. Si el agente de configuración sigue en ejecución, sus resultados aparecerán aquí cuando termine - vuelve a abrir el proyecto desde su fila en Proyectos para verlos."
+  }
+}

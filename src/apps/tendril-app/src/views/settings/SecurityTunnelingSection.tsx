@@ -3,6 +3,7 @@ import { openUrl } from "@tauri-apps/plugin-opener";
 import { copyToClipboard } from "@ivy-interactive/components";
 import { Button, Callout, Input, Label, Spinner, Switch } from "@ivy-interactive/components/ui";
 import { ClipboardCopy, Download, ExternalLink } from "lucide-react";
+import { formatNumber } from "@ivy-interactive/components/i18n";
 import {
   tunnelApi,
   type CloudflaredInstallState,
@@ -10,6 +11,7 @@ import {
   type TunnelSnapshot,
   type TunnelStatus,
 } from "../../api/tunnelApi";
+import { Trans, useTranslation } from "../../i18n";
 import { notificationsStore } from "../../state/notificationsStore";
 import { bridgeErrorCode, describeBridgeError } from "../../types/api";
 import { SettingsSection } from "./fields";
@@ -75,23 +77,26 @@ export interface SecurityTunnelingSectionProps {
 
 export const SecurityTunnelingSection: React.FC<SecurityTunnelingSectionProps> = ({
   api = tunnelApi,
-}) => (
-  <SettingsSection
-    title="Security & Tunneling"
-    hint="Require a password to access Tendril, and expose this instance over a public tunnel."
-    testId="security-tunneling-card"
-  >
-    <div className="space-y-6">
-      <SessionProtectionBlock api={api} />
-      {/* Above both tunnels rather than inside either: they run the same `cloudflared` from the same
-          place, so two install blocks would be two buttons racing for one file. It renders nothing at
-          all once a binary is found, which is the common case. */}
-      <CloudflaredInstallBlock api={api} />
-      <TunnelBlock api={api} kind="full" />
-      <TunnelBlock api={api} kind="share" />
-    </div>
-  </SettingsSection>
-);
+}) => {
+  const { t } = useTranslation("settings");
+  return (
+    <SettingsSection
+      title={t("security.title")}
+      hint={t("security.hint")}
+      testId="security-tunneling-card"
+    >
+      <div className="space-y-6">
+        <SessionProtectionBlock api={api} />
+        {/* Above both tunnels rather than inside either: they run the same `cloudflared` from the same
+            place, so two install blocks would be two buttons racing for one file. It renders nothing at
+            all once a binary is found, which is the common case. */}
+        <CloudflaredInstallBlock api={api} />
+        <TunnelBlock api={api} kind="full" />
+        <TunnelBlock api={api} kind="share" />
+      </div>
+    </SettingsSection>
+  );
+};
 
 /* -------------------------------------------------------------------------------------------------
  * cloudflared — `CloudflaredInstaller`
@@ -103,7 +108,14 @@ const INSTALL_POLL_INTERVAL_MS = 700;
 /** Phases where the daemon is mid-install and Cancel is the only useful control. */
 const RUNNING_PHASES = ["resolving", "downloading", "verifying", "installing"];
 
-const formatMegabytes = (bytes: number): string => `${(bytes / 1_048_576).toFixed(1)} MB`;
+/** "12.3 MB", in the current language's number and unit format. */
+const formatMegabytes = (bytes: number): string =>
+  formatNumber(bytes / 1_048_576, {
+    style: "unit",
+    unit: "megabyte",
+    minimumFractionDigits: 1,
+    maximumFractionDigits: 1,
+  });
 
 /**
  * Port of V1's install prompt in `ShareTunnelModal` plus `CloudflaredInstaller.EnsureInstalledAsync`.
@@ -117,6 +129,7 @@ const formatMegabytes = (bytes: number): string => `${(bytes / 1_048_576).toFixe
  * The download runs in the daemon. This component only starts it, polls it and offers a way out.
  */
 const CloudflaredInstallBlock: React.FC<{ api: TunnelApi }> = ({ api }) => {
+  const { t } = useTranslation("settings");
   const [state, setState] = React.useState<CloudflaredInstallState | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [isBusy, setIsBusy] = React.useState(false);
@@ -193,8 +206,11 @@ const CloudflaredInstallBlock: React.FC<{ api: TunnelApi }> = ({ api }) => {
       <div className="space-y-1.5">
         <h3 className="text-sm font-semibold text-foreground">cloudflared</h3>
         <p className="text-xs text-muted-foreground">
-          Both tunnels below run Cloudflare&apos;s <code>cloudflared</code>. It is not installed on
-          the machine running Tendril yet.
+          <Trans
+            ns="settings"
+            i18nKey="security.cloudflared.intro"
+            components={{ code: <code /> }}
+          />
         </p>
       </div>
 
@@ -202,28 +218,40 @@ const CloudflaredInstallBlock: React.FC<{ api: TunnelApi }> = ({ api }) => {
           gets the operator's own message and no Install button: fetching a second copy into `tools/`
           would not even be used, because the override wins. */}
       {state.configuredPathError !== null && state.configuredPathError !== undefined ? (
-        <Callout variant="error" title="Configured path" data-testid="cloudflared-configured-error">
+        <Callout
+          variant="error"
+          title={t("security.cloudflared.configuredPathTitle")}
+          data-testid="cloudflared-configured-error"
+        >
           <p>{state.configuredPathError}</p>
         </Callout>
       ) : (
         <>
           {isRunning && (
-            <Callout variant="info" title="Installing" data-testid="cloudflared-installing">
+            <Callout
+              variant="info"
+              title={t("security.cloudflared.installingTitle")}
+              data-testid="cloudflared-installing"
+            >
               <div className="space-y-3">
                 <div className="flex items-center gap-2">
                   <Spinner size="md" aria-hidden="true" />
                   <span data-testid="cloudflared-progress">
                     {phase === "downloading"
                       ? percent !== null
-                        ? `Downloading ${state.assetName} — ${percent}%`
-                        : `Downloading ${state.assetName} — ${formatMegabytes(
-                            progress?.downloadedBytes ?? 0,
-                          )}`
+                        ? t("security.cloudflared.downloadingPercent", {
+                            asset: state.assetName,
+                            percent: percent / 100,
+                          })
+                        : t("security.cloudflared.downloadingSize", {
+                            asset: state.assetName,
+                            size: formatMegabytes(progress?.downloadedBytes ?? 0),
+                          })
                       : phase === "verifying"
-                        ? "Checking the download against Cloudflare's published SHA-256"
+                        ? t("security.cloudflared.verifying")
                         : phase === "installing"
-                          ? "Installing"
-                          : "Looking up the latest release"}
+                          ? t("security.cloudflared.installing")
+                          : t("security.cloudflared.resolving")}
                   </span>
                 </div>
                 {/* Cancellation is a first-class control, not a hidden escape: this is a ~40 MB
@@ -234,23 +262,28 @@ const CloudflaredInstallBlock: React.FC<{ api: TunnelApi }> = ({ api }) => {
                   disabled={isBusy}
                   data-testid="cloudflared-cancel"
                 >
-                  Cancel
+                  {t("common:actions.cancel")}
                 </Button>
               </div>
             </Callout>
           )}
 
           {phase === "cancelled" && (
-            <Callout variant="info" title="Cancelled" data-testid="cloudflared-cancelled">
-              <p className="text-xs">
-                The download was cancelled and nothing was installed. You can start it again, or
-                install cloudflared yourself.
-              </p>
+            <Callout
+              variant="info"
+              title={t("security.cloudflared.cancelledTitle")}
+              data-testid="cloudflared-cancelled"
+            >
+              <p className="text-xs">{t("security.cloudflared.cancelledBody")}</p>
             </Callout>
           )}
 
           {failure !== null && (
-            <Callout variant="error" title="Install failed" data-testid="cloudflared-error">
+            <Callout
+              variant="error"
+              title={t("security.cloudflared.failedTitle")}
+              data-testid="cloudflared-error"
+            >
               <p>{failure}</p>
             </Callout>
           )}
@@ -262,7 +295,9 @@ const CloudflaredInstallBlock: React.FC<{ api: TunnelApi }> = ({ api }) => {
               data-testid="cloudflared-install-button"
             >
               <Download className="size-4" aria-hidden="true" />
-              {phase === "failed" || phase === "cancelled" ? "Try again" : "Install cloudflared"}
+              {phase === "failed" || phase === "cancelled"
+                ? t("security.cloudflared.retry")
+                : t("security.cloudflared.install")}
             </Button>
           )}
 
@@ -270,15 +305,27 @@ const CloudflaredInstallBlock: React.FC<{ api: TunnelApi }> = ({ api }) => {
               download, and the supported update path for anyone who would rather own the binary
               themselves — which is also why a copy on PATH still wins over anything fetched here. */}
           <details className="text-xs text-muted-foreground" data-testid="cloudflared-manual">
-            <summary className="cursor-pointer">Install it yourself instead</summary>
+            <summary className="cursor-pointer">{t("security.cloudflared.manualSummary")}</summary>
             <div className="space-y-1 pt-2">
               <p>
-                macOS: <code>brew install cloudflared</code>. Linux: see{" "}
-                <code>https://pkg.cloudflare.com</code>.
+                <Trans
+                  ns="settings"
+                  i18nKey="security.cloudflared.manualPackages"
+                  values={{ brew: "brew install cloudflared", url: "https://pkg.cloudflare.com" }}
+                  components={{ code: <code /> }}
+                />
               </p>
               <p>
-                Or download <code>{state.assetName}</code> from <code>{state.downloadUrl}</code> and
-                save it as <code>{state.expectedPath}</code>.
+                <Trans
+                  ns="settings"
+                  i18nKey="security.cloudflared.manualDownload"
+                  values={{
+                    asset: state.assetName,
+                    url: state.downloadUrl,
+                    path: state.expectedPath,
+                  }}
+                  components={{ code: <code /> }}
+                />
               </p>
             </div>
           </details>
@@ -301,6 +348,7 @@ const CloudflaredInstallBlock: React.FC<{ api: TunnelApi }> = ({ api }) => {
  * after a submit, or reads one back.
  */
 const SessionProtectionBlock: React.FC<{ api: TunnelApi }> = ({ api }) => {
+  const { t } = useTranslation("settings");
   const [configured, setConfigured] = React.useState<boolean | null>(null);
   const [enabled, setEnabled] = React.useState(false);
   const [current, setCurrent] = React.useState("");
@@ -350,11 +398,17 @@ const SessionProtectionBlock: React.FC<{ api: TunnelApi }> = ({ api }) => {
       if (!enabled) {
         await api.clearPassword(hasAuth ? current : null);
         setConfigured(false);
-        notificationsStore.notifySuccess("Saved", "Password protection disabled");
+        notificationsStore.notifySuccess(
+          t("shared.toastSaved"),
+          t("security.session.disabledToast"),
+        );
       } else {
         await api.setPassword(hasAuth ? current : null, next);
         setConfigured(true);
-        notificationsStore.notifySuccess("Saved", "Password protection enabled");
+        notificationsStore.notifySuccess(
+          t("shared.toastSaved"),
+          t("security.session.enabledToast"),
+        );
       }
       clearFields();
     } catch (err) {
@@ -371,10 +425,8 @@ const SessionProtectionBlock: React.FC<{ api: TunnelApi }> = ({ api }) => {
   return (
     <section className="space-y-3" data-testid="session-protection">
       <div className="space-y-1.5">
-        <h3 className="text-sm font-semibold text-foreground">Session Protection</h3>
-        <p className="text-xs text-muted-foreground">
-          Require a password to access the Tendril interface.
-        </p>
+        <h3 className="text-sm font-semibold text-foreground">{t("security.session.heading")}</h3>
+        <p className="text-xs text-muted-foreground">{t("security.session.blurb")}</p>
       </div>
 
       <div className="flex items-center gap-3">
@@ -393,7 +445,7 @@ const SessionProtectionBlock: React.FC<{ api: TunnelApi }> = ({ api }) => {
           data-testid="password-enabled-toggle"
         />
         <Label htmlFor="enable-password-protection" className="text-sm text-foreground">
-          Enable Password Protection
+          {t("security.session.enableLabel")}
         </Label>
       </div>
 
@@ -403,8 +455,8 @@ const SessionProtectionBlock: React.FC<{ api: TunnelApi }> = ({ api }) => {
           {hasAuth && (
             <PasswordField
               id="current-password"
-              label="Current Password"
-              placeholder="Current password..."
+              label={t("security.session.currentLabel")}
+              placeholder={t("security.session.currentPlaceholder")}
               value={current}
               onChange={setCurrent}
               disabled={isBusy}
@@ -412,8 +464,8 @@ const SessionProtectionBlock: React.FC<{ api: TunnelApi }> = ({ api }) => {
           )}
           <PasswordField
             id="new-password"
-            label="New Password"
-            placeholder="New password..."
+            label={t("security.session.newLabel")}
+            placeholder={t("security.session.newPlaceholder")}
             value={next}
             onChange={setNext}
             disabled={isBusy}
@@ -421,8 +473,8 @@ const SessionProtectionBlock: React.FC<{ api: TunnelApi }> = ({ api }) => {
           />
           <PasswordField
             id="confirm-password"
-            label="Confirm Password"
-            placeholder="Confirm password..."
+            label={t("security.session.confirmLabel")}
+            placeholder={t("security.session.confirmPlaceholder")}
             value={confirm}
             onChange={setConfirm}
             disabled={isBusy}
@@ -432,7 +484,7 @@ const SessionProtectionBlock: React.FC<{ api: TunnelApi }> = ({ api }) => {
               something has been typed into Confirm. */}
           {!passwordsMatch && confirm.trim().length > 0 && (
             <p className="text-xs text-destructive" data-testid="passwords-do-not-match">
-              Passwords do not match
+              {t("security.session.mismatch")}
             </p>
           )}
         </div>
@@ -443,8 +495,8 @@ const SessionProtectionBlock: React.FC<{ api: TunnelApi }> = ({ api }) => {
       {!enabled && hasAuth && (
         <PasswordField
           id="current-password-to-disable"
-          label="Current Password"
-          placeholder="Current password..."
+          label={t("security.session.currentLabel")}
+          placeholder={t("security.session.currentPlaceholder")}
           value={current}
           onChange={setCurrent}
           disabled={isBusy}
@@ -462,7 +514,7 @@ const SessionProtectionBlock: React.FC<{ api: TunnelApi }> = ({ api }) => {
         disabled={!canSave || isBusy || configured === null}
         data-testid="password-save"
       >
-        Save
+        {t("common:actions.save")}
       </Button>
     </section>
   );
@@ -503,51 +555,19 @@ const PasswordField: React.FC<{
 
 type BlockKind = "full" | "share";
 
-/** V1 gives each block its own heading, blurb and callout titles; the state machine is identical. */
-const COPY: Record<
-  BlockKind,
-  {
-    heading: string;
-    blurb: string;
-    startingTitle: string;
-    activeTitle: string;
-    activeBody: string;
-    startingBody: string;
-    stoppedToast: string;
-    copiedToast: string;
-    testId: string;
-  }
-> = {
-  full: {
-    heading: "Tunnel",
-    blurb:
-      "Expose your Tendril instance to the internet via a Cloudflare tunnel. Useful for accessing Tendril from mobile devices or sharing with others.",
-    startingTitle: "Tunnel Starting",
-    activeTitle: "Tunnel Active",
-    activeBody: "Your tunnel is running and accessible at the URL below.",
-    startingBody:
-      "Starting tunnel and waiting for it to become routable. This typically takes 15-30 seconds.",
-    stoppedToast: "Tunnel stopped",
-    copiedToast: "Tunnel URL copied to clipboard",
-    testId: "full-tunnel",
-  },
-  share: {
-    heading: "Share Tunnel",
-    blurb:
-      "Expose a read-only, comment-only version of Tendril for team members to review plans and drafts.",
-    startingTitle: "Share Tunnel Starting",
-    activeTitle: "Share Tunnel Active",
-    activeBody: "Your share tunnel is running and accessible at the URL below.",
-    startingBody:
-      "Starting share tunnel and waiting for it to become routable. This typically takes 15-30 seconds.",
-    stoppedToast: "Share tunnel stopped",
-    copiedToast: "Share tunnel URL copied to clipboard",
-    testId: "share-tunnel",
-  },
+/**
+ * V1 gives each block its own heading, blurb, callout titles and messages; the state machine is
+ * identical. The words are `settings:security.tunnel.<kind>.*`, one whole sentence per block rather
+ * than the heading dropped into a shared one, so each language can word the two its own way.
+ */
+const TEST_IDS: Record<BlockKind, string> = {
+  full: "full-tunnel",
+  share: "share-tunnel",
 };
 
 const TunnelBlock: React.FC<{ api: TunnelApi; kind: BlockKind }> = ({ api, kind }) => {
-  const copy = COPY[kind];
+  const { t } = useTranslation("settings");
+  const testId = TEST_IDS[kind];
   const [snapshot, setSnapshot] = React.useState<TunnelSnapshot | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [isBusy, setIsBusy] = React.useState(false);
@@ -616,7 +636,7 @@ const TunnelBlock: React.FC<{ api: TunnelApi; kind: BlockKind }> = ({ api, kind 
       setError(
         code === "TUNNEL_PASSWORD_REQUIRED" || code === "TUNNEL_PRECONDITION"
           ? describeBridgeError(err)
-          : `Failed to start ${copy.heading.toLowerCase()}: ${describeBridgeError(err)}`,
+          : t(`security.tunnel.${kind}.startFailed`, { error: describeBridgeError(err) }),
       );
     } finally {
       setIsBusy(false);
@@ -628,9 +648,12 @@ const TunnelBlock: React.FC<{ api: TunnelApi; kind: BlockKind }> = ({ api, kind 
     setError(null);
     try {
       setSnapshot(await (kind === "full" ? api.stopFullTunnel() : api.stopShareTunnel()));
-      notificationsStore.notifySuccess("Deactivated", copy.stoppedToast);
+      notificationsStore.notifySuccess(
+        t("security.tunnel.deactivatedTitle"),
+        t(`security.tunnel.${kind}.stoppedToast`),
+      );
     } catch (err) {
-      setError(`Failed to stop ${copy.heading.toLowerCase()}: ${describeBridgeError(err)}`);
+      setError(t(`security.tunnel.${kind}.stopFailed`, { error: describeBridgeError(err) }));
     } finally {
       setIsBusy(false);
     }
@@ -640,9 +663,12 @@ const TunnelBlock: React.FC<{ api: TunnelApi; kind: BlockKind }> = ({ api, kind 
     if (url === null) return;
     try {
       await copyToClipboard(url);
-      notificationsStore.notifySuccess("URL Copied", copy.copiedToast);
+      notificationsStore.notifySuccess(
+        t("security.tunnel.copiedTitle"),
+        t(`security.tunnel.${kind}.copiedToast`),
+      );
     } catch (err) {
-      setError(`Could not copy the URL: ${describeBridgeError(err)}`);
+      setError(t("security.tunnel.copyFailed", { error: describeBridgeError(err) }));
     }
   };
 
@@ -651,17 +677,19 @@ const TunnelBlock: React.FC<{ api: TunnelApi; kind: BlockKind }> = ({ api, kind 
       variant="outline"
       onClick={() => void handleDeactivate()}
       disabled={isBusy}
-      data-testid={`${copy.testId}-deactivate`}
+      data-testid={`${testId}-deactivate`}
     >
-      Deactivate
+      {t("security.tunnel.deactivate")}
     </Button>
   );
 
   return (
-    <section className="space-y-3" data-testid={copy.testId}>
+    <section className="space-y-3" data-testid={testId}>
       <div className="space-y-1.5">
-        <h3 className="text-sm font-semibold text-foreground">{copy.heading}</h3>
-        <p className="text-xs text-muted-foreground">{copy.blurb}</p>
+        <h3 className="text-sm font-semibold text-foreground">
+          {t(`security.tunnel.${kind}.heading`)}
+        </h3>
+        <p className="text-xs text-muted-foreground">{t(`security.tunnel.${kind}.blurb`)}</p>
       </div>
 
       {/* The pairing that gives this section its name, said before it is needed rather than only as a
@@ -669,22 +697,17 @@ const TunnelBlock: React.FC<{ api: TunnelApi; kind: BlockKind }> = ({ api, kind 
       {kind === "full" && status === "disabled" && (
         <Callout
           variant="warning"
-          title="This publishes everything"
+          title={t("security.tunnel.warningTitle")}
           data-testid="full-tunnel-warning"
         >
-          <p className="text-xs">
-            A full-access tunnel puts this entire Tendril instance on a public URL. Anyone with the
-            address and the session password can use it as if they were sitting at this machine, so
-            a password is required before one will start. The Share Tunnel below is the read-only
-            option.
-          </p>
+          <p className="text-xs">{t("security.tunnel.warningBody")}</p>
         </Callout>
       )}
 
       {/* V1's `Callout.Error(error.Value, "Error")`. `Callout` carries `role="alert"` for the error and
           warning variants, so it is both the shared component and the accessible one. */}
       {shownError !== null && (
-        <Callout variant="error" title="Error" data-testid={`${copy.testId}-error`}>
+        <Callout variant="error" title={t("common:status.error")} data-testid={`${testId}-error`}>
           <p>{shownError}</p>
         </Callout>
       )}
@@ -692,13 +715,13 @@ const TunnelBlock: React.FC<{ api: TunnelApi; kind: BlockKind }> = ({ api, kind 
       {status === "connecting" && (
         <Callout
           variant="info"
-          title={copy.startingTitle}
-          data-testid={`${copy.testId}-connecting`}
+          title={t(`security.tunnel.${kind}.startingTitle`)}
+          data-testid={`${testId}-connecting`}
         >
           <div className="space-y-3">
             <div className="flex items-center gap-2">
               <Spinner size="md" aria-hidden="true" />
-              <span>{copy.startingBody}</span>
+              <span>{t(`security.tunnel.${kind}.startingBody`)}</span>
             </div>
             {deactivateButton}
           </div>
@@ -706,12 +729,16 @@ const TunnelBlock: React.FC<{ api: TunnelApi; kind: BlockKind }> = ({ api, kind 
       )}
 
       {status === "connected" && url !== null && (
-        <Callout variant="success" title={copy.activeTitle} data-testid={`${copy.testId}-active`}>
+        <Callout
+          variant="success"
+          title={t(`security.tunnel.${kind}.activeTitle`)}
+          data-testid={`${testId}-active`}
+        >
           <div className="space-y-3">
-            <p>{copy.activeBody}</p>
+            <p>{t(`security.tunnel.${kind}.activeBody`)}</p>
             <p
               className="break-all rounded-field border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
-              data-testid={`${copy.testId}-url`}
+              data-testid={`${testId}-url`}
             >
               {url}
             </p>
@@ -719,18 +746,18 @@ const TunnelBlock: React.FC<{ api: TunnelApi; kind: BlockKind }> = ({ api, kind 
               <Button
                 variant="outline"
                 onClick={() => void handleCopy()}
-                data-testid={`${copy.testId}-copy`}
+                data-testid={`${testId}-copy`}
               >
                 <ClipboardCopy className="size-4" aria-hidden="true" />
-                Copy URL
+                {t("security.tunnel.copyUrl")}
               </Button>
               <Button
                 variant="outline"
                 onClick={() => void openUrl(url)}
-                data-testid={`${copy.testId}-open`}
+                data-testid={`${testId}-open`}
               >
                 <ExternalLink className="size-4" aria-hidden="true" />
-                Open in Browser
+                {t("security.tunnel.openInBrowser")}
               </Button>
             </div>
             {deactivateButton}
@@ -742,9 +769,9 @@ const TunnelBlock: React.FC<{ api: TunnelApi; kind: BlockKind }> = ({ api, kind 
         <Button
           onClick={() => void handleActivate()}
           disabled={isBusy || snapshot === null}
-          data-testid={`${copy.testId}-activate`}
+          data-testid={`${testId}-activate`}
         >
-          Activate
+          {t("security.tunnel.activate")}
         </Button>
       )}
     </section>

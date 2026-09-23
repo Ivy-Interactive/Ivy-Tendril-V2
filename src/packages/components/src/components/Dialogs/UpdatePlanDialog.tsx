@@ -2,6 +2,7 @@ import * as React from "react";
 import { Button } from "../ui/button";
 import { Callout } from "../ui/callout";
 import { Textarea } from "../ui/textarea";
+import { useTranslation } from "@/i18n/uiDialogs";
 import { DialogShell } from "./DialogShell";
 
 export interface UpdatePlanDialogProps {
@@ -43,6 +44,7 @@ export function UpdatePlanDialog({
   isBusy = false,
   error,
 }: UpdatePlanDialogProps) {
+  const { t } = useTranslation("uiDialogs");
   const [instructions, setInstructions] = React.useState("");
   const textareaRef = React.useRef<HTMLTextAreaElement>(null);
 
@@ -61,20 +63,20 @@ export function UpdatePlanDialog({
     <DialogShell
       isOpen={isOpen}
       onClose={onClose}
-      title={`Update Plan #${planId}`}
+      title={t("updatePlan.title", { planId })}
       width="rem30"
       shortcut="Ctrl+Enter"
       onShortcut={handleSubmit}
-      description="Provide instructions for revising this plan. UpdatePlan rewrites the plan into a new revision — it does not touch any code."
+      description={t("updatePlan.description")}
       testId="update-plan-dialog"
       initialFocusRef={textareaRef}
       footer={
         <>
           <Button variant="outline" onClick={onClose} data-testid="dialog-cancel" disabled={isBusy}>
-            Cancel
+            {t("actions.cancel")}
           </Button>
           <Button onClick={handleSubmit} data-testid="dialog-confirm" disabled={!canSubmit}>
-            {isBusy ? "Starting…" : "Update"}
+            {isBusy ? t("status.starting") : t("updatePlan.submit")}
           </Button>
         </>
       }
@@ -83,23 +85,23 @@ export function UpdatePlanDialog({
           as a Callout here — `Alert` has only default and destructive, so it has no warning to give. */}
       {hasActiveJob && (
         <Callout.Warning className="mb-3" data-testid="update-plan-already-running">
-          UpdatePlan is already running for this plan. Please wait…
+          {t("updatePlan.alreadyRunning")}
         </Callout.Warning>
       )}
       <label
         htmlFor="update-plan-instructions"
         className="mb-1 block text-xs text-muted-foreground"
       >
-        Instructions
+        {t("updatePlan.instructionsLabel")}
       </label>
       <Textarea
         id="update-plan-instructions"
         ref={textareaRef}
-        aria-label="Update instructions"
+        aria-label={t("updatePlan.instructionsAriaLabel")}
         rows={5}
         value={instructions}
         onChange={(event) => setInstructions(event.target.value)}
-        placeholder="Fold in the answered questions, then narrow the scope to the guard chain only…"
+        placeholder={t("updatePlan.instructionsPlaceholder")}
         className="text-sm"
       />
       {error && <Callout.Error className="mt-4">{error}</Callout.Error>}

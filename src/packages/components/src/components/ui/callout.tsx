@@ -6,6 +6,7 @@ import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDensity } from "@/contexts/density-context";
 import { Densities } from "@/types/density";
+import { useTranslation } from "@/i18n/uiCommon";
 import {
   calloutIconSize,
   calloutIconVariant,
@@ -45,6 +46,7 @@ const CalloutRoot = React.forwardRef<HTMLDivElement, CalloutProps>(
     { className, variant, density, title, icon, onDismiss, dismissLabel, children, ...props },
     ref,
   ) => {
+    const { t } = useTranslation("uiCommon");
     const contextDensity = useDensity();
     const effectiveDensity = density ?? contextDensity;
     const effectiveVariant: CalloutVariant = variant ?? "info";
@@ -105,8 +107,8 @@ const CalloutRoot = React.forwardRef<HTMLDivElement, CalloutProps>(
           <button
             type="button"
             onClick={onDismiss}
-            aria-label={dismissLabel ?? "Dismiss"}
-            className="absolute right-3 top-3 rounded-selector p-1 opacity-70 transition-opacity hover:bg-secondary/60 hover:text-foreground hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            aria-label={dismissLabel ?? t("callout.dismiss")}
+            className="absolute right-3 top-3 rounded-selector p-1 opacity-70 transition-colors hover:bg-secondary/60 hover:text-foreground hover:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <X className="size-4" />
           </button>

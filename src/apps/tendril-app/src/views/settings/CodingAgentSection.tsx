@@ -5,6 +5,7 @@ import { Button, Callout, Input, Label, Switch } from "@ivy-interactive/componen
 import { Check, ExternalLink } from "lucide-react";
 import { agentsApi } from "../../api/agentsApi";
 import { providerModelsApi } from "../../api/providerModelsApi";
+import { Trans, useTranslation, type TFunction } from "../../i18n";
 import { notificationsStore } from "../../state/notificationsStore";
 import { describeBridgeError, type TendrilConfig } from "../../types/api";
 import {
@@ -69,29 +70,53 @@ import {
 /** `EffortLevels.Claude`, V1's fallback when neither the model nor the descriptor names any. */
 const FALLBACK_EFFORTS = ["low", "medium", "high", "xhigh", "max"];
 
-/** `.Label("Deep")` / `.Label("Balanced")` / `.Label("Quick")`, the labels V1 gives the three rows. */
-const TIER_LABELS: Record<ProfileTier, string> = {
-  deep: "Deep",
-  balanced: "Balanced",
-  quick: "Quick",
-};
+/**
+ * `.Label("Deep")` / `.Label("Balanced")` / `.Label("Quick")`, the labels V1 gives the three rows.
+ * The tier id is the config value and stays as it is; only the label is translated.
+ */
+const tierLabel = (t: TFunction<"settingsAgents">, tier: ProfileTier): string =>
+  t(`profiles.tiers.${tier}`);
 
-const effortLabel = (id: string): string =>
-  ({
-    default: "Default",
-    low: "Low",
-    medium: "Medium",
-    high: "High",
-    xhigh: "Extra High",
-    max: "Max",
-  })[id] ?? id;
+/**
+ * The effort ids this pane has a label for. The id is the config value and is never translated; any
+ * other id - a level the daemon added since - is shown as it is.
+ */
+const EFFORT_IDS = ["default", "low", "medium", "high", "xhigh", "max"] as const;
+type EffortId = (typeof EFFORT_IDS)[number];
+const isEffortId = (id: string): id is EffortId => (EFFORT_IDS as readonly string[]).includes(id);
+
+const effortLabel = (t: TFunction<"settingsAgents">, id: string): string =>
+  isEffortId(id) ? t(`profiles.efforts.${id}`) : id;
 
 /** `ConfigCommand.ValidateCodingAgent`'s refusal, with the same sorted valid-agent list. */
-const unknownAgentMessage = (value: string): string =>
-  `Unknown coding agent '${value}'. Valid agents: ${CODING_AGENTS.map((a) => a.id)
-    .slice()
-    .sort()
-    .join(", ")}`;
+const unknownAgentMessage = (t: TFunction<"settingsAgents">, value: string): string =>
+  t("section.unknownAgent", {
+    value,
+    agents: CODING_AGENTS.map((a) => a.id)
+      .slice()
+      .sort()
+      .join(", "),
+  });
+
+/**
+ * What the discovery call last said about the endpoint, kept as data and worded at render time so
+ * the note follows the language.
+ */
+type DiscoveryNote =
+  | { kind: "found"; count: number }
+  | { kind: "customNames" }
+  | { kind: "unreachable"; error: string };
+
+const discoveryNoteText = (t: TFunction<"settingsAgents">, note: DiscoveryNote): string => {
+  switch (note.kind) {
+    case "found":
+      return t("byo.discovery.found", { count: note.count });
+    case "customNames":
+      return t("byo.discovery.customNames");
+    case "unreachable":
+      return t("byo.discovery.unreachable", { error: note.error });
+  }
+};
 
 /**
  * One card in either grid: `new Card(logo | label | Spacer | check).OnClick(...)`.
@@ -151,37 +176,46 @@ const HelpStep: React.FC<{ title: string; step: HintStep; testId: string }> = ({
   title,
   step,
   testId,
-}) => (
-  <div className="space-y-2" data-testid={testId}>
-    <p className="text-xs font-medium text-foreground">{title}</p>
-    <p className="text-xs text-foreground">{step.summary}</p>
-    {step.commands.map((route, index) => (
-      <div key={route.command} className="space-y-1">
-        {index > 0 && <p className="text-xs text-muted-foreground">or</p>}
-        <CodeBlock content={route.command} />
-        {route.then && (
-          <p className="text-xs text-muted-foreground" data-testid={`${testId}-then`}>
-            Then, at the prompt: <code className="font-mono">{route.then}</code>
-          </p>
-        )}
-      </div>
-    ))}
-    {/* `openUrl` rather than an `<a>`: this is a webview, and a target-less navigation replaces the
+}) => {
+  const { t } = useTranslation("settingsAgents");
+  return (
+    <div className="space-y-2" data-testid={testId}>
+      <p className="text-xs font-medium text-foreground">{title}</p>
+      {/* The daemon's own sentence (`probe.rs`), shown as it is sent. */}
+      <p className="text-xs text-foreground">{step.summary}</p>
+      {step.commands.map((route, index) => (
+        <div key={route.command} className="space-y-1">
+          {index > 0 && <p className="text-xs text-muted-foreground">{t("help.or")}</p>}
+          <CodeBlock content={route.command} />
+          {route.then && (
+            <p className="text-xs text-muted-foreground" data-testid={`${testId}-then`}>
+              <Trans
+                ns="settingsAgents"
+                i18nKey="help.then"
+                values={{ command: route.then }}
+                components={{ code: <code className="font-mono" /> }}
+              />
+            </p>
+          )}
+        </div>
+      ))}
+      {/* `openUrl` rather than an `<a>`: this is a webview, and a target-less navigation replaces the
         app with the vendor's console. Same call `SecurityTunnelingSection` and `InboxView` make. */}
-    {step.url && (
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        data-testid={`${testId}-link`}
-        onClick={() => void openUrl(step.url!)}
-      >
-        <ExternalLink className="size-4" aria-hidden="true" />
-        {step.url}
-      </Button>
-    )}
-  </div>
-);
+      {step.url && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          data-testid={`${testId}-link`}
+          onClick={() => void openUrl(step.url!)}
+        >
+          <ExternalLink className="size-4" aria-hidden="true" />
+          {step.url}
+        </Button>
+      )}
+    </div>
+  );
+};
 
 /**
  * Install and sign-in instructions for the card in front of the operator.
@@ -201,19 +235,20 @@ const AgentHelpBlock: React.FC<{ card: string; hints: Record<string, AgentSignIn
   card,
   hints,
 }) => {
+  const { t } = useTranslation("settingsAgents");
   const help = helpForCard(hints, card);
   if (!help) return null;
 
   return (
     <SubSection
-      title="Help"
-      hint={`Getting ${cardLabel(card)} working on this machine.`}
+      title={t("help.title")}
+      hint={t("help.hint", { agent: cardLabel(card) })}
       testId="agent-help-block"
     >
       <div className="space-y-4" data-testid={`agent-help-${card}`}>
-        <HelpStep title="1. Install" step={help.install} testId="agent-help-install" />
+        <HelpStep title={t("help.install")} step={help.install} testId="agent-help-install" />
         <HelpStep
-          title={help.binary ? "2. Authenticate" : "2. API key"}
+          title={help.binary ? t("help.authenticate") : t("help.apiKey")}
           step={help.auth}
           testId="agent-help-auth"
         />
@@ -223,7 +258,12 @@ const AgentHelpBlock: React.FC<{ card: string; hints: Record<string, AgentSignIn
             still reports as missing. */}
         {help.binary && (
           <p className="text-xs text-muted-foreground" data-testid="agent-help-binary">
-            Tendril looks for <code className="font-mono">{help.binary}</code> on your PATH.
+            <Trans
+              ns="settingsAgents"
+              i18nKey="help.binary"
+              values={{ binary: help.binary }}
+              components={{ code: <code className="font-mono" /> }}
+            />
           </p>
         )}
       </div>
@@ -238,6 +278,7 @@ export const CodingAgentSection: React.FC<{
   /** Writes one key and re-reads the config (`SettingsView`'s `saveRawKey`). */
   onSaveRaw: (key: string, value: unknown) => Promise<void>;
 }> = ({ config, savedAgent, onSaveRaw }) => {
+  const { t } = useTranslation("settingsAgents");
   const entries = React.useMemo(() => readAgentEntries(config), [config]);
 
   // `GetInitialSelectedAgent` / `GetInitialByoUrl` / `GetInitialApiKey`: which card is lit, and the
@@ -252,6 +293,7 @@ export const CodingAgentSection: React.FC<{
   const [customNames, setCustomNames] = React.useState(false);
   const [agents, setAgents] = React.useState<AgentOption[]>([]);
   const [isSaving, setIsSaving] = React.useState(false);
+  /** The bridge's detail for a failed save, worded at render time. */
   const [error, setError] = React.useState<string | null>(null);
   const [isTestOpen, setIsTestOpen] = React.useState(false);
 
@@ -261,7 +303,7 @@ export const CodingAgentSection: React.FC<{
   // Live discovery (`POST /api/agents/models`). `discovered` is per endpoint rather than global: it is
   // what *this* URL answered, and switching cards discards it.
   const [discovered, setDiscovered] = React.useState<DiscoveredModel[] | null>(null);
-  const [discoveryNote, setDiscoveryNote] = React.useState<string | null>(null);
+  const [discoveryNote, setDiscoveryNote] = React.useState<DiscoveryNote | null>(null);
   const [apiKeyError, setApiKeyError] = React.useState<string | null>(null);
   const [baseUrlError, setBaseUrlError] = React.useState<string | null>(null);
   const [isFetchingModels, setIsFetchingModels] = React.useState(false);
@@ -392,7 +434,7 @@ export const CodingAgentSection: React.FC<{
           : catalogAgent
             ? []
             : [DEFAULT_OPTION_ID, ...FALLBACK_EFFORTS];
-    return ladder.map((id) => ({ value: id, label: effortLabel(id) }));
+    return ladder.map((id) => ({ value: id, label: effortLabel(t, id) }));
   };
 
   const isByo = isByoCard(card);
@@ -434,7 +476,8 @@ export const CodingAgentSection: React.FC<{
       if (isTierUnset(model)) {
         if (!seen.has("default")) {
           seen.add("default");
-          entries.push({ id: "", displayName: "Default" });
+          // Named by the dialog at render time, so the row follows a language change.
+          entries.push({ id: "", displayName: "" });
         }
         continue;
       }
@@ -521,9 +564,7 @@ export const CodingAgentSection: React.FC<{
             // A successful fetch is what puts the pane in select mode - V1 sets
             // `useCustomModelNames` to false right here.
             setCustomNames(false);
-            setDiscoveryNote(
-              `Found ${outcome.models.length} model${outcome.models.length === 1 ? "" : "s"} at this endpoint.`,
-            );
+            setDiscoveryNote({ kind: "found", count: outcome.models.length });
             applyDiscoveredDefaults(outcome.models, outcome.defaults);
             break;
           case "customNames":
@@ -531,9 +572,7 @@ export const CodingAgentSection: React.FC<{
             // from and the names have to be typed. V1 prefills them with the provider's defaults.
             setDiscovered([]);
             setCustomNames(true);
-            setDiscoveryNote(
-              "This endpoint serves no model list, so model names have to be entered by hand.",
-            );
+            setDiscoveryNote({ kind: "customNames" });
             // V1 prefills only an unset field (`IsNullOrWhiteSpace`). An unset tier reads back here as
             // the literal `default`, which is this pane's spelling of the same thing.
             setProfiles((prev) => {
@@ -559,7 +598,7 @@ export const CodingAgentSection: React.FC<{
             break;
         }
       } catch (err) {
-        setDiscoveryNote(`Could not reach the daemon to fetch models: ${describeBridgeError(err)}`);
+        setDiscoveryNote({ kind: "unreachable", error: describeBridgeError(err) });
       } finally {
         setIsFetchingModels(false);
       }
@@ -627,20 +666,16 @@ export const CodingAgentSection: React.FC<{
         if (isByo) payload = withByoCredentials(payload, card, baseUrl, apiKey);
         await onSaveRaw("codingAgents", payload);
       }
-      notificationsStore.notifySuccess("Saved", "Coding agent settings saved");
+      notificationsStore.notifySuccess(t("save.toastTitle"), t("save.toastMessage"));
     } catch (err) {
-      setError(`Failed to save: ${describeBridgeError(err)}`);
+      setError(describeBridgeError(err));
     } finally {
       setIsSaving(false);
     }
   };
 
   return (
-    <SettingsSection
-      title="Coding Agent"
-      hint="Tendril connects to your configured AI coding agent or bundled open source engines like OpenCode."
-      testId="coding-agent-card"
-    >
+    <SettingsSection title={t("section.title")} hint={t("section.hint")} testId="coding-agent-card">
       <form
         className="space-y-4"
         onSubmit={(e) => {
@@ -650,7 +685,7 @@ export const CodingAgentSection: React.FC<{
       >
         {unknownAgent && (
           <Callout.Error data-testid="unknown-coding-agent">
-            {unknownAgentMessage(unknownAgent)}
+            {unknownAgentMessage(t, unknownAgent)}
           </Callout.Error>
         )}
 
@@ -669,7 +704,7 @@ export const CodingAgentSection: React.FC<{
 
         {/* `Text.Block("Bring your own LLM").Bold()` and its own three-card grid. These are not agent
             ids: all three drive the `openaiproxy` agent, and the Ivy proxy resolves to `ivy`. */}
-        <SubSection title="Bring your own LLM" testId="byo-llm-block">
+        <SubSection title={t("byo.title")} testId="byo-llm-block">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-3">
             {BYO_CARDS.map((byo) => (
               <AgentCard
@@ -689,7 +724,7 @@ export const CodingAgentSection: React.FC<{
               {card !== "berget_card" && (
                 <TextField
                   id="byo-base-url"
-                  label="API Base URL"
+                  label={t("byo.baseUrl.label")}
                   value={baseUrl}
                   placeholder={
                     card === "anthropic_card"
@@ -706,7 +741,7 @@ export const CodingAgentSection: React.FC<{
               )}
               <div className="space-y-1">
                 <Label htmlFor="byo-api-key" className="text-xs font-medium text-foreground">
-                  API Key
+                  {t("byo.apiKey.label")}
                 </Label>
                 <div className="flex items-start gap-2">
                   <Input
@@ -730,7 +765,7 @@ export const CodingAgentSection: React.FC<{
                     disabled={isFetchingModels || apiKey.trim() === ""}
                     onClick={() => void fetchModels(finalAgent, baseUrl, typedApiKey)}
                   >
-                    {isFetchingModels ? "Fetching..." : "Fetch models"}
+                    {isFetchingModels ? t("byo.fetchModels.busy") : t("byo.fetchModels.label")}
                   </Button>
                 </div>
                 {apiKeyError ? (
@@ -739,14 +774,15 @@ export const CodingAgentSection: React.FC<{
                   </p>
                 ) : (
                   <p className="text-xs text-muted-foreground">
-                    Stored as {finalAgent === "ivy" ? "IVY_API_KEY, " : ""}ANTHROPIC_API_KEY and
-                    OPENAI_API_KEY on the {finalAgent} agent, which is the environment every launch
-                    gets.
+                    {t("byo.apiKey.hint", {
+                      agent: finalAgent,
+                      context: finalAgent === "ivy" ? "ivy" : undefined,
+                    })}
                   </p>
                 )}
                 {discoveryNote && (
                   <p className="text-xs text-muted-foreground" data-testid="model-discovery-note">
-                    {discoveryNote}
+                    {discoveryNoteText(t, discoveryNote)}
                   </p>
                 )}
               </div>
@@ -758,14 +794,14 @@ export const CodingAgentSection: React.FC<{
             three tiers `apply_profile` maps by name; anything left as Default falls through to the
             agent's built-in tier default, which the placeholder names. */}
         <SubSection
-          title="Profile Models"
+          title={t("profiles.title")}
           hint={
             isCustomMode
-              ? "Specify custom model names and effort level to use for each profile."
+              ? t("profiles.hint.custom")
               : discovered && discovered.length > 0
                 ? // `CodingAgentStepView`'s wording for the same block once its fetch has come back.
-                  "Select models from your endpoint for each profile level."
-                : "Workflow agents are configured to use different profiles depending on the complexity of the task. You can specify what model and effort level to use for each profile."
+                  t("profiles.hint.discovered")
+                : t("profiles.hint.default")
           }
           testId="profile-models-block"
         >
@@ -781,14 +817,14 @@ export const CodingAgentSection: React.FC<{
                 onCheckedChange={setCustomNames}
               />
               <Label htmlFor="custom-model-names" className="text-xs font-medium text-foreground">
-                Custom model names
+                {t("profiles.customNames")}
               </Label>
             </div>
           )}
 
           {!effortEnabled && (
             <p className="mb-2 text-xs text-muted-foreground" data-testid="effort-unsupported">
-              This agent&apos;s CLI takes no effort argument, so effort is ignored.
+              {t("profiles.effortUnsupported")}
             </p>
           )}
 
@@ -815,7 +851,7 @@ export const CodingAgentSection: React.FC<{
                   {isCustomMode ? (
                     <TextField
                       id={`profile-model-${tier}`}
-                      label={TIER_LABELS[tier]}
+                      label={tierLabel(t, tier)}
                       value={profiles[tier].model === DEFAULT_VALUE ? "" : profiles[tier].model}
                       placeholder={defaults[tier].model || DEFAULT_VALUE}
                       onChange={(value) =>
@@ -831,7 +867,7 @@ export const CodingAgentSection: React.FC<{
                   ) : (
                     <NativeSelectField
                       id={`profile-model-${tier}`}
-                      label={TIER_LABELS[tier]}
+                      label={tierLabel(t, tier)}
                       /* The resolved model rather than the sentinel: a select shows a model or it shows
                          nothing sensible. */
                       value={shownTierModel(tier)}
@@ -852,7 +888,7 @@ export const CodingAgentSection: React.FC<{
                   <div className="min-w-0 grow-[35] basis-0">
                     <NativeSelectField
                       id={`profile-effort-${tier}`}
-                      label="Effort"
+                      label={t("profiles.effort")}
                       value={profiles[tier].effort}
                       options={effortOptionsFor(shownTierModel(tier))}
                       onChange={(value) =>
@@ -872,28 +908,26 @@ export const CodingAgentSection: React.FC<{
         {/* `AgentConfig.arguments` and `AgentConfig.environmentVariables`: both are read by
             `resolve_agent_config` for every launch and have no editor at all in V1, which leaves them
             hand-editable in config.yaml only. */}
-        <SubSection title="Extra Arguments &amp; Environment" testId="agent-environment-block">
+        <SubSection title={t("environment.title")} testId="agent-environment-block">
           <div className="space-y-3">
             <div className="space-y-1">
               <Label htmlFor="agent-arguments" className="text-xs font-medium text-foreground">
-                Extra Arguments
+                {t("environment.arguments.label")}
               </Label>
               <Input
                 id="agent-arguments"
                 value={agentArguments}
-                placeholder="e.g. --verbose"
+                placeholder={t("environment.arguments.placeholder")}
                 onChange={(e) => setAgentArguments(e.target.value)}
               />
-              <p className="text-xs text-muted-foreground">
-                Split on whitespace and appended to every launch of this agent.
-              </p>
+              <p className="text-xs text-muted-foreground">{t("environment.arguments.hint")}</p>
             </div>
             <LinesField
               id="agent-environment"
-              label="Environment Variables"
+              label={t("environment.variables.label")}
               value={agentEnv}
               placeholder={"ANTHROPIC_API_KEY=sk-..."}
-              hint="One KEY=value per line. Lines starting with # are ignored."
+              hint={t("environment.variables.hint")}
               onChange={setAgentEnv}
             />
           </div>
@@ -901,7 +935,7 @@ export const CodingAgentSection: React.FC<{
 
         <AgentHelpBlock card={card} hints={agentHints} />
 
-        <SaveError message={error} />
+        <SaveError message={error === null ? null : t("save.failed", { error })} />
 
         {/* `Layout.Horizontal() | Test Agent | Save`, in that order. `type="button"` because this
             sits inside the settings form and a bare button in a form submits it - which would save
@@ -914,10 +948,10 @@ export const CodingAgentSection: React.FC<{
             disabled={isFetchingModels}
             onClick={() => setIsTestOpen(true)}
           >
-            Test Agent
+            {t("actions.test")}
           </Button>
           <Button type="submit" disabled={!hasChanges || isSaving}>
-            {isSaving ? "Saving..." : "Save"}
+            {isSaving ? t("actions.saving") : t("common:actions.save")}
           </Button>
         </div>
 

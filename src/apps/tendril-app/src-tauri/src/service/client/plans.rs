@@ -4,8 +4,8 @@
 use super::{path_segment, urlencoding, TendrilClient};
 use crate::error::BridgeError;
 use crate::models::{
-    PlanArtifactsDto, PlanChangesDto, PlanDetailDto, PlanGitDto, PlanQueryDto, PlanSummaryContentDto,
-    PlanSummaryDto, RepoStatusDto, RevisionResultDto,
+    PlanArtifactContentDto, PlanArtifactsDto, PlanChangesDto, PlanDetailDto, PlanGitDto,
+    PlanQueryDto, PlanSummaryContentDto, PlanSummaryDto, RepoStatusDto, RevisionResultDto,
 };
 use crate::service::plan_mapping::{map_plan_detail, map_plan_summary};
 use serde_json::json;
@@ -437,7 +437,11 @@ impl TendrilClient {
     }
 
     pub async fn get_plan_changes(&self, plan_id: &str) -> Result<PlanChangesDto, BridgeError> {
-        let url = format!("{}/api/plans/{}/changes", self.base_url, urlencoding(plan_id));
+        let url = format!(
+            "{}/api/plans/{}/changes",
+            self.base_url,
+            urlencoding(plan_id)
+        );
         let resp = self.client.get(&url).headers(self.headers()).send().await?;
         if !resp.status().is_success() {
             let status = resp.status();
@@ -451,7 +455,11 @@ impl TendrilClient {
     }
 
     pub async fn get_plan_summary(&self, plan_id: &str) -> Result<Option<String>, BridgeError> {
-        let url = format!("{}/api/plans/{}/summary", self.base_url, urlencoding(plan_id));
+        let url = format!(
+            "{}/api/plans/{}/summary",
+            self.base_url,
+            urlencoding(plan_id)
+        );
         let resp = self.client.get(&url).headers(self.headers()).send().await?;
         if !resp.status().is_success() {
             let status = resp.status();
@@ -466,7 +474,11 @@ impl TendrilClient {
     }
 
     pub async fn get_plan_artifacts(&self, plan_id: &str) -> Result<PlanArtifactsDto, BridgeError> {
-        let url = format!("{}/api/plans/{}/artifacts", self.base_url, urlencoding(plan_id));
+        let url = format!(
+            "{}/api/plans/{}/artifacts",
+            self.base_url,
+            urlencoding(plan_id)
+        );
         let resp = self.client.get(&url).headers(self.headers()).send().await?;
         if !resp.status().is_success() {
             let status = resp.status();
@@ -474,6 +486,33 @@ impl TendrilClient {
             return Err(BridgeError::new(
                 "GET_PLAN_ARTIFACTS_FAILED",
                 format!("Failed to get plan artifacts for '{plan_id}' ({status}): {text}"),
+            ));
+        }
+        Ok(resp.json().await?)
+    }
+
+    /// One artifact's text, for the Review app's artifact sheet: `GET /api/plans/{id}/artifacts/content`.
+    ///
+    /// `path` is the absolute path `get_plan_artifacts` listed, and the daemon refuses anything that
+    /// does not resolve inside the plan's `Artifacts` folder.
+    pub async fn get_plan_artifact_content(
+        &self,
+        plan_id: &str,
+        path: &str,
+    ) -> Result<PlanArtifactContentDto, BridgeError> {
+        let url = format!(
+            "{}/api/plans/{}/artifacts/content?path={}",
+            self.base_url,
+            urlencoding(plan_id),
+            urlencoding(path)
+        );
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "GET_PLAN_ARTIFACT_CONTENT_FAILED",
+                format!("Failed to read artifact '{path}' of plan '{plan_id}' ({status}): {text}"),
             ));
         }
         Ok(resp.json().await?)

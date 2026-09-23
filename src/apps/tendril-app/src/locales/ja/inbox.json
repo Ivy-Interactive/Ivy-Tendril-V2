@@ -1,0 +1,229 @@
+{
+  "rail": {
+    "ariaLabel": "受信トレイのカテゴリ",
+    "myIssues": "自分の Issue",
+    "reviews": "レビュー依頼",
+    "projects": "プロジェクト",
+    "noProjects": "設定にプロジェクトがありません"
+  },
+  "header": {
+    "title": {
+      "myIssues": "自分の Issue",
+      "reviews": "レビュー依頼",
+      "projectIssues": "{{project}} の Issue",
+      "projectIssues_noProject": "プロジェクトの Issue"
+    },
+    "refresh": "更新",
+    "autoAccept": {
+      "on": "自動承認：オン",
+      "off": "自動承認：オフ",
+      "onTooltip": "新しく割り当てられた Issue は、見つかるとすぐに計画を開始します",
+      "offTooltip": "新しく割り当てられた Issue は、以下に「判断待ち」として表示されます。承認するか却下してください",
+      "settings": "自動承認の設定"
+    },
+    "checkNow": {
+      "label": "今すぐ確認",
+      "checking": "確認中…",
+      "tooltip": "次回の定期確認を待たずに、自分に割り当てられた GitHub Issue を今すぐインポート"
+    }
+  },
+  "bulk": {
+    "selectAll": "すべて選択",
+    "deselectAll": "すべて選択解除",
+    "summary": "{{total}} 件中 {{selected}} 件を選択",
+    "openChat": {
+      "label": "チャットを開く",
+      "labelWithCount": "チャットを開く ({{selected}})",
+      "tooltip": "選択した Issue についてコーディングエージェントと相談"
+    },
+    "fireOff": {
+      "label": "Tendril で開始",
+      "labelWithCount": "Tendril で開始 ({{selected}})"
+    }
+  },
+  "freshness": {
+    "repo": {
+      "label": "リポジトリ",
+      "ariaLabel": "リポジトリで絞り込み"
+    },
+    "updated": "{{when}} に更新",
+    "updated_justNow": "たった今更新",
+    "notYetUpdated": "未更新",
+    "autoRefresh": {
+      "label": "自動更新",
+      "ariaLabel": "自動更新の間隔",
+      "off": "オフ"
+    }
+  },
+  "fireNotice": {
+    "success_other": "{{count}} 件の Issue を Tendril で開始しました",
+    "partial": "{{total}} 件中 {{fired}} 件を開始しました。#{{number}} で失敗しました：{{error}}",
+    "partial_unknownIssue": "{{total}} 件中 {{fired}} 件を開始しました。ある Issue で失敗しました：{{error}}"
+  },
+  "sweep": {
+    "alreadyRunning": "確認はすでに実行中です。",
+    "notMaster": "このデーモンはマスターではないため、確認を行いませんでした。",
+    "imported": "{{imported}} 件をインポートし、{{skipped}} 件をスキップしました。",
+    "accepted_other": "{{count}} 件はすぐに計画を開始しました。",
+    "accepted_partial_other": "{{count}} 件はすぐに計画を開始しました（残りは判断待ちです）。",
+    "errors_other": "{{count}} 件のエラー：{{error}}",
+    "join": "{{previous}}{{next}}"
+  },
+  "chatTitle_other": "{{count}} 件の Issue",
+  "errors": {
+    "noRemotes": "プロジェクト {{project}} の Git リモートを解決できませんでした。",
+    "noRemotes_noProject": "プロジェクトの Git リモートを解決できませんでした（プロジェクトが選択されていません）。",
+    "loadFailed": "GitHub Issue を読み込めませんでした"
+  },
+  "loading": "GitHub から Issue を読み込み中…",
+  "empty": {
+    "reviews": {
+      "title": "すべて対応済み",
+      "description": "現在レビューが必要なプルリクエストはありません。"
+    },
+    "issues": {
+      "title": "Issue が見つかりません",
+      "description": "選択したビューに一致する Issue はありません。"
+    },
+    "filtered": "現在の検索条件とフィルター条件に一致する Issue はありません。"
+  },
+  "filters": {
+    "search": {
+      "ariaLabel": "Issue を検索",
+      "placeholder": "タイトル、#番号、作成者、説明で検索…"
+    },
+    "awaiting": {
+      "label": "判断待ち",
+      "tooltip": "判断待ちの割り当て済み Issue のみを表示"
+    },
+    "labelPlaceholder": "ラベルで絞り込み…",
+    "assigneePlaceholder": "担当者で絞り込み…"
+  },
+  "issueTable": {
+    "columns": {
+      "issue": "Issue",
+      "repository": "リポジトリ",
+      "labels": "ラベル",
+      "assignees": "担当者"
+    },
+    "awaitingMark": {
+      "ariaLabel": "判断待ち",
+      "tooltip": "判断待ちです。割り当て済み Issue の確認で {{when}} に見つかりました。承認すると {{project}} で計画を開始します。",
+      "tooltip_justNow": "判断待ちです。割り当て済み Issue の確認でたった今見つかりました。承認すると {{project}} で計画を開始します。"
+    },
+    "actions": {
+      "fireOff": {
+        "label": "Tendril で開始",
+        "tooltip": "この Issue を Tendril で開始"
+      },
+      "viewDetails": {
+        "label": "詳細を表示",
+        "tooltip": "Issue の詳細を表示"
+      },
+      "openGitHub": {
+        "label": "GitHub で開く",
+        "tooltip": "GitHub で Issue を開く"
+      },
+      "accept": {
+        "label": "承認",
+        "tooltip": "承認：{{project}} でこの Issue の計画を開始"
+      },
+      "more": {
+        "label": "その他の操作",
+        "tooltip": "GitHub で開く、または却下"
+      },
+      "dismiss": {
+        "label": "却下"
+      }
+    }
+  },
+  "reviewTable": {
+    "columns": {
+      "pullRequest": "プルリクエスト",
+      "repository": "リポジトリ",
+      "updated": "更新日時"
+    },
+    "actions": {
+      "openGitHub": {
+        "label": "GitHub でレビュー",
+        "tooltip": "GitHub でプルリクエストを開く"
+      },
+      "viewDetails": {
+        "label": "詳細を表示",
+        "tooltip": "レビューの詳細を表示"
+      }
+    }
+  },
+  "sheet": {
+    "titleFallback": "Issue",
+    "assigned": "担当者：{{assignees}}",
+    "openOnGitHub": "GitHub で開く",
+    "dismiss": {
+      "label": "却下",
+      "tooltip": "完全に却下：割り当て済み Issue の確認で、この Issue が再び提案されることはありません"
+    },
+    "accept": {
+      "label": "承認",
+      "tooltip": "{{project}} でこの Issue の計画を開始"
+    },
+    "fireOff": "Tendril で開始",
+    "noDescription": "説明はありません。"
+  },
+  "pullRequests": {
+    "title": "プルリクエスト",
+    "status": {
+      "open": "オープン",
+      "merged": "マージ済み",
+      "closed": "クローズ済み",
+      "unknown": "不明"
+    },
+    "statusTooltip": {
+      "unknown": "不明：デーモンがこのプルリクエストを解決できませんでした（最終確認 {{lastChecked}}）。再同期してもう一度お試しください。",
+      "unknown_neverChecked": "不明：デーモンがこのプルリクエストを解決できませんでした（未確認）。再同期してもう一度お試しください。",
+      "merged": "マージ済み（最終確認 {{lastChecked}}）。マージ済みのプルリクエストは再チェックされません。",
+      "merged_neverChecked": "マージ済み（未確認）。マージ済みのプルリクエストは再チェックされません。",
+      "other": "{{status}}（最終確認 {{lastChecked}} 時点）。",
+      "other_neverChecked": "{{status}}（未確認）。"
+    },
+    "syncNotice": {
+      "unreachableAll": "ステータスを更新できませんでした：{{repos}} で GitHub に接続できませんでした。`{{cli}}` CLI がインストールされ、認証済みであることを確認してください（`{{command}}`）。",
+      "unreachableSome": "一部のステータスは変更されていません：{{repos}} で GitHub に接続できませんでした。`{{cli}}` CLI がインストールされ、認証済みであることを確認してください（`{{command}}`）。",
+      "nothingToRefresh": "更新対象はありません：{{fresh}} 件は最近確認済み、{{merged}} 件はマージ済みです。",
+      "alreadyRunning": "同期処理はすでに実行中です。"
+    },
+    "columns": {
+      "plan": "計画",
+      "project": "プロジェクト",
+      "status": "ステータス",
+      "pr": "PR",
+      "tokens": "トークン",
+      "cost": "コスト",
+      "repository": "リポジトリ",
+      "branch": "ブランチ"
+    },
+    "actions": {
+      "viewPlan": "計画を表示",
+      "followUp": "フォローアップ",
+      "openPr": "PR を開く",
+      "resync": "再同期"
+    },
+    "empty": {
+      "title": "プルリクエストはありません",
+      "description": "プルリクエストが記録された計画はまだありません。レビュータブから作成すると、ここに表示されます。",
+      "loadFailed": "プルリクエストの一覧を読み込めなかったため、何も表示できません。",
+      "filtered": "現在の検索クエリまたはフィルター条件に一致するプルリクエストはありません。"
+    },
+    "search": {
+      "ariaLabel": "プルリクエストを検索",
+      "placeholder": "計画、プロジェクト、リポジトリ、ブランチで検索…"
+    },
+    "statusFilterPlaceholder": "ステータスで絞り込み…",
+    "resyncAll": "すべて再同期",
+    "resyncing": "再同期中…",
+    "sheet": {
+      "titleFallback": "計画",
+      "loadingRevision": "リビジョンを読み込み中…",
+      "notFound": "計画が見つからないか、空です。"
+    }
+  }
+}

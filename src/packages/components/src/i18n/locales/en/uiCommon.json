@@ -1,0 +1,251 @@
+{
+  "blade": {
+    "back": "Back",
+    "backTo": "Back to {{title}}",
+    "close": "Close {{title}}",
+    "refresh": "Refresh {{title}}"
+  },
+  "bladeContainer": {
+    "ariaLabel": "Blades"
+  },
+  "calendar": {
+    "dayButton": {
+      "selected": "{{date}}, selected",
+      "today": "Today, {{date}}",
+      "todaySelected": "Today, {{date}}, selected"
+    },
+    "gridcell": {
+      "today": "Today, {{date}}"
+    },
+    "monthDropdown": "Choose the Month",
+    "monthPlaceholder": "M",
+    "navLabel": "{{label}} navigation",
+    "nextMonth": "Go to the Next Month",
+    "previousMonth": "Go to the Previous Month",
+    "weekNumber": "Week {{week}}",
+    "weekNumberHeader": "Week Number",
+    "yearDropdown": "Choose the Year",
+    "yearPlaceholder": "YYYY"
+  },
+  "callout": {
+    "dismiss": "Dismiss"
+  },
+  "charts": {
+    "axis": {
+      "billions": "{{value}}B",
+      "millions": "{{value}}M",
+      "thousands": "{{value}}K"
+    },
+    "radarDefaultSeries": "Data",
+    "scatterLineSeries": "{{name}} Line"
+  },
+  "chatMessageList": {
+    "scrollToBottom": "Scroll to bottom"
+  },
+  "clipboard": {
+    "copyFailed": "Could not copy to the clipboard."
+  },
+  "copyToClipboard": {
+    "ariaLabel": "Copy to clipboard",
+    "copied": "Copied!"
+  },
+  "dataTable": {
+    "columnHeader": {
+      "clearSort": "Clear sort on {{column}}",
+      "reorder": "Reorder column",
+      "reorderAt": "Reorder column, position {{position}} of {{total}}",
+      "resize": "Resize column",
+      "sortAscending": "Sort by {{column}} ascending",
+      "sortDescending": "Sort by {{column}} descending"
+    },
+    "columnOptions": "Column options",
+    "editCell": "Edit {{column}}",
+    "empty": "No results.",
+    "filter": {
+      "clear": "Clear",
+      "clearAriaLabel": "Clear filter",
+      "errors": {
+        "afterIs": "After '{{keyword}}' expected '{{blank}}', '{{notBlank}}', '{{null}}' or '{{notNull}}'.",
+        "afterNot": "After '{{keyword}}' expected '{{contains}}', '{{in}}' or '{{equals}}'.",
+        "expectedColumn": "Expected a column name at position {{position}}, found '{{text}}'.",
+        "expectedValue": "Expected a quoted value at position {{position}}, e.g. {{example}}. Found '{{text}}'.",
+        "expectedWord": "After '{{after}}' expected '{{word}}'.",
+        "inNeedsList": "'{{keyword}}' takes a list: {{example}}.",
+        "incomplete": "The expression ends before it is complete.",
+        "needsComparison": "'{{column}}' needs a comparison, e.g. {{equalsExample}} or {{containsExample}}.",
+        "noFilterableColumn": "No column can be filtered on this table.",
+        "unclosedBracket": "Unclosed '[' at position {{position}}.",
+        "unclosedGroup": "Unclosed '(' — every group needs a matching ')'.",
+        "unclosedList": "Unclosed '(' in an '{{keyword}}' list.",
+        "unclosedQuote": "Unclosed quote at position {{position}}.",
+        "unexpectedCharacter": "Unexpected '{{text}}' at position {{position}}.",
+        "unexpectedSymbol": "Unexpected '{{text}}' at position {{position}}.",
+        "unexpectedToken": "Unexpected '{{text}}' at position {{position}}. Join conditions with {{and}} or {{or}}.",
+        "unknownColumn": "Unknown column '{{text}}'. Filterable: {{names}}.",
+        "unknownComparison": "Unknown comparison '{{text}}' at position {{position}}. Use {{operators}} or {{last}}."
+      },
+      "filterableColumns": "Filterable columns",
+      "help": "One expression, committed with Enter. Conditions join with <code>{{and}}</code> / <code>{{or}}</code> and group with parentheses.",
+      "input": "Filter expression",
+      "noFilterableColumns": "No filterable columns",
+      "syntax": "Filter syntax",
+      "syntaxTitle": "What can be filtered, and how",
+      "toggle": "Filter",
+      "toggleTitle": "Filter table data"
+    },
+    "loadingMore": "Loading more…",
+    "pagination": {
+      "ariaLabel": "Table pagination",
+      "firstPage": "Go to first page",
+      "lastPage": "Go to last page",
+      "nextPage": "Go to next page",
+      "noRows": "No rows",
+      "page": "Page {{page}} of {{pageCount}}",
+      "previousPage": "Go to previous page",
+      "rowsPerPage": "Rows per page",
+      "showing": "Showing {{start}}–{{end}} of {{total}}"
+    },
+    "rowActions": "Row actions",
+    "selectAllRows": "Select all rows",
+    "selectRow": "Select row {{id}}"
+  },
+  "dialog": {
+    "close": "Close"
+  },
+  "diagram": {
+    "invalidGraphviz": "Invalid Graphviz DOT syntax",
+    "invalidMermaid": "Invalid Mermaid diagram syntax",
+    "loading": "Loading diagram...",
+    "loadingGraphviz": "Loading Graphviz...",
+    "loadingMermaid": "Loading Mermaid...",
+    "renderFailed": "Failed to render diagram"
+  },
+  "errorDisplay": {
+    "copyDetails": "Copy Details",
+    "message": "Message",
+    "stackTrace": "Stack Trace",
+    "type": "Type"
+  },
+  "errorSheet": {
+    "description": "An error occurred in the application. Details are shown below.",
+    "title": "Oops! Something went wrong"
+  },
+  "format": {
+    "bytes": {
+      "b": "{{value}} B",
+      "gb": "{{value}} GB",
+      "kb": "{{value}} KB",
+      "mb": "{{value}} MB",
+      "pb": "{{value}} PB",
+      "tb": "{{value}} TB"
+    },
+    "duration": {
+      "hoursMinutes": "{{hours}}h {{minutes}}m",
+      "minutesSeconds": "{{minutes}}m {{seconds}}s",
+      "seconds": "{{seconds}}s"
+    },
+    "tokenCount": {
+      "millions": "{{value}}M",
+      "thousands": "{{value}}k"
+    },
+    "tokens": {
+      "millions": "{{value}}M",
+      "thousands": "{{value}}K"
+    }
+  },
+  "imageOverlay": {
+    "ariaLabel": "Image Overlay",
+    "close": "Close",
+    "next": "Next image",
+    "position": "{{current}} / {{total}}",
+    "previous": "Previous image"
+  },
+  "invalidIcon": {
+    "ariaLabel": "Validation error"
+  },
+  "jsonRenderer": {
+    "invalid": "Invalid JSON string"
+  },
+  "loading": {
+    "ariaLabel": "Loading",
+    "text": "Loading..."
+  },
+  "madeWithIvy": {
+    "label": "MADE WITH"
+  },
+  "markdown": {
+    "alerts": {
+      "caution": "Caution",
+      "important": "Important",
+      "note": "Note",
+      "tip": "Tip",
+      "warning": "Warning"
+    },
+    "footnotes": {
+      "backToReference": "Back to reference {{ref}}",
+      "backToReferenceRepeat": "Back to reference {{ref}}-{{reref}}",
+      "label": "Footnotes"
+    },
+    "taskCompleted": "Completed task",
+    "taskPending": "Pending task"
+  },
+  "multiselect": {
+    "bulkSelection": "Bulk selection",
+    "clearAll": "Clear All",
+    "empty": "No options available",
+    "placeholder": "Select options...",
+    "remove": "Remove",
+    "selectAll": "Select All",
+    "toggleDropdown": "Toggle dropdown"
+  },
+  "pagination": {
+    "ariaLabel": "pagination",
+    "morePages": "More pages",
+    "next": "Next",
+    "nextAriaLabel": "Go to next page",
+    "previous": "Previous",
+    "previousAriaLabel": "Go to previous page"
+  },
+  "progress": {
+    "ariaLabel": "Progress"
+  },
+  "sheet": {
+    "close": "Close"
+  },
+  "sidebar": {
+    "toggle": "Toggle Sidebar"
+  },
+  "slider": {
+    "ariaLabel": "Slider"
+  },
+  "stackedProgress": {
+    "indeterminate": "Indeterminate",
+    "segmentFallback": "Segment {{number}}",
+    "select": "Select {{label}}",
+    "tooltip": "{{label}}: {{value}}",
+    "total": "Total: {{total}}",
+    "valueText": "{{label}}: {{value}} of {{total}}"
+  },
+  "starRating": {
+    "rate_one": "Rate {{count}} star",
+    "rate_other": "Rate {{count}} stars"
+  },
+  "statusLine": {
+    "estimatedTooltip": "Estimated from the stream so far",
+    "tokensAbbreviated": "{{value}} tokens",
+    "tokensAbbreviatedEstimated": "~{{value}} tokens",
+    "tokensEstimated_one": "~{{value}} tokens",
+    "tokensEstimated_other": "~{{value}} tokens",
+    "tokens_one": "{{value}} tokens",
+    "tokens_other": "{{value}} tokens"
+  },
+  "toolbar": {
+    "moreActions": "More actions"
+  },
+  "tuiBadge": {
+    "remove": "Remove"
+  },
+  "xmlRenderer": {
+    "invalid": "Invalid XML string"
+  }
+}

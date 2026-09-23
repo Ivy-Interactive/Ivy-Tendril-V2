@@ -26,6 +26,8 @@ import {
   REFERENCE_LINE_DEFAULTS,
   applyDefaults,
 } from "./chartDefaults";
+import { formatNumber, i18n } from "@/i18n/uiCommon";
+import { dateFnsLocale } from "@/lib/formatters";
 // Re-export from styles
 export type { ColorScheme } from "./styles/colors";
 export { getChartColors as getColors } from "./styles/colors";
@@ -86,15 +88,34 @@ export const getAxisDomainBound = (
   };
 };
 
-const numberFormatCache = new Map<string, Intl.NumberFormat>();
-const getNumberFormatter = (options: Intl.NumberFormatOptions) => {
-  const key = JSON.stringify(options);
-  let formatter = numberFormatCache.get(key);
-  if (!formatter) {
-    formatter = Intl.NumberFormat(undefined, options);
-    numberFormatCache.set(key, formatter);
+/**
+ * A whole number as `toFixed(0)` writes it - rounded by `toFixed`, so the figure never moves - in the
+ * UI's language and without grouping.
+ */
+const wholeNumber = (value: number): string =>
+  formatNumber(Number(value.toFixed(0)), { maximumFractionDigits: 0, useGrouping: false });
+
+type AxisMagnitude = "thousands" | "millions" | "billions";
+
+/** `value` (already divided down to the magnitude) with that magnitude's suffix: "12K", "3M", "1B". */
+const withMagnitude = (value: number, magnitude: AxisMagnitude): string => {
+  const formatted = wholeNumber(value);
+  switch (magnitude) {
+    case "thousands":
+      return i18n.t("uiCommon:charts.axis.thousands", { value: formatted });
+    case "millions":
+      return i18n.t("uiCommon:charts.axis.millions", { value: formatted });
+    case "billions":
+      return i18n.t("uiCommon:charts.axis.billions", { value: formatted });
   }
-  return formatter;
+};
+
+/** The value axis' default tick: a K/M/B abbreviation from a thousand up, otherwise `null`. */
+const abbreviateTick = (value: number): string | null => {
+  if (Math.abs(value) >= 1e9) return withMagnitude(value / 1e9, "billions");
+  if (Math.abs(value) >= 1e6) return withMagnitude(value / 1e6, "millions");
+  if (Math.abs(value) >= 1e3) return withMagnitude(value / 1e3, "thousands");
+  return null;
 };
 
 export const formatTickLabel = (
@@ -113,30 +134,30 @@ export const formatTickLabel = (
       const parts = formatter.split(":");
       const currency = parts.length > 1 ? parts[1] : "USD";
       const fractionDigits = parseInt(parts[0].substring(1));
-      return getNumberFormatter({
+      return formatNumber(Number(value), {
         style: "currency",
         currency,
         maximumFractionDigits: isNaN(fractionDigits) ? 0 : fractionDigits,
-      }).format(Number(value));
+      });
     }
     if (formatter.startsWith("P")) {
       const fractionDigits = parseInt(formatter.substring(1));
-      return getNumberFormatter({
+      return formatNumber(Number(value) / 100, {
         style: "percent",
         maximumFractionDigits: isNaN(fractionDigits) ? 0 : fractionDigits,
-      }).format(Number(value) / 100);
+      });
     }
     if (formatter.startsWith("N") || formatter.startsWith("F")) {
       const fractionDigits = parseInt(formatter.substring(1));
-      return getNumberFormatter({
+      return formatNumber(Number(value), {
         maximumFractionDigits: isNaN(fractionDigits) ? 2 : fractionDigits,
-      }).format(Number(value));
+      });
     }
     if (formatter === "#,##0,,M") {
-      return (Number(value) / 1000000).toFixed(0) + "M";
+      return withMagnitude(Number(value) / 1000000, "millions");
     }
     if (formatter === "#,##0,K") {
-      return (Number(value) / 1000).toFixed(0) + "K";
+      return withMagnitude(Number(value) / 1000, "thousands");
     }
     return null;
   };
@@ -151,7 +172,8 @@ export const formatTickLabel = (
             : timeZone || "UTC";
         const date = new TZDate(new Date(value), tz);
         if (!isNaN(date.getTime())) {
-          return dateFnsFormat(date, formatter);
+          // Month and weekday names (MMM, EEEE, …) in the UI language; `enUS` for English as before.
+          return dateFnsFormat(date, formatter, { locale: dateFnsLocale() });
         }
       } catch {
         // Fall through
@@ -173,7 +195,7 @@ export const formatTickLabel = (
 };
 
 export const formatTooltipValue = (value: number | string, tooltip?: ToolTipProps): string => {
-  if (!tooltip?.valueFormat) return value.toLocaleString();
+  if (!tooltip?.valueFormat) return typeof value === "number" ? formatNumber(value) : value;
   return formatTickLabel(value, tooltip.valueFormat, null, tooltip.valueFormatType);
 };
 
@@ -519,11 +541,7 @@ export const generateXAxis = (
                 axis.tickFormatterType,
               );
             } else {
-              const numVal = Number(value);
-              if (Math.abs(numVal) >= 1e9) formatted = (numVal / 1e9).toFixed(0) + "B";
-              else if (Math.abs(numVal) >= 1e6) formatted = (numVal / 1e6).toFixed(0) + "M";
-              else if (Math.abs(numVal) >= 1e3) formatted = (numVal / 1e3).toFixed(0) + "K";
-              else formatted = String(value);
+              formatted = abbreviateTick(Number(value)) ?? String(value);
             }
             return axis.unit ? `${formatted}${axis.unit}` : formatted;
           },
@@ -630,15 +648,9 @@ export const generateYAxis = (
             );
           } else if (effectiveLargeSpread) {
             const unscaled = Math.sign(value) * (10 ** Math.abs(value) - 1);
-            if (Math.abs(unscaled) >= 1e9) formatted = (unscaled / 1e9).toFixed(0) + "B";
-            else if (Math.abs(unscaled) >= 1e6) formatted = (unscaled / 1e6).toFixed(0) + "M";
-            else if (Math.abs(unscaled) >= 1e3) formatted = (unscaled / 1e3).toFixed(0) + "K";
-            else formatted = unscaled.toFixed(0);
+            formatted = abbreviateTick(unscaled) ?? wholeNumber(unscaled);
           } else {
-            if (Math.abs(value) >= 1e9) formatted = (value / 1e9).toFixed(0) + "B";
-            else if (Math.abs(value) >= 1e6) formatted = (value / 1e6).toFixed(0) + "M";
-            else if (Math.abs(value) >= 1e3) formatted = (value / 1e3).toFixed(0) + "K";
-            else formatted = value;
+            formatted = abbreviateTick(value) ?? value;
           }
           return axis.unit ? `${formatted}${axis.unit}` : formatted;
         },

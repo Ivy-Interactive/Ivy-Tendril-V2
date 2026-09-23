@@ -1,6 +1,7 @@
 import React from "react";
 import { Pencil } from "lucide-react";
 import { BladeContainer, Button } from "@ivy-interactive/components/ui";
+import { useTranslation } from "../../i18n";
 import { ProjectNameEditor } from "./projectSettings/blades";
 import { ProjectDetailBody } from "./projectSettings/ProjectDetailBody";
 import { type ProjectSettingsViewProps } from "./projectSettings/types";
@@ -31,15 +32,16 @@ export type { ProjectSettingsViewProps };
  * pushed on top of it - V1's `bladeContext.Push(this, new Edit...BladeView(...))`.
  */
 export const ProjectSettingsView: React.FC<ProjectSettingsViewProps> = (props) => {
+  const { t } = useTranslation("settingsProjects");
   const [isRenaming, setIsRenaming] = React.useState(false);
 
   return (
     <BladeContainer
-      aria-label="Project configuration"
+      aria-label={t("view.ariaLabel")}
       data-testid="project-settings-blades"
       root={{
         title: props.project.name,
-        subtitle: "Project configuration",
+        subtitle: t("view.subtitle"),
         width: "flex",
         // V1 renders the name with a Rename pencil beside it. The blade header already renders the
         // name, so the pencil belongs there rather than on a second row that repeats it, and the
@@ -57,8 +59,8 @@ export const ProjectSettingsView: React.FC<ProjectSettingsViewProps> = (props) =
             type="button"
             variant="ghost"
             size="icon"
-            title="Rename Project"
-            aria-label="Rename Project"
+            title={t("view.rename")}
+            aria-label={t("view.rename")}
             onClick={() => setIsRenaming(true)}
           >
             <Pencil className="size-4" aria-hidden />

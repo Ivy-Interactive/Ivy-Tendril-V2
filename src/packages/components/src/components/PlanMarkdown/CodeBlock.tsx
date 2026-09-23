@@ -3,6 +3,7 @@ import { prismTheme } from "@/lib/prismTheme";
 import { copyToClipboard } from "@/lib/clipboard";
 import { lazyWithRetry } from "@/lib/lazyWithRetry";
 import { IconButton } from "../ui/IconButton";
+import { useTranslation } from "@/i18n/uiPlanWorkspace";
 
 /**
  * A highlighted code block with a copy button — the plain-fence rendering, with no dispatch on the
@@ -78,6 +79,7 @@ export const normalizeLanguage = (lang: string): string =>
   lang === "xml" || lang === "html" || lang === "svg" ? "markup" : lang;
 
 const CopyButton: React.FC<{ content: string }> = ({ content }) => {
+  const { t } = useTranslation("uiPlanWorkspace");
   const [copied, setCopied] = useState(false);
 
   const handleCopy = useCallback(() => {
@@ -94,7 +96,7 @@ const CopyButton: React.FC<{ content: string }> = ({ content }) => {
   return (
     <IconButton
       className={`pmv-code-copy${copied ? " pmv-code-copy--copied" : ""}`}
-      label="Copy to clipboard"
+      label={t("codeBlock.copy")}
       tooltip={false}
       size="lg"
       tone="muted"

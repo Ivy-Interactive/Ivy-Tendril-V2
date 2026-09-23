@@ -15,26 +15,33 @@ import type { ShellItemState, ShellSectionItemDto } from "./types";
 import { TuiBadge } from "../ui/TuiBadge";
 import { IconButton } from "../ui/IconButton";
 import { useMenuKeyboard } from "../../hooks/use-menu-keyboard";
+import { type TFunction, useTranslation } from "@/i18n/uiShell";
 import "./shell.css";
 
-const STATE_LABELS: Record<ShellItemState, string> = { working: "Working", completed: "Completed" };
+/** The accessible name of a row's state glyph, looked up from the state at render time. */
+const stateLabel = (t: TFunction, state: ShellItemState): string =>
+  state === "working" ? t("sectionItems.state.working") : t("sectionItems.state.completed");
+
 const MENU_OFFSET = 4;
 const MENU_MARGIN = 8;
 
-const ItemStateIcon: React.FC<{ state: ShellItemState }> = ({ state }) => (
-  <span
-    className="tsh-section-item-state"
-    data-state={state}
-    role="img"
-    aria-label={STATE_LABELS[state]}
-  >
-    {state === "working" ? (
-      <LoaderCircle size={12} className="tsh-spin" />
-    ) : (
-      <CircleCheck size={12} />
-    )}
-  </span>
-);
+const ItemStateIcon: React.FC<{ state: ShellItemState }> = ({ state }) => {
+  const { t } = useTranslation("uiShell");
+  return (
+    <span
+      className="tsh-section-item-state"
+      data-state={state}
+      role="img"
+      aria-label={stateLabel(t, state)}
+    >
+      {state === "working" ? (
+        <LoaderCircle size={12} className="tsh-spin" />
+      ) : (
+        <CircleCheck size={12} />
+      )}
+    </span>
+  );
+};
 
 /** Maps a `ShellSectionItemDto.icon` name to its lucide component; unknown names render nothing. */
 export const sectionItemIcons: Record<string, React.FC<{ size?: number }>> = {
@@ -62,6 +69,7 @@ const ItemMenu: React.FC<ItemMenuProps> = ({
   onTogglePin,
   onOpenChange,
 }) => {
+  const { t } = useTranslation("uiShell");
   const [open, setOpen] = useState(false);
   const [position, setPosition] = useState<{ top: number; right: number } | null>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -118,12 +126,14 @@ const ItemMenu: React.FC<ItemMenuProps> = ({
     action?.();
   };
 
+  const menuLabel = t("sectionItems.menu.label", { title: item.title });
+
   return (
     <>
       <IconButton
         ref={buttonRef}
-        label={`${item.title} options`}
-        tooltip="Options"
+        label={menuLabel}
+        tooltip={t("sectionItems.menu.tooltip")}
         size="sm"
         className="tsh-section-item-menu-btn"
         aria-haspopup="menu"
@@ -139,7 +149,7 @@ const ItemMenu: React.FC<ItemMenuProps> = ({
             ref={menuRef}
             className="tsh-item-menu"
             role="menu"
-            aria-label={`${item.title} options`}
+            aria-label={menuLabel}
             style={{ top: position.top, right: position.right }}
           >
             {onTogglePin && (
@@ -150,7 +160,7 @@ const ItemMenu: React.FC<ItemMenuProps> = ({
                 onClick={() => pick(onTogglePin)}
               >
                 {item.pinned ? <PinOff size={14} /> : <Pin size={14} />}
-                {item.pinned ? "Unpin chat" : "Pin chat"}
+                {item.pinned ? t("sectionItems.menu.unpin") : t("sectionItems.menu.pin")}
               </button>
             )}
             {onRename && (
@@ -161,7 +171,7 @@ const ItemMenu: React.FC<ItemMenuProps> = ({
                 onClick={() => pick(onRename)}
               >
                 <Pencil size={14} />
-                Edit name
+                {t("sectionItems.menu.rename")}
               </button>
             )}
             {onDelete && (
@@ -172,7 +182,7 @@ const ItemMenu: React.FC<ItemMenuProps> = ({
                 onClick={() => pick(onDelete)}
               >
                 <Trash2 size={14} />
-                Delete
+                {t("sectionItems.menu.delete")}
               </button>
             )}
           </div>,
@@ -189,6 +199,7 @@ interface ItemTitleEditorProps {
 }
 
 const ItemTitleEditor: React.FC<ItemTitleEditorProps> = ({ title, onSave, onCancel }) => {
+  const { t } = useTranslation("uiShell");
   const [text, setText] = useState(title);
   const save = () => {
     const trimmed = text.trim();
@@ -199,7 +210,7 @@ const ItemTitleEditor: React.FC<ItemTitleEditorProps> = ({ title, onSave, onCanc
     <input
       type="text"
       className="tsh-section-item-input"
-      aria-label="Item name"
+      aria-label={t("sectionItems.titleEditor.ariaLabel")}
       value={text}
       autoFocus
       onChange={(e) => setText(e.target.value)}

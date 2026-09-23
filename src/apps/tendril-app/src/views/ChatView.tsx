@@ -21,7 +21,7 @@ import {
 } from "../hooks/useChatMessageWindow";
 import { ConfirmDialog } from "@ivy-interactive/components/dialogs";
 import { ChatMessageRow } from "./ChatMessageRow";
-import { ChatHeader, JobsMenu } from "./ChatHeader";
+import { ChatHeader, JobsMenu, SYNTHETIC_JOB_TYPE } from "./ChatHeader";
 import { AgentPicker } from "../components/chat/AgentPicker";
 import { ImageLightbox, type LightboxImage } from "../components/chat/ImageLightbox";
 import { ComposerAttachment } from "../components/chat/ComposerAttachment";
@@ -46,6 +46,7 @@ import { needsMultipleLines } from "./chat/composerMetrics";
 import { buildChatSamplePrompts, buildGreeting, type SamplePrompt } from "./chat/samplePrompts";
 import { buildChatSidebarList, displayTitle } from "./chat/sidebarList";
 import { useChatAttachments } from "./chat/useChatAttachments";
+import { useTranslation } from "../i18n";
 
 /**
  * The conversation's own pieces, split out of this file and re-exported so every caller keeps the
@@ -81,8 +82,12 @@ interface ChatViewProps {
    * no title bar to put it in.
    */
   greeting?: string;
-  /** `ContentView`'s `headline`: `PlanChatView.Headline` embedded, V1's chat headline otherwise. */
-  headline?: string;
+  /**
+   * `ContentView`'s `headline`: `PlanChatView.Headline` embedded, V1's chat headline otherwise. A
+   * function is read at each render, so a headline the host does not translate itself
+   * (`PLAN_CHAT_HEADLINE`) still follows the language.
+   */
+  headline?: string | (() => string);
   /** `ContentView`'s `samplePrompts`. Absent means `SamplePrompts.ForChat` off the live plan list. */
   samplePrompts?: SamplePrompt[];
   /**
@@ -99,10 +104,6 @@ const MAX_CHAT_SEARCH_RESULTS = 15;
 /** The transcription socket the shared composer defaults to; the mic here speaks to the same one. */
 const TRANSCRIPTION_URL = "wss://tendril-api.ivy.app/transcribe/ws";
 
-/** The composer's headline prompt, and the placeholder it writes under. */
-const COMPOSER_PLACEHOLDER = "Ask Tendril anything...";
-const EMPTY_STATE_HEADLINE = "What Are We Producing Today?";
-
 /**
  * The conversation, which is `Apps/Chat/ContentView` — the *same* view whether it is the Chat page or
  * the panel beside a plan. V1 has exactly one chat view and two callers; `embedded` is the whole of
@@ -117,8 +118,7 @@ const EMPTY_STATE_HEADLINE = "What Are We Producing Today?";
  * | `store.subscribe` / `store.init()` | **kept** — it is the conversation. The panel's store is its own, so `init()` opens a second `chat-event` listener; unmount `destroy()`s it, so a visit leaks nothing. |
  * | `store.pruneEmptySessions()` on unmount | **off**. V1 prunes in `ChatApp`, not in `ContentView`, and an embedded prune would reach chats the panel does not own. |
  * | `usePublishSidebarList` | **off**, and the list is not even built. `PlanChatView` publishes none, which is exactly why V1's embedded chat shows no session list. |
- * | the Chats search dialog | **off**. Only the published list's `onSearch` opens it, so it is already unreachable; not rendering it keeps a second `Dialog` off the plan page. |
- * | `useWebviewFileDrop` | **off**. It listens on the *webview*, not on this subtree, so a second registration would answer drops made anywhere in the app. The React drag handlers stay — those are scoped — and the paperclip still opens the file dialog. |
+ * | `useWebviewFileDrop` | **kept** (scoped to container). In both standalone and embedded mode, it listens on the webview and uses `targetRef` to ensure drops made inside the chat area are accepted while drops elsewhere are ignored. |
  * | `ChatHeader` | **off**: V1 swaps the whole header for a right-aligned `JobsMenu` that appears only once the conversation has jobs. So no rename, no delete menu, and no new-chat button — `PlanChatView` passes `startNewChat: () => { }`. |
  * | composer keys, voice recorder, autoscroll, lightbox, `ResizeObserver` | **kept**: all of them are this instance's own DOM. |
  * | `jobsStore` / `plansStore` subscriptions | **kept**. Read-only, and `PlanChatView` subscribes to `JobsChanged` for the same reason — the jobs pill follows the live list. |
@@ -131,10 +131,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
   store = chatStore,
   embedded = false,
   greeting: greetingOverride,
-  headline = EMPTY_STATE_HEADLINE,
+  headline: headlineOverride,
   samplePrompts: samplePromptsOverride,
   draftPrompt,
 }) => {
+  const { t } = useTranslation("chat");
   const [storeState, setStoreState] = useState<ChatState>(() => store.getState());
   const [inputPrompt, setInputPrompt] = useState("");
   /** `ChatApp`'s own search trigger, opened from the Chats section's search icon. */
@@ -153,7 +154,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const [plans, setPlans] = useState<PlanSummary[]>(plansStore.getState().plans);
   const [multiline, setMultiline] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState<VoiceStatus>("idle");
-  const [voiceError, setVoiceError] = useState<string | null>(null);
+  // What went wrong with voice input: our own "nothing transcribed" (translated when it renders, so
+  // it follows a language change) or the recorder's message, shown as it came.
+  const [voiceError, setVoiceError] = useState<
+    { kind: "nothingTranscribed" } | { kind: "recorder"; message: string } | null
+  >(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const inputRowRef = useRef<HTMLDivElement>(null);
   const recorderRef = useRef<VoiceRecorder | null>(null);
@@ -348,7 +353,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
         if (state === "unknown") return undefined;
         return {
           id,
-          type: "Job",
+          type: SYNTHETIC_JOB_TYPE,
           project: "",
           status: state === "completed" ? "Completed" : "Failed",
         };
@@ -384,6 +389,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
     isGenerating,
   });
 
+  const mainRef = useRef<HTMLElement>(null);
+
   const {
     attachments,
     setAttachments,
@@ -399,7 +406,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
     handleDragEnter,
     handleDragLeave,
     handleDrop,
-  } = useChatAttachments({ activeSessionId: activeSession?.id, embedded });
+  } = useChatAttachments({
+    activeSessionId: activeSession?.id,
+    embedded,
+    targetRef: mainRef,
+  });
 
   /**
    * The bug this page was the centre of: this used to call `store.createSession` directly, so the
@@ -534,14 +545,14 @@ export const ChatView: React.FC<ChatViewProps> = ({
       onResult: (transcription: string) => {
         const trimmed = transcription.trim();
         if (!trimmed) {
-          setVoiceError("Nothing was transcribed. Please try again.");
+          setVoiceError({ kind: "nothingTranscribed" });
           return;
         }
         const previous = composerTextRef.current;
         applyComposerText(previous ? `${previous} ${trimmed}` : trimmed);
         requestComposerFocus();
       },
-      onError: (message: string) => setVoiceError(message),
+      onError: (message: string) => setVoiceError({ kind: "recorder", message }),
     });
     recorderRef.current = recorder;
     await recorder.start();
@@ -550,14 +561,15 @@ export const ChatView: React.FC<ChatViewProps> = ({
   /**
    * Drafts the follow-up rather than sending it: the outcomes are the agent's to summarise, but
    * what to ask about them is still the user's call, so the prompt lands in the composer.
+   *
+   * The request is the user's own words, so it is written in their language; the job list under it
+   * is data for the agent and stays as the daemon names the jobs (raw types, ids and titles).
    */
   const handleReviewJobs = () => {
     const summary = spawnedJobs
       .map((job) => `- ${job.type} ${job.id}${job.planTitle ? ` (${job.planTitle})` : ""}`)
       .join("\n");
-    applyComposerText(
-      `Review the outcomes of the jobs this conversation started and tell me what changed:\n${summary}`,
-    );
+    applyComposerText(t("jobsReview.prompt", { jobs: summary }));
     requestComposerFocus();
   };
 
@@ -647,9 +659,13 @@ export const ChatView: React.FC<ChatViewProps> = ({
     />
   );
 
-  const timeOfDayGreeting = useMemo(() => buildGreeting(new Date()), []);
+  const timeOfDayGreeting = useMemo(() => buildGreeting(new Date(), t), [t]);
   const greeting = greetingOverride ?? timeOfDayGreeting;
-  const chatSamplePrompts = useMemo(() => buildChatSamplePrompts(plans, jobs), [plans, jobs]);
+  const headline =
+    typeof headlineOverride === "function"
+      ? headlineOverride()
+      : (headlineOverride ?? t("emptyState.headline"));
+  const chatSamplePrompts = useMemo(() => buildChatSamplePrompts(plans, jobs, t), [plans, jobs, t]);
   const samplePrompts = samplePromptsOverride ?? chatSamplePrompts;
   const hasComposerContent = inputPrompt.trim().length > 0 || attachments.length > 0;
 
@@ -691,9 +707,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
       };
 
   const sessionPendingDeletion = sessions.find((s) => s.id === deletingSessionId);
-  const sessionPendingDeletionLabel = sessionPendingDeletion?.title.trim()
-    ? `"${sessionPendingDeletion.title}"`
-    : "this chat session";
+  // Two sentences rather than a name spliced into one: the quotes around a title are the language's.
+  const sessionPendingDeletionBody = sessionPendingDeletion?.title.trim()
+    ? t("deleteSession.body", { title: displayTitle(sessionPendingDeletion, t) })
+    : t("deleteSession.bodyUntitled");
 
   /**
    * The Chats list goes to the shell sidebar, not into this page: `ChatApp.Build` renders no list of
@@ -721,11 +738,12 @@ export const ChatView: React.FC<ChatViewProps> = ({
               onDelete: (id) => setDeletingSessionId(id),
               onTogglePin: (id) => store.togglePinSession(id),
             },
+            t,
           ),
     // The row states are read through the store on each build, so a re-render caused by a
     // generating-state event rebuilds the list even though `sessions` is the same array.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [sessions, activeSessionId, storeState, embedded],
+    [sessions, activeSessionId, storeState, embedded, t],
   );
 
   usePublishSidebarList(sidebarList);
@@ -734,9 +752,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const searchResults = useMemo(() => {
     const term = searchQuery.trim().toLowerCase();
     return sessions
-      .filter((session) => term.length === 0 || displayTitle(session).toLowerCase().includes(term))
+      .filter(
+        (session) => term.length === 0 || displayTitle(session, t).toLowerCase().includes(term),
+      )
       .slice(0, MAX_CHAT_SEARCH_RESULTS);
-  }, [sessions, searchQuery]);
+  }, [sessions, searchQuery, t]);
 
   return (
     /* One tooltip Provider for the whole composer, the way V1 registers the chat widget:
@@ -754,6 +774,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
       >
         {/* Main Chat Thread Area. A file may be dropped anywhere in it, not only on the composer. */}
         <main
+          ref={mainRef}
           className="relative flex flex-1 flex-col overflow-hidden"
           onDragOver={handleDragOver}
           onDragEnter={handleDragEnter}
@@ -764,7 +785,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
             <div className="absolute inset-2 z-50 flex items-center justify-center rounded-box border-2 border-dashed border-foreground bg-background/90 backdrop-blur-xs pointer-events-none">
               <div className="flex flex-col items-center gap-2.5 text-center text-foreground">
                 <Upload className="size-9 opacity-80" />
-                <span className="font-medium">Drop files here to attach to message</span>
+                <span className="font-medium">{t("view.dropOverlay")}</span>
               </div>
             </div>
           )}
@@ -803,7 +824,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
           ) : (
             <ChatHeader
               key={activeSessionId ?? "none"}
-              title={activeSession ? displayTitle(activeSession) : "No Active Chat"}
+              title={activeSession ? displayTitle(activeSession, t) : t("view.noActiveChat")}
               editable={Boolean(activeSession)}
               jobs={spawnedJobs}
               onOpenPlan={onOpenPlan}
@@ -897,7 +918,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 {isGenerating && (
                   <div className="flex min-h-6 w-full items-center gap-2 text-muted-foreground">
                     <Spinner size="md" />
-                    <span>Working...</span>
+                    <span>{t("view.working")}</span>
                   </div>
                 )}
 
@@ -929,8 +950,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
                 >
                   <HelpCircle className="size-3.5 text-warning" />
                   <span>
-                    Jump to pending question{" "}
-                    {targetPendingQuestion.direction === "down" ? "↓" : "↑"}
+                    {t("view.jumpToQuestion", {
+                      context: targetPendingQuestion.direction === "down" ? "down" : "up",
+                    })}
                   </span>
                 </button>
               )}
@@ -945,11 +967,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   <ArrowDown className="size-3.5 text-muted-foreground" />
                   {isGenerating ? (
                     <>
-                      <span>Scroll to streaming tail</span>
+                      <span>{t("view.scrollToStreamingTail")}</span>
                       <span className="flex size-1.5 animate-pulse rounded-full bg-current" />
                     </>
                   ) : (
-                    <span>Scroll to bottom</span>
+                    <span>{t("view.scrollToBottom")}</span>
                   )}
                 </button>
               )}
@@ -982,9 +1004,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   <ErrorBanner
                     data-testid="chat-voice-error"
                     onDismiss={() => setVoiceError(null)}
-                    dismissLabel="Dismiss voice input error"
+                    dismissLabel={t("composer.voiceErrorDismiss")}
                   >
-                    {voiceError}
+                    {voiceError.kind === "nothingTranscribed"
+                      ? t("composer.nothingTranscribed")
+                      : voiceError.message}
                   </ErrorBanner>
                 )}
 
@@ -1007,7 +1031,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         onClick={() => setAttachments([])}
                         className="rounded-selector px-1.5 py-0.5 text-xs-tight text-muted-foreground transition-colors hover:text-destructive"
                       >
-                        Clear all
+                        {t("composer.clearAttachments")}
                       </button>
                     )}
                   </div>
@@ -1030,7 +1054,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   />
                   <IconButton
                     data-testid="composer-attach-button"
-                    label="Attach file"
+                    label={t("composer.attach")}
                     size={composerStyle.buttonSize}
                     onClick={handleAttachClick}
                     className={`${composerStyle.attachOffset} ${composerStyle.buttonRadius} ${
@@ -1043,8 +1067,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
                   <ChatInput
                     ref={textareaRef}
                     id="chat-composer"
-                    aria-label="Chat prompt"
-                    placeholder={COMPOSER_PLACEHOLDER}
+                    aria-label={t("composer.promptLabel")}
+                    placeholder={t("composer.placeholder")}
                     value={inputPrompt}
                     onChange={handleComposerChange}
                     onKeyDown={handleComposerKeyDown}
@@ -1063,7 +1087,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       `color` in `@layer components`, so these utilities win without `!important`. */}
                     <IconButton
                       data-testid="composer-voice-button"
-                      label="Voice input"
+                      label={t("composer.voice")}
                       size={composerStyle.buttonSize}
                       onClick={() => void toggleVoiceRecording()}
                       className={`${composerStyle.buttonRadius} ${
@@ -1088,7 +1112,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                         {hasComposerContent && (
                           <IconButton
                             data-testid="composer-queue-button"
-                            label="Queue message"
+                            label={t("composer.queue")}
                             size={composerStyle.buttonSize}
                             variant="solid"
                             onClick={() => void handleSendMessage()}
@@ -1108,8 +1132,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
                           `optimisticStreaming` synchronously and the button is gone that tick. */}
                         <IconButton
                           data-testid="composer-stop-button"
-                          label={isCancelling ? "Stopping agent" : "Stop agent"}
-                          tooltip={isCancelling ? "Stopping agent..." : "Stop agent"}
+                          label={isCancelling ? t("composer.stopping") : t("composer.stop")}
+                          tooltip={
+                            isCancelling ? t("composer.stoppingTooltip") : t("composer.stopTooltip")
+                          }
                           size={composerStyle.buttonSize}
                           variant="outline"
                           disabled={isCancelling}
@@ -1128,7 +1154,7 @@ export const ChatView: React.FC<ChatViewProps> = ({
                       </>
                     ) : (
                       <IconButton
-                        label="Send message"
+                        label={t("composer.send")}
                         size={composerStyle.buttonSize}
                         variant="solid"
                         disabled={!hasComposerContent}
@@ -1156,9 +1182,9 @@ export const ChatView: React.FC<ChatViewProps> = ({
               setDeletingSessionId(null);
               setDeleteSessionError(null);
             }}
-            title="Delete Session"
-            body={`Are you sure you want to delete ${sessionPendingDeletionLabel}? This action cannot be undone.`}
-            confirmLabel="Delete"
+            title={t("deleteSession.title")}
+            body={sessionPendingDeletionBody}
+            confirmLabel={t("common:actions.delete")}
             confirmVariant="destructive"
             onConfirm={() => void confirmDeleteSession()}
             isBusy={isDeletingSession}

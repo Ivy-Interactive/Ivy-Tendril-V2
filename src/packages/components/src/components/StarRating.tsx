@@ -1,5 +1,3 @@
-"use client";
-
 import { useState, useCallback } from "react";
 import { Star } from "lucide-react";
 import { m, LazyMotion, domAnimation } from "framer-motion";
@@ -7,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { InvalidIcon } from "@/components/InvalidIcon";
 import { Densities } from "@/types/density";
 import { useDensity } from "@/contexts/density-context";
+import { useTranslation } from "@/i18n/uiCommon";
 import type React from "react";
 
 export interface StarRatingProps {
@@ -30,6 +29,7 @@ export function StarRating({
   invalid,
   allowHalf = false,
 }: StarRatingProps) {
+  const { t } = useTranslation("uiCommon");
   const contextDensity = useDensity();
   const effectiveDensity = density ?? contextDensity;
 
@@ -83,7 +83,7 @@ export function StarRating({
               <m.button
                 key={star}
                 type="button"
-                aria-label={`Rate ${star} star${star === 1 ? "" : "s"}`}
+                aria-label={t("starRating.rate", { count: star })}
                 className={cn(
                   "relative focus-visible:outline-none focus-visible:ring-2",
                   "focus-visible:ring-ring focus-visible:ring-offset-2",

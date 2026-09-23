@@ -1,6 +1,7 @@
 import * as React from "react";
 import { Button } from "../ui/button";
 import { Callout } from "../ui/callout";
+import { useTranslation } from "@/i18n/uiDialogs";
 import { DialogShell, DialogShortcutHint } from "./DialogShell";
 import { type DialogWidth } from "./fieldStyles";
 
@@ -113,6 +114,7 @@ export function ConfirmDialog({
   children,
   width = "default",
 }: ConfirmDialogProps) {
+  const { t } = useTranslation("uiDialogs");
   const cancelRef = React.useRef<HTMLButtonElement>(null);
   const bodyId = React.useId();
 
@@ -142,7 +144,7 @@ export function ConfirmDialog({
             data-testid="dialog-cancel"
             disabled={isBusy}
           >
-            Cancel
+            {t("actions.cancel")}
           </Button>
           {secondaryAction}
           <Button
@@ -152,7 +154,7 @@ export function ConfirmDialog({
             aria-describedby={bodyId}
             disabled={isBusy || confirmDisabled}
           >
-            {isBusy ? "Working…" : confirmLabel}
+            {isBusy ? t("confirm.working") : confirmLabel}
             {confirmArmed && <DialogShortcutHint shortcut="Ctrl+Enter" />}
           </Button>
         </>

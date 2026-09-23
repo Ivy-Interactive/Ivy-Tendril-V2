@@ -21,6 +21,7 @@ export default defineConfig({
       "src/diagrams.ts",
       "src/charts.ts",
       "src/theme.ts",
+      "src/i18n.ts",
     ],
     format: ["esm"],
     dts: {

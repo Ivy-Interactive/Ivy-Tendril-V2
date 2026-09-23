@@ -981,7 +981,12 @@ fn build_copilot_spec(config: &AgentLaunchConfig) -> AgentProcessSpec {
 /// The `-fast` variants of most of these ids exist too, and are deliberately not offered: `-fast` is
 /// a separately-billed priority tier, and Tendril has no rate card for it.
 const CURSOR_EFFORT_LADDERS: &[(&str, &[&str])] = &[
-    // Anthropic — the two five-rung families and the three-rung Opus 5.
+    // Anthropic — the two five-rung families and the three-rung Opus 5 / Opus 5.5.
+    ("claude-opus-5-5", &["low", "medium", "high"]),
+    (
+        "claude-opus-5-5-thinking",
+        &["low", "medium", "high", "xhigh", "max"],
+    ),
     ("claude-opus-5", &["low", "medium", "high"]),
     (
         "claude-opus-5-thinking",
@@ -1052,9 +1057,10 @@ const CURSOR_EFFORT_LADDERS: &[(&str, &[&str])] = &[
 /// (`gemini-3.1-pro` and `gpt-5-mini` are listed by the CLI as bare ids only).
 fn cursor_efforts_for(base: &str) -> Option<&'static [&'static str]> {
     let wanted = base.trim().to_ascii_lowercase();
+    let dashed = wanted.replace('.', "-");
     CURSOR_EFFORT_LADDERS
         .iter()
-        .find(|(id, _)| *id == wanted)
+        .find(|(id, _)| *id == wanted || *id == dashed)
         .map(|(_, efforts)| *efforts)
 }
 
@@ -1708,12 +1714,8 @@ fn path_with_dir_first(dir: &Path, inherited: Option<&str>) -> String {
 
 fn normalize_claude_model(model: &str) -> String {
     let lower = model.to_ascii_lowercase();
-    if lower == "default" || lower.contains("opus") {
-        "opus".to_string()
-    } else if lower.contains("sonnet") {
-        "sonnet".to_string()
-    } else if lower.contains("haiku") {
-        "haiku".to_string()
+    if lower == "default" {
+        "claude-opus-5-5".to_string()
     } else {
         model.to_string()
     }
@@ -1724,7 +1726,7 @@ pub fn format_opencode_model(model: Option<&str>, base_url: Option<&str>) -> Str
     if m.is_empty() || m.eq_ignore_ascii_case("default") {
         if let Some(b) = base_url {
             if b.contains("llmproxy.ivy.app") {
-                return "anthropic/claude-opus-5".to_string();
+                return "anthropic/claude-opus-5-5".to_string();
             }
             if b.contains("api.anthropic.com") {
                 return "anthropic/claude-sonnet-5".to_string();

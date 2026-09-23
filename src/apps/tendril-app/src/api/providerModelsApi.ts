@@ -19,6 +19,7 @@ import { invoke } from "@tauri-apps/api/core";
 
 import type { ProviderModelsOutcome, ProviderModelsRequest } from "../types/agents";
 import { isTauri } from "../utils/tauri";
+import { i18n } from "../i18n";
 
 /** Performs one discovery request. Swapped in tests. */
 export type ProviderModelsTransport = (
@@ -43,7 +44,9 @@ const httpTransport: ProviderModelsTransport = async (request) => {
       .json()
       .then((payload: { error?: string }) => payload.error)
       .catch(() => undefined);
-    throw new Error(detail ?? `Request to ${PATH} failed (${response.status})`);
+    throw new Error(
+      detail ?? i18n.t("common:errors.requestFailed", { path: PATH, status: response.status }),
+    );
   }
   return (await response.json()) as ProviderModelsOutcome;
 };

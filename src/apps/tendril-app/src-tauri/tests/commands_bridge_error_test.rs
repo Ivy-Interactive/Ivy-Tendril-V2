@@ -16,29 +16,35 @@
 //! global, so every test takes `env_lock()` for its duration.
 
 use axum::{
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     routing::{get, put},
     Json, Router,
 };
 use serde_json::json;
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
 
 use tempfile::TempDir;
 use tendril_app_lib::commands::plans::{
-    cmd_get_plan, cmd_get_plan_artifacts, cmd_get_plan_summary, cmd_get_verification_report,
-    cmd_list_recommendations, cmd_list_verification_reports, cmd_set_recommendation_state,
-    cmd_set_verification_status,
+    cmd_get_plan, cmd_get_plan_artifact_content, cmd_get_plan_artifacts, cmd_get_plan_summary,
+    cmd_get_verification_report, cmd_list_recommendations, cmd_list_verification_reports,
+    cmd_set_recommendation_state, cmd_set_verification_status,
 };
 use tendril_app_lib::commands::{
     cmd_check_service_health, cmd_get_service_info, get_daemon_status,
 };
 use tendril_app_lib::daemon::MasterInfo;
+use tendril_app_lib::models::PlanArtifactContentDto;
 use tokio::net::TcpListener;
 
 const SECRET: &str = "commands-bridge-test-secret";
+
+/// The one artifact the mock daemon's content route serves. The `#` and the space are there on
+/// purpose: unencoded, the `#` would end the query and the daemon would see a truncated path.
+const DAEMON_SERVED_ARTIFACT: &str = "run #2 results.json";
 
 /// Guards the process-global `TENDRIL_HOME`. Async-aware, because it is held
 /// across every command call a test makes.
@@ -56,6 +62,8 @@ struct Observed {
     authorized_requests: usize,
     recommendation_calls: Vec<(String, String, serde_json::Value)>,
     verification_calls: Vec<(String, String, serde_json::Value)>,
+    /// The `path` each artifact-content request carried, as the daemon decoded it.
+    artifact_content_paths: Vec<String>,
 }
 
 type Shared = Arc<Mutex<Observed>>;
@@ -84,6 +92,11 @@ fn is_authorized(headers: &HeaderMap) -> bool {
 /// `plan_folder`, and that rejects recommendation writes unless
 /// `accept_recommendations` is set — mirroring a service that has not shipped
 /// the route yet.
+///
+/// Its artifact-content route answers only for a file named
+/// [`DAEMON_SERVED_ARTIFACT`], with text no file on disk holds; for anything
+/// else it 404s like a daemon that predates the route, so the command's disk
+/// fallback is what answers.
 async fn spawn_mock_daemon(plan_folder: PathBuf, accept_recommendations: bool) -> MockDaemon {
     let observed: Shared = Arc::new(Mutex::new(Observed::default()));
 
@@ -199,6 +212,36 @@ async fn spawn_mock_daemon(plan_folder: PathBuf, accept_recommendations: bool) -
                         (
                             StatusCode::NOT_FOUND,
                             Json(json!({ "error": "no route for verification updates" })),
+                        )
+                    }
+                },
+            ),
+        )
+        .route(
+            "/api/plans/{id}/artifacts/content",
+            get(
+                |State(state): State<Shared>,
+                 headers: HeaderMap,
+                 Path(id): Path<String>,
+                 Query(query): Query<HashMap<String, String>>| async move {
+                    if !is_authorized(&headers) {
+                        return (StatusCode::UNAUTHORIZED, Json(json!({ "error": "no" })));
+                    }
+                    let path = query.get("path").cloned().unwrap_or_default();
+                    {
+                        let mut observed = state.lock().expect("lock");
+                        observed.authorized_requests += 1;
+                        observed.artifact_content_paths.push(path.clone());
+                    }
+                    if id == "00021" && path.ends_with(DAEMON_SERVED_ARTIFACT) {
+                        (
+                            StatusCode::OK,
+                            Json(json!({ "kind": "text", "text": "from the daemon", "size": 15 })),
+                        )
+                    } else {
+                        (
+                            StatusCode::NOT_FOUND,
+                            Json(json!({ "error": "no such route" })),
                         )
                     }
                 },
@@ -462,6 +505,85 @@ async fn plan_artifacts_fall_back_to_disk_when_daemon_has_no_artifacts_route() {
     assert!(artifacts.screenshots[0].ends_with("screenshot.png"));
     assert_eq!(artifacts.other.len(), 1);
     assert!(artifacts.other[0].ends_with("log.txt"));
+}
+
+/// The artifact sheet's read, by the path the listing above hands out. The mock daemon 404s the
+/// content route for this file, which is exactly a daemon that predates it, so this is the disk read.
+#[tokio::test]
+async fn plan_artifact_content_falls_back_to_disk_when_daemon_has_no_content_route() {
+    let _guard = env_lock().await;
+    let (_temp, folder, _daemon) = isolated_env(true).await;
+
+    let artifacts_dir = folder.join("Artifacts");
+    std::fs::create_dir_all(&artifacts_dir).expect("artifacts dir");
+    std::fs::write(artifacts_dir.join("log.txt"), "build ok\n").expect("write txt");
+
+    let listed = cmd_get_plan_artifacts("00021".to_string())
+        .await
+        .expect("artifacts command should succeed");
+    let content = cmd_get_plan_artifact_content("00021".to_string(), listed.other[0].clone())
+        .await
+        .expect("a listed artifact is readable");
+
+    assert_eq!(
+        content,
+        PlanArtifactContentDto::Text {
+            text: "build ok\n".to_string(),
+            size: 9,
+        }
+    );
+}
+
+/// With a daemon that has the route, its answer is the one returned — decoded into the `kind`-tagged
+/// DTO, for a path that only survives if the client encodes the query. The command swallows a
+/// daemon failure and falls back to disk, so without this a mismatch in either would pass unnoticed
+/// whenever the app and the daemon share a `TENDRIL_HOME`.
+#[tokio::test]
+async fn plan_artifact_content_asks_the_daemon_first() {
+    let _guard = env_lock().await;
+    let (_temp, folder, daemon) = isolated_env(true).await;
+
+    let artifacts_dir = folder.join("Artifacts");
+    std::fs::create_dir_all(&artifacts_dir).expect("artifacts dir");
+    let path = artifacts_dir.join(DAEMON_SERVED_ARTIFACT);
+    std::fs::write(&path, "from the disk").expect("write artifact");
+    let path = path.to_string_lossy().to_string();
+
+    let content = cmd_get_plan_artifact_content("00021".to_string(), path.clone())
+        .await
+        .expect("the daemon serves this artifact");
+
+    assert_eq!(
+        content,
+        PlanArtifactContentDto::Text {
+            text: "from the daemon".to_string(),
+            size: 15,
+        }
+    );
+    assert_eq!(daemon.observed().artifact_content_paths, vec![path]);
+}
+
+/// The fallback is the same read as the daemon's, refusals included: a file beside `Artifacts/`
+/// is not an artifact, and a missing one is `NOT_FOUND` rather than an I/O error.
+#[tokio::test]
+async fn plan_artifact_content_refuses_a_path_outside_the_artifacts_folder() {
+    let _guard = env_lock().await;
+    let (_temp, folder, _daemon) = isolated_env(true).await;
+    std::fs::create_dir_all(folder.join("Artifacts")).expect("artifacts dir");
+
+    let report = folder.join("Verification").join("RustTest.md");
+    let err =
+        cmd_get_plan_artifact_content("00021".to_string(), report.to_string_lossy().to_string())
+            .await
+            .expect_err("a verification report is not an artifact");
+    assert_eq!(err.code, "VALIDATION_ERROR");
+
+    let missing = folder.join("Artifacts").join("gone.txt");
+    let err =
+        cmd_get_plan_artifact_content("00021".to_string(), missing.to_string_lossy().to_string())
+            .await
+            .expect_err("no such artifact");
+    assert_eq!(err.code, "NOT_FOUND");
 }
 
 #[tokio::test]

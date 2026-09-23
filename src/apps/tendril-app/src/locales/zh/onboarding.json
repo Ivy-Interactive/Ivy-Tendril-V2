@@ -1,0 +1,135 @@
+{
+  "actions": {
+    "back": "上一步",
+    "next": "下一步",
+    "skip": "跳过",
+    "finish": "完成",
+    "createProject": "创建项目"
+  },
+  "wizard": {
+    "title": "欢迎使用 Tendril",
+    "stepsLabel": "设置步骤",
+    "steps": {
+      "codingAgent": "编程智能体",
+      "dataStorage": "数据存储",
+      "firstProject": "您的第一个项目",
+      "complete": "完成"
+    },
+    "skipSetup": "跳过设置",
+    "progress": {
+      "label": "正在设置",
+      "checkingAgent": "正在检查 {{agent}}…",
+      "finishing": "正在完成设置…",
+      "cloning": "正在克隆仓库…",
+      "settingUp": "正在设置您的项目…"
+    },
+    "errors": {
+      "checksUnavailable": "健康检查不可用：{{error}}",
+      "agentProbeFailed": "请确认您的智能体已安装且已获得授权。（{{error}}）",
+      "finishFailed": "无法完成设置：{{error}}",
+      "skipFailed": "无法跳过设置：{{error}}",
+      "setupNotStarted": "项目已创建，但 {{jobType}} 无法启动：{{error}}",
+      "createFailed": "无法创建项目：{{error}}",
+      "createAbandoned": "已停止等待项目创建。守护进程可能仍在克隆仓库，请先检查您的项目，再尝试重新创建。"
+    }
+  },
+  "codingAgent": {
+    "title": "您使用哪个编程智能体？",
+    "description": "Tendril 是一个编程编排器，运行在您自己的编程智能体之上。请选择您要使用的智能体："
+  },
+  "prerequisites": {
+    "missing_other": "Tendril 需要 {{names, list}}，但尚未安装。请先安装，然后点击“重新检查”。",
+    "description": "Tendril 会在您的计算机上启动的工具。",
+    "recheck": "重新检查",
+    "checking": "正在检查…",
+    "empty": "未报告任何检查项。",
+    "required": "必需",
+    "install": "安装",
+    "status": {
+      "ok": "正常",
+      "warn": "警告",
+      "fail": "失败"
+    }
+  },
+  "dataStorage": {
+    "title": "我们应将您的数据存储在哪里？",
+    "description": "Tendril 将您的配置和计划保存在此文件夹中。",
+    "homeLabel": "Tendril 主目录",
+    "homeHint": "此文件夹由正在运行的守护进程确定。如需更改位置，请在启动 Tendril 前设置 <code>{{envVar}}</code>。",
+    "homeMissing": "请提供有效的路径。"
+  },
+  "repoPicker": {
+    "label": "添加一个或多个 Git 仓库",
+    "inputLabel": "仓库 URL 或本地路径",
+    "placeholder": "仓库 URL 或本地路径",
+    "add": "添加仓库",
+    "willClone": "将在“创建项目”时克隆",
+    "remove": "移除 {{path}}",
+    "invalidPath": "仓库路径无效。"
+  },
+  "firstProject": {
+    "title": "设置您的第一个项目",
+    "description": "项目将一个或多个仓库组织在一起，以便 Tendril 跨仓库规划和验证更改。",
+    "browse": "浏览",
+    "browseTitle": "选择仓库文件夹",
+    "browseUnavailable": "文件夹选择器不可用（{{error}}）。请直接输入路径。",
+    "nameLabel": "项目名称",
+    "nameExists": {
+      "title": "已存在同名项目。",
+      "body": "要解决此冲突，您可以在上方输入其他名称，或使用现有项目的配置继续（其仓库路径和设置将被保留）。",
+      "useExisting": "使用现有项目配置"
+    },
+    "registered": "{{name}} 已注册。点击“下一步”可查看其设置运行过程。"
+  },
+  "validation": {
+    "invalidProjectName": "项目名称“{{name}}”无效。只能使用字母、数字、点、短横线和下划线（不能包含斜杠或空格）。",
+    "invalidProjectNameWithSuggestion": "项目名称“{{name}}”无效。只能使用字母、数字、点、短横线和下划线（不能包含斜杠或空格）。建议：“{{suggestion}}”。"
+  },
+  "agentRun": {
+    "title": "正在设置您的项目",
+    "wizardHint": "Tendril 正在检测您的技术栈并配置智能体验证框架。这需要几分钟，不妨趁等待时来杯 ☕。",
+    "noRun": "此项目没有关联的设置运行。设置完成后，您可以在项目自己的页面中配置其验证和审查操作。",
+    "timedOut": "设置超时。",
+    "failed": "设置失败。"
+  },
+  "harness": {
+    "title": "审查框架",
+    "description": "项目配置智能体为您的项目配置的内容。此处的所有内容均可在项目自己的页面中编辑。",
+    "verifications": {
+      "title": "验证",
+      "hint": "每次计划执行后运行的步骤，用于验证更改。"
+    },
+    "reviewActions": {
+      "title": "审查操作",
+      "hint": "便于启动项目进行手动测试的命令。"
+    },
+    "loadError": "无法读取您项目的验证框架（{{error}}）。这并不能说明项目配置智能体配置了什么，请从“项目”行打开该项目查看。",
+    "empty": "尚未配置任何内容。如果项目配置智能体仍在运行，其结果将在完成后显示在这里，请从“项目”行重新打开该项目查看。"
+  },
+  "complete": {
+    "title": "准备就绪！",
+    "description": "您的项目已配置完成。点击“完成”开始使用 Tendril。",
+    "newsletter": {
+      "title": "新闻通讯",
+      "description": "第一时间获知我们的新版本发布！"
+    }
+  },
+  "addProject": {
+    "title": "添加项目",
+    "hint": "为项目命名，并将其指向一个或多个 Git 仓库。随后 Tendril 会检查这些仓库并配置审查框架。",
+    "nameLabel": "名称",
+    "namePlaceholder": "项目名称…",
+    "creating": "正在创建…",
+    "createInBackground": "在后台创建",
+    "nameRequired": "项目必须有名称。",
+    "nameInvalidChars": "项目名称不能包含 / \\ : * ? \" < > 或 |。",
+    "nameExists": "已存在名为“{{name}}”的项目。",
+    "createFailed": "创建项目失败：{{error}}",
+    "setupNotStarted": "项目已创建，但项目配置智能体无法启动：{{error}}。项目已注册，可从其所在行进行配置。",
+    "agentHint": "Tendril 正在检测您的技术栈并配置智能体验证框架，这需要几分钟。",
+    "verificationRequired": "必需",
+    "noVerifications": "未配置任何验证。请在项目设置中添加。",
+    "noReviewActions": "未配置任何审查操作。请在项目设置中添加。",
+    "harnessEmpty": "项目已注册。如果项目配置智能体仍在运行，其结果将在完成后显示在这里，请从“项目”行重新打开该项目查看。"
+  }
+}

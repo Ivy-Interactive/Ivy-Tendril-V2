@@ -1,0 +1,136 @@
+{
+  "actions": {
+    "back": "Zurück",
+    "next": "Weiter",
+    "skip": "Überspringen",
+    "finish": "Fertigstellen",
+    "createProject": "Projekt erstellen"
+  },
+  "wizard": {
+    "title": "Willkommen bei Tendril",
+    "stepsLabel": "Einrichtungsschritte",
+    "steps": {
+      "codingAgent": "Coding-Agent",
+      "dataStorage": "Datenspeicher",
+      "firstProject": "Ihr erstes Projekt",
+      "complete": "Fertig"
+    },
+    "skipSetup": "Einrichtung überspringen",
+    "progress": {
+      "label": "Wird eingerichtet",
+      "checkingAgent": "{{agent}} wird geprüft…",
+      "finishing": "Einrichtung wird abgeschlossen…",
+      "cloning": "Repositories werden geklont…",
+      "settingUp": "Ihr Projekt wird eingerichtet…"
+    },
+    "errors": {
+      "checksUnavailable": "Systemprüfungen nicht verfügbar: {{error}}",
+      "agentProbeFailed": "Stellen Sie sicher, dass Ihr Agent vorhanden ist und Sie angemeldet sind. ({{error}})",
+      "finishFailed": "Einrichtung konnte nicht abgeschlossen werden: {{error}}",
+      "skipFailed": "Einrichtung konnte nicht übersprungen werden: {{error}}",
+      "setupNotStarted": "Projekt erstellt, aber {{jobType}} konnte nicht gestartet werden: {{error}}",
+      "createFailed": "Projekt konnte nicht erstellt werden: {{error}}",
+      "createAbandoned": "Das Warten auf die Erstellung des Projekts wurde beendet. Der Daemon klont möglicherweise noch; prüfen Sie Ihre Projekte, bevor Sie es erneut erstellen."
+    }
+  },
+  "codingAgent": {
+    "title": "Welchen Coding-Agenten verwenden Sie?",
+    "description": "Tendril ist ein Coding-Orchestrator, der auf Ihrem eigenen Coding-Agenten aufsetzt. Wählen Sie den Agenten aus, den Sie verwenden möchten:"
+  },
+  "prerequisites": {
+    "missing_one": "Tendril benötigt {{names, list}}, es ist aber nicht installiert. Installieren Sie es, und klicken Sie dann auf „Erneut prüfen“.",
+    "missing_other": "Tendril benötigt {{names, list}}, diese sind aber nicht installiert. Installieren Sie sie, und klicken Sie dann auf „Erneut prüfen“.",
+    "description": "Die Tools, die Tendril auf Ihrem Rechner startet.",
+    "recheck": "Erneut prüfen",
+    "checking": "Wird geprüft…",
+    "empty": "Keine Prüfungen gemeldet.",
+    "required": "erforderlich",
+    "install": "Installieren",
+    "status": {
+      "ok": "OK",
+      "warn": "WARNUNG",
+      "fail": "FEHLER"
+    }
+  },
+  "dataStorage": {
+    "title": "Wo sollen wir Ihre Daten speichern?",
+    "description": "Tendril speichert Ihre Konfiguration und Pläne in diesem Ordner.",
+    "homeLabel": "Tendril Home",
+    "homeHint": "Der laufende Daemon hat diesen Ordner ermittelt. Um ihn zu verschieben, setzen Sie <code>{{envVar}}</code>, bevor Sie Tendril starten.",
+    "homeMissing": "Geben Sie einen gültigen Pfad an."
+  },
+  "repoPicker": {
+    "label": "Ein oder mehrere Git-Repositories hinzufügen",
+    "inputLabel": "Repository-URL oder lokaler Pfad",
+    "placeholder": "Repository-URL oder lokaler Pfad",
+    "add": "Repository hinzufügen",
+    "willClone": "wird bei „Projekt erstellen“ geklont",
+    "remove": "{{path}} entfernen",
+    "invalidPath": "Ungültiger Repository-Pfad."
+  },
+  "firstProject": {
+    "title": "Erstes Projekt einrichten",
+    "description": "Ein Projekt fasst ein oder mehrere Repositories zusammen, damit Tendril Änderungen über alle hinweg planen und verifizieren kann.",
+    "browse": "Durchsuchen",
+    "browseTitle": "Repository-Ordner auswählen",
+    "browseUnavailable": "Ordnerauswahl nicht verfügbar ({{error}}). Geben Sie stattdessen einen Pfad ein.",
+    "nameLabel": "Projektname",
+    "nameExists": {
+      "title": "Ein Projekt mit diesem Namen ist bereits vorhanden.",
+      "body": "Um diesen Konflikt zu lösen, können Sie oben einen anderen Namen eingeben oder mit der Konfiguration des vorhandenen Projekts fortfahren (sein Repository-Pfad und seine Einstellungen bleiben erhalten).",
+      "useExisting": "Vorhandene Projektkonfiguration verwenden"
+    },
+    "registered": "{{name}} ist registriert. „Weiter“ zeigt den Einrichtungslauf an."
+  },
+  "validation": {
+    "invalidProjectName": "Ungültiger Projektname „{{name}}“. Verwenden Sie nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche (keine Schrägstriche oder Leerzeichen).",
+    "invalidProjectNameWithSuggestion": "Ungültiger Projektname „{{name}}“. Verwenden Sie nur Buchstaben, Ziffern, Punkte, Bindestriche und Unterstriche (keine Schrägstriche oder Leerzeichen). Vorschlag: „{{suggestion}}“."
+  },
+  "agentRun": {
+    "title": "Ihr Projekt wird eingerichtet",
+    "wizardHint": "Tendril erkennt Ihren Tech-Stack und konfiguriert Ihr agentisches Harness. Das dauert einige Minuten – gönnen Sie sich in der Zwischenzeit einen ☕.",
+    "noRun": "Diesem Projekt ist kein Einrichtungslauf zugeordnet. Sobald die Einrichtung abgeschlossen ist, können Sie Verifikationen und Review-Aktionen auf der Seite des Projekts konfigurieren.",
+    "timedOut": "Zeitüberschreitung bei der Einrichtung.",
+    "failed": "Einrichtung fehlgeschlagen."
+  },
+  "harness": {
+    "title": "Review-Harness",
+    "description": "Was der Einrichtungs-Agent für Ihr Projekt konfiguriert hat. Sie können alles hier auf der Seite des Projekts bearbeiten.",
+    "verifications": {
+      "title": "Verifikationen",
+      "hint": "Die Schritte, die nach jeder Planausführung laufen, um Änderungen zu validieren."
+    },
+    "reviewActions": {
+      "title": "Review-Aktionen",
+      "hint": "Befehle, mit denen Sie Ihr Projekt einfach für manuelle Tests starten können."
+    },
+    "loadError": "Das Harness Ihres Projekts konnte nicht gelesen werden ({{error}}). Das sagt nichts darüber aus, was der Einrichtungs-Agent konfiguriert hat – öffnen Sie das Projekt in der Zeile „Projekte“, um es zu sehen.",
+    "empty": "Noch ist nichts konfiguriert. Falls der Einrichtungs-Agent noch läuft, erscheinen seine Ergebnisse hier, sobald er fertig ist – öffnen Sie das Projekt erneut in der Zeile „Projekte“, um sie zu sehen."
+  },
+  "complete": {
+    "title": "Alles bereit!",
+    "description": "Ihr Projekt ist konfiguriert. Klicken Sie auf „Fertigstellen“, um Tendril zu verwenden.",
+    "newsletter": {
+      "title": "Newsletter",
+      "description": "Erfahren Sie als Erste, wenn es ein neues Release gibt!"
+    }
+  },
+  "addProject": {
+    "title": "Projekt hinzufügen",
+    "hint": "Benennen Sie das Projekt, und verweisen Sie es auf ein oder mehrere Git-Repositories. Tendril untersucht sie anschließend und konfiguriert das Review-Harness.",
+    "nameLabel": "Name",
+    "namePlaceholder": "Projektname…",
+    "creating": "Wird erstellt…",
+    "createInBackground": "Im Hintergrund erstellen",
+    "nameRequired": "Ein Projekt benötigt einen Namen.",
+    "nameInvalidChars": "Ein Projektname darf keines der Zeichen / \\ : * ? \" < > oder | enthalten.",
+    "nameExists": "Ein Projekt namens „{{name}}“ ist bereits vorhanden.",
+    "createFailed": "Projekt konnte nicht erstellt werden: {{error}}",
+    "setupNotStarted": "Projekt erstellt, aber der Einrichtungs-Agent konnte nicht gestartet werden: {{error}}. Das Projekt ist registriert und kann über seine eigene Zeile konfiguriert werden.",
+    "agentHint": "Tendril erkennt Ihren Tech-Stack und konfiguriert Ihr agentisches Harness. Das dauert einige Minuten.",
+    "verificationRequired": "erforderlich",
+    "noVerifications": "Es wurden keine Verifikationen konfiguriert. Fügen Sie sie in den Projekteinstellungen hinzu.",
+    "noReviewActions": "Es wurden keine Review-Aktionen konfiguriert. Fügen Sie sie in den Projekteinstellungen hinzu.",
+    "harnessEmpty": "Das Projekt ist registriert. Falls der Einrichtungs-Agent noch läuft, erscheinen seine Ergebnisse hier, sobald er fertig ist – öffnen Sie das Projekt erneut in der Zeile „Projekte“, um sie zu sehen."
+  }
+}

@@ -13,6 +13,7 @@ import { TuiKbd } from "../ui/TuiKbd";
 import { Tooltip, TooltipScope } from "../ui/TuiTooltip";
 import { useOutsideClick } from "../../hooks/use-outside-click";
 import { useMenuKeyboard } from "../../hooks/use-menu-keyboard";
+import { useTranslation } from "@/i18n/uiPlanWorkspace";
 import { ActionIcon } from "./icons";
 import { shortcutKeys, useActionShortcuts } from "./shortcuts";
 import type { ShortcutBinding } from "./shortcuts";
@@ -103,6 +104,7 @@ interface OverflowMenuProps {
 }
 
 const OverflowMenu: React.FC<OverflowMenuProps> = ({ items, onFire }) => {
+  const { t } = useTranslation("uiPlanWorkspace");
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -119,8 +121,8 @@ const OverflowMenu: React.FC<OverflowMenuProps> = ({ items, onFire }) => {
     <div className="pws-menu-wrap" ref={wrapRef}>
       <IconButton
         ref={buttonRef}
-        label="More actions"
-        tooltip="More"
+        label={t("workspace.moreActions.label")}
+        tooltip={t("workspace.moreActions.tooltip")}
         tooltipSide="bottom"
         aria-haspopup="menu"
         aria-expanded={open}
@@ -130,7 +132,12 @@ const OverflowMenu: React.FC<OverflowMenuProps> = ({ items, onFire }) => {
         <Ellipsis size={16} />
       </IconButton>
       {open && (
-        <div ref={menuRef} className="pws-menu" role="menu" aria-label="More actions">
+        <div
+          ref={menuRef}
+          className="pws-menu"
+          role="menu"
+          aria-label={t("workspace.moreActions.menuAriaLabel")}
+        >
           {items.map((item) => (
             <button
               key={item.tag}
@@ -287,14 +294,15 @@ export const PlanWorkspace: React.FC<PlanWorkspaceProps> = ({
   tabs = [],
   selectedTab,
   chatWidth = 420,
-  verificationsLabel = "Verifications",
-  questionsLabel = "Questions",
+  verificationsLabel,
+  questionsLabel,
   unansweredQuestions = 0,
   events = EMPTY_EVENTS,
   eventHandler,
   slots,
 }) => {
   type ToolKey = "verifications" | "questions";
+  const { t } = useTranslation("uiPlanWorkspace");
   const rootRef = useRef<HTMLDivElement>(null);
   const [rootWidth, setRootWidth] = useState<number | null>(null);
   // Keyed by `id`, so two workspaces in the same app remember their own widths. `chatWidth` is the
@@ -434,7 +442,7 @@ export const PlanWorkspace: React.FC<PlanWorkspaceProps> = ({
                 title={sourceUrl}
               >
                 <ExternalLink size={14} />
-                <span>{sourceLabel || "Source"}</span>
+                <span>{sourceLabel || t("workspace.source")}</span>
               </a>
             )}
             {meta && <span className="pws-meta">{meta}</span>}
@@ -489,7 +497,7 @@ export const PlanWorkspace: React.FC<PlanWorkspaceProps> = ({
                     {hasVerifications && (
                       <TabTool
                         icon={FileCheck2}
-                        label={verificationsLabel}
+                        label={verificationsLabel ?? t("workspace.verifications")}
                         panel={slots?.Verifications}
                         open={openTool?.tool === "verifications"}
                         pinned={openTool?.tool === "verifications" ? openTool.pinned : false}
@@ -513,7 +521,7 @@ export const PlanWorkspace: React.FC<PlanWorkspaceProps> = ({
                     {hasQuestions && (
                       <TabTool
                         icon={FileQuestion}
-                        label={questionsLabel}
+                        label={questionsLabel ?? t("workspace.questions")}
                         panel={slots?.Questions}
                         open={openTool?.tool === "questions"}
                         pinned={openTool?.tool === "questions" ? openTool.pinned : false}
@@ -544,19 +552,19 @@ export const PlanWorkspace: React.FC<PlanWorkspaceProps> = ({
 
           {showChat && (
             <>
-              <Tooltip content="Drag to resize, double-click to reset" side="left">
+              <Tooltip content={t("workspace.resizer.tooltip")} side="left">
                 <div
                   className="pws-resizer"
                   role="separator"
                   aria-orientation="vertical"
-                  aria-label="Resize chat"
+                  aria-label={t("workspace.resizer.ariaLabel")}
                   aria-valuenow={width}
                   aria-valuemin={MIN_CHAT_WIDTH}
                   onPointerDown={startResize}
                   onDoubleClick={resetWidth}
                 />
               </Tooltip>
-              <aside className="pws-chat" aria-label="Plan chat">
+              <aside className="pws-chat" aria-label={t("workspace.chatAriaLabel")}>
                 {slots?.Chat}
               </aside>
             </>

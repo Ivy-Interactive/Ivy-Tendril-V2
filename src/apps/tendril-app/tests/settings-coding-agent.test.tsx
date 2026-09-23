@@ -216,7 +216,7 @@ describe("Settings / Coding Agent", () => {
       expect(ids).not.toContain("default");
       expect(ids).toEqual(["claude-opus-5", "claude-sonnet-5"]);
       // The unset tier resolves to a concrete model rather than displaying a sentinel.
-      expect(select.value).toBe("claude-opus-5");
+      expect(select.value).toBe(tier === "Balanced" ? "claude-sonnet-5" : "claude-opus-5");
     }
 
     // ...and the effort keeps its Default option, which is V1's own behaviour.

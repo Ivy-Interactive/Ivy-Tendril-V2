@@ -93,6 +93,16 @@ pub static SPECS: &[ModelSpec] = &[
         cache_write_per_million: 3.75,
     },
     ModelSpec {
+        model_id: Cow::Borrowed("claude-opus-5-5"),
+        display_name: Cow::Borrowed("Claude Opus 5.5"),
+        context_window: 1_000_000,
+        max_output_tokens: 128_000,
+        input_per_million: 5.0,
+        output_per_million: 25.0,
+        cache_read_per_million: 0.50,
+        cache_write_per_million: 6.25,
+    },
+    ModelSpec {
         model_id: Cow::Borrowed("claude-opus-5"),
         display_name: Cow::Borrowed("Claude Opus 5"),
         context_window: 1_000_000,

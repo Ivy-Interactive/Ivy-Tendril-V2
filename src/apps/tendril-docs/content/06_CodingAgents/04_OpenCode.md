@@ -43,7 +43,7 @@ Tendril maps effort levels to OpenCode models:
 
 Effort levels map directly to OpenCode's `--variant` flag (`low`, `medium`, `high`, `max`).
 
-The default catalog model is `moonshotai/Kimi-K3`. OpenCode also supports pinned Anthropic and OpenAI models such as `claude-fable-5-1`, `claude-opus-5`, `claude-opus-4-7`, `claude-sonnet-5`, `claude-sonnet-4-6`, and `gpt-5.5`.
+The default catalog model is `moonshotai/Kimi-K3`. OpenCode also supports pinned Anthropic and OpenAI models such as `claude-opus-5-5`, `claude-fable-5-1`, `claude-opus-5`, `claude-opus-4-7`, `claude-sonnet-5`, `claude-sonnet-4-6`, and `gpt-5.5`.
 
 ## Bring-Your-Own LLM & Providers
 

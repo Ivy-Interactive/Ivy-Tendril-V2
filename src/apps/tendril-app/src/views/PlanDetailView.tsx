@@ -66,6 +66,9 @@ import {
 import { usePlanAnnotations } from "./planDetail/usePlanAnnotations";
 import { buildPlanActions } from "./planDetail/actions";
 import { OtherTabsPane, PlanPane } from "./planDetail/tabPanes";
+import type { PlanRunAction } from "./planDetail/helpers";
+import { useTranslation } from "../i18n";
+import { useEnumLabels } from "../i18n/enumLabels";
 
 export { findPlanChatSession };
 
@@ -107,11 +110,14 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
   onPlanReset,
   onPlanDeleted,
 }) => {
+  const { t } = useTranslation("plans");
+  const labels = useEnumLabels();
   // V1's tab ids (`ContentView.PlanTab` / `DetailsTab` / `GitTab`), plus the three tabs V2
   // adds. Order matters: see the tab strip below.
   const [activeSubTab, setActiveSubTab] = useState<PlanDetailTab>("plan");
   const [actionError, setActionError] = useState<string | null>(null);
-  const [pendingAction, setPendingAction] = useState<string | null>(null);
+  /** The id of the action in flight - never its label, which is translated. */
+  const [pendingAction, setPendingAction] = useState<PlanRunAction | "complete" | null>(null);
   const [recommendations, setRecommendations] = useState<RecommendationItem[]>(
     plan.recommendations || [],
   );
@@ -286,7 +292,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
           revisionRef.current = previous;
           setRevisionContent(previous);
         }
-        setActionError(`Failed to save answer: ${describeBridgeError(err)}`);
+        setActionError(t("detail.errors.saveAnswer", { error: describeBridgeError(err) }));
       } finally {
         setSavingAnswers((prev) => {
           const next = new Set(prev);
@@ -295,7 +301,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         });
       }
     },
-    [plan.id],
+    [plan.id, t],
   );
 
   /**
@@ -461,8 +467,8 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
    * slot), which is where it now lives here too.
    */
   const tabs: { id: PlanDetailTab; label: string; badge?: string }[] = [
-    { id: "plan", label: "Plan" },
-    { id: "details", label: "Details" },
+    { id: "plan", label: t("detail.tabs.plan") },
+    { id: "details", label: t("detail.tabs.details") },
   ];
 
   /**
@@ -477,7 +483,8 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
    */
   const comparableRevisions = (plan.revisionCount ?? 0) > 1;
 
-  if (showsReviewSurfaces && comparableRevisions) tabs.push({ id: "diff", label: "Diff View" });
+  if (showsReviewSurfaces && comparableRevisions)
+    tabs.push({ id: "diff", label: t("detail.tabs.diff") });
 
   /**
    * `if (pendingRecs.Count > 0) tabs.Add(new PlanTabDto(RecommendationsTab, "Recommendations", ...))`.
@@ -490,7 +497,10 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
    * same wording, as `ReviewView`'s decided rows.
    */
   if (showsReviewSurfaces)
-    tabs.push({ id: "recommendations", label: `Recommendations (${recommendations.length})` });
+    tabs.push({
+      id: "recommendations",
+      label: t("detail.tabs.recommendations", { n: recommendations.length }),
+    });
 
   /**
    * Git is a review surface, and it appears only once its count is known.
@@ -518,10 +528,17 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
     // The at-risk warning used to be a bare dot with an `aria-label`; a `PlanTabDto` carries only a
     // label and a badge, so the count becomes the badge (`new PlanTabDto(GitTab, "Git", count)` is how
     // V1 badges this tab) and the label says what it counts, which no dot could.
-    const label = gitItemCount === null ? "Git" : `Git (${gitItemCount})`;
+    const label =
+      commitsAtRisk > 0
+        ? gitItemCount === null
+          ? t("detail.tabs.gitAtRiskUncounted", { count: commitsAtRisk })
+          : t("detail.tabs.gitAtRisk", { n: gitItemCount, count: commitsAtRisk })
+        : gitItemCount === null
+          ? t("detail.tabs.git")
+          : t("detail.tabs.gitCount", { n: gitItemCount });
     tabs.push({
       id: "git",
-      label: commitsAtRisk > 0 ? `${label} · ${commitsAtRisk} at risk` : label,
+      label,
       badge: commitsAtRisk > 0 ? String(commitsAtRisk) : undefined,
     });
   }
@@ -594,17 +611,17 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
    * back. No action supplied counts as not going through: nothing happened.
    */
   const runAction = async (
-    label: string,
+    id: PlanRunAction,
     action: ((planId: string) => void | Promise<void>) | undefined,
   ): Promise<boolean> => {
     if (!action) return false;
     setActionError(null);
-    setPendingAction(label);
+    setPendingAction(id);
     try {
       await action(plan.id);
       return true;
     } catch (err) {
-      setActionError(`${label} failed: ${describeBridgeError(err)}`);
+      setActionError(t(`detail.runActionFailed.${id}`, { error: describeBridgeError(err) }));
       return false;
     } finally {
       setPendingAction(null);
@@ -705,7 +722,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       // Dispatched here rather than through `onExecute`, which takes only a plan id and so cannot carry
       // `waitForJobs`. `SuggestChangesDialog` bypasses its controller for the same reason and says so.
       // The parked ExecutePlan is exactly V1's `new ExecutePlanArgs(...) { WaitForJobs = waitJobIds }`.
-      await runAction("Execute Plan", async () => {
+      await runAction("executePlan", async () => {
         handleJobStarted(
           await bridge.startJob({
             type: "ExecutePlan",
@@ -718,7 +735,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
     }
 
     setOptimisticState("Creating");
-    if (!(await runAction("Execute Plan", onExecute))) {
+    if (!(await runAction("executePlan", onExecute))) {
       setOptimisticState(null);
     }
   };
@@ -754,7 +771,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
 
     setOptimisticState("Updating");
     let jobId: string | null = null;
-    const started = await runAction("Update Plan", async () => {
+    const started = await runAction("updatePlan", async () => {
       const response = await PlanActionsController.updatePlan(effectivePlan, prompt);
       jobId = response.jobId;
       handleJobStarted(response);
@@ -834,7 +851,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         if (hasActiveJob("ExpandPlan")) return;
         setOptimisticState("Creating");
         if (
-          !(await runAction("Expand Plan", async () => {
+          !(await runAction("expandPlan", async () => {
             handleJobStarted(await PlanActionsController.expandPlan(effectivePlan));
           }))
         ) {
@@ -845,7 +862,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         if (hasActiveJob("SplitPlan")) return;
         setOptimisticState("Updating");
         if (
-          !(await runAction("Split Plan", async () => {
+          !(await runAction("splitPlan", async () => {
             handleJobStarted(await PlanActionsController.splitPlan(effectivePlan));
           }))
         ) {
@@ -859,13 +876,13 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         setActiveDialog("delete");
         return;
       case "copyId":
-        await runAction("Copy Plan ID", () => copyToClipboard(plan.id));
+        await runAction("copyPlanId", () => copyToClipboard(plan.id));
         return;
       case "copyPath":
-        await runAction("Copy Folder Path", () => copyToClipboard(plan.folderPath ?? ""));
+        await runAction("copyFolderPath", () => copyToClipboard(plan.folderPath ?? ""));
         return;
       case "openFolder":
-        await runAction("Open Folder", () => openPath(plan.folderPath ?? ""));
+        await runAction("openFolder", () => openPath(plan.folderPath ?? ""));
         return;
     }
   };
@@ -907,7 +924,9 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       await bridge.setRecommendationState(plan.id, title, targetState, declineReason, notes);
     } catch (err) {
       setRecommendations(previous);
-      setActionError(`Failed to update recommendation "${title}": ${describeBridgeError(err)}`);
+      setActionError(
+        t("detail.errors.updateRecommendation", { title, error: describeBridgeError(err) }),
+      );
     }
   };
 
@@ -927,6 +946,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
     annotations,
     answeredQuestionCount,
     hasActiveJob,
+    t,
   });
 
   const handleWorkspaceAction = async (tag: string) => {
@@ -951,7 +971,10 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
             }
           } catch (err) {
             setActionError(
-              `Could not complete plan ${formatPlanId(effectivePlan.id)}: ${describeBridgeError(err)}`,
+              t("detail.errors.completePlan", {
+                id: formatPlanId(effectivePlan.id),
+                error: describeBridgeError(err),
+              }),
             );
           } finally {
             setPendingAction(null);
@@ -981,13 +1004,15 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       case "DiscussWithAgent":
         // The workspace has already put the caret in the composer (`focusChat`); this drafts V1's
         // opening line for it, `PlanChatSessions.DiscussPrompt`, "phrased for where the plan is".
+        // Translated: it is the operator's own opening line, shown in the composer for them to edit
+        // and send, not an instruction the app hands the agent behind their back.
         setChatDraft({
           text:
             effectivePlan.state === "Review" ||
             effectivePlan.state === "Completed" ||
             effectivePlan.state === "Failed"
-              ? "I want to discuss the outcome of this plan before completing it. Summarize what was done and point out anything worth a closer look."
-              : "I want to discuss this plan before executing it. Summarize it and point out anything you would change.",
+              ? t("detail.discussDraft.outcome")
+              : t("detail.discussDraft.plan"),
           token: chatDraft.token + 1,
         });
         return;
@@ -1052,7 +1077,9 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         selectedTab={effectiveTab}
         // `.QuestionsLabel(unanswered > 0 ? $"Questions ({unanswered} unanswered)" : "Questions")`.
         questionsLabel={
-          unansweredQuestions > 0 ? `Questions (${unansweredQuestions} unanswered)` : "Questions"
+          unansweredQuestions > 0
+            ? t("detail.questions.labelUnanswered", { count: unansweredQuestions })
+            : t("detail.questions.label")
         }
         unansweredQuestions={unansweredQuestions}
         events={["OnAction", "OnTabSelect"]}
@@ -1080,7 +1107,7 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
               data-testid="plan-state-badge"
               variant={planStateBadgeVariant(effectivePlan.state)}
             >
-              {effectivePlan.state}
+              {labels.planState(effectivePlan.state)}
             </Badge>,
             <ProjectBadges key="projects" project={plan.project} />,
             /* The level, coloured from `config.yaml`'s `levels` the way V1's Icebox row colours it
@@ -1263,7 +1290,9 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       <VerificationReportSheet
         planId={plan.id}
         verificationName={openVerification}
-        initialStatus={effectivePlan.verifications?.find((v) => v.name === openVerification)?.status}
+        initialStatus={
+          effectivePlan.verifications?.find((v) => v.name === openVerification)?.status
+        }
         onClose={() => setOpenVerification(null)}
         wireframeBaseUrl={wireframeBaseUrl}
       />

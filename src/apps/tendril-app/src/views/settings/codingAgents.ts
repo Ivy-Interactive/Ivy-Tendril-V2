@@ -404,7 +404,7 @@ const tiers = (deep: TierValues, balanced: TierValues, quick: TierValues): Profi
 });
 
 const IVY_TIERS = tiers(
-  { model: "claude-opus-5", effort: "max" },
+  { model: "claude-opus-5-5", effort: "max" },
   { model: "gemini-3.8-flash", effort: "medium" },
   { model: "gemini-3.8-flash", effort: "low" },
 );
@@ -415,7 +415,7 @@ export function openAiProxyTiers(baseUrl: string): Profiles {
   if (base.includes("llmproxy.ivy.app")) return IVY_TIERS;
   if (base.includes("api.anthropic.com")) {
     return tiers(
-      { model: "claude-opus-5", effort: "max" },
+      { model: "claude-opus-5-5", effort: "max" },
       { model: "claude-sonnet-5", effort: "high" },
       { model: "claude-haiku-4-5", effort: "low" },
     );
@@ -490,7 +490,7 @@ export function tierDefaults(agent: string, baseUrl = ""): Profiles {
     // Thinking family because plain Opus 5 stops at `high` on Cursor, so a `max` there would clamp.
     case "cursor":
       return tiers(
-        { model: "claude-opus-5-thinking", effort: "max" },
+        { model: "claude-opus-5-5-thinking", effort: "max" },
         { model: "claude-sonnet-5", effort: "high" },
         { model: "gemini-3.8-flash", effort: "low" },
       );
@@ -504,9 +504,9 @@ export function tierDefaults(agent: string, baseUrl = ""): Profiles {
     default:
       // claude, and any id we do not know: Claude is the default provider.
       return tiers(
-        { model: "opus", effort: "max" },
-        { model: "sonnet", effort: "high" },
-        { model: "haiku", effort: "low" },
+        { model: "claude-opus-5-5", effort: "max" },
+        { model: "claude-sonnet-5", effort: "high" },
+        { model: "claude-haiku-4-5", effort: "low" },
       );
   }
 }

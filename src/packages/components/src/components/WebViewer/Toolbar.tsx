@@ -15,7 +15,8 @@ import { TuiBadge } from "../ui/TuiBadge";
 import { Floating } from "./floating";
 import { actionIcon } from "./icons";
 import { addressParts } from "./address";
-import { DEVICE_LABELS, DEVICE_ORDER, type DeviceKey } from "./devices";
+import { DEVICE_ORDER, type DeviceKey } from "./devices";
+import { type TFunction, useTranslation } from "@/i18n/uiShell";
 
 export interface ToolbarAction {
   id: string;
@@ -46,6 +47,18 @@ export interface ToolbarProps {
 
 const ICON_SIZE = 16;
 const ICON_STROKE = 1.75;
+
+/** A device's name on screen. `DEVICE_LABELS` holds the English the host is sent. */
+const deviceLabel = (t: TFunction, device: DeviceKey): string => {
+  switch (device) {
+    case "tablet":
+      return t("webViewer.devices.tablet");
+    case "mobile":
+      return t("webViewer.devices.mobile");
+    default:
+      return t("webViewer.devices.desktop");
+  }
+};
 
 const DEVICE_ICONS: Record<DeviceKey, LucideIcon> = {
   desktop: Monitor,
@@ -95,6 +108,7 @@ interface AddressBarProps {
 }
 
 const AddressBar: React.FC<AddressBarProps> = ({ url, onNavigate }) => {
+  const { t } = useTranslation("uiShell");
   const [draft, setDraft] = useState<string | null>(null);
 
   if (draft === null) {
@@ -103,7 +117,7 @@ const AddressBar: React.FC<AddressBarProps> = ({ url, onNavigate }) => {
       <button
         type="button"
         className="wvr-address wvr-address-display"
-        aria-label="Address"
+        aria-label={t("webViewer.toolbar.address")}
         title={url ?? undefined}
         onClick={() => setDraft(url ?? "")}
       >
@@ -113,7 +127,9 @@ const AddressBar: React.FC<AddressBarProps> = ({ url, onNavigate }) => {
             <span className="wvr-address-path">{parts.path}</span>
           </span>
         ) : (
-          <span className="wvr-address-placeholder">Enter a URL</span>
+          <span className="wvr-address-placeholder">
+            {t("webViewer.toolbar.addressPlaceholder")}
+          </span>
         )}
       </button>
     );
@@ -128,7 +144,7 @@ const AddressBar: React.FC<AddressBarProps> = ({ url, onNavigate }) => {
   return (
     <input
       className="wvr-address wvr-address-input"
-      aria-label="Address"
+      aria-label={t("webViewer.toolbar.address")}
       value={draft}
       autoFocus
       spellCheck={false}
@@ -150,6 +166,7 @@ interface DeviceMenuProps {
 }
 
 const DeviceMenu: React.FC<DeviceMenuProps> = ({ device, onDevice }) => {
+  const { t } = useTranslation("uiShell");
   const [open, setOpen] = useState(false);
   const buttonRef = useRef<HTMLButtonElement>(null);
 
@@ -178,7 +195,7 @@ const DeviceMenu: React.FC<DeviceMenuProps> = ({ device, onDevice }) => {
     <>
       <IconButton
         ref={buttonRef}
-        label={`Viewport: ${DEVICE_LABELS[device]}`}
+        label={t("webViewer.toolbar.viewport", { device: deviceLabel(t, device) })}
         icon={CurrentIcon}
         active={open}
         tooltipDisabled={open}
@@ -203,7 +220,7 @@ const DeviceMenu: React.FC<DeviceMenuProps> = ({ device, onDevice }) => {
                 }}
               >
                 <Icon size={ICON_SIZE} strokeWidth={ICON_STROKE} aria-hidden="true" />
-                <span className="wvr-menu-item-label">{DEVICE_LABELS[key]}</span>
+                <span className="wvr-menu-item-label">{deviceLabel(t, key)}</span>
                 <Check className="wvr-menu-check" size={14} aria-hidden="true" />
               </button>
             );
@@ -229,39 +246,54 @@ export const Toolbar: React.FC<ToolbarProps> = ({
   onDevice,
   onToggleSelect,
   onAction,
-}) => (
-  <div className="wvr-bar" role="toolbar" aria-label="Browser controls">
-    <div className="wvr-bar-group">
-      <IconButton label="Back" icon={ArrowLeft} disabled={!canGoBack} onClick={onBack} />
-      <IconButton label="Forward" icon={ArrowRight} disabled={!canGoForward} onClick={onForward} />
-      <IconButton label="Reload" icon={RefreshCw} onClick={onReload} />
-    </div>
-    <div className="wvr-bar-center">
-      <AddressBar url={url} onNavigate={onNavigate} />
-    </div>
-    <div className="wvr-bar-group wvr-bar-end">
-      <IconButton
-        label={selecting ? "Stop selecting" : "Select an element to comment on"}
-        icon={SquareDashedMousePointer}
-        active={selecting}
-        aria-pressed={selecting}
-        onClick={onToggleSelect}
-      />
-      <DeviceMenu device={device} onDevice={onDevice} />
-      {actions.map((action) => (
+}) => {
+  const { t } = useTranslation("uiShell");
+  return (
+    <div className="wvr-bar" role="toolbar" aria-label={t("webViewer.toolbar.ariaLabel")}>
+      <div className="wvr-bar-group">
         <IconButton
-          key={action.id}
-          label={action.label}
-          icon={actionIcon(action.icon)}
-          active={action.active}
-          primary={action.primary}
-          badge={action.badge}
-          disabled={action.disabled}
-          aria-pressed={action.active === undefined ? undefined : action.active}
-          onClick={() => onAction(action.id)}
+          label={t("webViewer.toolbar.back")}
+          icon={ArrowLeft}
+          disabled={!canGoBack}
+          onClick={onBack}
         />
-      ))}
+        <IconButton
+          label={t("webViewer.toolbar.forward")}
+          icon={ArrowRight}
+          disabled={!canGoForward}
+          onClick={onForward}
+        />
+        <IconButton label={t("webViewer.toolbar.reload")} icon={RefreshCw} onClick={onReload} />
+      </div>
+      <div className="wvr-bar-center">
+        <AddressBar url={url} onNavigate={onNavigate} />
+      </div>
+      <div className="wvr-bar-group wvr-bar-end">
+        <IconButton
+          label={
+            selecting ? t("webViewer.toolbar.stopSelecting") : t("webViewer.toolbar.startSelecting")
+          }
+          icon={SquareDashedMousePointer}
+          active={selecting}
+          aria-pressed={selecting}
+          onClick={onToggleSelect}
+        />
+        <DeviceMenu device={device} onDevice={onDevice} />
+        {actions.map((action) => (
+          <IconButton
+            key={action.id}
+            label={action.label}
+            icon={actionIcon(action.icon)}
+            active={action.active}
+            primary={action.primary}
+            badge={action.badge}
+            disabled={action.disabled}
+            aria-pressed={action.active === undefined ? undefined : action.active}
+            onClick={() => onAction(action.id)}
+          />
+        ))}
+      </div>
+      {loading && <div className="wvr-progress" aria-hidden="true" />}
     </div>
-    {loading && <div className="wvr-progress" aria-hidden="true" />}
-  </div>
-);
+  );
+};

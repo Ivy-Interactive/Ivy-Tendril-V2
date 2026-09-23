@@ -17,6 +17,21 @@ const ScrollArea = React.forwardRef<
      * than gaining a scrollbar it has no use for.
      */
     horizontal?: boolean;
+    /**
+     * Lay the content out at the viewport's width. Radix wraps the children in a `display: table`
+     * div of its own (`react-scroll-area/dist/index.mjs:130`), and a table is shrink-to-fit: it is
+     * never narrower than its content's *min-content* width. So one unbreakable run — a table with
+     * fixed columns, a path in a `nowrap` cell — made the whole wrapper wider than the viewport,
+     * and every sibling laid out at that width too: prose ran past the edge, right-aligned values
+     * went with it, and since a vertical-only area hides `overflow-x` none of it could be reached.
+     *
+     * With this the wrapper is a plain block as wide as the viewport, so content wraps to the area
+     * it is in and anything genuinely wider overflows on its own — a `DataTable` then scrolls
+     * inside its own frame instead of widening everything around it. Opt-in because some callers
+     * rely on the wrapper growing with its content: `MarkdownCodeBlock` scrolls sideways, and its
+     * padding wrapper only reaches past the longest line because the table it sits in does.
+     */
+    fitWidth?: boolean;
   }
 >(
   (
@@ -28,6 +43,7 @@ const ScrollArea = React.forwardRef<
       viewportStyle,
       hideScrollbar,
       horizontal,
+      fitWidth,
       ...props
     },
     ref,
@@ -42,6 +58,8 @@ const ScrollArea = React.forwardRef<
         tabIndex={0}
         className={cn(
           "h-full w-full rounded-[inherit] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset",
+          // `!` because Radix writes `display: table` as an inline style on the wrapper.
+          fitWidth && "[&>div]:!block",
           viewportClassName,
         )}
         style={viewportStyle}

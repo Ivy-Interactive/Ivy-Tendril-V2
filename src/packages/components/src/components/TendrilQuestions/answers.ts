@@ -1,5 +1,6 @@
 import type { PlanQuestion } from "../PlanMarkdown/questionsSchema";
 import { answerEntries, otherEntry } from "../PlanMarkdown/questionsSchema";
+import { i18n } from "@/i18n/uiPlanWorkspace";
 
 /** Draft or document answers keyed by question id. An empty list means unanswered. */
 export type AnswerMap = Record<string, string[]>;
@@ -50,26 +51,32 @@ const truncateTitle = (title: string): string =>
 
 /**
  * The footer note explaining why Submit is disabled or what a partial submit leaves to the agent.
- * Shared by `ChatQuestionsBlock` and `TendrilQuestions` so both surfaces read identically.
+ * Shared by `ChatQuestionsBlock` and `TendrilQuestions` so both surfaces read identically. Written
+ * in the current language, at call time; both callers call it while rendering.
  */
 export function submitNote(questions: PlanQuestion[], answers: AnswerMap): string | undefined {
   const hasAnyAnswers = questions.some(
     (question) => hasEntries(answers[question.id]) || question.answerPresent,
   );
-  if (!hasAnyAnswers) return "Answer a question to submit.";
+  if (!hasAnyAnswers) return i18n.t("uiPlanWorkspace:questions.submitNote.noAnswers");
 
   const missing = unansweredRequired(questions, answers);
   if (missing.length === 0) return undefined;
   if (missing.length === 1) {
     const title = missing[0].title || missing[0].id;
-    return `Unanswered: "${truncateTitle(title)}". Submitting leaves it to me.`;
+    return i18n.t("uiPlanWorkspace:questions.submitNote.oneUnanswered", {
+      title: truncateTitle(title),
+    });
   }
-  return `${missing.length} questions unanswered. Submitting leaves them to me.`;
+  return i18n.t("uiPlanWorkspace:questions.submitNote.manyUnanswered", { count: missing.length });
 }
 
 /**
  * The markdown summary that travels with a submission, so the conversation records what was
  * decided in words rather than ids.
+ *
+ * Never translated: it is written for the agent, and `parseAnswersSummary` reads it back by its
+ * English header and markers.
  */
 export function buildAnswersSummary(questions: PlanQuestion[], answers: AnswerMap): string {
   const lines = ["Answers:"];

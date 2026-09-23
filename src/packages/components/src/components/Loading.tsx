@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { Loader2 } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useTranslation } from "@/i18n/uiCommon";
 
 export interface LoadingProps {
   type?: "Spinner" | "Skeleton";
@@ -37,12 +38,17 @@ function generateSkeletonLayout(): SkeletonLine[] {
 }
 
 export function Loading({ type = "Spinner" }: LoadingProps) {
+  const { t } = useTranslation("uiCommon");
   const skeletonLines = useMemo<SkeletonLine[]>(generateSkeletonLayout, []);
   const titleBarWidth = useMemo(() => randomBetween(30, 55), []);
 
   if (type === "Skeleton") {
     return (
-      <div className="flex flex-col gap-2 w-full max-w-sm" role="status" aria-label="Loading">
+      <div
+        className="flex flex-col gap-2 w-full max-w-sm"
+        role="status"
+        aria-label={t("loading.ariaLabel")}
+      >
         <Skeleton className="h-5 rounded-md bg-muted" style={{ width: `${titleBarWidth}%` }} />
         {skeletonLines.map((line) => (
           <Skeleton
@@ -62,10 +68,10 @@ export function Loading({ type = "Spinner" }: LoadingProps) {
     <div
       className="flex items-center gap-2 text-muted-foreground"
       role="status"
-      aria-label="Loading"
+      aria-label={t("loading.ariaLabel")}
     >
       <Loader2 className="animate-spin size-4" />
-      <p className="text-sm">Loading...</p>
+      <p className="text-sm">{t("loading.text")}</p>
     </div>
   );
 }
@@ -75,12 +81,14 @@ export interface SpinnerProps {
   text?: string;
 }
 
-export function Spinner({ className, text = "Loading..." }: SpinnerProps) {
+export function Spinner({ className, text: textProp }: SpinnerProps) {
+  const { t } = useTranslation("uiCommon");
+  const text = textProp ?? t("loading.text");
   return (
     <div
       className={`flex items-center gap-2 text-muted-foreground ${className || ""}`}
       role="status"
-      aria-label="Loading"
+      aria-label={t("loading.ariaLabel")}
     >
       <Loader2 className="animate-spin size-4" />
       {text && <p className="text-sm">{text}</p>}

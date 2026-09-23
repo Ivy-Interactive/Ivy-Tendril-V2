@@ -2,6 +2,7 @@ import React, { useCallback, useMemo, useRef } from "react";
 import ReactECharts from "echarts-for-react";
 import { getHeight, getWidth } from "@/lib/styles";
 import { useThemeWithMonitoring } from "@/components/theme-provider";
+import { useTranslation, type TFunction } from "@/i18n/uiCommon";
 import {
   buildMarkLineConfig,
   generateEChartGrid,
@@ -165,6 +166,7 @@ const generateScatterYAxis = (
 };
 
 const generateScatterSeries = (
+  t: TFunction,
   data: Record<string, unknown>[],
   scatters?: ScatterProps[],
   xAxisDataKey?: string,
@@ -296,7 +298,7 @@ const generateScatterSeries = (
         return [
           baseSeries,
           {
-            name: `${scatter.name || scatter.dataKey} Line`,
+            name: t("charts.scatterLineSeries", { name: scatter.name || scatter.dataKey }),
             type: "line" as const,
             data: scatterData.map((d) => [d[0], d[1]]),
             showSymbol: false,
@@ -334,6 +336,9 @@ export const ScatterChart: React.FC<ScatterChartProps> = ({
   referenceDots = EMPTY_ARRAY,
   colorScheme = "Default",
 }) => {
+  // The line-series names and the tooltip's numbers are in the UI's language, so `t` - a new one
+  // when the language changes - is a dependency of the option below.
+  const { t } = useTranslation("uiCommon");
   // Use enhanced theme hook with automatic monitoring
   const { colors, isDark } = useThemeWithMonitoring({
     monitorDOM: false,
@@ -399,6 +404,7 @@ export const ScatterChart: React.FC<ScatterChartProps> = ({
       textStyle: generateTextStyle(themeColors.foreground, themeColors.fontSans),
       color: chartColors,
       series: generateScatterSeries(
+        t,
         data,
         scatters,
         xAxisDataKey,
@@ -429,6 +435,7 @@ export const ScatterChart: React.FC<ScatterChartProps> = ({
       referenceLines,
       referenceAreas,
       toolbox,
+      t,
     ],
   );
 

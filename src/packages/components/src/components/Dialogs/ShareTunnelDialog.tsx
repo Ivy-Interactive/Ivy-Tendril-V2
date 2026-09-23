@@ -4,6 +4,7 @@ import { Button } from "../ui/button";
 import { Callout } from "../ui/callout";
 import { Spinner } from "../ui/spinner";
 import { ClipboardCopy, ExternalLink, Share2 } from "lucide-react";
+import { useTranslation } from "@/i18n/uiDialogs";
 import { DialogShell } from "./DialogShell";
 
 /** Fallback error text. Module scope for the same reason as in `PlanSearchDialog`. */
@@ -146,6 +147,7 @@ export function ShareTunnelDialog({
   describeError = describeErrorFallback,
   errorCode = () => undefined,
 }: ShareTunnelDialogProps) {
+  const { t } = useTranslation("uiDialogs");
   const [snapshot, setSnapshot] = React.useState<ShareTunnelSnapshot | null>(null);
   const [error, setError] = React.useState<string | null>(null);
   const [isBusy, setIsBusy] = React.useState(false);
@@ -213,7 +215,7 @@ export function ShareTunnelDialog({
       setError(
         errorCode(err) === "TUNNEL_PRECONDITION"
           ? describeError(err)
-          : `Failed to start share tunnel: ${describeError(err)}`,
+          : t("shareTunnel.errors.start", { error: describeError(err) }),
       );
     } finally {
       setIsBusy(false);
@@ -225,9 +227,12 @@ export function ShareTunnelDialog({
     setError(null);
     try {
       setSnapshot(await api.stop());
-      onNotify?.("Deactivated", "Share tunnel stopped");
+      onNotify?.(
+        t("shareTunnel.notifications.stoppedTitle"),
+        t("shareTunnel.notifications.stoppedMessage"),
+      );
     } catch (err) {
-      setError(`Failed to stop share tunnel: ${describeError(err)}`);
+      setError(t("shareTunnel.errors.stop", { error: describeError(err) }));
     } finally {
       setIsBusy(false);
     }
@@ -237,9 +242,12 @@ export function ShareTunnelDialog({
     if (targetUrl === null) return;
     try {
       await copyToClipboard(targetUrl);
-      onNotify?.("Link Copied", "Share URL copied to clipboard");
+      onNotify?.(
+        t("shareTunnel.notifications.copiedTitle"),
+        t("shareTunnel.notifications.copiedMessage"),
+      );
     } catch (err) {
-      setError(`Could not copy the link: ${describeError(err)}`);
+      setError(t("shareTunnel.errors.copy", { error: describeError(err) }));
     }
   };
 
@@ -248,7 +256,7 @@ export function ShareTunnelDialog({
       isOpen={isOpen}
       onClose={onClose}
       // V1's `new DialogHeader("Share Work")` and `.Width(Size.Rem(32))`.
-      title="Share Work"
+      title={t("shareTunnel.title")}
       testId="share-tunnel-dialog"
       width="rem32"
       initialFocusRef={closeRef}
@@ -261,39 +269,47 @@ export function ShareTunnelDialog({
       // belongs on those two body buttons with their own explicit bindings, not on the shell.
       footer={
         <Button ref={closeRef} variant="outline" onClick={onClose} data-testid="dialog-close">
-          Close
+          {t("actions.close")}
         </Button>
       }
     >
       <div className="space-y-4">
         {/* V1's opening `Text.P(...)`, verbatim. */}
-        <p className="text-muted-foreground">
-          Share your work with teammates via a secure, read-only Cloudflare tunnel. Reviewers can
-          inspect plans, diffs, and leave comments without having access to your terminal or
-          settings.
-        </p>
+        <p className="text-muted-foreground">{t("shareTunnel.intro")}</p>
 
         {/* V1's `Callout.Error(error.Value, "Error")`. `Callout` already carries `role="alert"` for the
             error variant, so it is both the shared component and the accessible one. */}
         {shownError !== null && (
-          <Callout variant="error" title="Error" data-testid="share-tunnel-error">
+          <Callout
+            variant="error"
+            title={t("shareTunnel.errorTitle")}
+            data-testid="share-tunnel-error"
+          >
             {shownError}
           </Callout>
         )}
 
         {status === "connecting" && (
-          <Callout variant="info" title="Tunnel Starting" data-testid="share-tunnel-connecting">
+          <Callout
+            variant="info"
+            title={t("shareTunnel.connecting.title")}
+            data-testid="share-tunnel-connecting"
+          >
             <div className="flex items-center gap-2">
               <Spinner size="md" aria-hidden="true" />
-              <span>Starting share tunnel... This typically takes 15-30 seconds.</span>
+              <span>{t("shareTunnel.connecting.body")}</span>
             </div>
           </Callout>
         )}
 
         {status === "connected" && targetUrl !== null && (
-          <Callout variant="success" title="Share Active" data-testid="share-tunnel-active">
+          <Callout
+            variant="success"
+            title={t("shareTunnel.active.title")}
+            data-testid="share-tunnel-active"
+          >
             <div className="space-y-3">
-              <p>Your share tunnel is active with read-only &amp; comment-only permissions.</p>
+              <p>{t("shareTunnel.active.body")}</p>
               <p
                 className="break-all rounded-field border border-border bg-background px-3 py-2 font-mono text-xs text-foreground"
                 data-testid="share-tunnel-url"
@@ -307,7 +323,7 @@ export function ShareTunnelDialog({
                   data-testid="share-copy"
                 >
                   <ClipboardCopy className="size-4" aria-hidden="true" />
-                  Copy Link
+                  {t("shareTunnel.copyLink")}
                 </Button>
                 <Button
                   variant="outline"
@@ -315,7 +331,7 @@ export function ShareTunnelDialog({
                   data-testid="share-open"
                 >
                   <ExternalLink className="size-4" aria-hidden="true" />
-                  Open in Browser
+                  {t("shareTunnel.openInBrowser")}
                 </Button>
               </div>
               <Button
@@ -324,7 +340,7 @@ export function ShareTunnelDialog({
                 disabled={isBusy}
                 data-testid="share-stop"
               >
-                Stop Sharing
+                {t("shareTunnel.stop")}
               </Button>
             </div>
           </Callout>
@@ -333,7 +349,7 @@ export function ShareTunnelDialog({
         {status === "disabled" && (
           <Button onClick={() => void handleStart()} disabled={isBusy} data-testid="share-start">
             <Share2 className="size-4" aria-hidden="true" />
-            Start Share Tunnel
+            {t("shareTunnel.start")}
           </Button>
         )}
       </div>

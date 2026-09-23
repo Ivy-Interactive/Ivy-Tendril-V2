@@ -11,8 +11,7 @@ import React, {
   type WheelEvent,
 } from "react";
 import { formatBytes } from "@/lib/formatters";
-
-const numberFormatCache = new Map<string, Intl.NumberFormat>();
+import { useFormatters } from "@/i18n/uiCommon";
 
 export interface NumberInputProps {
   min?: number;
@@ -71,28 +70,29 @@ export const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
     const [isValid, setIsValid] = useState(true);
     const inputRef = React.useRef<HTMLInputElement | null>(null);
 
-    const formatter = useMemo(() => {
-      const key = JSON.stringify(format);
-      let fmt = numberFormatCache.get(key);
-      if (!fmt) {
-        fmt = Intl.NumberFormat(undefined, format);
-        numberFormatCache.set(key, fmt);
-      }
-      return fmt;
-    }, [format]);
+    // The UI language's formatters, not the operating system's: a new object when the language
+    // changes, so the display below re-formats with it. They cache their `Intl` objects per option set.
+    const formatters = useFormatters();
+    // `format` is a new object on every render when it is the default above or an inline literal,
+    // so the callbacks below depend on its content, not its identity.
+    const formatKey = JSON.stringify(format);
+    const numberFormat = useMemo(
+      () => JSON.parse(formatKey) as Intl.NumberFormatOptions,
+      [formatKey],
+    );
 
     const formatValue = useCallback(
       (num: number | null): string => {
         if (num === null) return "";
         try {
           if (isFocused) return num.toString();
-          if (isBytesFormat) return formatBytes(num, format.maximumFractionDigits ?? 2);
-          return formatter.format(num);
+          if (isBytesFormat) return formatBytes(num, numberFormat.maximumFractionDigits ?? 2);
+          return formatters.number(num, numberFormat);
         } catch {
           return num.toString();
         }
       },
-      [formatter, isFocused, isBytesFormat, format.maximumFractionDigits],
+      [formatters, numberFormat, isFocused, isBytesFormat],
     );
 
     const parseValue = useCallback(

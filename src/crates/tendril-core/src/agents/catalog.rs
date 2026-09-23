@@ -179,7 +179,7 @@ const fn model(
 }
 
 /// The row each catalogue flags `IsDefault`, which every picker over that catalogue pins first.
-const CLAUDE_DEFAULT: &str = "claude-opus-5";
+const CLAUDE_DEFAULT: &str = "claude-opus-5-5";
 const CODEX_DEFAULT: &str = "gpt-5.6-terra";
 const COPILOT_DEFAULT: &str = "gpt-5.4";
 /// V1 flags `gemini-3.7-flash`, which was the newest Flash when it was written. 3.8 is, and both
@@ -193,15 +193,16 @@ const OPENCODE_DEFAULT: &str = "moonshotai/Kimi-K3";
 /// reporting prices. Naming it anything else puts a second id in circulation and prices a free
 /// on-device run at the unknown-model fallback of $3.00/$15.00 per million.
 const APPLE_DEFAULT: &str = "apple/system";
-/// Cursor's default. Opus 5 rather than a Cursor-exclusive model for two reasons: it is the
+/// Cursor's default. Opus 5.5 rather than a Cursor-exclusive model for two reasons: it is the
 /// strongest general coding model Cursor serves, and `model_specs` carries a real rate card for it,
 /// so a job launched on the default reports a real cost rather than a dash. `composer-2.5` would be
 /// the house pick, but Tendril has no rates for it -- see `CURSOR_MODELS`.
-const CURSOR_DEFAULT: &str = "claude-opus-5";
+const CURSOR_DEFAULT: &str = "claude-opus-5-5";
 
 /// V1 `ClaudeModelCatalog`. Also the list the proxy serves when pointed at `api.anthropic.com`, and
 /// the first third of `IvyModelCatalog`.
 static CLAUDE_MODELS: &[CatalogModel] = &[
+    model("claude-opus-5-5", "Claude Opus 5.5", CLAUDE_EFFORTS),
     model("claude-opus-5", "Claude Opus 5", CLAUDE_EFFORTS),
     model("claude-fable-5-1", "Claude Fable 5.1", CLAUDE_EFFORTS),
     model("claude-opus-4-8", "Claude Opus 4.8", CLAUDE_EFFORTS),
@@ -246,6 +247,7 @@ static COPILOT_MODELS: &[CatalogModel] = &[
     model("gpt-5.2", "GPT-5.2", COPILOT_EFFORTS),
     model("gpt-5-mini", "GPT-5 Mini", COPILOT_EFFORTS),
     model("gpt-4.1", "GPT-4.1", COPILOT_EFFORTS),
+    model("claude-opus-5-5", "Claude Opus 5.5", CLAUDE_EFFORTS),
     model("claude-fable-5-1", "Claude Fable 5.1", CLAUDE_EFFORTS),
     model("claude-opus-5", "Claude Opus 5", CLAUDE_EFFORTS),
     model("claude-sonnet-5", "Claude Sonnet 5", CLAUDE_EFFORTS),
@@ -271,6 +273,7 @@ static ANTIGRAVITY_MODELS: &[CatalogModel] = &[
     model("gemini-3.7-flash", "Gemini 3.7 Flash", ANTIGRAVITY_EFFORTS),
     model("gemini-3.6-flash", "Gemini 3.6 Flash", ANTIGRAVITY_EFFORTS),
     model("gemini-3.1-pro", "Gemini 3.1 Pro", ANTIGRAVITY_EFFORTS),
+    model("claude-opus-5-5", "Claude Opus 5.5", CLAUDE_EFFORTS),
     model("claude-fable-5-1", "Claude Fable 5.1", CLAUDE_EFFORTS),
     model("claude-opus-5", "Claude Opus 5", CLAUDE_EFFORTS),
     model("claude-opus-4-6", "Claude Opus 4.6", CLAUDE_EFFORTS),
@@ -283,6 +286,7 @@ static ANTIGRAVITY_MODELS: &[CatalogModel] = &[
 /// prepends one to every list, and V1's proxy splices this list only after dropping it.
 static OPENCODE_MODELS: &[CatalogModel] = &[
     model("moonshotai/Kimi-K3", "Kimi k3", OPENCODE_EFFORTS),
+    model("claude-opus-5-5", "Claude Opus 5.5", CLAUDE_EFFORTS),
     model("claude-fable-5-1", "Claude Fable 5.1", CLAUDE_EFFORTS),
     model("claude-opus-5", "Claude Opus 5", CLAUDE_EFFORTS),
     model("claude-opus-4-7", "Claude Opus 4.7", CLAUDE_EFFORTS),
@@ -316,6 +320,12 @@ static OPENCODE_MODELS: &[CatalogModel] = &[
 /// which is why they are separate rows here. They price onto their non-thinking sibling's card,
 /// which is right: it is the same model with extended thinking turned on.
 static CURSOR_MODELS: &[CatalogModel] = &[
+    model("claude-opus-5-5", "Claude Opus 5.5", CURSOR_OPUS_5_EFFORTS),
+    model(
+        "claude-opus-5-5-thinking",
+        "Claude Opus 5.5 (Thinking)",
+        CURSOR_EFFORTS,
+    ),
     model("claude-opus-5", "Claude Opus 5", CURSOR_OPUS_5_EFFORTS),
     model(
         "claude-opus-5-thinking",
@@ -1083,10 +1093,10 @@ mod tests {
     fn every_agents_default_is_one_of_its_own_models_and_comes_first() {
         let expected: &[(&str, &str)] = &[
             ("antigravity", "gemini-3.8-flash"),
-            ("claude", "claude-opus-5"),
+            ("claude", "claude-opus-5-5"),
             ("codex", "gpt-5.6-terra"),
             ("copilot", "gpt-5.4"),
-            ("cursor", "claude-opus-5"),
+            ("cursor", "claude-opus-5-5"),
             ("gemini", "gemini-3.8-flash"),
             ("opencode", "moonshotai/Kimi-K3"),
             ("openaiproxy", "gpt-5.6-terra"),
@@ -1384,7 +1394,8 @@ mod tests {
         let rest = &claude[1..];
         // Fable before Opus before Sonnet before Haiku, and the higher version first inside a tier.
         let position = |id: &str| rest.iter().position(|found| *found == id).unwrap();
-        assert!(position("claude-fable-5-1") < position("claude-opus-4-8"));
+        assert!(position("claude-fable-5-1") < position("claude-opus-5"));
+        assert!(position("claude-opus-5") < position("claude-opus-4-8"));
         assert!(position("claude-opus-4-8") < position("claude-opus-4-7"));
         assert!(position("claude-opus-4-7") < position("claude-sonnet-5"));
         assert!(position("claude-sonnet-5") < position("claude-sonnet-4-6"));

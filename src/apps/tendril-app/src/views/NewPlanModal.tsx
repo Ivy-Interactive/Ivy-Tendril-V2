@@ -6,6 +6,7 @@ import type { ProjectSummary, StartJobResponse } from "../types/api";
 import { jobsStore } from "../state/jobsStore";
 import { firstStringArg, submitValueArg } from "../utils/eventArgs";
 import { ErrorBanner } from "../components/ErrorBanner";
+import { useTranslation, type TFunction } from "../i18n";
 
 interface NewPlanModalProps {
   isOpen: boolean;
@@ -35,18 +36,22 @@ const MAX_PROJECTS_FOR_TOGGLE = 6;
  * `CreatePlanDialog.BuildProjectSelectOptions`: "Auto" leads whenever there is more than one
  * project to choose between (or none configured yet), then the projects, then the escape hatch to
  * settings. With exactly one project there is nothing to decide, so no "Auto".
+ *
+ * `"Auto"` the *value* is what the CreatePlan job is sent and what {@link defaultProject} compares,
+ * so only its label is translated.
  */
 export function buildProjectOptions(
   projectNames: string[],
   includeAddProject: boolean,
+  t: TFunction<"plans">,
 ): { value: string; label: string }[] {
   const options: { value: string; label: string }[] = [];
   if (projectNames.length > 1 || projectNames.length === 0) {
-    options.push({ value: "Auto", label: "Auto" });
+    options.push({ value: "Auto", label: t("newPlan.autoProject") });
   }
   options.push(...projectNames.map((p) => ({ value: p, label: p })));
   if (includeAddProject) {
-    options.push({ value: ADD_PROJECT_VALUE, label: "+ Add New Project" });
+    options.push({ value: ADD_PROJECT_VALUE, label: t("newPlan.addProject") });
   }
   return options;
 }
@@ -78,6 +83,7 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
   initialProject = "",
   initialSourceUrl = "",
 }) => {
+  const { t } = useTranslation("plans");
   const projectNames = projects.map((p) => p.name);
 
   const [description, setDescription] = useState(
@@ -115,7 +121,7 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
 
   if (!isOpen) return null;
 
-  const options = buildProjectOptions(projectNames, onAddProject !== undefined);
+  const options = buildProjectOptions(projectNames, onAddProject !== undefined, t);
   const useToggleVariant = projectNames.length <= MAX_PROJECTS_FOR_TOGGLE;
 
   const handleProjectChange = (value: string) => {
@@ -133,7 +139,7 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
     if (isSubmitting) return;
     const text = (submittedText ?? description).trim();
     if (!text) {
-      setError("Please enter a description for the new plan.");
+      setError(t("newPlan.emptyDescription"));
       return;
     }
 
@@ -189,10 +195,10 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
             and was asked for removal. The `pb-4` stays -- it is the gap to the body, not the line. */}
         <div className="flex items-center justify-between pb-4">
           <h2 id="new-plan-title" className="text-lg font-bold text-foreground">
-            Create New Plan
+            {t("newPlan.title")}
           </h2>
           {/* See the note on `JobSessionView`'s tab close: an icon, not the "✕" glyph. */}
-          <IconButton label="Close modal" size="md" tone="muted" onClick={onClose}>
+          <IconButton label={t("newPlan.closeLabel")} size="md" tone="muted" onClick={onClose}>
             <X className="size-4" />
           </IconButton>
         </div>
@@ -204,7 +210,7 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
           {useToggleVariant ? (
             <div
               role="radiogroup"
-              aria-label="Target Project"
+              aria-label={t("newPlan.projectPickerLabel")}
               className="flex flex-wrap gap-1 rounded-field border border-border p-1"
             >
               {options.map((o) => (
@@ -227,7 +233,7 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
           ) : (
             <NativeSelect
               id="project-select"
-              aria-label="Target Project"
+              aria-label={t("newPlan.projectPickerLabel")}
               value={selectedProject}
               onChange={(e) => handleProjectChange(e.target.value)}
             >
@@ -243,8 +249,8 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
             id="content-input"
             value={description}
             autoFocus
-            submitLabel="Create"
-            placeholder="Enter task description..."
+            submitLabel={t("newPlan.submit")}
+            placeholder={t("newPlan.placeholder")}
             eventHandler={(evt: string, _id: string, args?: unknown[]) => {
               if (evt === "OnChange") {
                 const text = firstStringArg(args);

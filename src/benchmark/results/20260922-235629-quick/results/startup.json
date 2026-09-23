@@ -1,0 +1,2481 @@
+{
+  "suite": "startup",
+  "runId": "20260922-235629-quick",
+  "profile": "quick",
+  "startedAt": "2026-09-22T23:57:19.680+02:00",
+  "finishedAt": "2026-09-22T23:59:05.403+02:00",
+  "env": {
+    "loadavgStart": [
+      8.77001953125,
+      7.91748046875,
+      7.8984375
+    ],
+    "loadavgEnd": [
+      19.71728515625,
+      12.10302734375,
+      9.5400390625
+    ],
+    "loadSamples": [
+      8.77001953125,
+      10.3095703125,
+      11.08544921875,
+      12.19921875,
+      13.62451171875,
+      14.6953125,
+      16.00048828125,
+      15.279296875,
+      15.7373046875,
+      17.03955078125,
+      16.1552734375,
+      15.421875,
+      14.7470703125,
+      15.64794921875,
+      16.236328125,
+      17.41845703125,
+      18.185546875,
+      18.81103515625,
+      18.82568359375,
+      20.12060546875,
+      20.91162109375,
+      19.71728515625,
+      19.71728515625
+    ],
+    "quietWaitMs": 0
+  },
+  "metrics": [
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v1",
+      "dataset": "empty",
+      "metric": "http_ready_ms",
+      "unit": "ms",
+      "samples": [
+        1027.444,
+        1020.607,
+        1021.343
+      ],
+      "better": "lower",
+      "meta": {
+        "readiness": "http = GET /api/ping 200; data = stdout \"Initial sync complete\" (can precede http)",
+        "runs": [
+          {
+            "httpMs": 1027.4,
+            "dataMs": 1081.1,
+            "sampleLagMs": 1.2,
+            "processes": 4,
+            "processNames": [
+              "Ivy.Tendril",
+              "zsh"
+            ],
+            "initialSync": {
+              "plans": 0,
+              "ms": 4
+            },
+            "stop": {
+              "forced": false,
+              "ms": 9,
+              "survivors": []
+            }
+          },
+          {
+            "httpMs": 1020.6,
+            "dataMs": 1074.6,
+            "sampleLagMs": 1.1,
+            "processes": 6,
+            "processNames": [
+              "Ivy.Tendril",
+              "bash",
+              "zsh"
+            ],
+            "initialSync": {
+              "plans": 0,
+              "ms": 4
+            },
+            "stop": {
+              "forced": false,
+              "ms": 9,
+              "survivors": []
+            }
+          },
+          {
+            "httpMs": 1021.3,
+            "dataMs": 1077.9,
+            "sampleLagMs": 1.1,
+            "processes": 4,
+            "processNames": [
+              "Ivy.Tendril",
+              "env",
+              "zsh"
+            ],
+            "initialSync": {
+              "plans": 0,
+              "ms": 4
+            },
+            "stop": {
+              "forced": false,
+              "ms": 9,
+              "survivors": []
+            }
+          }
+        ],
+        "bin": "/Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v1",
+      "dataset": "empty",
+      "metric": "data_ready_ms",
+      "unit": "ms",
+      "samples": [
+        1081.125,
+        1074.555,
+        1077.941
+      ],
+      "better": "lower",
+      "meta": {
+        "readiness": "http = GET /api/ping 200; data = stdout \"Initial sync complete\" (can precede http)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v1",
+      "dataset": "empty",
+      "metric": "usable_ms",
+      "unit": "ms",
+      "samples": [
+        1081.125,
+        1074.555,
+        1077.941
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "max(http_ready_ms, data_ready_ms): both the API and the synced data are available"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v1",
+      "dataset": "empty",
+      "metric": "footprint_at_ready_mib",
+      "unit": "MiB",
+      "samples": [
+        118.532,
+        118.563,
+        118.548
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "at": "first sample at or after usable_ms (lag per run in http_ready_ms meta)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v1",
+      "dataset": "empty",
+      "metric": "peak_footprint_startup_mib",
+      "unit": "MiB",
+      "samples": [
+        125.252,
+        128.675,
+        124.486
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "definition": "sum over the tree of each process lifetime max phys_footprint, up to ready (upper bound on the simultaneous peak)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v1",
+      "dataset": "empty",
+      "metric": "cpu_s_to_ready",
+      "unit": "cpu_s",
+      "samples": [
+        0.6898,
+        0.6938,
+        0.6881
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "childProcesses": 3
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "http_ready_ms",
+      "unit": "ms",
+      "samples": [
+        27.365,
+        14.841,
+        30.456
+      ],
+      "better": "lower",
+      "meta": {
+        "readiness": "GET /api/health 200, which the daemon only answers after reconcile (sync + recommendations rebuild): http = data",
+        "runs": [
+          {
+            "httpMs": 27.4,
+            "dataMs": 27.4,
+            "sampleLagMs": 1,
+            "processes": 1,
+            "processNames": [
+              "tendril"
+            ],
+            "phases": {
+              "boundMs": 12,
+              "watcherRegistered": 24,
+              "recommendationsRebuilt": 27
+            },
+            "stop": {
+              "forced": false,
+              "ms": 2,
+              "survivors": []
+            }
+          },
+          {
+            "httpMs": 14.8,
+            "dataMs": 14.8,
+            "sampleLagMs": 1,
+            "processes": 1,
+            "processNames": [
+              "tendril"
+            ],
+            "phases": {
+              "boundMs": 11,
+              "watcherRegistered": 12,
+              "recommendationsRebuilt": 15
+            },
+            "stop": {
+              "forced": false,
+              "ms": 2,
+              "survivors": []
+            }
+          },
+          {
+            "httpMs": 30.5,
+            "dataMs": 30.5,
+            "sampleLagMs": 1.1,
+            "processes": 1,
+            "processNames": [
+              "tendril"
+            ],
+            "phases": {
+              "boundMs": 11,
+              "watcherRegistered": 27,
+              "recommendationsRebuilt": 30
+            },
+            "stop": {
+              "forced": false,
+              "ms": 2,
+              "survivors": []
+            }
+          }
+        ],
+        "bin": "~/Desktop/tendril-benchmark/ivy-tendril-v2/target/release/tendril"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "data_ready_ms",
+      "unit": "ms",
+      "samples": [
+        27.365,
+        14.841,
+        30.456
+      ],
+      "better": "lower",
+      "meta": {
+        "readiness": "GET /api/health 200, which the daemon only answers after reconcile (sync + recommendations rebuild): http = data"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "usable_ms",
+      "unit": "ms",
+      "samples": [
+        27.365,
+        14.841,
+        30.456
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "max(http_ready_ms, data_ready_ms): both the API and the synced data are available"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "footprint_at_ready_mib",
+      "unit": "MiB",
+      "samples": [
+        7.61,
+        7.501,
+        7.563
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "at": "first sample at or after usable_ms (lag per run in http_ready_ms meta)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "peak_footprint_startup_mib",
+      "unit": "MiB",
+      "samples": [
+        7.657,
+        7.516,
+        7.626
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "definition": "sum over the tree of each process lifetime max phys_footprint, up to ready (upper bound on the simultaneous peak)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "cpu_s_to_ready",
+      "unit": "cpu_s",
+      "samples": [
+        0.0139,
+        0.0142,
+        0.0146
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "childProcesses": 0
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "phase_bound_ms",
+      "unit": "ms",
+      "samples": [
+        12,
+        11,
+        11
+      ],
+      "better": "lower",
+      "meta": {
+        "source": "time the daemon log line reached the harness, from spawn",
+        "v2Only": true
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "phase_watcher_registered_ms",
+      "unit": "ms",
+      "samples": [
+        24,
+        12,
+        27
+      ],
+      "better": "lower",
+      "meta": {
+        "source": "time the daemon log line reached the harness, from spawn",
+        "v2Only": true
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "phase_recommendations_rebuilt_ms",
+      "unit": "ms",
+      "samples": [
+        27,
+        15,
+        30
+      ],
+      "better": "lower",
+      "meta": {
+        "source": "time the daemon log line reached the harness, from spawn",
+        "v2Only": true
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v1",
+      "dataset": "empty",
+      "metric": "http_ready_ms",
+      "unit": "ms",
+      "samples": [
+        1003.239,
+        1030.285,
+        1008.47
+      ],
+      "better": "lower",
+      "meta": {
+        "readiness": "http = GET /api/ping 200; data = stdout \"Initial sync complete\" (can precede http)",
+        "runs": [
+          {
+            "httpMs": 1003.2,
+            "dataMs": 1060.4,
+            "sampleLagMs": 1.1,
+            "processes": 5,
+            "processNames": [
+              "Ivy.Tendril",
+              "bash",
+              "zsh"
+            ],
+            "initialSync": {
+              "plans": 0,
+              "ms": 3
+            },
+            "stop": {
+              "forced": false,
+              "ms": 9,
+              "survivors": []
+            }
+          },
+          {
+            "httpMs": 1030.3,
+            "dataMs": 1056.8,
+            "sampleLagMs": 1.2,
+            "processes": 7,
+            "processNames": [
+              "Ivy.Tendril",
+              "bash",
+              "zsh"
+            ],
+            "initialSync": {
+              "plans": 0,
+              "ms": 4
+            },
+            "stop": {
+              "forced": false,
+              "ms": 9,
+              "survivors": []
+            }
+          },
+          {
+            "httpMs": 1008.5,
+            "dataMs": 1062.5,
+            "sampleLagMs": 1.1,
+            "processes": 4,
+            "processNames": [
+              "Ivy.Tendril",
+              "zsh"
+            ],
+            "initialSync": {
+              "plans": 0,
+              "ms": 4
+            },
+            "stop": {
+              "forced": false,
+              "ms": 9,
+              "survivors": []
+            }
+          }
+        ],
+        "prime": {
+          "httpMs": 1022.6,
+          "dataMs": 1080.3
+        },
+        "bin": "/Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v1",
+      "dataset": "empty",
+      "metric": "data_ready_ms",
+      "unit": "ms",
+      "samples": [
+        1060.392,
+        1056.802,
+        1062.53
+      ],
+      "better": "lower",
+      "meta": {
+        "readiness": "http = GET /api/ping 200; data = stdout \"Initial sync complete\" (can precede http)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v1",
+      "dataset": "empty",
+      "metric": "usable_ms",
+      "unit": "ms",
+      "samples": [
+        1060.392,
+        1056.802,
+        1062.53
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "max(http_ready_ms, data_ready_ms): both the API and the synced data are available"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v1",
+      "dataset": "empty",
+      "metric": "footprint_at_ready_mib",
+      "unit": "MiB",
+      "samples": [
+        118.391,
+        118.126,
+        117.907
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "at": "first sample at or after usable_ms (lag per run in http_ready_ms meta)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v1",
+      "dataset": "empty",
+      "metric": "peak_footprint_startup_mib",
+      "unit": "MiB",
+      "samples": [
+        126.94,
+        129.581,
+        125.143
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "definition": "sum over the tree of each process lifetime max phys_footprint, up to ready (upper bound on the simultaneous peak)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v1",
+      "dataset": "empty",
+      "metric": "cpu_s_to_ready",
+      "unit": "cpu_s",
+      "samples": [
+        0.6815,
+        0.6795,
+        0.6801
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "childProcesses": 4
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "http_ready_ms",
+      "unit": "ms",
+      "samples": [
+        16.419,
+        13.421,
+        16.318
+      ],
+      "better": "lower",
+      "meta": {
+        "readiness": "GET /api/health 200, which the daemon only answers after reconcile (sync + recommendations rebuild): http = data",
+        "runs": [
+          {
+            "httpMs": 16.4,
+            "dataMs": 16.4,
+            "sampleLagMs": 0.9,
+            "processes": 1,
+            "processNames": [
+              "tendril"
+            ],
+            "phases": {
+              "boundMs": 10,
+              "watcherRegistered": 11,
+              "recommendationsRebuilt": 14
+            },
+            "stop": {
+              "forced": false,
+              "ms": 2,
+              "survivors": []
+            }
+          },
+          {
+            "httpMs": 13.4,
+            "dataMs": 13.4,
+            "sampleLagMs": 1,
+            "processes": 1,
+            "processNames": [
+              "tendril"
+            ],
+            "phases": {
+              "boundMs": 9,
+              "watcherRegistered": 10,
+              "recommendationsRebuilt": 13
+            },
+            "stop": {
+              "forced": false,
+              "ms": 2,
+              "survivors": []
+            }
+          },
+          {
+            "httpMs": 16.3,
+            "dataMs": 16.3,
+            "sampleLagMs": 0.9,
+            "processes": 1,
+            "processNames": [
+              "tendril"
+            ],
+            "phases": {
+              "boundMs": 10,
+              "watcherRegistered": 11,
+              "recommendationsRebuilt": 14
+            },
+            "stop": {
+              "forced": false,
+              "ms": 2,
+              "survivors": []
+            }
+          }
+        ],
+        "prime": {
+          "httpMs": 16.5,
+          "dataMs": 16.5
+        },
+        "bin": "~/Desktop/tendril-benchmark/ivy-tendril-v2/target/release/tendril"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "data_ready_ms",
+      "unit": "ms",
+      "samples": [
+        16.419,
+        13.421,
+        16.318
+      ],
+      "better": "lower",
+      "meta": {
+        "readiness": "GET /api/health 200, which the daemon only answers after reconcile (sync + recommendations rebuild): http = data"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "usable_ms",
+      "unit": "ms",
+      "samples": [
+        16.419,
+        13.421,
+        16.318
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "max(http_ready_ms, data_ready_ms): both the API and the synced data are available"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "footprint_at_ready_mib",
+      "unit": "MiB",
+      "samples": [
+        7.626,
+        7.454,
+        7.407
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "at": "first sample at or after usable_ms (lag per run in http_ready_ms meta)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "peak_footprint_startup_mib",
+      "unit": "MiB",
+      "samples": [
+        7.626,
+        7.516,
+        7.469
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "definition": "sum over the tree of each process lifetime max phys_footprint, up to ready (upper bound on the simultaneous peak)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "cpu_s_to_ready",
+      "unit": "cpu_s",
+      "samples": [
+        0.0126,
+        0.0122,
+        0.0127
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "childProcesses": 0
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "phase_bound_ms",
+      "unit": "ms",
+      "samples": [
+        10,
+        9,
+        10
+      ],
+      "better": "lower",
+      "meta": {
+        "source": "time the daemon log line reached the harness, from spawn",
+        "v2Only": true
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "phase_watcher_registered_ms",
+      "unit": "ms",
+      "samples": [
+        11,
+        10,
+        11
+      ],
+      "better": "lower",
+      "meta": {
+        "source": "time the daemon log line reached the harness, from spawn",
+        "v2Only": true
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "empty",
+      "metric": "phase_recommendations_rebuilt_ms",
+      "unit": "ms",
+      "samples": [
+        14,
+        13,
+        14
+      ],
+      "better": "lower",
+      "meta": {
+        "source": "time the daemon log line reached the harness, from spawn",
+        "v2Only": true
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "http_ready_ms",
+      "unit": "ms",
+      "samples": [
+        1022.228,
+        1027.929,
+        1030.332
+      ],
+      "better": "lower",
+      "meta": {
+        "readiness": "http = GET /api/ping 200; data = stdout \"Initial sync complete\" (can precede http)",
+        "runs": [
+          {
+            "httpMs": 1022.2,
+            "dataMs": 1124.5,
+            "sampleLagMs": 1.1,
+            "processes": 6,
+            "processNames": [
+              "Ivy.Tendril",
+              "bash",
+              "uname",
+              "zsh"
+            ],
+            "initialSync": {
+              "plans": 50,
+              "ms": 37
+            },
+            "stop": {
+              "forced": false,
+              "ms": 9,
+              "survivors": []
+            }
+          },
+          {
+            "httpMs": 1027.9,
+            "dataMs": 1129.5,
+            "sampleLagMs": 1,
+            "processes": 4,
+            "processNames": [
+              "Ivy.Tendril",
+              "which",
+              "zsh"
+            ],
+            "initialSync": {
+              "plans": 50,
+              "ms": 37
+            },
+            "stop": {
+              "forced": false,
+              "ms": 10,
+              "survivors": []
+            }
+          },
+          {
+            "httpMs": 1030.3,
+            "dataMs": 1130.2,
+            "sampleLagMs": 0.9,
+            "processes": 5,
+            "processNames": [
+              "Ivy.Tendril",
+              "bash",
+              "zsh"
+            ],
+            "initialSync": {
+              "plans": 50,
+              "ms": 36
+            },
+            "stop": {
+              "forced": false,
+              "ms": 8,
+              "survivors": []
+            }
+          }
+        ],
+        "bin": "/Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "data_ready_ms",
+      "unit": "ms",
+      "samples": [
+        1124.53,
+        1129.521,
+        1130.175
+      ],
+      "better": "lower",
+      "meta": {
+        "readiness": "http = GET /api/ping 200; data = stdout \"Initial sync complete\" (can precede http)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "usable_ms",
+      "unit": "ms",
+      "samples": [
+        1124.53,
+        1129.521,
+        1130.175
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "max(http_ready_ms, data_ready_ms): both the API and the synced data are available"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "footprint_at_ready_mib",
+      "unit": "MiB",
+      "samples": [
+        123.329,
+        124.016,
+        123.548
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "at": "first sample at or after usable_ms (lag per run in http_ready_ms meta)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "peak_footprint_startup_mib",
+      "unit": "MiB",
+      "samples": [
+        133.003,
+        129.861,
+        132.034
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "definition": "sum over the tree of each process lifetime max phys_footprint, up to ready (upper bound on the simultaneous peak)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "cpu_s_to_ready",
+      "unit": "cpu_s",
+      "samples": [
+        0.7453,
+        0.7362,
+        0.7436
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "childProcesses": 4
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "http_ready_ms",
+      "unit": "ms",
+      "samples": [
+        131.952,
+        147.244,
+        133.848
+      ],
+      "better": "lower",
+      "meta": {
+        "readiness": "GET /api/health 200, which the daemon only answers after reconcile (sync + recommendations rebuild): http = data",
+        "runs": [
+          {
+            "httpMs": 132,
+            "dataMs": 132,
+            "sampleLagMs": 1,
+            "processes": 1,
+            "processNames": [
+              "tendril"
+            ],
+            "phases": {
+              "boundMs": 11,
+              "watcherRegistered": 83,
+              "plansSynced": 121,
+              "recommendationsRebuilt": 132
+            },
+            "stop": {
+              "forced": false,
+              "ms": 2,
+              "survivors": []
+            }
+          },
+          {
+            "httpMs": 147.2,
+            "dataMs": 147.2,
+            "sampleLagMs": 1.5,
+            "processes": 1,
+            "processNames": [
+              "tendril"
+            ],
+            "phases": {
+              "boundMs": 11,
+              "watcherRegistered": 99,
+              "plansSynced": 136,
+              "recommendationsRebuilt": 147
+            },
+            "stop": {
+              "forced": false,
+              "ms": 7,
+              "survivors": []
+            }
+          },
+          {
+            "httpMs": 133.8,
+            "dataMs": 133.8,
+            "sampleLagMs": 1,
+            "processes": 1,
+            "processNames": [
+              "tendril"
+            ],
+            "phases": {
+              "boundMs": 11,
+              "watcherRegistered": 85,
+              "plansSynced": 122,
+              "recommendationsRebuilt": 134
+            },
+            "stop": {
+              "forced": false,
+              "ms": 4,
+              "survivors": []
+            }
+          }
+        ],
+        "bin": "~/Desktop/tendril-benchmark/ivy-tendril-v2/target/release/tendril"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "data_ready_ms",
+      "unit": "ms",
+      "samples": [
+        131.952,
+        147.244,
+        133.848
+      ],
+      "better": "lower",
+      "meta": {
+        "readiness": "GET /api/health 200, which the daemon only answers after reconcile (sync + recommendations rebuild): http = data"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "usable_ms",
+      "unit": "ms",
+      "samples": [
+        131.952,
+        147.244,
+        133.848
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "max(http_ready_ms, data_ready_ms): both the API and the synced data are available"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "footprint_at_ready_mib",
+      "unit": "MiB",
+      "samples": [
+        10.047,
+        32.673,
+        14.001
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "at": "first sample at or after usable_ms (lag per run in http_ready_ms meta)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "peak_footprint_startup_mib",
+      "unit": "MiB",
+      "samples": [
+        10.047,
+        32.673,
+        14.001
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "definition": "sum over the tree of each process lifetime max phys_footprint, up to ready (upper bound on the simultaneous peak)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "cpu_s_to_ready",
+      "unit": "cpu_s",
+      "samples": [
+        0.0948,
+        0.1045,
+        0.0942
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "childProcesses": 0
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "phase_bound_ms",
+      "unit": "ms",
+      "samples": [
+        11,
+        11,
+        11
+      ],
+      "better": "lower",
+      "meta": {
+        "source": "time the daemon log line reached the harness, from spawn",
+        "v2Only": true
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "phase_watcher_registered_ms",
+      "unit": "ms",
+      "samples": [
+        83,
+        99,
+        85
+      ],
+      "better": "lower",
+      "meta": {
+        "source": "time the daemon log line reached the harness, from spawn",
+        "v2Only": true
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "phase_plans_synced_ms",
+      "unit": "ms",
+      "samples": [
+        121,
+        136,
+        122
+      ],
+      "better": "lower",
+      "meta": {
+        "source": "time the daemon log line reached the harness, from spawn",
+        "v2Only": true
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "phase_recommendations_rebuilt_ms",
+      "unit": "ms",
+      "samples": [
+        132,
+        147,
+        134
+      ],
+      "better": "lower",
+      "meta": {
+        "source": "time the daemon log line reached the harness, from spawn",
+        "v2Only": true
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "http_ready_ms",
+      "unit": "ms",
+      "samples": [
+        1006.423,
+        1004.582,
+        1007.529
+      ],
+      "better": "lower",
+      "meta": {
+        "readiness": "http = GET /api/ping 200; data = stdout \"Initial sync complete\" (can precede http)",
+        "runs": [
+          {
+            "httpMs": 1006.4,
+            "dataMs": 1103,
+            "sampleLagMs": 0.8,
+            "processes": 6,
+            "processNames": [
+              "Ivy.Tendril",
+              "which",
+              "zsh"
+            ],
+            "initialSync": {
+              "plans": 30,
+              "ms": 26
+            },
+            "stop": {
+              "forced": false,
+              "ms": 10,
+              "survivors": []
+            }
+          },
+          {
+            "httpMs": 1004.6,
+            "dataMs": 1101.3,
+            "sampleLagMs": 1,
+            "processes": 5,
+            "processNames": [
+              "Ivy.Tendril",
+              "bash",
+              "zsh"
+            ],
+            "initialSync": {
+              "plans": 30,
+              "ms": 26
+            },
+            "stop": {
+              "forced": false,
+              "ms": 9,
+              "survivors": []
+            }
+          },
+          {
+            "httpMs": 1007.5,
+            "dataMs": 1106.7,
+            "sampleLagMs": 1,
+            "processes": 6,
+            "processNames": [
+              "Ivy.Tendril",
+              "bash",
+              "which",
+              "zsh"
+            ],
+            "initialSync": {
+              "plans": 30,
+              "ms": 26
+            },
+            "stop": {
+              "forced": false,
+              "ms": 9,
+              "survivors": []
+            }
+          }
+        ],
+        "prime": {
+          "httpMs": 1024.5,
+          "dataMs": 1124.3
+        },
+        "bin": "/Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "data_ready_ms",
+      "unit": "ms",
+      "samples": [
+        1102.991,
+        1101.309,
+        1106.747
+      ],
+      "better": "lower",
+      "meta": {
+        "readiness": "http = GET /api/ping 200; data = stdout \"Initial sync complete\" (can precede http)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "usable_ms",
+      "unit": "ms",
+      "samples": [
+        1102.991,
+        1101.309,
+        1106.747
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "max(http_ready_ms, data_ready_ms): both the API and the synced data are available"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "footprint_at_ready_mib",
+      "unit": "MiB",
+      "samples": [
+        121.47,
+        121.345,
+        121.563
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "at": "first sample at or after usable_ms (lag per run in http_ready_ms meta)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "peak_footprint_startup_mib",
+      "unit": "MiB",
+      "samples": [
+        130.503,
+        130.127,
+        132.331
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "definition": "sum over the tree of each process lifetime max phys_footprint, up to ready (upper bound on the simultaneous peak)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v1",
+      "dataset": "small",
+      "metric": "cpu_s_to_ready",
+      "unit": "cpu_s",
+      "samples": [
+        0.7177,
+        0.7186,
+        0.7488
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "childProcesses": 5
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "http_ready_ms",
+      "unit": "ms",
+      "samples": [
+        102.269,
+        103.941,
+        117.071
+      ],
+      "better": "lower",
+      "meta": {
+        "readiness": "GET /api/health 200, which the daemon only answers after reconcile (sync + recommendations rebuild): http = data",
+        "runs": [
+          {
+            "httpMs": 102.3,
+            "dataMs": 102.3,
+            "sampleLagMs": 0.8,
+            "processes": 1,
+            "processNames": [
+              "tendril"
+            ],
+            "phases": {
+              "boundMs": 10,
+              "watcherRegistered": 83,
+              "recommendationsRebuilt": 102
+            },
+            "stop": {
+              "forced": false,
+              "ms": 4,
+              "survivors": []
+            }
+          },
+          {
+            "httpMs": 103.9,
+            "dataMs": 103.9,
+            "sampleLagMs": 0.8,
+            "processes": 1,
+            "processNames": [
+              "tendril"
+            ],
+            "phases": {
+              "boundMs": 9,
+              "watcherRegistered": 85,
+              "recommendationsRebuilt": 104
+            },
+            "stop": {
+              "forced": false,
+              "ms": 3,
+              "survivors": []
+            }
+          },
+          {
+            "httpMs": 117.1,
+            "dataMs": 117.1,
+            "sampleLagMs": 1,
+            "processes": 1,
+            "processNames": [
+              "tendril"
+            ],
+            "phases": {
+              "boundMs": 10,
+              "watcherRegistered": 98,
+              "recommendationsRebuilt": 117
+            },
+            "stop": {
+              "forced": false,
+              "ms": 2,
+              "survivors": []
+            }
+          }
+        ],
+        "prime": {
+          "httpMs": 132.3,
+          "dataMs": 132.3
+        },
+        "bin": "~/Desktop/tendril-benchmark/ivy-tendril-v2/target/release/tendril"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "data_ready_ms",
+      "unit": "ms",
+      "samples": [
+        102.269,
+        103.941,
+        117.071
+      ],
+      "better": "lower",
+      "meta": {
+        "readiness": "GET /api/health 200, which the daemon only answers after reconcile (sync + recommendations rebuild): http = data"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "usable_ms",
+      "unit": "ms",
+      "samples": [
+        102.269,
+        103.941,
+        117.071
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "max(http_ready_ms, data_ready_ms): both the API and the synced data are available"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "footprint_at_ready_mib",
+      "unit": "MiB",
+      "samples": [
+        10.157,
+        10.001,
+        10.094
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "at": "first sample at or after usable_ms (lag per run in http_ready_ms meta)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "peak_footprint_startup_mib",
+      "unit": "MiB",
+      "samples": [
+        10.157,
+        10.001,
+        10.094
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "definition": "sum over the tree of each process lifetime max phys_footprint, up to ready (upper bound on the simultaneous peak)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "cpu_s_to_ready",
+      "unit": "cpu_s",
+      "samples": [
+        0.0654,
+        0.066,
+        0.0673
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "childProcesses": 0
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "phase_bound_ms",
+      "unit": "ms",
+      "samples": [
+        10,
+        9,
+        10
+      ],
+      "better": "lower",
+      "meta": {
+        "source": "time the daemon log line reached the harness, from spawn",
+        "v2Only": true
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "phase_watcher_registered_ms",
+      "unit": "ms",
+      "samples": [
+        83,
+        85,
+        98
+      ],
+      "better": "lower",
+      "meta": {
+        "source": "time the daemon log line reached the harness, from spawn",
+        "v2Only": true
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "small",
+      "metric": "phase_recommendations_rebuilt_ms",
+      "unit": "ms",
+      "samples": [
+        102,
+        104,
+        117
+      ],
+      "better": "lower",
+      "meta": {
+        "source": "time the daemon log line reached the harness, from spawn",
+        "v2Only": true
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "http_ready_ms",
+      "unit": "ms",
+      "samples": [
+        1073.133,
+        1090.516,
+        1064.956
+      ],
+      "better": "lower",
+      "meta": {
+        "readiness": "http = GET /api/ping 200; data = stdout \"Initial sync complete\" (can precede http)",
+        "runs": [
+          {
+            "httpMs": 1073.1,
+            "dataMs": 2206.5,
+            "sampleLagMs": 0.9,
+            "processes": 7,
+            "processNames": [
+              "Ivy.Tendril",
+              "bash",
+              "zsh"
+            ],
+            "initialSync": {
+              "plans": 1500,
+              "ms": 985
+            },
+            "stop": {
+              "forced": false,
+              "ms": 9,
+              "survivors": []
+            }
+          },
+          {
+            "httpMs": 1090.5,
+            "dataMs": 2301.5,
+            "sampleLagMs": 0.3,
+            "processes": 5,
+            "processNames": [
+              "Ivy.Tendril",
+              "bash",
+              "grep",
+              "zsh"
+            ],
+            "initialSync": {
+              "plans": 1500,
+              "ms": 1051
+            },
+            "stop": {
+              "forced": false,
+              "ms": 11,
+              "survivors": []
+            }
+          },
+          {
+            "httpMs": 1065,
+            "dataMs": 2123.1,
+            "sampleLagMs": 0.8,
+            "processes": 6,
+            "processNames": [
+              "Ivy.Tendril",
+              "bash",
+              "grep",
+              "mkdir",
+              "zsh"
+            ],
+            "initialSync": {
+              "plans": 1500,
+              "ms": 918
+            },
+            "stop": {
+              "forced": false,
+              "ms": 9,
+              "survivors": []
+            }
+          }
+        ],
+        "bin": "/Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "data_ready_ms",
+      "unit": "ms",
+      "samples": [
+        2206.47,
+        2301.481,
+        2123.062
+      ],
+      "better": "lower",
+      "meta": {
+        "readiness": "http = GET /api/ping 200; data = stdout \"Initial sync complete\" (can precede http)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "usable_ms",
+      "unit": "ms",
+      "samples": [
+        2206.47,
+        2301.481,
+        2123.062
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "max(http_ready_ms, data_ready_ms): both the API and the synced data are available"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "footprint_at_ready_mib",
+      "unit": "MiB",
+      "samples": [
+        157.298,
+        159.204,
+        157.329
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "at": "first sample at or after usable_ms (lag per run in http_ready_ms meta)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "peak_footprint_startup_mib",
+      "unit": "MiB",
+      "samples": [
+        169.159,
+        165.549,
+        166.284
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "definition": "sum over the tree of each process lifetime max phys_footprint, up to ready (upper bound on the simultaneous peak)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "cpu_s_to_ready",
+      "unit": "cpu_s",
+      "samples": [
+        1.924,
+        2.1013,
+        1.8103
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "childProcesses": 5
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "http_ready_ms",
+      "unit": "ms",
+      "samples": [
+        7640.391,
+        7888.876,
+        7679.145
+      ],
+      "better": "lower",
+      "meta": {
+        "readiness": "GET /api/health 200, which the daemon only answers after reconcile (sync + recommendations rebuild): http = data",
+        "runs": [
+          {
+            "httpMs": 7640.4,
+            "dataMs": 7640.4,
+            "sampleLagMs": 1,
+            "processes": 1,
+            "processNames": [
+              "tendril"
+            ],
+            "phases": {
+              "boundMs": 12,
+              "watcherRegistered": 6407,
+              "plansSynced": 7377,
+              "recommendationsRebuilt": 7640
+            },
+            "stop": {
+              "forced": false,
+              "ms": 41,
+              "survivors": []
+            }
+          },
+          {
+            "httpMs": 7888.9,
+            "dataMs": 7888.9,
+            "sampleLagMs": 1,
+            "processes": 1,
+            "processNames": [
+              "tendril"
+            ],
+            "phases": {
+              "boundMs": 11,
+              "watcherRegistered": 6652,
+              "plansSynced": 7629,
+              "recommendationsRebuilt": 7888
+            },
+            "stop": {
+              "forced": false,
+              "ms": 43,
+              "survivors": []
+            }
+          },
+          {
+            "httpMs": 7679.1,
+            "dataMs": 7679.1,
+            "sampleLagMs": 1,
+            "processes": 1,
+            "processNames": [
+              "tendril"
+            ],
+            "phases": {
+              "boundMs": 11,
+              "watcherRegistered": 6413,
+              "plansSynced": 7419,
+              "recommendationsRebuilt": 7679
+            },
+            "stop": {
+              "forced": false,
+              "ms": 41,
+              "survivors": []
+            }
+          }
+        ],
+        "bin": "~/Desktop/tendril-benchmark/ivy-tendril-v2/target/release/tendril"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "data_ready_ms",
+      "unit": "ms",
+      "samples": [
+        7640.391,
+        7888.876,
+        7679.145
+      ],
+      "better": "lower",
+      "meta": {
+        "readiness": "GET /api/health 200, which the daemon only answers after reconcile (sync + recommendations rebuild): http = data"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "usable_ms",
+      "unit": "ms",
+      "samples": [
+        7640.391,
+        7888.876,
+        7679.145
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "max(http_ready_ms, data_ready_ms): both the API and the synced data are available"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "footprint_at_ready_mib",
+      "unit": "MiB",
+      "samples": [
+        42.969,
+        43.688,
+        43.469
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "at": "first sample at or after usable_ms (lag per run in http_ready_ms meta)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "peak_footprint_startup_mib",
+      "unit": "MiB",
+      "samples": [
+        42.969,
+        43.688,
+        43.469
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "definition": "sum over the tree of each process lifetime max phys_footprint, up to ready (upper bound on the simultaneous peak)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "cpu_s_to_ready",
+      "unit": "cpu_s",
+      "samples": [
+        3.7345,
+        3.7348,
+        3.615
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "childProcesses": 0
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "phase_bound_ms",
+      "unit": "ms",
+      "samples": [
+        12,
+        11,
+        11
+      ],
+      "better": "lower",
+      "meta": {
+        "source": "time the daemon log line reached the harness, from spawn",
+        "v2Only": true
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "phase_watcher_registered_ms",
+      "unit": "ms",
+      "samples": [
+        6407,
+        6652,
+        6413
+      ],
+      "better": "lower",
+      "meta": {
+        "source": "time the daemon log line reached the harness, from spawn",
+        "v2Only": true
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "phase_plans_synced_ms",
+      "unit": "ms",
+      "samples": [
+        7377,
+        7629,
+        7419
+      ],
+      "better": "lower",
+      "meta": {
+        "source": "time the daemon log line reached the harness, from spawn",
+        "v2Only": true
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "first-start",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "phase_recommendations_rebuilt_ms",
+      "unit": "ms",
+      "samples": [
+        7640,
+        7888,
+        7679
+      ],
+      "better": "lower",
+      "meta": {
+        "source": "time the daemon log line reached the harness, from spawn",
+        "v2Only": true
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "http_ready_ms",
+      "unit": "ms",
+      "samples": [
+        1080.1,
+        1109.384,
+        1043.042
+      ],
+      "better": "lower",
+      "meta": {
+        "readiness": "http = GET /api/ping 200; data = stdout \"Initial sync complete\" (can precede http)",
+        "runs": [
+          {
+            "httpMs": 1080.1,
+            "dataMs": 1812.7,
+            "sampleLagMs": 0.8,
+            "processes": 5,
+            "processNames": [
+              "Ivy.Tendril",
+              "bash",
+              "zsh"
+            ],
+            "initialSync": {
+              "plans": 900,
+              "ms": 560
+            },
+            "stop": {
+              "forced": false,
+              "ms": 10,
+              "survivors": []
+            }
+          },
+          {
+            "httpMs": 1109.4,
+            "dataMs": 1798.9,
+            "sampleLagMs": 1,
+            "processes": 10,
+            "processNames": [
+              "Ivy.Tendril",
+              "bash",
+              "sort",
+              "zsh"
+            ],
+            "initialSync": {
+              "plans": 900,
+              "ms": 534
+            },
+            "stop": {
+              "forced": false,
+              "ms": 9,
+              "survivors": []
+            }
+          },
+          {
+            "httpMs": 1043,
+            "dataMs": 1725,
+            "sampleLagMs": 1,
+            "processes": 5,
+            "processNames": [
+              "Ivy.Tendril",
+              "bash",
+              "zsh"
+            ],
+            "initialSync": {
+              "plans": 900,
+              "ms": 532
+            },
+            "stop": {
+              "forced": false,
+              "ms": 11,
+              "survivors": []
+            }
+          }
+        ],
+        "prime": {
+          "httpMs": 1066.3,
+          "dataMs": 2136.8
+        },
+        "bin": "/Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "data_ready_ms",
+      "unit": "ms",
+      "samples": [
+        1812.69,
+        1798.936,
+        1724.954
+      ],
+      "better": "lower",
+      "meta": {
+        "readiness": "http = GET /api/ping 200; data = stdout \"Initial sync complete\" (can precede http)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "usable_ms",
+      "unit": "ms",
+      "samples": [
+        1812.69,
+        1798.936,
+        1724.954
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "max(http_ready_ms, data_ready_ms): both the API and the synced data are available"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "footprint_at_ready_mib",
+      "unit": "MiB",
+      "samples": [
+        148.204,
+        148.345,
+        148.423
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "at": "first sample at or after usable_ms (lag per run in http_ready_ms meta)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "peak_footprint_startup_mib",
+      "unit": "MiB",
+      "samples": [
+        157.346,
+        163.394,
+        157.034
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "definition": "sum over the tree of each process lifetime max phys_footprint, up to ready (upper bound on the simultaneous peak)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v1",
+      "dataset": "large",
+      "metric": "cpu_s_to_ready",
+      "unit": "cpu_s",
+      "samples": [
+        1.4572,
+        1.3786,
+        1.3816
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "childProcesses": 4
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "http_ready_ms",
+      "unit": "ms",
+      "samples": [
+        6895.11,
+        6798.742,
+        6795.962
+      ],
+      "better": "lower",
+      "meta": {
+        "readiness": "GET /api/health 200, which the daemon only answers after reconcile (sync + recommendations rebuild): http = data",
+        "runs": [
+          {
+            "httpMs": 6895.1,
+            "dataMs": 6895.1,
+            "sampleLagMs": 1,
+            "processes": 1,
+            "processNames": [
+              "tendril"
+            ],
+            "phases": {
+              "boundMs": 14,
+              "watcherRegistered": 6381,
+              "recommendationsRebuilt": 6895
+            },
+            "stop": {
+              "forced": false,
+              "ms": 42,
+              "survivors": []
+            }
+          },
+          {
+            "httpMs": 6798.7,
+            "dataMs": 6798.7,
+            "sampleLagMs": 1,
+            "processes": 1,
+            "processNames": [
+              "tendril"
+            ],
+            "phases": {
+              "boundMs": 15,
+              "watcherRegistered": 6303,
+              "recommendationsRebuilt": 6798
+            },
+            "stop": {
+              "forced": false,
+              "ms": 42,
+              "survivors": []
+            }
+          },
+          {
+            "httpMs": 6796,
+            "dataMs": 6796,
+            "sampleLagMs": 1.1,
+            "processes": 1,
+            "processNames": [
+              "tendril"
+            ],
+            "phases": {
+              "boundMs": 15,
+              "watcherRegistered": 6287,
+              "recommendationsRebuilt": 6796
+            },
+            "stop": {
+              "forced": false,
+              "ms": 41,
+              "survivors": []
+            }
+          }
+        ],
+        "prime": {
+          "httpMs": 7795.8,
+          "dataMs": 7795.8
+        },
+        "bin": "~/Desktop/tendril-benchmark/ivy-tendril-v2/target/release/tendril"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "data_ready_ms",
+      "unit": "ms",
+      "samples": [
+        6895.11,
+        6798.742,
+        6795.962
+      ],
+      "better": "lower",
+      "meta": {
+        "readiness": "GET /api/health 200, which the daemon only answers after reconcile (sync + recommendations rebuild): http = data"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "usable_ms",
+      "unit": "ms",
+      "samples": [
+        6895.11,
+        6798.742,
+        6795.962
+      ],
+      "better": "lower",
+      "meta": {
+        "definition": "max(http_ready_ms, data_ready_ms): both the API and the synced data are available"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "footprint_at_ready_mib",
+      "unit": "MiB",
+      "samples": [
+        42.219,
+        38.938,
+        39.516
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "at": "first sample at or after usable_ms (lag per run in http_ready_ms meta)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "peak_footprint_startup_mib",
+      "unit": "MiB",
+      "samples": [
+        42.219,
+        38.938,
+        39.516
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "definition": "sum over the tree of each process lifetime max phys_footprint, up to ready (upper bound on the simultaneous peak)"
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "cpu_s_to_ready",
+      "unit": "cpu_s",
+      "samples": [
+        3.1898,
+        3.1982,
+        3.1038
+      ],
+      "better": "lower",
+      "meta": {
+        "what": "server process plus descendants seen by the sampler",
+        "samplePeriodMs": 100,
+        "childProcesses": 0
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "phase_bound_ms",
+      "unit": "ms",
+      "samples": [
+        14,
+        15,
+        15
+      ],
+      "better": "lower",
+      "meta": {
+        "source": "time the daemon log line reached the harness, from spawn",
+        "v2Only": true
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "phase_watcher_registered_ms",
+      "unit": "ms",
+      "samples": [
+        6381,
+        6303,
+        6287
+      ],
+      "better": "lower",
+      "meta": {
+        "source": "time the daemon log line reached the harness, from spawn",
+        "v2Only": true
+      }
+    },
+    {
+      "suite": "startup",
+      "scenario": "warm-start",
+      "app": "v2",
+      "dataset": "large",
+      "metric": "phase_recommendations_rebuilt_ms",
+      "unit": "ms",
+      "samples": [
+        6895,
+        6798,
+        6796
+      ],
+      "better": "lower",
+      "meta": {
+        "source": "time the daemon log line reached the harness, from spawn",
+        "v2Only": true
+      }
+    }
+  ],
+  "series": [],
+  "notes": [
+    "startup timeout 300000 ms per start; tree sampled every 100 ms while starting",
+    "user CLI symlinks unchanged (/usr/local/bin/tendril -> absent, ~/.local/bin/tendril -> /Applications/Ivy Tendril.app/Contents/MacOS/Ivy.Tendril)"
+  ],
+  "failures": []
+}

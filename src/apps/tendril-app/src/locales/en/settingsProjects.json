@@ -1,0 +1,359 @@
+{
+  "view": {
+    "ariaLabel": "Project configuration",
+    "subtitle": "Project configuration",
+    "rename": "Rename Project"
+  },
+  "notifications": {
+    "saved": "Saved",
+    "cloned": "Cloned",
+    "renamed": "Renamed"
+  },
+  "saveError": "Failed to save project: {{error}}",
+  "rowActions": {
+    "edit": "Edit"
+  },
+  "bladeFooter": {
+    "add": "Add"
+  },
+  "basic": {
+    "title": "Basic",
+    "hint": "The project's colour and the AI context handed to every agent working on it.",
+    "color": {
+      "label": "Color",
+      "hint": "An Ivy colour name, as config.yaml stores it."
+    },
+    "context": {
+      "label": "Context",
+      "placeholder": "What an agent should know about this project..."
+    },
+    "saved": "Project saved"
+  },
+  "repositories": {
+    "title": "Repositories",
+    "hint": "Source repositories, and the base branch each plan branches from.",
+    "empty": "No repositories yet.",
+    "baseBranch": {
+      "ariaLabel": "Base branch for {{path}}",
+      "placeholder": "Base branch",
+      "saved": "Base branch saved for {{path}}"
+    },
+    "remove": {
+      "ariaLabel": "Remove {{path}}",
+      "consequence": "The checkout on disk is untouched — this only stops new plans for this project from being based on it.",
+      "removed": "Removed {{path}}"
+    },
+    "add": {
+      "ariaLabel": "Repository URL or Local Path",
+      "placeholder": "Repository URL or Local Path",
+      "button": "Add Repository",
+      "cloning": "Cloning...",
+      "invalidPath": "Invalid repository path.",
+      "added": "Added {{path}}",
+      "cloned": "Repository cloned to {{path}}",
+      "failed": "Failed to add repository: {{error}}"
+    },
+    "note": "A remote URL is cloned into TENDRIL_HOME, and the row shows where it was cloned to rather than the URL; a local path is stored as typed."
+  },
+  "reviewActions": {
+    "title": "Review Actions",
+    "hint": "Quick-launch buttons shown during review to preview or run the app.",
+    "addButton": "Add Review Action",
+    "addTitle": "Add Review Action",
+    "editTitle": "Edit Review Action",
+    "columns": {
+      "name": "Action Name",
+      "command": "Command",
+      "condition": "Condition"
+    },
+    "empty": "No review actions for this project.",
+    "removal": {
+      "consequence": "It stops being offered on this project's plans in Review, and the remaining actions close up around its place in the run order."
+    },
+    "saved": "Review action '{{name}}' saved",
+    "deleted": "Review action '{{name}}' deleted"
+  },
+  "verifications": {
+    "title": "Verifications",
+    "hint": "Quality checks required before plans are marked complete. Drag to set the run order.",
+    "addButton": "Add Verification",
+    "addTitle": "Add Verification",
+    "empty": "No verifications are defined in config.yaml, so there is nothing to enable. Add one to create it and enable it here.",
+    "updated": "Verifications updated for {{project}}",
+    "orderSaved": "Verification run order saved",
+    "added": "Verification added",
+    "addFailed": "Failed to add verification: {{error}}"
+  },
+  "ports": {
+    "title": "Ports",
+    "hint": "Named service ports. A plan falls back to a free port when the default is taken.",
+    "addButton": "Add Port",
+    "addTitle": "Add Port",
+    "editTitle": "Edit Port",
+    "columns": {
+      "name": "Name",
+      "defaultPort": "Default Port",
+      "description": "Description"
+    },
+    "empty": "No service ports configured. Define named ports for dynamic port allocation across concurrent plan reviews.",
+    "mergeLimitation": "Ports are a mapping, and PUT /api/config deep-merges mappings, so a port can be added or changed here but not removed or renamed.",
+    "saved": "Port '{{name}}' saved"
+  },
+  "envFiles": {
+    "title": "Environment Files",
+    "hint": "Files recreated inside every plan worktree, which starts without untracked .env files.",
+    "addButton": "Add Environment File",
+    "addTitle": "Add Environment File",
+    "editTitle": "Edit Environment File",
+    "columns": {
+      "path": "Path",
+      "template": "Template",
+      "overrides": "Overrides"
+    },
+    "empty": "No environment files configured. Define environment files to materialize .env templates and inject variables into plan worktrees.",
+    "removal": {
+      "consequence": "Its variables stop being injected into new plan worktrees. Files already materialized in existing worktrees stay as they are."
+    },
+    "saved": "Environment file '{{path}}' saved",
+    "deleted": "Environment file '{{path}}' deleted"
+  },
+  "agentBehavior": {
+    "title": "Agent Behavior",
+    "autoImplement": {
+      "label": "Artifact Review / Auto-Implement Policy",
+      "options": {
+        "autoImplementPlans": "Auto-Implement Plans",
+        "alwaysAskReview": "Always Ask Review"
+      }
+    },
+    "saved": "Agent behaviour saved"
+  },
+  "security": {
+    "title": "Security",
+    "hint": "Sandboxing, file and network rules, and terminal confirmation, for this project.",
+    "preset": {
+      "label": "Security Preset",
+      "hint": "Anything other than Custom overrides the sandbox and file/network fields below.",
+      "options": {
+        "custom": "Custom",
+        "permissive": "Permissive",
+        "restricted": "Restricted",
+        "strict": "Strict"
+      }
+    },
+    "sandboxMode": {
+      "label": "Sandbox Mode",
+      "hint": "Inherit General means no sandbox. Effective: {{effective}}.",
+      "options": {
+        "inheritGeneral": "InheritGeneral",
+        "enabled": "Enabled",
+        "disabled": "Disabled"
+      }
+    },
+    "outsideFileAccess": {
+      "label": "Outside File Access",
+      "hint": "Deny drops every file rule below. Effective: {{effective}}.",
+      "options": {
+        "allow": "Allow",
+        "ask": "Ask",
+        "deny": "Deny"
+      }
+    },
+    "terminalAutoExecution": {
+      "label": "Terminal Auto-Execution",
+      "hint": "Not affected by the preset. Effective: {{effective}}.",
+      "options": {
+        "inheritGeneral": "InheritGeneral",
+        "alwaysProceed": "AlwaysProceed",
+        "alwaysAsk": "AlwaysAsk"
+      }
+    },
+    "filePermissions": {
+      "label": "File Permissions",
+      "hint": "One `{{syntax}}` per line. {{allow}} adds a writable directory; {{deny}} denies {{write}} and {{edit}} on the path."
+    },
+    "networkRules": {
+      "label": "Network Access Rules",
+      "hintAllowed": "One `{{syntax}}` per line. A single {{deny}} turns network access off entirely. Effective: allowed.",
+      "hintDenied": "One `{{syntax}}` per line. A single {{deny}} turns network access off entirely. Effective: denied."
+    },
+    "allowedCommands": {
+      "label": "Allowed Terminal Commands",
+      "hint": "One command per line, each allowed as `{{syntax}}`."
+    },
+    "enforcement": {
+      "enforces": "{{agent}} enforces: {{controls, list(style: narrow)}}.",
+      "enforcesNone": "{{agent}} enforces: none of these controls.",
+      "ignored": "Ignored by {{agent}}: {{controls, list(style: narrow)}}. Those keys are still written and honoured by agents that support them.",
+      "controls": {
+        "sandbox": "sandbox mode",
+        "network": "network access",
+        "terminalPrompt": "terminal confirmation",
+        "fileRules": "file and command rules"
+      }
+    },
+    "saved": "Security settings saved for {{project}}"
+  },
+  "mcpServers": {
+    "title": "Local Permissions",
+    "hint": "Custom Model Context Protocol servers for this project.",
+    "addButton": "Add MCP Server",
+    "addTitle": "Add MCP Server",
+    "editTitle": "Edit MCP Server",
+    "columns": {
+      "name": "Name",
+      "command": "Command",
+      "disabled": "Disabled"
+    },
+    "disabledValue": {
+      "yes": "Yes",
+      "no": "No"
+    },
+    "empty": "No MCP servers configured for this project.",
+    "removal": {
+      "consequence": "Agents working on this project stop being given its tools. This removes the project's reference to it, not the server definition itself."
+    },
+    "saved": "MCP server '{{name}}' saved",
+    "deleted": "MCP server '{{name}}' deleted"
+  },
+  "skills": {
+    "title": "Customizations",
+    "hint": "Custom skills and prompt instructions for agents working on this project.",
+    "addButton": "Add Custom Skill",
+    "addTitle": "Add Custom Skill",
+    "editTitle": "Edit Custom Skill",
+    "columns": {
+      "name": "Name",
+      "description": "Description",
+      "path": "Path"
+    },
+    "empty": "No custom skills configured for this project.",
+    "removal": {
+      "consequence": "Agents working on this project stop being given it. This removes the project's reference to it, not the skill's own files."
+    },
+    "saved": "Skill '{{name}}' saved",
+    "deleted": "Skill '{{name}}' deleted",
+    "memoryNote": "Project memories live as markdown files under {{path}}. The daemon exposes no route for them, so they cannot be edited here yet."
+  },
+  "dangerZone": {
+    "title": "Danger Zone",
+    "remove": {
+      "button": "Remove Project",
+      "description": "Removes the project from config.yaml. Cloned repositories, plan folders and history are left on disk, so adding the project back by name restores it."
+    },
+    "delete": {
+      "button": "Delete Project",
+      "description": "Permanently deletes the project's plans, its cloned repositories under {{path}}, its database rows and its config entry. This cannot be undone, and asks you to type the project name first."
+    }
+  },
+  "reviewActionBlade": {
+    "name": {
+      "label": "Name",
+      "placeholder": "Action name..."
+    },
+    "command": {
+      "label": "Command",
+      "placeholder": "e.g. dotnet test"
+    },
+    "condition": {
+      "label": "Condition",
+      "placeholder": "e.g. {{example}}"
+    }
+  },
+  "verificationBlade": {
+    "name": {
+      "label": "Name",
+      "placeholder": "Verification name...",
+      "duplicate": "A verification named '{{name}}' already exists."
+    },
+    "prompt": {
+      "label": "Prompt",
+      "placeholder": "Verification prompt..."
+    }
+  },
+  "mcpServerBlade": {
+    "name": {
+      "label": "Name",
+      "placeholder": "Server name (e.g. sqlite)..."
+    },
+    "command": {
+      "label": "Command",
+      "placeholder": "Command executable (e.g. npx)..."
+    },
+    "arguments": {
+      "label": "Arguments",
+      "placeholder": "Arguments (e.g. -y @modelcontextprotocol/server-sqlite)...",
+      "hint": "Split on whitespace, the way EditMcpServerBladeView splits them."
+    },
+    "environment": {
+      "label": "Environment Variables",
+      "hint": "One KEY=VALUE per line."
+    },
+    "disabled": "Disabled"
+  },
+  "skillBlade": {
+    "name": {
+      "label": "Name",
+      "placeholder": "Skill name (e.g. code-review)..."
+    },
+    "description": {
+      "label": "Description",
+      "placeholder": "Short description..."
+    },
+    "instructions": {
+      "label": "Instructions",
+      "placeholder": "Markdown instructions for the agent..."
+    },
+    "path": {
+      "label": "File/Folder Path",
+      "placeholder": "Path to skill folder/file (e.g. %TENDRIL_HOME%/Skills/my-skill)..."
+    },
+    "disabled": "Disabled"
+  },
+  "portBlade": {
+    "name": {
+      "label": "Name",
+      "placeholder": "e.g. backend",
+      "hint": "Port identifier referenced in environment overrides via {{placeholder}} placeholders."
+    },
+    "defaultPort": {
+      "label": "Default Port",
+      "invalid": "Default Port must be between 1 and 65535.",
+      "hint": "Preferred port. If it is already taken, Tendril allocates a free one instead."
+    },
+    "description": {
+      "label": "Description",
+      "placeholder": "What listens here..."
+    }
+  },
+  "envFileBlade": {
+    "path": {
+      "label": "Path",
+      "placeholder": "e.g. apps/web/.env",
+      "hint": "Relative path to the environment file recreated inside the plan worktree."
+    },
+    "template": {
+      "label": "Template",
+      "placeholder": "e.g. .env.example",
+      "hint": "Optional base template copied into the worktree before overrides are applied."
+    },
+    "overrides": {
+      "label": "Overrides",
+      "hint": "KEY=VALUE lines supporting {{ports}}, {{env}} and {{variable}} placeholders."
+    }
+  },
+  "nameEditor": {
+    "ariaLabel": "Project name",
+    "confirm": "Confirm rename",
+    "cancel": "Cancel rename",
+    "duplicate": "A project named '{{name}}' already exists.",
+    "renamed": "Renamed project to '{{name}}'"
+  },
+  "removalKinds": {
+    "repository": "repository",
+    "reviewAction": "review action",
+    "environmentFile": "environment file",
+    "mcpServer": "MCP server",
+    "customSkill": "custom skill"
+  }
+}

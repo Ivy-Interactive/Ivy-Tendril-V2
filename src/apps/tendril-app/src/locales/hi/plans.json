@@ -1,0 +1,281 @@
+{
+  "plansView": {
+    "newPlanShortcut": "नई योजना",
+    "empty": {
+      "title": "कोई योजना नहीं",
+      "description": "आपकी बनाई योजनाएं यहाँ दिखाई देंगी"
+    },
+    "noSelection": "साइडबार से कोई योजना चुनें"
+  },
+  "sidebar": {
+    "title": "योजनाएं"
+  },
+  "searchBadges": {
+    "verified": "सत्यापित",
+    "unverified": "असत्यापित"
+  },
+  "detail": {
+    "tabs": {
+      "plan": "योजना",
+      "details": "विवरण",
+      "diff": "डिफ़ दृश्य",
+      "recommendations": "सिफ़ारिशें ({{n}})",
+      "git": "Git",
+      "gitCount": "Git ({{n}})",
+      "gitAtRisk_one": "Git ({{n}}) · {{count}} जोखिम में",
+      "gitAtRisk_other": "Git ({{n}}) · {{count}} जोखिम में",
+      "gitAtRiskUncounted_one": "Git · {{count}} जोखिम में",
+      "gitAtRiskUncounted_other": "Git · {{count}} जोखिम में"
+    },
+    "questions": {
+      "label": "प्रश्न",
+      "labelUnanswered_one": "प्रश्न ({{count}} अनुत्तरित)",
+      "labelUnanswered_other": "प्रश्न ({{count}} अनुत्तरित)"
+    },
+    "sourceLabel": {
+      "pr": "PR",
+      "issue": "इश्यू"
+    },
+    "meta": {
+      "position_one": "{{position}}/{{count}} योजना",
+      "position_other": "{{position}}/{{count}} योजनाएं",
+      "dependsOn": "{{plans}} पर निर्भर"
+    },
+    "errors": {
+      "saveAnswer": "उत्तर सहेजने में विफल: {{error}}",
+      "saveAnnotation": "एनोटेशन सहेजने में विफल: {{error}}",
+      "updateRecommendation": "सिफ़ारिश \"{{title}}\" अपडेट करने में विफल: {{error}}",
+      "completePlan": "योजना {{id}} पूर्ण नहीं की जा सकी: {{error}}"
+    },
+    "runActionFailed": {
+      "executePlan": "योजना निष्पादित करना विफल: {{error}}",
+      "updatePlan": "योजना अपडेट करना विफल: {{error}}",
+      "expandPlan": "योजना विस्तृत करना विफल: {{error}}",
+      "splitPlan": "योजना विभाजित करना विफल: {{error}}",
+      "copyPlanId": "योजना ID कॉपी करना विफल: {{error}}",
+      "copyFolderPath": "फ़ोल्डर पथ कॉपी करना विफल: {{error}}",
+      "openFolder": "फ़ोल्डर खोलना विफल: {{error}}"
+    },
+    "discussDraft": {
+      "outcome": "इस योजना को पूर्ण करने से पहले मुझे इसके परिणाम पर चर्चा करनी है। जो किया गया उसका सारांश दें और जिन बातों को ध्यान से देखने की ज़रूरत है, उन्हें बताएं।",
+      "plan": "इस योजना को निष्पादित करने से पहले मुझे इस पर चर्चा करनी है। इसका सारांश दें और बताएं कि आप इसमें क्या बदलेंगे।"
+    }
+  },
+  "actions": {
+    "discussWithAgent": "एजेंट से चर्चा करें",
+    "updatePlan": "योजना अपडेट करें",
+    "checking": "जांच हो रही है…",
+    "starting": "शुरू हो रहा है…",
+    "createPr": "PR बनाएं",
+    "completePlan": "योजना पूर्ण करें",
+    "retryPlan": "योजना पर पुनः प्रयास करें",
+    "acceptPartialDelivery": "आंशिक वितरण स्वीकार करें",
+    "resetToDraft": "ड्राफ़्ट पर रीसेट करें…"
+  },
+  "draftActions": {
+    "execute": "योजना निष्पादित करें",
+    "update": "योजना अपडेट करें…",
+    "expand": "योजना विस्तृत करें",
+    "split": "योजना विभाजित करें",
+    "createIssue": "इश्यू बनाएं…",
+    "copyId": "योजना ID कॉपी करें",
+    "copyPath": "फ़ोल्डर पथ कॉपी करें",
+    "openFolder": "फ़ोल्डर खोलें",
+    "delete": "योजना हटाएं…"
+  },
+  "failureCallout": {
+    "title": "निष्पादन विफल",
+    "verification": "<bold>{{name}}</bold> {{status}}, विवरण के लिए सत्यापन रिपोर्ट देखें",
+    "noDetails": "कोई विवरण उपलब्ध नहीं है। जॉब लॉग जांचें।"
+  },
+  "questionsPanel": {
+    "answered_one": "{{count}} में से {{answered}} का उत्तर दिया गया",
+    "answered_other": "{{count}} में से {{answered}} का उत्तर दिया गया",
+    "optional": "{{label}} (वैकल्पिक)",
+    "saving": "सहेजा जा रहा है…"
+  },
+  "planPane": {
+    "writing": "एजेंट अभी भी इस योजना का ड्राफ़्ट तैयार कर रहा है। जॉब के पहला संशोधन लिखते ही इसका मुख्य भाग यहाँ दिखाई देगा।",
+    "neverWritten": "इस योजना का कोई संशोधन नहीं है। इसका फ़ोल्डर बनाया गया था, लेकिन इसका ड्राफ़्ट तैयार करने वाली जॉब ने कभी कोई संशोधन नहीं लिखा, इसलिए दिखाने के लिए योजना का कोई मुख्य भाग नहीं है।",
+    "neverWrittenUpdate": "योजना अपडेट करें",
+    "unreadable_one": "यह योजना डिस्क पर {{count}} संशोधन दर्ज करती है, लेकिन इसका नवीनतम संशोधन खाली मिला। फ़ाइल शायद पढ़ी नहीं जा सकती।",
+    "unreadable_other": "यह योजना डिस्क पर {{count}} संशोधन दर्ज करती है, लेकिन इसका नवीनतम संशोधन खाली मिला। फ़ाइल शायद पढ़ी नहीं जा सकती।"
+  },
+  "recommendationsTab": {
+    "title": "योजना की सिफ़ारिशें",
+    "description": "निष्पादन के दौरान मिले दायरे से बाहर के फ़ॉलो-अप और सुधार।",
+    "empty": "{{jobType}} ने इस योजना के लिए कोई सिफ़ारिश दर्ज नहीं की।"
+  },
+  "gitTab": {
+    "loading": "Git स्थिति लोड हो रही है…"
+  },
+  "details": {
+    "planId": "योजना ID",
+    "folder": "फ़ोल्डर",
+    "initialPrompt": "प्रारंभिक प्रॉम्प्ट",
+    "revision": "संशोधन",
+    "profile": "प्रोफ़ाइल",
+    "relatedPlans": "संबंधित योजनाएं",
+    "dependsOn": "निर्भरताएं",
+    "issue": "इश्यू",
+    "created": "बनाई गई",
+    "level": "स्तर",
+    "project": "प्रोजेक्ट",
+    "state": "स्थिति",
+    "copyPlanIdTooltip": "क्लिपबोर्ड पर कॉपी करें",
+    "copyFolderTooltip": "क्लिपबोर्ड पर कॉपी करें",
+    "repositories": "रिपॉजिटरी",
+    "noRepositories": "कोई रिपॉजिटरी निर्दिष्ट नहीं",
+    "commits": "कमिट",
+    "noCommits": "अभी तक कोई कमिट नहीं"
+  },
+  "verificationStatus": {
+    "pass": "पास",
+    "fail": "फ़ेल",
+    "pending": "लंबित",
+    "skipped": "छोड़ा गया"
+  },
+  "verifications": {
+    "empty": "कोई सत्यापन नहीं",
+    "updateFailed": "सत्यापन {{name}} अपडेट करने में विफल: {{error}}",
+    "viewReportTooltip": "{{name}} रिपोर्ट देखें",
+    "viewReport": "रिपोर्ट देखें",
+    "hideReport": "रिपोर्ट छिपाएं",
+    "noReport": "अभी तक कोई रिपोर्ट नहीं"
+  },
+  "reportSheet": {
+    "title": "सत्यापन रिपोर्ट",
+    "description": "{{name}} के लिए सत्यापन रिपोर्ट का विवरण",
+    "descriptionFallback": "योजना के लिए सत्यापन रिपोर्ट का विवरण",
+    "loading": "सत्यापन रिपोर्ट लोड हो रही है…",
+    "notFound": "\"{{name}}\" के लिए कोई सत्यापन रिपोर्ट फ़ाइल नहीं मिली।",
+    "empty": "{{name}} के लिए कोई रिपोर्ट उपलब्ध नहीं है।"
+  },
+  "artifactSheet": {
+    "thumbnail": {
+      "openLabel": "{{fileName}} खोलें",
+      "noPreview": "कोई पूर्वावलोकन नहीं",
+      "loadingLabel": "{{fileName}} लोड हो रही है"
+    },
+    "fallbackTitle": "आर्टिफ़ैक्ट",
+    "noPreviewTitle": "कोई पूर्वावलोकन नहीं",
+    "showInFolder": "फ़ोल्डर में दिखाएं",
+    "loadingLabel": "{{fileName}} लोड हो रही है",
+    "imageFailed": "Tendril यह छवि लोड नहीं कर सका।",
+    "imageFailedWithError": "Tendril यह छवि लोड नहीं कर सका: {{error}}",
+    "binary": "{{fileName}} टेक्स्ट फ़ाइल नहीं है ({{size}}), इसलिए यहाँ इसका पूर्वावलोकन नहीं है।",
+    "tooLarge": "{{fileName}} का आकार {{size}} है, जो यहाँ पूर्वावलोकन के लिए बहुत बड़ा है।",
+    "plainNotice": "सादे टेक्स्ट के रूप में दिखाया गया: {{size}} आकार के साथ {{fileName}} हाइलाइट करने के लिए बहुत बड़ी है।",
+    "plainNotice_markdown": "सादे टेक्स्ट के रूप में दिखाया गया: {{size}} आकार के साथ {{fileName}} Markdown के रूप में रेंडर करने के लिए बहुत बड़ी है।",
+    "copyPath": "पथ कॉपी करें",
+    "revealLabel": "फ़ोल्डर में दिखाएं"
+  },
+  "pullRequests": {
+    "title": "पुल रिक्वेस्ट्स",
+    "refresh": "रीफ़्रेश करें",
+    "refreshing": "रीफ़्रेश हो रहा है…",
+    "unreachable": "इनके लिए GitHub तक नहीं पहुंचा जा सका: {{repos}}",
+    "syncInProgress": "एक सिंक पहले से चल रहा है; उसके पूरा होने पर स्थितियां अपडेट हो जाएंगी।",
+    "checked": "{{when}} जांचा गया",
+    "checkedJustNow": "अभी-अभी जांचा गया",
+    "empty": "कोई PR नहीं बनाया गया",
+    "state": {
+      "open": "खुला",
+      "closed": "बंद",
+      "merged": "मर्ज किया गया",
+      "unknown": "अज्ञात"
+    }
+  },
+  "revisionDiff": {
+    "singleRevision": "इस योजना का केवल एक संशोधन है, इसलिए अभी तुलना करने के लिए कुछ नहीं है। {{createPlan}} या {{retryPlan}} के नया संशोधन लिखने पर डिफ़ दिखाई देगा।",
+    "compare": "<oldLabel><text>संशोधन</text><oldSelect/></oldLabel><newLabel><text>की तुलना इससे करें</text><newSelect/></newLabel>",
+    "oldRevisionLabel": "पुराना संशोधन",
+    "newRevisionLabel": "नया संशोधन",
+    "onDisk_one": "डिस्क पर {{count}} संशोधन",
+    "onDisk_other": "डिस्क पर {{count}} संशोधन",
+    "loading": "संशोधन {{from}} और {{to}} लोड हो रहे हैं…",
+    "identical": "संशोधन {{from}} और {{to}} एक जैसे हैं।"
+  },
+  "icebox": {
+    "title": "आइसबॉक्स",
+    "description": "रोककर रखी गई संग्रहीत और स्थगित योजनाएं।",
+    "searchPlaceholder": "आइसबॉक्स योजनाएं खोजें…",
+    "projectFilterLabel": "प्रोजेक्ट",
+    "allProjects": "सभी प्रोजेक्ट्स",
+    "levelFilterLabel": "स्तर",
+    "allLevels": "सभी स्तर",
+    "empty": {
+      "title": "आइसबॉक्स खाली है",
+      "description": "आइसबॉक्स में रखी गई योजनाएं यहाँ दिखाई देंगी"
+    },
+    "noMatch": {
+      "title": "कोई योजना मेल नहीं खाती",
+      "description": "कोई भी आइसबॉक्स योजना मौजूदा फ़िल्टर से मेल नहीं खाती।"
+    },
+    "card": {
+      "priority": "P{{priority}}",
+      "verificationTooltip": "{{name}}: {{status}}",
+      "deleteLabel": "योजना {{id}} हटाएं",
+      "thawLabel": "योजना {{id}} पिघलाएं",
+      "thaw": "पिघलाएं",
+      "thawing": "पिघलाया जा रहा है…"
+    },
+    "thawFailed": "योजना {{id}} को पिघलाया नहीं जा सका: {{error}}"
+  },
+  "newPlan": {
+    "title": "नई योजना बनाएं",
+    "closeLabel": "मोडल बंद करें",
+    "projectPickerLabel": "लक्षित प्रोजेक्ट",
+    "autoProject": "स्वचालित",
+    "addProject": "+ नया प्रोजेक्ट जोड़ें",
+    "submit": "बनाएं",
+    "placeholder": "कार्य का विवरण दर्ज करें…",
+    "emptyDescription": "कृपया नई योजना के लिए विवरण दर्ज करें।"
+  },
+  "planActions": {
+    "canExecute": {
+      "alreadyCompleted": "योजना पहले ही पूर्ण हो चुकी है।",
+      "executing": "योजना अभी निष्पादित हो रही है।",
+      "blockedByDependency": "निर्भरता \"{{dependency}}\" के कारण अवरुद्ध, जो ‘{{state}}’ स्थिति में है (‘पूर्ण’ आवश्यक है)।"
+    },
+    "canCreatePr": {
+      "wrongState": "PR केवल तभी बनाया जा सकता है जब योजना ‘समीक्षा’ या ‘विफल’ स्थिति में हो (वर्तमान: {{state}})।",
+      "verificationsFailed": "PR नहीं बनाया जा सकता: सत्यापन विफल हुए ({{names}})।",
+      "verificationsPending": "PR नहीं बनाया जा सकता: सत्यापन अभी भी लंबित हैं ({{names}})।"
+    },
+    "canRetry": {
+      "wrongState": "पुनः प्रयास केवल ‘समीक्षा’ या ‘विफल’ स्थिति वाली योजनाओं पर किया जा सकता है (वर्तमान: {{state}})।"
+    },
+    "canRefine": {
+      "wrongState": "योजना का परिष्करण (विस्तृत/अपडेट/विभाजित) केवल ड्राफ़्ट योजनाओं पर किया जा सकता है (वर्तमान: {{state}})।"
+    },
+    "canDelete": {
+      "inFlight": "योजना के ‘{{state}}’ स्थिति में रहते हुए उसे हटाया नहीं जा सकता — पहले जॉब रद्द करें।"
+    },
+    "canReset": {
+      "terminal": "योजना ‘{{state}}’ स्थिति में है और उसे ड्राफ़्ट पर रीसेट नहीं किया जा सकता।",
+      "inFlight": "योजना के ‘{{state}}’ स्थिति में रहते हुए उसे रीसेट नहीं किया जा सकता — पहले जॉब रद्द करें।",
+      "wrongState": "ड्राफ़्ट पर रीसेट केवल ‘समीक्षा’, ‘विफल’ या ‘अवरुद्ध’ स्थिति वाली योजनाओं पर किया जा सकता है (वर्तमान: {{state}})।"
+    },
+    "canCompletePartial": {
+      "wrongState": "आंशिक वितरण केवल तभी स्वीकार किया जा सकता है जब योजना ‘समीक्षा’ या ‘विफल’ स्थिति में हो (वर्तमान: {{state}})।",
+      "noFailures": "कोई सत्यापन विफल नहीं हुआ — इसके बजाय योजना को सामान्य रूप से पूर्ण करें।"
+    },
+    "canComplete": {
+      "alreadyCompleted": "योजना पहले ही पूर्ण हो चुकी है।",
+      "inFlight": "योजना के ‘{{state}}’ स्थिति में रहते हुए उसे पूर्ण नहीं किया जा सकता — पहले जॉब रद्द करें।"
+    },
+    "errors": {
+      "completeBlocked": "योजना पूर्ण करना अवरुद्ध",
+      "executeBlocked": "निष्पादन अवरुद्ध",
+      "retryBlocked": "पुनः प्रयास अवरुद्ध",
+      "createPrBlocked": "PR बनाना अवरुद्ध",
+      "refineBlocked": "परिष्करण अवरुद्ध",
+      "repositoryRequired": "इश्यू बनाने के लिए रिपॉजिटरी आवश्यक है।"
+    }
+  },
+  "store": {
+    "rollbackField": "रोलबैक: {{field}} अपडेट करने में विफल: {{error}}",
+    "rollbackVerification": "सत्यापन अपडेट का रोलबैक: {{error}}"
+  }
+}

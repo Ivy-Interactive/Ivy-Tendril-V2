@@ -1,0 +1,265 @@
+{
+  "actions": {
+    "cancel": "Abbrechen",
+    "close": "Schließen",
+    "confirm": "Bestätigen",
+    "copy": "Kopieren",
+    "delete": "Löschen",
+    "retry": "Erneut versuchen",
+    "save": "Speichern"
+  },
+  "status": {
+    "copied": "Kopiert",
+    "error": "Fehler",
+    "loading": "Wird geladen…",
+    "none": "Keine",
+    "unknown": "Unbekannt"
+  },
+  "enums": {
+    "jobStatus": {
+      "pending": "Ausstehend",
+      "queued": "In Warteschlange",
+      "running": "Läuft",
+      "completed": "Abgeschlossen",
+      "failed": "Fehlgeschlagen",
+      "timeout": "Zeitüberschreitung",
+      "stopped": "Gestoppt",
+      "blocked": "Blockiert"
+    },
+    "jobType": {
+      "executePlan": "ExecutePlan",
+      "createPlan": "CreatePlan",
+      "retryPlan": "RetryPlan",
+      "updatePlan": "UpdatePlan",
+      "expandPlan": "ExpandPlan",
+      "splitPlan": "SplitPlan",
+      "createPr": "CreatePr",
+      "createIssue": "CreateIssue",
+      "setupProject": "SetupProject",
+      "addProject": "AddProject",
+      "syncRepo": "SyncRepo"
+    },
+    "planState": {
+      "draft": "Entwurf",
+      "creating": "Wird erstellt",
+      "updating": "Wird aktualisiert",
+      "executing": "Wird ausgeführt",
+      "review": "Review",
+      "failed": "Fehlgeschlagen",
+      "completed": "Abgeschlossen",
+      "skipped": "Übersprungen",
+      "blocked": "Blockiert",
+      "icebox": "Icebox"
+    }
+  },
+  "appTitles": {
+    "dashboard": "Dashboard",
+    "plans": "Pläne",
+    "review": "Review",
+    "recommendations": "Empfehlungen",
+    "jobs": "Jobs",
+    "chat": "Chat",
+    "inbox": "Posteingang",
+    "settings": "Einstellungen",
+    "pullRequests": "Pull Requests",
+    "icebox": "Icebox",
+    "reviewAction": "Review-Aktion",
+    "agent": "Agent",
+    "plan": "Plan {{id}}",
+    "job": "Job {{id}}"
+  },
+  "navigation": {
+    "errors": {
+      "tabGone": "Der Tab existiert nicht mehr."
+    }
+  },
+  "sidebar": {
+    "version": "v {{version}}",
+    "nav": {
+      "dashboard": "Dashboard",
+      "plans": "Pläne",
+      "review": "Review",
+      "recommendations": "Empfehlungen",
+      "jobs": "Jobs"
+    },
+    "chat": "Chat",
+    "inbox": "Posteingang",
+    "settings": "Einstellungen",
+    "settingsMenu": {
+      "configuration": "Konfiguration",
+      "pullRequests": "Pull Requests",
+      "icebox": "Icebox",
+      "checkForUpdates": "Nach Updates suchen",
+      "help": "Hilfe",
+      "documentation": "Dokumentation",
+      "reportIssue": "Problem melden"
+    }
+  },
+  "shortcuts": {
+    "gotoChat": "Zum Chat wechseln",
+    "gotoInbox": "GitHub-Issue-Posteingang öffnen",
+    "newPlan": "Dialog für neuen Plan öffnen",
+    "planSearch": "Pläne durchsuchen",
+    "showShortcuts": "Tastenkombinationen anzeigen"
+  },
+  "shortcutsHelp": {
+    "title": "Tastenkombinationen",
+    "empty": "Keine Tastenkombinationen aktiv."
+  },
+  "updateCheck": {
+    "available": {
+      "title": "Update verfügbar",
+      "description": "Version {{version}} ist verfügbar."
+    },
+    "upToDate": {
+      "title": "Auf dem neuesten Stand",
+      "description": "Sie verwenden die neueste Version (v{{version}})."
+    },
+    "failed": {
+      "title": "Suche nach Updates fehlgeschlagen"
+    }
+  },
+  "updateNotice": {
+    "available": "v{{latest}} ist verfügbar (Sie haben v{{current}})",
+    "copyCommand": "Befehl kopieren",
+    "dismiss": "Ausblenden"
+  },
+  "offlineBanner": {
+    "reconnecting": "Verbindung zum Tendril-Service getrennt. Automatische Neuverbindung in {{seconds}} s…",
+    "unreachable": "Der Tendril-Service-Daemon ist nicht erreichbar.",
+    "cachedState": "(Zwischengespeicherter Zustand wird verwendet)",
+    "reconnect": "Jetzt neu verbinden"
+  },
+  "planPage": {
+    "loading": "Plan {{id}} wird geladen…",
+    "loadError": "Plan {{id}} konnte nicht geladen werden: {{error}}"
+  },
+  "jobPage": {
+    "placeholderType": "Agenten-Job"
+  },
+  "shellErrors": {
+    "restartFailed": "Dienst konnte nicht neu gestartet werden: {{error}}",
+    "repairFailed": "Dienst konnte nicht repariert werden: {{error}}",
+    "dismissNavError": "Navigationsfehler ausblenden"
+  },
+  "stopQueued": {
+    "title": "Wartende Jobs stoppen",
+    "body_one": "{{count}} wartenden Job stoppen? Laufende Jobs sind nicht betroffen.",
+    "body_other": "Alle {{count}} wartenden Jobs stoppen? Laufende Jobs sind nicht betroffen.",
+    "confirm": "Alle stoppen",
+    "toast": {
+      "title": "Jobs",
+      "description_one": "{{count}} wartender Job gestoppt.",
+      "description_other": "{{count}} wartende Jobs gestoppt."
+    }
+  },
+  "stopAll": {
+    "title": "Alle Jobs stoppen",
+    "body_one": "{{count}} aktiven Job stoppen? Laufende Agenten werden beendet, und ihre Pläne kehren in ihren vorherigen Status zurück. Dies kann nicht rückgängig gemacht werden.",
+    "body_other": "Alle {{count}} aktiven Jobs stoppen? Laufende Agenten werden beendet, und ihre Pläne kehren in ihren vorherigen Status zurück. Dies kann nicht rückgängig gemacht werden.",
+    "confirm": "Alle stoppen",
+    "toast": {
+      "title": "Jobs gestoppt",
+      "description_one": "{{count}} Job gestoppt",
+      "description_other": "{{count}} Jobs gestoppt"
+    }
+  },
+  "errorBanner": {
+    "dismiss": "Fehlermeldung ausblenden"
+  },
+  "recommendationCard": {
+    "state": {
+      "pending": "Ausstehend",
+      "accepted": "Angenommen",
+      "acceptedWithNotes": "Mit Notizen angenommen",
+      "declined": "Abgelehnt"
+    },
+    "impact": {
+      "small": "Gering",
+      "medium": "Mittel",
+      "high": "Hoch"
+    },
+    "declineReason": "Ablehnungsgrund: {{reason}}",
+    "notes": "Notizen: {{notes}}",
+    "accept": "Annehmen",
+    "decline": "Ablehnen"
+  },
+  "service": {
+    "state": {
+      "connected": "Verbunden",
+      "disconnected": "Getrennt",
+      "unauthenticated": "Nicht authentifiziert",
+      "notRunning": "Läuft nicht",
+      "foreignMaster": "Fremder Haupt-Daemon"
+    },
+    "ownership": {
+      "adoptedExternal": "Extern übernommen",
+      "managed": "Verwaltet"
+    }
+  },
+  "serviceStatus": {
+    "connectedExternal": "Verbunden (Extern)",
+    "portUnavailable": "k. A.",
+    "restart": "Dienst neu starten",
+    "repair": "Dienst reparieren",
+    "diagnostics": "Diagnose"
+  },
+  "serviceSettings": {
+    "controls": {
+      "title": "Dienstüberwachung & -steuerung",
+      "hint": "Lebenszyklus des lokalen Begleit-Daemons, Übernahme der Verwaltung und Absturzwiederherstellung steuern."
+    },
+    "actions": {
+      "restart": "Dienst neu starten",
+      "repair": "Dienst reparieren",
+      "switchToExternal": "Zu externem Daemon wechseln",
+      "adoptManaged": "Verwalteten Begleit-Daemon übernehmen",
+      "install": "Hintergrunddienst installieren",
+      "installTooltip": "Den mitgelieferten Daemon nach {{path}} kopieren und mit Ihrer Anmeldung starten",
+      "disableAutostart": "Start beim Anmelden deaktivieren",
+      "disableAutostartTooltip": "Verhindert, dass der Daemon beim Anmelden startet. Die installierten Binärdateien bleiben, wo sie sind.",
+      "refreshLogs": "Logs aktualisieren",
+      "loadingLogs": "Logs werden geladen…"
+    },
+    "messages": {
+      "restartInitiated": "Neustart des Dienstes eingeleitet.",
+      "restartFailed": "Neustart fehlgeschlagen: {{error}}",
+      "repairFailed": "Reparatur fehlgeschlagen: {{error}}",
+      "installFailed": "Installation fehlgeschlagen: {{error}}",
+      "disableAutostartFailed": "Start beim Anmelden konnte nicht deaktiviert werden: {{error}}",
+      "switchedToManaged": "Verwaltungsmodus des Dienstes auf „Verwaltet“ umgestellt.",
+      "switchedToExternal": "Verwaltungsmodus des Dienstes auf „Extern“ umgestellt.",
+      "switchFailed": "Moduswechsel fehlgeschlagen: {{error}}"
+    },
+    "provision": {
+      "installed": "{{binaries, list(type: unit)}} nach {{dir}} installiert.",
+      "upToDate": "{{binaries, list(type: unit)}} in {{dir}} bereits auf dem neuesten Stand.",
+      "missing": "Dieser Build enthält {{binaries, list(type: unit)}} nicht.",
+      "registered": "Für den Start mit Ihrer Anmeldung registriert ({{detail}}).",
+      "alreadyRegistered": "Bereits für den Start mit Ihrer Anmeldung registriert.",
+      "registerFailed": "Start beim Anmelden konnte nicht registriert werden: {{detail}}",
+      "skipped": "Start beim Anmelden übersprungen: {{detail}}",
+      "nothing": "Nichts zu installieren."
+    },
+    "details": {
+      "ownership": "Verwaltung",
+      "ownershipFallback": "Extern / Eigenständig",
+      "endpoint": "Endpunkt",
+      "pid": "Prozess-PID",
+      "crashCount": "Anzahl Abstürze",
+      "notAvailable": "k. A."
+    },
+    "logs": {
+      "title": "Daemon-Diagnose & Dienst-Logs",
+      "hint": "Sensible Tokens werden unkenntlich gemacht. Gelesen aus {{path}}.",
+      "empty": "In {{file}} wurden noch keine Logs aufgezeichnet.",
+      "loadFailed": "Dienst-Logs konnten nicht geladen werden: {{error}}"
+    }
+  },
+  "errors": {
+    "requestFailed": "Anfrage an {{path}} fehlgeschlagen ({{status}})",
+    "reviewActionFailed": "Review-Aktion {{endpoint}} fehlgeschlagen ({{status}}): {{detail}}",
+    "subscribeFailed": "Abonnieren von {{url}} fehlgeschlagen: HTTP {{status}}",
+    "agentTerminalFailed": "Agenten-Terminal {{endpoint}} fehlgeschlagen: HTTP {{status}}"
+  }
+}

@@ -1,0 +1,226 @@
+{
+  "gate": {
+    "github": "Vault を作成または接続するには GitHub にサインインしてください",
+    "vault": "先に Vault を接続してください",
+    "busy": "操作はすでに進行中です"
+  },
+  "dialogShell": {
+    "cancel": "キャンセル"
+  },
+  "assetCategories": {
+    "skills": {
+      "label": "スキル",
+      "badge": "スキル"
+    },
+    "mcpServers": {
+      "label": "MCP サーバー",
+      "badge": "MCP"
+    },
+    "memories": {
+      "label": "プロジェクトメモリ",
+      "badge": "メモリ"
+    },
+    "reviewActions": {
+      "label": "レビューアクション",
+      "badge": "アクション"
+    },
+    "verifications": {
+      "label": "検証",
+      "badge": "検証"
+    }
+  },
+  "assetChecklist": {
+    "selectAll": "すべて選択",
+    "selectAllAriaLabel": "{{label}} をすべて選択",
+    "selectAllAriaLabel_scoped": "{{scope}} の {{label}} をすべて選択",
+    "deselectAll": "すべて選択解除",
+    "deselectAllAriaLabel": "{{label}} の選択をすべて解除",
+    "deselectAllAriaLabel_scoped": "{{scope}} の {{label}} の選択をすべて解除"
+  },
+  "githubAccountTypes": {
+    "user": "ユーザー",
+    "organization": "組織"
+  },
+  "emptyState": {
+    "title": "チーム構成 Vault",
+    "description": "バージョン管理された Git リポジトリを介して、Tendril のプロジェクト、カスタムスキル、MCP サーバー、セキュリティルールをチーム全体で共有・同期します。",
+    "create": "GitHub Vault を作成",
+    "connect": "既存の Git Vault を接続"
+  },
+  "createDialog": {
+    "title": "GitHub にチーム Vault を作成",
+    "description": "非公開の GitHub リポジトリを作成し、Tendril のプロジェクト構成、カスタムスキル、MCP サーバーをチームと共有します。",
+    "submit": "Vault を作成",
+    "name": {
+      "label": "リポジトリ名"
+    },
+    "owner": {
+      "label": "所有者 / 組織",
+      "placeholder": "所有者を選択",
+      "inputPlaceholder": "例：ユーザー名または組織名"
+    },
+    "accountOption": "{{login}}（{{type}}）",
+    "private": "非公開リポジトリ"
+  },
+  "connectDialog": {
+    "title": "既存のチーム Vault を接続",
+    "description": "既存の Tendril Vault リポジトリを接続して、プロジェクト、スキル、構成をチームと同期します。",
+    "submit": "Vault を接続",
+    "discovering": "🔍 GitHub アカウントと組織から既存の Vault を検索中…",
+    "detected": {
+      "label": "検出された GitHub Vault",
+      "placeholder": "リポジトリを選択"
+    },
+    "repoOption": "{{fullName}}（{{accountType}}）",
+    "repoOption_private": "{{fullName}}（{{accountType}}、非公開）",
+    "url": {
+      "label": "Git リポジトリの URL"
+    },
+    "displayName": {
+      "label": "表示名（任意）",
+      "placeholder": "例：Core Team Vault（任意）"
+    }
+  },
+  "importDialog": {
+    "title": "Vault から「{{name}}」をインポート",
+    "mergeTitle": "「{{name}}」をローカルプロジェクトとマージ",
+    "submit": "プロジェクトをインポート",
+    "mergeSubmit": "リンクしてマージ",
+    "collision": "「{{name}}」という名前のローカルプロジェクトがすでに存在します。別の名前を選択してください（例：{{suggestion}}）。",
+    "mergeCallout": "マージすると、この Vault プロジェクトが既存のローカルプロジェクト「{{name}}」にリンクされます。ローカルのリポジトリパスと競合のない設定は保持され、選択した Vault アセット（検証、アクション、スキル、MCP、メモリ）が統合されます。",
+    "renameNotice": "「{{name}}」という名前のローカルプロジェクトがすでに存在します。競合を避けるため、このインポートには「{{suggestion}}」という名前を提案しています。",
+    "name": {
+      "label": "ローカルプロジェクト名"
+    },
+    "source": "Vault ソース：{{name}}",
+    "changelog": "変更履歴：{{changelog}}",
+    "repos": {
+      "heading": "リポジトリ",
+      "description": "ディスク上の既存のローカルフォルダーにリンクするか、見つからないリポジトリを GitHub から自動でクローンします。",
+      "existing": "✓ 既存のローカルフォルダー",
+      "willClone": "GitHub からクローン",
+      "pathAriaLabel": "{{repo}} のローカルパス"
+    },
+    "assets": {
+      "heading": "インポートするアセット",
+      "empty": {
+        "skills": "この Vault プロジェクトにはカスタムスキルがありません。",
+        "mcpServers": "この Vault プロジェクトには MCP サーバーがありません。",
+        "memories": "この Vault プロジェクトにはプロジェクトメモリの Markdown ファイルがありません。",
+        "reviewActions": "この Vault プロジェクトにはレビューアクションがありません。",
+        "verifications": "この Vault プロジェクトには検証がありません。"
+      }
+    },
+    "permissions": "セキュリティと権限のポリシーをインポート"
+  },
+  "pushDialog": {
+    "title": "{{vault}} にプロジェクトを追加（PR を作成）",
+    "submit": "公開して PR を作成",
+    "projects": {
+      "heading": "公開するプロジェクトとアセット",
+      "none": "すべてのローカルプロジェクトはすでに Vault で追跡されています。ここに追加するには、先に新しいローカルプロジェクトを作成してください。",
+      "assetsAriaLabel": "{{project}} のアセット"
+    },
+    "empty": {
+      "skills": "このプロジェクトにはカスタムスキルが構成されていません。",
+      "mcpServers": "このプロジェクトには MCP サーバーが構成されていません。",
+      "memories": "このプロジェクトにはメモリの Markdown ファイルが見つかりません。",
+      "reviewActions": "このプロジェクトにはレビューアクションが構成されていません。",
+      "verifications": "このプロジェクトには検証が構成されていません。"
+    },
+    "summary": {
+      "skills_other": "スキル {{selected}}/{{count}}",
+      "mcpServers_other": "MCP {{selected}}/{{count}}",
+      "memories_other": "メモリ {{selected}}/{{count}}",
+      "reviewActions_other": "アクション {{selected}}/{{count}}",
+      "verifications_other": "検証 {{selected}}/{{count}}",
+      "none": "アセット 0 個"
+    },
+    "permissions": "セキュリティと権限のポリシーを含める",
+    "release": {
+      "heading": "リリースの詳細",
+      "version": {
+        "label": "バージョンタグ（UTC タイムスタンプ）"
+      },
+      "changelog": {
+        "label": "変更履歴 / リリースノート",
+        "placeholder": "更新内容、新しいスキル、MCP サーバー、セキュリティポリシーの変更の概要…"
+      },
+      "reviewers": {
+        "label": "PR のレビュアーをリクエスト",
+        "placeholder": "例：alice, bob（GitHub ユーザー名をカンマ区切りで入力）"
+      }
+    },
+    "prOpened": "プルリクエストを作成しました：{{url}}"
+  },
+  "confirmDelete": {
+    "title": "Vault から「{{projectName}}」を削除しますか？",
+    "submit": "削除用の PR を作成",
+    "warning": "Vault リポジトリから、プロジェクト「{{projectName}}」と、それに関連するすべてのマニフェスト、スキル、MCP 構成、メモリが削除されます。",
+    "note": "この削除を行うため、Vault リポジトリに対して新しいブランチとプルリクエストが作成されます。"
+  },
+  "projectsTable": {
+    "addTrackedProject": "追跡プロジェクトを追加",
+    "loading": "共有プロジェクトを読み込み中…",
+    "empty": {
+      "title": "共有プロジェクトがありません",
+      "description": "この Vault にはまだ共有プロジェクトがありません。ローカルプロジェクトを追加して、チームと共有してください。"
+    },
+    "columns": {
+      "project": "プロジェクト",
+      "version": "バージョン",
+      "actions": "操作",
+      "syncStatus": "同期ステータス",
+      "contents": "内容",
+      "changelog": "変更履歴 / コンテキスト"
+    },
+    "actions": {
+      "import": "インポート",
+      "linkMerge": "リンクしてマージ",
+      "importAs": "名前を付けてインポート…",
+      "update": "更新",
+      "publish": "公開",
+      "openPr": "PR を作成",
+      "publishTooltip": "Vault 内の「{{name}}」を更新する PR を作成",
+      "delete": "Vault から「{{name}}」を削除"
+    },
+    "syncStatus": {
+      "upToDate": "✓ 同期済み",
+      "modified": "ローカルの変更",
+      "updateAvailable": "アップデートあり",
+      "localOnly": "ローカルのみ",
+      "notImported": "未インポート",
+      "conflict": "名前の競合"
+    },
+    "contents": {
+      "repos_other": "{{count}} 個のリポジトリ",
+      "skills_other": "{{count}} 個のスキル",
+      "mcps_other": "{{count}} 個の MCP",
+      "memories_other": "{{count}} 個のメモリ",
+      "reviewActions_other": "{{count}} 個のアクション",
+      "verifications_other": "{{count}} 個の検証"
+    }
+  },
+  "statusCard": {
+    "fallbackName": "チーム Vault",
+    "sync": {
+      "behind_other": "{{count}} 件遅れ",
+      "ahead_other": "{{count}} 件先行",
+      "inSync": "同期済み"
+    },
+    "details": {
+      "vault": "Vault",
+      "branch": "ブランチ",
+      "status": "ステータス",
+      "lastSynced": "最終同期"
+    },
+    "openOnGitHub": "GitHub で開く",
+    "syncedStatus": "✓ {{status}}",
+    "lastSynced": {
+      "never": "未同期",
+      "value": "{{date}} {{time}} UTC"
+    },
+    "alwaysInSync": "常に同期済み",
+    "disconnect": "Vault を切断"
+  }
+}

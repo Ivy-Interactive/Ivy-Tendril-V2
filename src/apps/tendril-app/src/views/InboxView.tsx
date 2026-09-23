@@ -1,22 +1,25 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
+  Check,
   CircleDot,
+  EllipsisVertical,
   ExternalLink,
   FileText,
   Folder,
   FolderClosed,
   GitPullRequest,
+  Hourglass,
   MessageCircle,
   RefreshCw,
   Settings,
+  X,
   Zap,
 } from "lucide-react";
 import {
   Badge,
   Button,
   DataTable,
-  HeaderLayout,
   NativeSelect,
   Sheet,
   SheetContent,
@@ -25,6 +28,7 @@ import {
   SidebarListRow,
   SidebarListRowExpandable,
   SidebarListRowSubItem,
+  Toggle,
   type DataTableColumn,
   type DataTableRowAction,
   type SidebarListRowIcon,
@@ -34,6 +38,14 @@ import {
   PlanMarkdown,
   type BadgeSelectOption,
 } from "@ivy-interactive/components/tendril";
+import {
+  selectRelativeTimeUnit,
+  useFormatters,
+  useLocale,
+  type Formatters,
+  type RelativeTimeUnit,
+} from "@ivy-interactive/components/i18n";
+import { i18n, useTranslation, type TFunction } from "../i18n";
 import { bridge } from "../api/bridge";
 import { describeBridgeError } from "../types/api";
 import type { GitHubIssue, InboxProposal, ProjectSummary, SweepReport } from "../types/api";
@@ -67,13 +79,46 @@ const POLL_INTERVAL_MS: Record<PollInterval, number> = {
   "15m": 900_000,
 };
 
-const POLL_INTERVAL_LABELS: Record<PollInterval, string> = {
-  off: "Off",
-  "30s": "30s",
-  "1m": "1m",
-  "5m": "5m",
-  "15m": "15m",
+/**
+ * Each interval as a duration, which `Intl` spells in the current language: `30s` and `15m` in
+ * English (the labels this select always showed), `30 Sek.` and `15 Min.` in German.
+ */
+const POLL_INTERVAL_DURATIONS: Record<
+  Exclude<PollInterval, "off">,
+  [number, "second" | "minute"]
+> = {
+  "30s": [30, "second"],
+  "1m": [1, "minute"],
+  "5m": [5, "minute"],
+  "15m": [15, "minute"],
 };
+
+function pollIntervalLabel(interval: PollInterval, t: TFunction<"inbox">, format: Formatters) {
+  if (interval === "off") return t("freshness.autoRefresh.off");
+  const [value, unit] = POLL_INTERVAL_DURATIONS[interval];
+  return format.number(value, { style: "unit", unit, unitDisplay: "narrow" });
+}
+
+/**
+ * A relative time in whole units from `minUnit` up to `maxUnit`, narrow ("3h ago"), or `null` for
+ * a moment less than one `minUnit` ago - or in the future, or unparseable - which the callers say as
+ * "just now". That is exactly how the hand-rolled "Nh ago" / "Nm ago" helpers this replaces counted.
+ */
+function relativeOrJustNow(
+  format: Formatters,
+  value: string | Date,
+  minUnit: RelativeTimeUnit,
+  maxUnit: RelativeTimeUnit,
+): string | null {
+  const time = (value instanceof Date ? value : new Date(value)).getTime();
+  if (Number.isNaN(time)) return null;
+  const now = Date.now();
+  const deltaMs = time - now;
+  if (deltaMs >= 0 || selectRelativeTimeUnit(deltaMs, { minUnit, maxUnit }).value === 0) {
+    return null;
+  }
+  return format.relativeTime(time, { now, style: "narrow", numeric: "always", minUnit, maxUnit });
+}
 
 /**
  * V1's inbox queries carry `new QueryOptions { Expiration = TimeSpan.FromSeconds(60) }`
@@ -110,6 +155,38 @@ function resolveIssueUrl(issue: GitHubIssue): string | undefined {
   if (issue.url && issue.url.trim()) return issue.url;
   const nameWithOwner = issue.repository?.nameWithOwner?.trim();
   return nameWithOwner ? `https://github.com/${nameWithOwner}/issues/${issue.number}` : undefined;
+}
+
+/**
+ * `(repository, number)`, case-folded: the pair the daemon dedups a sweep on
+ * (`inbox::plan_sweep_actions`), and so the pair that says which listed issue a proposal is about.
+ */
+function issueKey(repository: string | undefined, number: number): string {
+  return `${(repository ?? "").trim().toLowerCase()}#${number}`;
+}
+
+/**
+ * A table row for a proposal whose issue the current page does not list. Built from what the sweep
+ * stored, which covers everything the Issue and Repository columns and the details sheet read; the
+ * state, labels and assignees it never stored are left empty rather than guessed.
+ */
+function issueFromProposal(proposal: InboxProposal): GitHubIssue {
+  return {
+    number: proposal.number,
+    title: proposal.title,
+    body: proposal.body,
+    state: "",
+    assignees: [],
+    labels: [],
+    commentsCount: 0,
+    createdAt: proposal.discovered,
+    updatedAt: proposal.updated,
+    url: proposal.issueUrl,
+    repository: {
+      name: proposal.repository.split("/").pop() || proposal.repository,
+      nameWithOwner: proposal.repository,
+    },
+  };
 }
 
 /**
@@ -161,33 +238,45 @@ export function buildInboxChatPrompt(issues: GitHubIssue[]): string {
  * V2's equivalent payload and it was being read two fields deep: a pass in which every project's
  * `gh` call failed reports `imported: []`, `skipped: 0` and a populated `errors`, which rendered as
  * "Imported 0, skipped 0." - indistinguishable from nothing being assigned to you. `accepted` is the
- * other half: with auto-accept on, an imported issue becomes a plan in the same pass and never
- * appears as a card below, so the count is the only evidence the sweep did anything.
+ * other half: with auto-accept on, an imported issue becomes a plan in the same pass and is never
+ * marked as awaiting a decision in the table, so the count is the only evidence the sweep did
+ * anything.
  */
 export function describeSweep(report: SweepReport): string {
-  if (report.outcome === "AlreadyRunning") return "A check is already running.";
-  if (report.outcome === "NotMaster") return "This daemon is not the master, so it did not check.";
+  if (report.outcome === "AlreadyRunning") return i18n.t("inbox:sweep.alreadyRunning");
+  if (report.outcome === "NotMaster") return i18n.t("inbox:sweep.notMaster");
 
-  const parts = [`Imported ${report.imported.length}, skipped ${report.skipped}.`];
+  const parts = [
+    i18n.t("inbox:sweep.imported", {
+      imported: report.imported.length,
+      skipped: report.skipped,
+    }),
+  ];
   if (report.accepted > 0) {
     parts.push(
-      `${report.accepted} started a plan straight away${
-        report.accepted === report.imported.length ? "" : " (the rest are below)"
-      }.`,
+      i18n.t("inbox:sweep.accepted", {
+        count: report.accepted,
+        context: report.accepted === report.imported.length ? undefined : "partial",
+      }),
     );
   }
   if (report.errors.length > 0) {
+    // The first error is the daemon's own text, and stays as it is.
     parts.push(
-      `${report.errors.length} error${report.errors.length === 1 ? "" : "s"}: ${report.errors[0]}`,
+      i18n.t("inbox:sweep.errors", { count: report.errors.length, error: report.errors[0] }),
     );
   }
-  return parts.join(" ");
+  // Each sentence is its own key, and so is the joint between two of them: Japanese and Chinese
+  // sentences end in 。 and take no space after it, which a hard-coded " " would force on them.
+  return parts.reduce((previous, next) => i18n.t("inbox:sweep.join", { previous, next }));
 }
 
 /** V1 `InboxChatPrompt.Title`. */
 export function inboxChatTitle(issues: GitHubIssue[]): string | undefined {
   if (issues.length === 0) return undefined;
-  return issues.length === 1 ? `#${issues[0].number}` : `${issues.length} issues`;
+  return issues.length === 1
+    ? `#${issues[0].number}`
+    : i18n.t("inbox:chatTitle", { count: issues.length });
 }
 
 /**
@@ -279,6 +368,24 @@ const RailSubItem: React.FC<{
   />
 );
 
+/**
+ * The two of V1's issue row actions (`IssuesTableView`'s `RowActions`) that every issue row carries
+ * unchanged, whether or not it is awaiting a decision; see `rowActionsFor` for the rows that are.
+ */
+const viewDetailsAction = (t: TFunction<"inbox">): DataTableRowAction<GitHubIssue> => ({
+  tag: "view-details",
+  label: t("issueTable.actions.viewDetails.label"),
+  icon: <FileText aria-hidden="true" />,
+  tooltip: t("issueTable.actions.viewDetails.tooltip"),
+});
+
+const openGitHubAction = (t: TFunction<"inbox">): DataTableRowAction<GitHubIssue> => ({
+  tag: "open-github",
+  label: t("issueTable.actions.openGitHub.label"),
+  icon: <ExternalLink aria-hidden="true" />,
+  tooltip: t("issueTable.actions.openGitHub.tooltip"),
+});
+
 export interface InboxViewProps {
   projects?: ProjectSummary[];
   onCreatePlan?: (issue: GitHubIssue, project?: string) => void;
@@ -300,6 +407,11 @@ export interface InboxViewProps {
  * The GitHub inbox, following V1's `Apps/Inbox` decisions: a category rail on the left
  * (`SidebarView`), and on the right a header carrying the category title, the refresh control and
  * the bulk actions over a sortable, filterable table of issues (`ContentView` / `IssuesTableView`).
+ *
+ * One table, as V1 has. The assigned-issues sweep's proposals used to render as a second list of
+ * cards above it, which on My Issues showed the same assigned issues twice - once as a card with
+ * Accept and Dismiss, once as a row with everything else. They are now a status on the row itself:
+ * see `tableIssues`.
  */
 export const InboxView: React.FC<InboxViewProps> = ({
   projects = [],
@@ -307,6 +419,9 @@ export const InboxView: React.FC<InboxViewProps> = ({
   onOpenNewPlanModal,
   onOpenChat,
 }) => {
+  const { t } = useTranslation("inbox");
+  const format = useFormatters();
+  const { language } = useLocale();
   const [selectedCategory, setSelectedCategory] = useState<InboxCategory>("my-issues");
   const [selectedProject, setSelectedProject] = useState<string>(projects[0]?.name || "");
   const [selectedRepo, setSelectedRepo] = useState<string>(projects[0]?.repos[0] || "");
@@ -314,7 +429,9 @@ export const InboxView: React.FC<InboxViewProps> = ({
   const [isProjectsExpanded, setIsProjectsExpanded] = useState<boolean>(true);
 
   const [issues, setIssues] = useState<GitHubIssue[]>([]);
-  const [isLoading, setIsLoading] = useState<boolean>(false);
+  // True from the first render, since the mount effect starts a fetch regardless: `tableIssues` reads
+  // "not loading" as "`issues` is this page's answer", which an empty list before that fetch is not.
+  const [isLoading, setIsLoading] = useState<boolean>(true);
   const [isBackgroundRefreshing, setIsBackgroundRefreshing] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -329,6 +446,9 @@ export const InboxView: React.FC<InboxViewProps> = ({
   // Pagination state. V1 pages client-side over one fetch; V2's daemon pages, so the table's own
   // footer drives these through `manualPagination`.
   const [page, setPage] = useState<number>(1);
+  // The Awaiting decision filter's own page. That view is every pending proposal, which the daemon
+  // hands over in full, so the table pages it client-side while the server page stays on the first.
+  const [awaitingPage, setAwaitingPage] = useState<number>(1);
   const [pageSize, setPageSize] = useState<number>(DEFAULT_PAGE_SIZE);
   const [totalCount, setTotalCount] = useState<number | null>(null);
   const [hasMore, setHasMore] = useState<boolean>(false);
@@ -350,13 +470,16 @@ export const InboxView: React.FC<InboxViewProps> = ({
   /** V1's `isAutoAcceptSettingsOpen`: the gear beside the badge opens the settings dialog. */
   const [isAutoAcceptSettingsOpen, setIsAutoAcceptSettingsOpen] = useState<boolean>(false);
 
-  // Auto-imported assigned issues waiting on a human. Kept separate from `issues`: these are rows
-  // the daemon already swept, not a live GitHub query, and the decision buttons act on the row id.
+  // Auto-imported assigned issues waiting on a human. Fetched separately from `issues` - these are
+  // rows the daemon already swept, not a live GitHub query, and Accept/Dismiss act on the proposal's
+  // own id - but shown in the same table: `tableIssues` joins the two on the issue.
   const [proposals, setProposals] = useState<InboxProposal[]>([]);
   const [isChecking, setIsChecking] = useState<boolean>(false);
   const [proposalError, setProposalError] = useState<string | null>(null);
   const [checkSummary, setCheckSummary] = useState<string | null>(null);
   const [decidingId, setDecidingId] = useState<number | null>(null);
+  /** The toolbar's Awaiting decision toggle: narrows the table to the issues with a proposal. */
+  const [awaitingOnly, setAwaitingOnly] = useState<boolean>(false);
 
   const isReviews = selectedCategory === "review-requests";
   const isMyIssues = selectedCategory === "my-issues";
@@ -436,7 +559,14 @@ export const InboxView: React.FC<InboxViewProps> = ({
           setIssues([]);
           setTotalCount(0);
           setHasMore(false);
-          setError(`No git remotes resolved for project ${selectedProject || "(none selected)"}.`);
+          // `i18n.t` rather than the hook's `t`: a stored message keeps the language it was made in,
+          // and `t` as a dependency would refetch the issues on every language change.
+          setError(
+            i18n.t("inbox:errors.noRemotes", {
+              project: selectedProject,
+              context: selectedProject ? undefined : "noProject",
+            }),
+          );
           return;
         }
 
@@ -572,9 +702,10 @@ export const InboxView: React.FC<InboxViewProps> = ({
   //
   // The proposals ride the same tick. A sweep that runs server-side on `inbox.checkIntervalMinutes`
   // creates rows nothing tells this view about: the app's filesystem-change handler for `inbox` is
-  // an explicit no-op (`src/api/changes.ts`), so without this the panel only ever fills on Check Now
-  // or a remount. V1 had the equivalent push, `_queryService.InvalidateByTag(MyIssuesQueryTag)` at
-  // the end of every pass (`AssignedIssuesAutoImportService.cs:93`).
+  // an explicit no-op (`src/api/changes.ts`), so without this a row is only ever marked as awaiting a
+  // decision on Check Now or a remount. V1 had the equivalent push,
+  // `_queryService.InvalidateByTag(MyIssuesQueryTag)` at the end of every pass
+  // (`AssignedIssuesAutoImportService.cs:93`).
   useEffect(() => {
     if (pollInterval === "off") {
       return;
@@ -590,7 +721,10 @@ export const InboxView: React.FC<InboxViewProps> = ({
     return () => window.clearInterval(id);
   }, [pollInterval, fetchIssues, fetchProposals]);
 
-  const resetToFirstPage = () => setPage(1);
+  const resetToFirstPage = () => {
+    setPage(1);
+    setAwaitingPage(1);
+  };
 
   // V1 clears the selection, the search and both filters whenever the category or the project
   // changes (the two `UseEffect`s at the top of `InboxApp.Build`). A new category also starts at
@@ -600,34 +734,123 @@ export const InboxView: React.FC<InboxViewProps> = ({
     setSearchQuery("");
     setSelectedLabels([]);
     setSelectedAssignees([]);
+    setAwaitingOnly(false);
     setFireNotice(null);
     setPage(1);
+    setAwaitingPage(1);
   }, [selectedCategory, selectedProject]);
+
+  /**
+   * The pending proposals, by the issue each is about, in the daemon's order (newest first).
+   *
+   * Empty off My Issues, for the reason V1 scopes the Auto-Accept badge and gear there
+   * (`ContentView.cs:429`): proposals are what the assigned-issues sweep produced, they are not
+   * filtered by category or project, and marking them under Reviews or a project's issues would
+   * attach them to a list they have nothing to do with.
+   */
+  const proposalsByIssue = useMemo(() => {
+    const byIssue = new Map<string, InboxProposal>();
+    if (!isMyIssues) return byIssue;
+    for (const proposal of proposals) {
+      const key = issueKey(proposal.repository, proposal.number);
+      if (!byIssue.has(key)) byIssue.set(key, proposal);
+    }
+    return byIssue;
+  }, [isMyIssues, proposals]);
+
+  /** The proposal awaiting a decision on this issue, if there is one. */
+  const proposalFor = useCallback(
+    (issue: GitHubIssue): InboxProposal | undefined =>
+      proposalsByIssue.get(issueKey(issue.repository?.nameWithOwner, issue.number)),
+    [proposalsByIssue],
+  );
+
+  // Off once the last proposal is decided, so the table does not sit filtered to nothing behind a
+  // toggle that is no longer rendered - nor come back filtered when the next sweep finds something.
+  const awaitingOnlyActive = awaitingOnly && proposalsByIssue.size > 0;
+  useEffect(() => {
+    if (proposalsByIssue.size === 0) setAwaitingOnly(false);
+  }, [proposalsByIssue.size]);
+
+  /**
+   * The one list the table shows: this page's issues, with the ones awaiting a decision first.
+   *
+   * The two overlap almost entirely. The sweep asks `gh` for the open issues assigned to you and keeps
+   * the ones in a configured project's repositories (`inbox::fetch_assigned_issues`); My Issues
+   * searches `is:open is:issue assignee:@me` across every repository (`cmd_list_github_issues`). So a
+   * proposal is nearly always about an issue this category lists, and showing it as a second list is
+   * what put the same issue on screen twice. The row is marked instead, and moved up so the
+   * decisions are the first thing on the page.
+   *
+   * A proposal whose issue is not listed here is either on another page or no longer in the list at
+   * all: closed, or unassigned, since the sweep found it. Only the second needs a row of its own, and
+   * the two can only be told apart when this page is the whole category (and has finished loading, so
+   * `issues` is this page's answer rather than the previous one's). Even then the rows are added only
+   * while the page still has room for them: the footer pages by the count, and a count one past the
+   * page size would offer a page two that the daemon answers with nothing, with the added rows gone
+   * too because the page is no longer the first. The Awaiting decision filter adds every unlisted
+   * proposal regardless, which is what keeps each one reachable when this page cannot.
+   */
+  const tableIssues = useMemo(() => {
+    if (proposalsByIssue.size === 0) return issues;
+    const listed = new Map(
+      issues.map((issue) => [issueKey(issue.repository?.nameWithOwner, issue.number), issue]),
+    );
+    let unlisted = 0;
+    for (const key of proposalsByIssue.keys()) if (!listed.has(key)) unlisted += 1;
+    const pageHasRoom =
+      !isLoading && page === 1 && !hasMore && (totalCount ?? issues.length) + unlisted <= pageSize;
+    // The filter's rows are every proposal whichever page is loaded, so they need no loaded page to
+    // be told apart from: one row per proposal either way, filled in from the live issue once it is.
+    const includeUnlisted = awaitingOnlyActive || pageHasRoom;
+    const awaiting: GitHubIssue[] = [];
+    for (const [key, proposal] of proposalsByIssue) {
+      const issue = listed.get(key);
+      if (issue) awaiting.push(issue);
+      else if (includeUnlisted) awaiting.push(issueFromProposal(proposal));
+    }
+    const pinned = new Set(awaiting);
+    return [...awaiting, ...issues.filter((issue) => !pinned.has(issue))];
+  }, [
+    issues,
+    proposalsByIssue,
+    isLoading,
+    awaitingOnlyActive,
+    page,
+    hasMore,
+    totalCount,
+    pageSize,
+  ]);
+
+  /** Rows `tableIssues` built from a proposal because no listed issue carried it. */
+  const unlistedCount = tableIssues.length - issues.length;
 
   // Extract distinct labels and assignees for the column filters
   const labelOptions = useMemo<BadgeSelectOption[]>(() => {
     const names = new Set<string>();
     issues.forEach((issue) => issue.labels.forEach((lbl) => names.add(lbl.name)));
     return Array.from(names)
-      .sort((a, b) => a.localeCompare(b))
+      .sort((a, b) => a.localeCompare(b, language))
       .map((name) => ({ value: name, label: name }));
-  }, [issues]);
+  }, [issues, language]);
 
   const assigneeOptions = useMemo<BadgeSelectOption[]>(() => {
     const logins = new Set<string>();
     issues.forEach((issue) => issue.assignees.forEach((a) => logins.add(a.login)));
     return Array.from(logins)
-      .sort((a, b) => a.localeCompare(b))
+      .sort((a, b) => a.localeCompare(b, language))
       .map((login) => ({ value: login, label: login }));
-  }, [issues]);
+  }, [issues, language]);
 
   const filteredIssues = useMemo(() => {
-    return issues.filter((issue) => {
+    return tableIssues.filter((issue) => {
       // V1's project query is an issue search (`is:issue`), but V2's daemon serves this category
       // from `repos/{slug}/issues`, which GitHub answers with pull requests as well. Nothing
       // server-side drops them, so a PR would otherwise appear as a row on an Issues table - and
       // firing one off would create a plan for a pull request.
       if (!isReviews && issue.isPullRequest === true) return false;
+
+      if (awaitingOnlyActive && !proposalFor(issue)) return false;
 
       if (searchQuery.trim()) {
         const q = searchQuery.toLowerCase().trim();
@@ -654,7 +877,15 @@ export const InboxView: React.FC<InboxViewProps> = ({
 
       return true;
     });
-  }, [issues, isReviews, searchQuery, selectedLabels, selectedAssignees]);
+  }, [
+    tableIssues,
+    isReviews,
+    awaitingOnlyActive,
+    proposalFor,
+    searchQuery,
+    selectedLabels,
+    selectedAssignees,
+  ]);
 
   /**
    * V1's selection is a `HashSet<int>` resolved against `allIssues`, which is every issue in the
@@ -668,6 +899,9 @@ export const InboxView: React.FC<InboxViewProps> = ({
    * Note this is deliberately not filtered by the client-side search either: V1's `allIssues` is
    * unaffected by the table's own filtering, so an issue selected and then filtered out of view is
    * still fired off.
+   *
+   * Resolved against `tableIssues` rather than `issues`, so a row built from a proposal (see
+   * `tableIssues`) fires off like any other row once selected.
    */
   const [selectedIssueDetails, setSelectedIssueDetails] = useState<Record<string, GitHubIssue>>({});
 
@@ -676,14 +910,14 @@ export const InboxView: React.FC<InboxViewProps> = ({
       const next: Record<string, GitHubIssue> = {};
       let changed = Object.keys(prev).length !== selectedIssueNumbers.length;
       for (const id of selectedIssueNumbers) {
-        const listed = issues.find((issue) => String(issue.number) === id);
+        const listed = tableIssues.find((issue) => String(issue.number) === id);
         const resolved = listed ?? prev[id];
         if (resolved) next[id] = resolved;
         if (resolved !== prev[id]) changed = true;
       }
       return changed ? next : prev;
     });
-  }, [selectedIssueNumbers, issues]);
+  }, [selectedIssueNumbers, tableIssues]);
 
   const selectedIssues = useMemo(
     () =>
@@ -810,58 +1044,42 @@ export const InboxView: React.FC<InboxViewProps> = ({
       if (failure) {
         const failedOn = distinct[fired.size]?.number;
         setFireNotice(
-          `Fired off ${fired.size} of ${distinct.length}. Failed on ` +
-            `${failedOn !== undefined ? `#${failedOn}` : "an issue"}: ${failure}`,
+          t("fireNotice.partial", {
+            fired: fired.size,
+            total: distinct.length,
+            number: failedOn,
+            error: failure,
+            context: failedOn !== undefined ? undefined : "unknownIssue",
+          }),
         );
       } else {
-        setFireNotice(`Fired off ${fired.size} issue${fired.size === 1 ? "" : "s"} in Tendril`);
+        setFireNotice(t("fireNotice.success", { count: fired.size }));
       }
       setIsFiring(false);
     },
-    [onCreatePlan, onOpenNewPlanModal, resolveProjectForIssue],
+    [onCreatePlan, onOpenNewPlanModal, resolveProjectForIssue, t],
   );
 
-  const formatRelativeTime = (isoDate: string) => {
-    try {
-      const date = new Date(isoDate);
-      const now = new Date();
-      const diffMs = now.getTime() - date.getTime();
-      const diffHrs = Math.floor(diffMs / (1000 * 60 * 60));
-      const diffDays = Math.floor(diffHrs / 24);
-
-      if (diffDays > 0) {
-        return `${diffDays}d ago`;
-      }
-      if (diffHrs > 0) {
-        return `${diffHrs}h ago`;
-      }
-      return "just now";
-    } catch {
-      return isoDate;
-    }
-  };
-
+  /** "Updated 5m ago": whole minutes under an hour, whole hours after that, "just now" under one. */
   const formatLastUpdated = (date: Date) => {
-    const diffMs = Date.now() - date.getTime();
-    const diffMins = Math.floor(diffMs / (1000 * 60));
-    if (diffMins < 1) return "Updated just now";
-    if (diffMins < 60) return `Updated ${diffMins}m ago`;
-    const diffHrs = Math.floor(diffMins / 60);
-    return `Updated ${diffHrs}h ago`;
+    const when = relativeOrJustNow(format, date, "minute", "hour");
+    return when === null
+      ? t("freshness.updated", { context: "justNow" })
+      : t("freshness.updated", { when });
   };
 
-  /** V1's `Updated` column is `pr.UpdatedAt.Value.ToString("M/d")`. */
-  const formatMonthDay = (isoDate: string) => {
-    const date = new Date(isoDate);
-    if (Number.isNaN(date.getTime())) return "";
-    return `${date.getMonth() + 1}/${date.getDate()}`;
-  };
+  /**
+   * V1's `Updated` column is `pr.UpdatedAt.Value.ToString("M/d")`: the month and day as numbers, in
+   * the language's order (`9/2` in English, `2.9.` in German).
+   */
+  const formatMonthDay = (isoDate: string) =>
+    format.date(isoDate, { month: "numeric", day: "numeric" });
 
-  const issueLink = (issue: GitHubIssue) => (
+  const issueLink = (issue: GitHubIssue, className = "") => (
     <button
       type="button"
       onClick={() => setSheetIssue(issue)}
-      className="truncate text-left text-sm font-medium text-foreground hover:underline"
+      className={`truncate text-left text-sm font-medium text-foreground hover:underline ${className}`}
       title={`#${issue.number} ${issue.title}`}
     >
       #{issue.number} {issue.title}
@@ -883,6 +1101,50 @@ export const InboxView: React.FC<InboxViewProps> = ({
   };
 
   /**
+   * V1's Issue column, with a row awaiting your decision marked at the front of its cell. That mark
+   * is what replaces the separate list the proposals used to be shown in; V1 had no proposals, so it
+   * has no column for it either.
+   *
+   * In the cell rather than a Status column of its own, because the Issue column is the one that
+   * would pay for it: it is V1's `45%` in a fixed-layout table beside V1's fixed Repository, Labels
+   * and Assignees widths, so it gets whatever is left over, and a Status column would take its width
+   * from every row to mark the few that need it. It also keeps the column set constant, which the
+   * table needs to keep a resized or reordered column where the operator put it once the last
+   * proposal is decided.
+   *
+   * An icon, not a text badge, for the same reason at the scale of one row: the title beside it is
+   * how the operator knows what Accept or Dismiss would act on. Measured in Chromium, an "Awaiting
+   * decision" badge is 94px, and the Issue cell is 154px in the shell at 1440x900; the icon and its
+   * gap are 22px. What it means is on the toolbar's filter, which carries the same icon, and in the
+   * tooltip, with what the card used to print: when the sweep found the issue and which project
+   * Accept would plan it in.
+   */
+  const issueCell = (row: GitHubIssue) => {
+    const proposal = proposalFor(row);
+    if (!proposal) return issueLink(row);
+    // Whole hours under a day, whole days after that, "just now" under an hour.
+    const found = relativeOrJustNow(format, proposal.discovered, "hour", "day");
+    return (
+      <div className="flex min-w-0 items-center gap-1.5">
+        <span
+          role="img"
+          aria-label={t("issueTable.awaitingMark.ariaLabel")}
+          className="inline-flex shrink-0 text-info"
+          data-testid={`inbox-awaiting-mark-${proposal.id}`}
+          title={t("issueTable.awaitingMark.tooltip", {
+            when: found,
+            project: proposal.project,
+            context: found === null ? "justNow" : undefined,
+          })}
+        >
+          <Hourglass className="size-3.5" aria-hidden="true" />
+        </span>
+        {issueLink(row, "min-w-0")}
+      </div>
+    );
+  };
+
+  /**
    * V1 `IssuesTableView`: `Selected` (the table's own checkbox column), `Issue`, `Repository`,
    * `Labels`, `Assignees`, at 45px / 45% / 180px / 200px / 150px.
    */
@@ -890,23 +1152,27 @@ export const InboxView: React.FC<InboxViewProps> = ({
     () => [
       {
         name: "issue",
-        header: "Issue",
+        header: t("issueTable.columns.issue"),
         width: "45%",
         accessor: (row) => row.number,
-        cell: (_value, row) => issueLink(row),
+        cell: (_value, row) => issueCell(row),
       },
       {
         name: "repository",
-        header: "Repository",
+        header: t("issueTable.columns.repository"),
         width: "180px",
         accessor: (row) => repoLabelOf(row),
         cell: (_value, row) => repositoryCell(row),
       },
       {
         name: "labels",
-        header: "Labels",
+        header: t("issueTable.columns.labels"),
         width: "200px",
-        accessor: (row) => row.labels.map((l) => l.name).join(", "),
+        accessor: (row) =>
+          format.list(
+            row.labels.map((l) => l.name),
+            { type: "unit", style: "short" },
+          ),
         // V1's sheet renders labels as `BadgeVariant.Outline` badges and its table column carries no
         // colour mapping at all, so the GitHub label hex is deliberately not used here.
         cell: (_value, row) => (
@@ -922,12 +1188,20 @@ export const InboxView: React.FC<InboxViewProps> = ({
       },
       {
         name: "assignees",
-        header: "Assignees",
+        header: t("issueTable.columns.assignees"),
         width: "150px",
-        accessor: (row) => row.assignees.map((a) => a.login).join(", "),
+        // A unit list: "alice, bob" in English, as the `join(", ")` it replaces, and each language's
+        // own separator elsewhere.
+        accessor: (row) =>
+          format.list(
+            row.assignees.map((a) => a.login),
+            { type: "unit", style: "short" },
+          ),
       },
     ],
-    [],
+    // Rebuilt when the proposals change, so the Issue cell's mark follows them, and when the
+    // language does.
+    [proposalFor, t, format],
   );
 
   /**
@@ -939,81 +1213,133 @@ export const InboxView: React.FC<InboxViewProps> = ({
     () => [
       {
         name: "review",
-        header: "Pull Request",
+        header: t("reviewTable.columns.pullRequest"),
         width: "50%",
         accessor: (row) => row.number,
         cell: (_value, row) => issueLink(row),
       },
       {
         name: "repository",
-        header: "Repository",
+        header: t("reviewTable.columns.repository"),
         width: "180px",
         accessor: (row) => repoLabelOf(row),
         cell: (_value, row) => repositoryCell(row),
       },
       {
         name: "updated",
-        header: "Updated",
+        header: t("reviewTable.columns.updated"),
         width: "100px",
         accessor: (row) => row.updatedAt,
         cell: (_value, row) => formatMonthDay(row.updatedAt),
       },
     ],
-    [],
+    [t, format],
   );
+
+  /** The two actions every issue row shares, built once per language as the constants they were. */
+  const viewDetails = useMemo(() => viewDetailsAction(t), [t]);
+  const openGitHub = useMemo(() => openGitHubAction(t), [t]);
 
   /** V1's `RowActions`, in V1's order and with V1's labels, icons and tooltips. */
   const issueRowActions: DataTableRowAction<GitHubIssue>[] = useMemo(
     () => [
       {
         tag: "fire-off",
-        label: "Fire off in Tendril",
+        label: t("issueTable.actions.fireOff.label"),
         icon: <Zap aria-hidden="true" />,
-        tooltip: "Fire off this issue in Tendril",
+        tooltip: t("issueTable.actions.fireOff.tooltip"),
         disabled: isFiring,
       },
-      {
-        tag: "view-details",
-        label: "View Details",
-        icon: <FileText aria-hidden="true" />,
-        tooltip: "View issue details",
-      },
-      {
-        tag: "open-github",
-        label: "Open in GitHub",
-        icon: <ExternalLink aria-hidden="true" />,
-        tooltip: "Open issue on GitHub",
-      },
+      viewDetails,
+      openGitHub,
     ],
-    [isFiring],
+    [isFiring, t, viewDetails, openGitHub],
+  );
+
+  /**
+   * A row awaiting a decision trades Fire off for the decision itself: Accept is the same
+   * `CreatePlan` from the same issue, started by the daemon so the proposal is recorded as accepted,
+   * and a Fire off beside it would start the plan while leaving the row awaiting a decision that had
+   * in effect been made. Dismiss is what the card's second button did. Both disable while either is
+   * in flight for that proposal, as the card's buttons did.
+   *
+   * Still three slots, so the actions column keeps the width every other row sizes it to: a fourth
+   * button needed `w-48` instead of `w-28`, and in the shell at 1440x900 those 86px came out of the
+   * Issue column on every row, leaving it 67px. Accept takes Fire off's slot and View Details keeps
+   * its own. Open in GitHub moves into an overflow menu with Dismiss, which is the one that cannot
+   * be undone from here (the daemon keeps `Dismissed` for good), so it is a labelled, destructive
+   * menu entry rather than an icon one slot from Accept. The details sheet carries both as labelled
+   * buttons too.
+   *
+   * The function form of `rowActions` is the table's own per-row hook (the legacy `perRowActions`),
+   * so the other rows keep exactly V1's three. A parent with `children` is how the table renders a
+   * per-row menu, as the Jobs table's does (`jobs/rows.tsx`).
+   */
+  const rowActionsFor = useCallback(
+    (row: GitHubIssue): DataTableRowAction<GitHubIssue>[] => {
+      const proposal = proposalFor(row);
+      if (!proposal) return issueRowActions;
+      const deciding = decidingId === proposal.id;
+      return [
+        {
+          tag: "accept",
+          label: t("issueTable.actions.accept.label"),
+          icon: <Check aria-hidden="true" />,
+          tooltip: t("issueTable.actions.accept.tooltip", { project: proposal.project }),
+          disabled: deciding,
+        },
+        viewDetails,
+        {
+          tag: "awaiting-menu",
+          label: t("issueTable.actions.more.label"),
+          icon: <EllipsisVertical aria-hidden="true" />,
+          tooltip: t("issueTable.actions.more.tooltip"),
+          children: [
+            openGitHub,
+            {
+              tag: "dismiss",
+              label: t("issueTable.actions.dismiss.label"),
+              icon: <X aria-hidden="true" />,
+              variant: "destructive",
+              disabled: deciding,
+            },
+          ],
+        },
+      ];
+    },
+    [decidingId, issueRowActions, proposalFor, t, viewDetails, openGitHub],
   );
 
   const reviewRowActions: DataTableRowAction<GitHubIssue>[] = useMemo(
     () => [
       {
         tag: "open-github",
-        label: "Review on GitHub",
+        label: t("reviewTable.actions.openGitHub.label"),
         icon: <ExternalLink aria-hidden="true" />,
-        tooltip: "Open pull request on GitHub",
+        tooltip: t("reviewTable.actions.openGitHub.tooltip"),
       },
       {
         tag: "view-details",
-        label: "View Details",
+        label: t("reviewTable.actions.viewDetails.label"),
         icon: <FileText aria-hidden="true" />,
-        tooltip: "View review details",
+        tooltip: t("reviewTable.actions.viewDetails.tooltip"),
       },
     ],
-    [],
+    [t],
   );
 
   const activeProject = projects.find((p) => p.name === selectedProject);
 
   /** V1's `Text.H3(title).Bold()`: `My Issues`, `Reviews`, or `{project} Issues`. */
+  const projectName = activeProject?.name || selectedProject;
   const title = isReviews
-    ? "Reviews"
+    ? t("header.title.reviews")
     : isMyIssues
-      ? "My Issues"
-      : `${activeProject?.name || selectedProject || "Project"} Issues`;
+      ? t("header.title.myIssues")
+      : t("header.title.projectIssues", {
+          project: projectName,
+          context: projectName ? undefined : "noProject",
+        });
 
   /**
    * The Issues categories are served from `repos/{slug}/issues`, which answers with pull requests
@@ -1034,14 +1360,21 @@ export const InboxView: React.FC<InboxViewProps> = ({
     searchQuery.trim().length > 0 ||
     selectedLabels.length > 0 ||
     selectedAssignees.length > 0 ||
+    awaitingOnlyActive ||
     dropsPullRequests;
 
+  // `unlistedCount` is only ever non-zero here when this page is the whole category and has room
+  // for the rows it adds (see `tableIssues`), so adding it keeps the footer counting exactly the
+  // rows on screen, on the one page there is.
   const rowCount = isClientFiltered
     ? filteredIssues.length
     : Math.min(
         totalCount ?? (hasMore ? page * pageSize + 1 : (page - 1) * pageSize + issues.length),
         GITHUB_SEARCH_RESULT_CAP,
-      );
+      ) + unlistedCount;
+
+  /** The proposal behind the issue the details sheet is showing, when it is awaiting a decision. */
+  const sheetProposal = sheetIssue ? proposalFor(sheetIssue) : undefined;
 
   return (
     /* `h-full min-h-0` is the top of the height chain the issues table needs: the shell hands this
@@ -1055,14 +1388,14 @@ export const InboxView: React.FC<InboxViewProps> = ({
       <div
         role="tablist"
         aria-orientation="vertical"
-        aria-label="Inbox categories"
+        aria-label={t("rail.ariaLabel")}
         /* The rail scrolls itself once a config has more projects than fit, as the Settings section
            rail does, rather than being the thing that grows the frame. */
         className="flex w-48 shrink-0 flex-col gap-1 overflow-y-auto"
       >
         <RailRow
           icon={CircleDot}
-          label="My issues"
+          label={t("rail.myIssues")}
           count={counts["my-issues"]}
           selected={isMyIssues}
           testId="category-my-issues"
@@ -1070,14 +1403,14 @@ export const InboxView: React.FC<InboxViewProps> = ({
         />
         <RailRow
           icon={GitPullRequest}
-          label="Reviews"
+          label={t("rail.reviews")}
           count={counts["review-requests"]}
           selected={isReviews}
           testId="category-review-requests"
           onClick={() => setSelectedCategory("review-requests")}
         />
         <RailExpander
-          label="Projects"
+          label={t("rail.projects")}
           expanded={isProjectsExpanded}
           selected={selectedCategory === "project-issues"}
           onClick={() => setIsProjectsExpanded((prev) => !prev)}
@@ -1085,7 +1418,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
         {isProjectsExpanded &&
           (projects.length === 0 ? (
             <RailSubItem
-              label="No projects in settings"
+              label={t("rail.noProjects")}
               icon={FolderClosed}
               testId="inbox-no-projects"
             />
@@ -1127,8 +1460,8 @@ export const InboxView: React.FC<InboxViewProps> = ({
               type="button"
               variant="ghost"
               size="icon-sm"
-              aria-label="Refresh"
-              title="Refresh"
+              aria-label={t("header.refresh")}
+              title={t("header.refresh")}
               disabled={isLoading}
               onClick={() => void fetchIssues()}
             >
@@ -1139,19 +1472,18 @@ export const InboxView: React.FC<InboxViewProps> = ({
             {isMyIssues && autoAccept !== null && (
               /* V1's label, but the setting does less here than it did there: V1 skipped the sweep
                  entirely while off, whereas V2's sweep always runs and the flag only chooses
-                 between starting a plan and proposing one below (`inbox/mod.rs` module docs). The
-                 tooltip says which, since "Off" no longer means "nothing happens". */
+                 between starting a plan and marking the issue for a decision in the table below
+                 (`inbox/mod.rs` module docs). The tooltip says which, since "Off" no longer means
+                 "nothing happens". */
               <Badge
                 variant={autoAccept ? "primary" : "secondary"}
                 density="Small"
                 data-testid="inbox-auto-accept"
                 title={
-                  autoAccept
-                    ? "Newly assigned issues start a plan as soon as they are found"
-                    : "Newly assigned issues are listed below for you to accept or dismiss"
+                  autoAccept ? t("header.autoAccept.onTooltip") : t("header.autoAccept.offTooltip")
                 }
               >
-                {autoAccept ? "Auto-Accept: On" : "Auto-Accept: Off"}
+                {autoAccept ? t("header.autoAccept.on") : t("header.autoAccept.off")}
               </Badge>
             )}
             {isMyIssues && (
@@ -1161,8 +1493,8 @@ export const InboxView: React.FC<InboxViewProps> = ({
                 type="button"
                 variant="ghost"
                 size="icon-sm"
-                aria-label="Auto-Accept Settings"
-                title="Auto-Accept Settings"
+                aria-label={t("header.autoAccept.settings")}
+                title={t("header.autoAccept.settings")}
                 data-testid="inbox-auto-accept-settings"
                 onClick={() => setIsAutoAcceptSettingsOpen(true)}
               >
@@ -1171,8 +1503,8 @@ export const InboxView: React.FC<InboxViewProps> = ({
             )}
             {isMyIssues && (
               /* V1 houses `Check Now` in its Auto-Accept Settings dialog only. Kept out here too
-                 because V2's proposals panel below is its own thing: this is the button that fills
-                 it, and it reports what the sweep did where those rows appear. */
+                 because V2's proposals are its own thing: this is the button that marks rows as
+                 awaiting a decision, and it reports what the sweep did just above the table. */
               <Button
                 type="button"
                 variant="outline"
@@ -1180,10 +1512,10 @@ export const InboxView: React.FC<InboxViewProps> = ({
                 data-testid="inbox-check-now"
                 onClick={() => void handleCheckNow()}
                 disabled={isChecking}
-                title="Import GitHub issues assigned to you now, without waiting for the next scheduled check"
+                title={t("header.checkNow.tooltip")}
               >
                 <RefreshCw aria-hidden="true" />
-                {isChecking ? "Checking..." : "Check Now"}
+                {isChecking ? t("header.checkNow.checking") : t("header.checkNow.label")}
               </Button>
             )}
           </div>
@@ -1191,7 +1523,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
           {!isReviews && (
             <div className="flex flex-wrap items-center gap-2">
               <Button type="button" variant="ghost" size="sm" onClick={selectAll}>
-                Select All
+                {t("bulk.selectAll")}
               </Button>
               <Button
                 type="button"
@@ -1200,7 +1532,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                 disabled={selectedCount === 0}
                 onClick={deselectAll}
               >
-                Deselect All
+                {t("bulk.deselectAll")}
               </Button>
               {/* V1: `{selectedCount} of {allIssues.Count} selected`, where `allIssues` is the whole
                   category, which V1 had loaded in full. V2 pages, so this counts against the same
@@ -1213,7 +1545,10 @@ export const InboxView: React.FC<InboxViewProps> = ({
                   row each leave `selectedCount` at 2 while the current page holds 1, and "2 of 1"
                   is worse than the total it is counting towards. */}
               <span className="text-xs text-muted-foreground" data-testid="inbox-selection-summary">
-                {selectedCount} of {Math.max(selectedCount, rowCount)} selected
+                {t("bulk.summary", {
+                  selected: selectedCount,
+                  total: Math.max(selectedCount, rowCount),
+                })}
               </span>
               {onOpenChat && (
                 <Button
@@ -1221,14 +1556,16 @@ export const InboxView: React.FC<InboxViewProps> = ({
                   variant="outline"
                   size="sm"
                   data-testid="inbox-open-chat"
-                  title="Discuss the selected issues with the coding agent"
+                  title={t("bulk.openChat.tooltip")}
                   disabled={selectedCount === 0}
                   onClick={() =>
                     onOpenChat(buildInboxChatPrompt(selectedIssues), inboxChatTitle(selectedIssues))
                   }
                 >
                   <MessageCircle aria-hidden="true" />
-                  {selectedCount > 0 ? `Open Chat (${selectedCount})` : "Open Chat"}
+                  {selectedCount > 0
+                    ? t("bulk.openChat.labelWithCount", { selected: selectedCount })
+                    : t("bulk.openChat.label")}
                 </Button>
               )}
               <Button
@@ -1240,8 +1577,8 @@ export const InboxView: React.FC<InboxViewProps> = ({
               >
                 <Zap aria-hidden="true" />
                 {selectedCount > 0
-                  ? `Fire off in Tendril (${selectedCount})`
-                  : "Fire off in Tendril"}
+                  ? t("bulk.fireOff.labelWithCount", { selected: selectedCount })
+                  : t("bulk.fireOff.label")}
               </Button>
             </div>
           )}
@@ -1251,10 +1588,10 @@ export const InboxView: React.FC<InboxViewProps> = ({
         <div className="flex shrink-0 flex-wrap items-center gap-3 text-xs text-muted-foreground">
           {selectedCategory === "project-issues" && activeProjectRepos.length > 1 && (
             <div className="flex items-center gap-1.5">
-              <label htmlFor="inbox-repo-select">Repo:</label>
+              <label htmlFor="inbox-repo-select">{t("freshness.repo.label")}</label>
               <NativeSelect
                 id="inbox-repo-select"
-                aria-label="Filter by repository"
+                aria-label={t("freshness.repo.ariaLabel")}
                 density="Small"
                 wrapperClassName="w-auto"
                 className="w-auto"
@@ -1281,24 +1618,24 @@ export const InboxView: React.FC<InboxViewProps> = ({
               aria-hidden="true"
             />
             <span data-testid="inbox-last-updated">
-              {lastUpdated ? formatLastUpdated(lastUpdated) : "Not yet updated"}
+              {lastUpdated ? formatLastUpdated(lastUpdated) : t("freshness.notYetUpdated")}
             </span>
           </span>
 
           <span className="flex items-center gap-1.5">
-            <label htmlFor="inbox-poll-interval">Auto-refresh:</label>
+            <label htmlFor="inbox-poll-interval">{t("freshness.autoRefresh.label")}</label>
             <NativeSelect
               id="inbox-poll-interval"
-              aria-label="Auto-refresh interval"
+              aria-label={t("freshness.autoRefresh.ariaLabel")}
               density="Small"
               wrapperClassName="w-auto"
               className="w-auto"
               value={pollInterval}
               onChange={(e) => handlePollIntervalChange(e.target.value as PollInterval)}
             >
-              {(Object.keys(POLL_INTERVAL_LABELS) as PollInterval[]).map((opt) => (
+              {(Object.keys(POLL_INTERVAL_MS) as PollInterval[]).map((opt) => (
                 <option key={opt} value={opt}>
-                  {POLL_INTERVAL_LABELS[opt]}
+                  {pollIntervalLabel(opt, t, format)}
                 </option>
               ))}
             </NativeSelect>
@@ -1311,15 +1648,11 @@ export const InboxView: React.FC<InboxViewProps> = ({
           </p>
         )}
 
-        {/* Imported proposals awaiting a decision. Hidden entirely when there are none, so the panel
-            costs nothing on the common path — but a check that failed still reports, since a silent
-            failure looks identical to "nothing was assigned to you".
-
-            Scoped to My Issues, for the reason V1 scopes the Auto-Accept badge and gear there
-            (`ContentView.cs:429`): these rows are what the assigned-issues sweep produced, they are
-            not filtered by category or project, and repeating them under Reviews or a project's
-            issues would attach them to a list they have nothing to do with. */}
-        {isMyIssues && checkSummary && proposals.length === 0 && !proposalError && (
+        {/* What the last Check Now found, and why a check or a decision failed. Scoped to My Issues
+            with the rest of the Auto-Accept surface (see `proposalsByIssue`). The summary stays even
+            when nothing was imported, since a silent failure looks identical to "nothing was
+            assigned to you"; the rows it imported are marked in the table below, not listed here. */}
+        {isMyIssues && checkSummary && (
           <p data-testid="inbox-check-summary" className="shrink-0 text-xs text-muted-foreground">
             {checkSummary}
           </p>
@@ -1331,116 +1664,19 @@ export const InboxView: React.FC<InboxViewProps> = ({
           </ErrorBanner>
         )}
 
-        {isMyIssues && proposals.length > 0 && (
-          /* `HeaderLayout`, not a `space-y` block, and this is the panel that was breaking the page.
-             It is the codebase's own fixed-chrome-over-scrolling-content primitive
-             (`ui/panel-layout.tsx`, porting `Ivy-Framework/.../HeaderLayoutWidget.tsx`), so the
-             heading and its count stay put while the cards scroll under them.
-
-             Why the panel and not the table: a sweep can import dozens of proposals, and this block
-             had no bound of any kind. The column's own `min-h-0` lets it *shrink*, but shrinking is
-             distributed over the flex line — an unbounded `flex-shrink: 1` sibling keeps its content
-             height as its basis, so it took 496px of a 568px column and left the table `height: 0`.
-             The table's `fillHeight` chain was intact the whole time; it was handed nothing to fill,
-             the column overflowed, and the frame's `overflow-y-auto` (`CONTENT_PADDED_CLASS`,
-             `ShellLayout.tsx:75`) became the scroller — which is the rail scrolling away, since the
-             rail is inside that frame.
-
-             `max-h-[min(16rem,33%)]` is the bound that makes the shrink resolve, and it has to be a
-             `min()` of the two: a fixed cap alone (`max-h-64`) is still most of the column in a 400px
-             window, and a percentage alone hands a tall window more queue than it needs. 16rem is
-             about three cards; a third is the share a transient triage queue may take from the list
-             it is triaging into. Measured in Chromium against this view's own compiled markup: as
-             shipped the page scrolls at every height tried (1000 down to 320px) and the rail leaves
-             the viewport with it; with the cap it never scrolls at any of them, the search box stays
-             on screen throughout, and the rail stays at the top.
-
-             `h-auto` overrides the primitive's own `h-full` so one proposal keeps one proposal's
-             height rather than reserving the whole cap, and `contentClassName` drops the default
-             `p-4` for the `space-y-2` this list already had. */
-          <HeaderLayout
-            data-testid="inbox-proposals"
-            className="h-auto max-h-[min(16rem,33%)] min-h-0 shrink"
-            contentClassName="space-y-2 p-0 pt-2"
-            header={
-              <div className="flex items-baseline justify-between">
-                <h2 className="text-sm font-semibold text-foreground">
-                  Assigned issues awaiting your decision
-                  <span className="ml-2 text-xs font-normal text-muted-foreground">
-                    {proposals.length}
-                  </span>
-                </h2>
-                {checkSummary && (
-                  <span data-testid="inbox-check-summary" className="text-xs text-muted-foreground">
-                    {checkSummary}
-                  </span>
-                )}
-              </div>
-            }
-          >
-            {proposals.map((proposal) => (
-              <div
-                key={proposal.id}
-                data-testid={`proposal-card-${proposal.id}`}
-                className="rounded-box border border-info/40 bg-info/5 p-3"
-              >
-                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                  <div className="min-w-0">
-                    <button
-                      type="button"
-                      onClick={() => void handleOpenGitHub(proposal.issueUrl)}
-                      className="truncate text-sm font-medium text-foreground hover:underline"
-                    >
-                      #{proposal.number} {proposal.title}
-                    </button>
-                    <p className="mt-1 text-xs text-muted-foreground">
-                      {proposal.repository} → {proposal.project} ·{" "}
-                      {formatRelativeTime(proposal.discovered)}
-                    </p>
-                  </div>
-
-                  <div className="flex shrink-0 items-center gap-2">
-                    <Button
-                      type="button"
-                      size="sm"
-                      data-testid={`accept-proposal-${proposal.id}`}
-                      onClick={() => void handleAcceptProposal(proposal.id)}
-                      disabled={decidingId === proposal.id}
-                    >
-                      Accept
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      data-testid={`dismiss-proposal-${proposal.id}`}
-                      onClick={() => void handleDismissProposal(proposal.id)}
-                      disabled={decidingId === proposal.id}
-                    >
-                      Dismiss
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </HeaderLayout>
-        )}
-
         {/* V1's order in `BuildIssuesView`: the spinner only while the list is still empty, then the
             error with its Retry, then the empty state, then the table. */}
         {/* An empty page past the first keeps the table, and with it the footer that is the only way
             back: `NoContentView` in its place would strand the operator on a page that does not
             exist. V1 pages one in-memory list, so it could never land there. */}
-        {isLoading && issues.length === 0 ? (
-          <div
-            data-testid="inbox-loading"
-            className="flex h-32 items-center justify-center text-xs text-muted-foreground"
-          >
-            Loading issues from GitHub...
-          </div>
-        ) : error ? (
-          <ErrorBanner data-testid="inbox-error" className="space-y-2">
-            <div className="font-semibold text-destructive">Failed to load GitHub issues</div>
+        {/* The error sits above the chain rather than in it, so a failed GitHub fetch still leaves
+            the table up when there are proposals to show: those come from the daemon rather than
+            from GitHub, and deciding on them worked through a GitHub outage while they were a list
+            of their own. `fetchIssues` clears the error as it starts, so it never shows beside the
+            spinner. */}
+        {error && (
+          <ErrorBanner data-testid="inbox-error" className="shrink-0 space-y-2">
+            <div className="font-semibold text-destructive">{t("errors.loadFailed")}</div>
             <p>{error}</p>
             {error.toLowerCase().includes("auth login") && (
               <div className="rounded bg-background p-2 font-mono text-xs text-muted-foreground">
@@ -1454,22 +1690,30 @@ export const InboxView: React.FC<InboxViewProps> = ({
               className="mt-2"
               onClick={() => void fetchIssues()}
             >
-              Retry
+              {t("common:actions.retry")}
             </Button>
           </ErrorBanner>
-        ) : filteredIssues.length === 0 && issues.length === 0 && page === 1 ? (
+        )}
+        {isLoading && tableIssues.length === 0 ? (
+          <div
+            data-testid="inbox-loading"
+            className="flex h-32 items-center justify-center text-xs text-muted-foreground"
+          >
+            {t("loading")}
+          </div>
+        ) : error && tableIssues.length === 0 ? null : tableIssues.length === 0 && page === 1 ? (
           <div data-testid="inbox-empty">
             {/* V1's `NoContentView` strings, per category, and V1 passes neither of them a `cta`:
                 `BuildReviewsView`/`BuildIssuesView` return the header above a bare `NoContentView`. */}
             {isReviews ? (
               <NoContentView
-                title="All Caught Up!"
-                description="No pull requests currently require your review."
+                title={t("empty.reviews.title")}
+                description={t("empty.reviews.description")}
               />
             ) : (
               <NoContentView
-                title="No Issues Found"
-                description="No issues match the selected view."
+                title={t("empty.issues.title")}
+                description={t("empty.issues.description")}
               />
             )}
           </div>
@@ -1480,7 +1724,22 @@ export const InboxView: React.FC<InboxViewProps> = ({
             // keeps the row-actions column on screen instead of overflowing to the right.
             // `min-h-0 flex-1` claims the leftover height of the column above; with `fillHeight`
             // below, that is the bound the table's own viewport scrolls inside.
-            className="min-h-0 flex-1 [&_table.ivy-data-table]:table-fixed [&_table.ivy-data-table_th:last-child]:w-28"
+            //
+            // The issue categories' `min-w-[53rem]` keeps the Issue column from collapsing. It is
+            // V1's `45%`, but in a fixed layout a percentage only gets what the fixed columns
+            // leave, and the selection column, V1's 180px/200px/150px and the actions column come
+            // to 695px (measured in Chromium). In the shell's default 1280x800 window, beside its
+            // 320px sidebar and this view's rail, the table's viewport is 689px wide, so the Issue
+            // column was 0px: no number and no title on any row. That mattered less while the
+            // proposals were cards printing their own titles; as rows, a title is how the operator
+            // knows what Accept or Dismiss acts on. V1's grid scrolls sideways once its columns
+            // outgrow it, and so does this table below 53rem, with the actions pinned to the right
+            // edge (`data-table.css`). 53rem leaves the Issue column about 150px, and binds only
+            // while the table would be narrower than 848px - which it is not in a 1440px window
+            // (849px) - so wider windows lay out as before.
+            className={`min-h-0 flex-1 [&_table.ivy-data-table]:table-fixed [&_table.ivy-data-table_th:last-child]:w-28 ${
+              isReviews ? "" : "[&_table.ivy-data-table]:min-w-[53rem]"
+            }`}
             columns={isReviews ? reviewColumns : issueColumns}
             rows={filteredIssues}
             getRowId={(row) => String(row.number)}
@@ -1496,35 +1755,37 @@ export const InboxView: React.FC<InboxViewProps> = ({
             selectable={!isReviews}
             selectedRowIds={isReviews ? undefined : selectedIssueNumbers}
             onSelectedRowIdsChange={setSelectedIssueNumbers}
-            rowActions={isReviews ? reviewRowActions : issueRowActions}
+            rowActions={isReviews ? reviewRowActions : rowActionsFor}
             onRowAction={({ tag, row }) => {
-              if (tag === "fire-off") void fireOffIssues([row]);
+              const proposal = proposalFor(row);
+              if (tag === "accept" && proposal) void handleAcceptProposal(proposal.id);
+              else if (tag === "dismiss" && proposal) void handleDismissProposal(proposal.id);
+              else if (tag === "fire-off") void fireOffIssues([row]);
               else if (tag === "view-details") setSheetIssue(row);
               // V1 `IssuesTableView.OnRowAction`: `var url = ResolveIssueUrl(raw); if (url != null)`.
               else if (tag === "open-github") void handleOpenGitHub(resolveIssueUrl(row));
             }}
-            // The daemon pages, so the footer reports and drives the server-side page.
-            manualPagination
+            // The daemon pages, so the footer reports and drives the server-side page - except
+            // under the Awaiting decision filter, whose rows are every pending proposal whichever
+            // server page is loaded. Paging those by the server's page would render all of them on
+            // every page and fetch server pages that change nothing, so the table pages them itself.
+            manualPagination={!awaitingOnlyActive}
             rowCount={rowCount}
-            page={page}
-            onPageChange={setPage}
+            page={awaitingOnlyActive ? awaitingPage : page}
+            onPageChange={awaitingOnlyActive ? setAwaitingPage : setPage}
             pageSize={pageSize}
             onPageSizeChange={(size) => {
               setPageSize(size);
               resetToFirstPage();
             }}
-            emptyState={
-              <span className="text-muted-foreground">
-                No issues match your current search and filter criteria.
-              </span>
-            }
+            emptyState={<span className="text-muted-foreground">{t("empty.filtered")}</span>}
             toolbar={{
               left: (
                 <div className="flex flex-wrap items-center gap-2">
                   <input
                     type="search"
-                    aria-label="Search issues"
-                    placeholder="Search by title, #number, author, or description..."
+                    aria-label={t("filters.search.ariaLabel")}
+                    placeholder={t("filters.search.placeholder")}
                     value={searchQuery}
                     onChange={(e) => {
                       setSearchQuery(e.target.value);
@@ -1532,6 +1793,40 @@ export const InboxView: React.FC<InboxViewProps> = ({
                     }}
                     className="w-72 rounded-field border border-input bg-transparent px-3 py-1.5 text-xs text-foreground placeholder-muted-foreground/70 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
                   />
+                  {/* Where the separate list's heading and count used to be: every proposal, on
+                      this page or not, in the table it is being decided in. Hidden while there is
+                      nothing to decide, like the row marks it counts, and carrying the same icon,
+                      which is what says what those marks mean.
+
+                      "Awaiting" rather than "Awaiting decision", with the rest in the tooltip, so
+                      it fits the row the search box and V1's two filters already share. Measured in
+                      Chromium in the shell at 1440x900, the longer label was 172px against the
+                      146px that row had left, and pushed the assignee filter onto a second row that
+                      came out of the table's height. The icon takes the pressed state's colour, so
+                      it stays legible on the primary fill. */}
+                  {proposalsByIssue.size > 0 && (
+                    <Toggle
+                      variant="outline"
+                      density="Small"
+                      dataTestId="inbox-awaiting-filter"
+                      pressed={awaitingOnly}
+                      onPressedChange={(pressed) => {
+                        setAwaitingOnly(pressed);
+                        resetToFirstPage();
+                      }}
+                      title={t("filters.awaiting.tooltip")}
+                      className="group px-2 text-xs"
+                    >
+                      <Hourglass
+                        className="text-info group-data-[state=on]:text-current"
+                        aria-hidden="true"
+                      />
+                      {t("filters.awaiting.label")}
+                      <Badge variant="info" density="Small">
+                        {proposalsByIssue.size}
+                      </Badge>
+                    </Toggle>
+                  )}
                   {/* V1 sets `AllowFiltering = true` on the table, which gives the Labels and
                       Assignees columns a filter each; `BadgeSelect` is how `PullRequestsView`
                       already renders that in V2. */}
@@ -1541,7 +1836,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                         id="inbox-label-filter"
                         options={labelOptions}
                         value={selectedLabels}
-                        placeholder="Filter by label..."
+                        placeholder={t("filters.labelPlaceholder")}
                         multiple={true}
                         events={["OnChange"]}
                         eventHandler={(_evt: string, _id: string, args?: unknown[]) => {
@@ -1559,7 +1854,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                         id="inbox-assignee-filter"
                         options={assigneeOptions}
                         value={selectedAssignees}
-                        placeholder="Filter by assignee..."
+                        placeholder={t("filters.assigneePlaceholder")}
                         multiple={true}
                         events={["OnChange"]}
                         eventHandler={(_evt: string, _id: string, args?: unknown[]) => {
@@ -1591,7 +1886,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
         <SheetContent className="inset-y-0 w-full overflow-y-auto sm:w-3/4 sm:max-w-none lg:w-1/2 xl:w-2/5">
           <SheetHeader>
             <SheetTitle>
-              {sheetIssue ? `#${sheetIssue.number} ${sheetIssue.title}` : "Issue"}
+              {sheetIssue ? `#${sheetIssue.number} ${sheetIssue.title}` : t("sheet.titleFallback")}
             </SheetTitle>
           </SheetHeader>
           {sheetIssue && (
@@ -1605,7 +1900,12 @@ export const InboxView: React.FC<InboxViewProps> = ({
                   )}
                   {sheetIssue.assignees.length > 0 && (
                     <span className="text-xs text-muted-foreground">
-                      Assigned: {sheetIssue.assignees.map((a) => a.login).join(", ")}
+                      {t("sheet.assigned", {
+                        assignees: format.list(
+                          sheetIssue.assignees.map((a) => a.login),
+                          { type: "unit", style: "short" },
+                        ),
+                      })}
                     </span>
                   )}
                 </div>
@@ -1618,7 +1918,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                       onClick={() => void handleOpenGitHub(sheetIssue.url)}
                     >
                       <ExternalLink aria-hidden="true" />
-                      Open on GitHub
+                      {t("sheet.openOnGitHub")}
                     </Button>
                   ) : (
                     <>
@@ -1635,18 +1935,51 @@ export const InboxView: React.FC<InboxViewProps> = ({
                           GitHub
                         </Button>
                       )}
-                      <Button
-                        type="button"
-                        size="sm"
-                        disabled={isFiring}
-                        onClick={() => {
-                          void fireOffIssues([sheetIssue]);
-                          setSheetIssue(null);
-                        }}
-                      >
-                        <Zap aria-hidden="true" />
-                        Fire off in Tendril
-                      </Button>
+                      {/* The row's own decision, for the reason `rowActionsFor` gives. */}
+                      {sheetProposal ? (
+                        <>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            title={t("sheet.dismiss.tooltip")}
+                            disabled={decidingId === sheetProposal.id}
+                            onClick={() => {
+                              void handleDismissProposal(sheetProposal.id);
+                              setSheetIssue(null);
+                            }}
+                          >
+                            <X aria-hidden="true" />
+                            {t("sheet.dismiss.label")}
+                          </Button>
+                          <Button
+                            type="button"
+                            size="sm"
+                            title={t("sheet.accept.tooltip", { project: sheetProposal.project })}
+                            disabled={decidingId === sheetProposal.id}
+                            onClick={() => {
+                              void handleAcceptProposal(sheetProposal.id);
+                              setSheetIssue(null);
+                            }}
+                          >
+                            <Check aria-hidden="true" />
+                            {t("sheet.accept.label")}
+                          </Button>
+                        </>
+                      ) : (
+                        <Button
+                          type="button"
+                          size="sm"
+                          disabled={isFiring}
+                          onClick={() => {
+                            void fireOffIssues([sheetIssue]);
+                            setSheetIssue(null);
+                          }}
+                        >
+                          <Zap aria-hidden="true" />
+                          {t("sheet.fireOff")}
+                        </Button>
+                      )}
                     </>
                   )}
                 </div>
@@ -1672,7 +2005,7 @@ export const InboxView: React.FC<InboxViewProps> = ({
                   dangerouslyAllowLocalFiles
                 />
               ) : (
-                <p className="text-sm text-muted-foreground">No description provided.</p>
+                <p className="text-sm text-muted-foreground">{t("sheet.noDescription")}</p>
               )}
             </div>
           )}

@@ -324,7 +324,7 @@ describe("SettingsView", () => {
       // An unset tier is blank with the `default_profiles` value as its placeholder, rather than
       // looking like nothing at all will be passed.
       expect(screen.getByLabelText("Balanced")).toHaveValue("");
-      expect(screen.getByLabelText("Balanced")).toHaveAttribute("placeholder", "sonnet");
+      expect(screen.getByLabelText("Balanced")).toHaveAttribute("placeholder", "claude-sonnet-5");
     });
 
     /**
