@@ -1,6 +1,6 @@
 import { render, act } from "@testing-library/react";
 import { describe, expect, it } from "vite-plus/test";
-import { ErrorSheet } from "../src/components/ErrorSheet";
+import { ErrorSheet } from "../src/components/Sheets/ErrorSheet";
 import { showError } from "../src/hooks/use-error-sheet";
 
 describe("ErrorSheet", () => {

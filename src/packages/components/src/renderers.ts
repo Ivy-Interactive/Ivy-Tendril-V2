@@ -58,7 +58,7 @@ export {
   type ErrorBoundaryState,
 } from "./components/ErrorBoundary";
 export { ErrorDisplay, type ErrorDisplayProps } from "./components/ErrorDisplay";
-export { ErrorSheet } from "./components/ErrorSheet";
+export { ErrorSheet } from "./components/Sheets/ErrorSheet";
 export { useErrorSheet, showError, type ErrorItem } from "./hooks/use-error-sheet";
 
 // Supporting Utilities

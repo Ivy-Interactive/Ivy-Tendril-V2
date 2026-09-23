@@ -116,7 +116,7 @@ export {
   type ErrorBoundaryState,
 } from "./components/ErrorBoundary";
 export { ErrorDisplay, type ErrorDisplayProps } from "./components/ErrorDisplay";
-export { ErrorSheet } from "./components/ErrorSheet";
+export { ErrorSheet } from "./components/Sheets/ErrorSheet";
 export { DevTools, type WidgetInfo } from "./components/DevTools";
 
 // Primary Tendril Widgets

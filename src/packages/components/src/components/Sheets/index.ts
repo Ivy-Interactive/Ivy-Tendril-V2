@@ -15,3 +15,4 @@ export {
   type JobDebugDetail,
   type JobDebugField,
 } from "./JobDebugSheet";
+export { ErrorSheet } from "./ErrorSheet";

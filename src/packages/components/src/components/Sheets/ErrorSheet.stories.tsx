@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from "@storybook/react";
 import { Button } from "../ui/button";
-import { ErrorSheet } from "../ErrorSheet";
+import { ErrorSheet } from "./ErrorSheet";
 import { showError } from "../../hooks/use-error-sheet";
 
 /**
