@@ -9,3 +9,7 @@ export { default as uiDialogs } from "./uiDialogs.json";
 export { default as uiPlanWorkspace } from "./uiPlanWorkspace.json";
 export { default as uiShell } from "./uiShell.json";
 export { default as uiVault } from "./uiVault.json";
+export { default as uiJobs } from "./uiJobs.json";
+export { default as uiPanels } from "./uiPanels.json";
+export { default as uiReview } from "./uiReview.json";
+export { default as uiSettings } from "./uiSettings.json";

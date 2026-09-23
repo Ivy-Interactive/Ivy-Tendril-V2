@@ -11,6 +11,10 @@ export const COMPONENT_NAMESPACES = [
   "uiPlanWorkspace",
   "uiShell",
   "uiVault",
+  "uiJobs",
+  "uiReview",
+  "uiSettings",
+  "uiPanels",
 ] as const;
 
 export type ComponentNamespace = (typeof COMPONENT_NAMESPACES)[number];
