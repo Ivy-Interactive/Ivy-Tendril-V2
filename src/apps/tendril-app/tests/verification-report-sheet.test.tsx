@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from "vitest";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
-import { VerificationReportSheet } from "../src/components/VerificationReportSheet";
+import { VerificationReportSheet } from "../src/views/sheets/VerificationReportSheet";
 import { PlanVerifications } from "../src/views/PlanVerifications";
 import { ReviewView } from "../src/views/ReviewView";
 import { bridge } from "../src/api/bridge";

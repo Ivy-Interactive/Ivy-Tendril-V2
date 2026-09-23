@@ -9,11 +9,11 @@ import {
   SheetTitle,
 } from "@ivy-interactive/components/ui";
 import { PlanMarkdown } from "@ivy-interactive/components/tendril";
-import { bridge } from "../api/bridge";
-import type { VerificationReport, VerificationStatus } from "../types/api";
-import { describeBridgeError } from "../types/api";
-import { VERIFICATION_BADGE_VARIANT } from "../utils/verificationStatus";
-import { ErrorBanner } from "./ErrorBanner";
+import { bridge } from "../../api/bridge";
+import type { VerificationReport, VerificationStatus } from "../../types/api";
+import { describeBridgeError } from "../../types/api";
+import { VERIFICATION_BADGE_VARIANT } from "../../utils/verificationStatus";
+import { ErrorBanner } from "../../components/ErrorBanner";
 
 export interface VerificationReportSheetProps {
   /** The plan id whose verification report is being inspected. */

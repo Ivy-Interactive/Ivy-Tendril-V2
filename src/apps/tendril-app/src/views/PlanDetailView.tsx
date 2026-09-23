@@ -38,7 +38,7 @@ import {
   planStateBadgeVariant,
 } from "./PlansView";
 import { ErrorBanner } from "../components/ErrorBanner";
-import { VerificationReportSheet } from "../components/VerificationReportSheet";
+import { VerificationReportSheet } from "./sheets/VerificationReportSheet";
 import { ProjectBadges } from "../components/ProjectBadges";
 import { LevelBadge } from "../components/LevelBadge";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";

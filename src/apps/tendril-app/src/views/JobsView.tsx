@@ -103,7 +103,7 @@ const JobDebug = React.lazy(() =>
 
 /** V1's Cost & Tokens sheet, opened by the Cost and Tokens cells. Lazy for the same reason. */
 const JobCost = React.lazy(() =>
-  import("./JobCostSheet").then((m) => ({ default: m.JobCostSheet })),
+  import("@ivy-interactive/components/dialogs").then((m) => ({ default: m.JobCostSheet })),
 );
 
 /**
@@ -762,39 +762,15 @@ export const JobsView: React.FC<JobsViewProps> = ({
       </React.Suspense>
 
       {/* V1's Cost & Tokens sheet (`JobsApp.cs:51`), opened by the Cost *and* Tokens cells
-          (`JobsApp.DataTable.cs:149-162`) at the same `UxHelper.SheetWidth` as the sheets above. */}
-      <Sheet
-        open={costJobId !== null}
-        onOpenChange={(open) => {
-          if (!open) setCostJobId(null);
-        }}
-      >
-        <SheetContent
-          data-testid="job-cost-sheet-panel"
-          className="inset-y-0 flex w-full flex-col overflow-hidden p-0 sm:w-3/4 sm:max-w-none lg:w-1/2 xl:w-2/5"
-        >
-          <HeaderLayout
-            className="min-h-0 flex-1"
-            header={
-              <SheetHeader className="pr-8">
-                <SheetTitle>{costJobTitle}</SheetTitle>
-              </SheetHeader>
-            }
-          >
-            {costJob ? (
-              <React.Suspense
-                fallback={
-                  <div className="flex h-32 items-center justify-center text-muted-foreground">
-                    <Spinner size="lg" className="text-success" aria-hidden="true" />
-                  </div>
-                }
-              >
-                <JobCost job={costJob} />
-              </React.Suspense>
-            ) : null}
-          </HeaderLayout>
-        </SheetContent>
-      </Sheet>
+          (`JobsApp.DataTable.cs:149-162`). The panel is the sheet's own now. */}
+      <React.Suspense fallback={null}>
+        <JobCost
+          isOpen={costJobId !== null}
+          onClose={() => setCostJobId(null)}
+          title={costJobTitle}
+          job={costJob ?? undefined}
+        />
+      </React.Suspense>
 
       {/* V1's Full Prompt sheet (`JobsApp.cs:51`), opened by the Prompt cell. Its whole body is one
           wrapped code block, which is what `PromptSheet.cs` renders. */}

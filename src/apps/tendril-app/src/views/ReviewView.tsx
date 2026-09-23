@@ -32,7 +32,7 @@ import { bridge } from "../api/bridge";
 import { useWireframeBaseUrl } from "../api/proxyOrigin";
 import { PlanActionsController } from "../controllers/planActions";
 import { ErrorBanner } from "../components/ErrorBanner";
-import { VerificationReportSheet } from "../components/VerificationReportSheet";
+import { VerificationReportSheet } from "./sheets/VerificationReportSheet";
 import { NoContentView } from "../components/NoContentView";
 import { VERIFICATION_BADGE_VARIANT } from "../utils/verificationStatus";
 import { PlanChatPanel } from "../components/chat/PlanChatPanel";

@@ -1,7 +1,29 @@
 import React from "react";
-import { formatTokens, NO_VALUE } from "@ivy-interactive/components";
-import { Callout } from "@ivy-interactive/components/ui";
-import type { Job, JobDetail } from "../types/api";
+import { formatTokens, NO_VALUE } from "../../lib/formatters";
+import { Callout } from "../ui/callout";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../ui/sheet";
+import { HeaderLayout } from "../ui/panel-layout";
+/**
+ * A job's cost and token counts, as this sheet renders them.
+ *
+ * Declared here rather than imported from the app, on the rule `PlanGitView` states: the component
+ * that renders a shape owns its declaration and cannot import from the app. The app's `Job` and
+ * `JobDetail` are structurally compatible and pass straight through.
+ */
+export interface JobCostFacts {
+  type: string;
+  tokens?: number;
+  cost?: number;
+  costSource?: string;
+  model?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  reasoningTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  executionProfile?: string;
+  provider?: string;
+}
 
 /**
  * V1's Cost & Tokens sheet (`Apps/Views/Sheets/JobCostSheet.cs`), which the Jobs table's **Cost** and
@@ -38,7 +60,7 @@ export interface JobCostBucket {
  */
 export function buildJobCostBuckets(
   job: Pick<
-    Job,
+    JobCostFacts,
     "inputTokens" | "outputTokens" | "cacheReadTokens" | "cacheWriteTokens" | "reasoningTokens"
   >,
 ): JobCostBucket[] {
@@ -62,7 +84,7 @@ export function buildJobCostBuckets(
  * that predates cost-source tracking, no charge at all — comes to the same thing for a reader: the
  * agent gave no figure.
  */
-function agentReportedCost(job: Pick<Job, "cost" | "costSource">): string {
+function agentReportedCost(job: Pick<JobCostFacts, "cost" | "costSource">): string {
   if (job.costSource?.toLowerCase() === "agent" && typeof job.cost === "number") {
     return `$${job.cost.toFixed(4)}`;
   }
@@ -73,14 +95,19 @@ function agentReportedCost(job: Pick<Job, "cost" | "costSource">): string {
  * V1's `TotalCost`, prefixed `~` when the charge is Tendril's arithmetic rather than a figure anyone
  * quoted — the same tilde the Cost cell carries, for the same reason.
  */
-function totalCost(job: Pick<Job, "cost" | "costSource">): string {
+function totalCost(job: Pick<JobCostFacts, "cost" | "costSource">): string {
   if (typeof job.cost !== "number" || !Number.isFinite(job.cost)) return NO_VALUE;
   const formatted = `$${job.cost.toFixed(4)}`;
   return job.costSource?.toLowerCase() === "estimated" ? `~${formatted}` : formatted;
 }
 
 export interface JobCostSheetProps {
-  job: Job | JobDetail;
+  isOpen: boolean;
+  onClose: () => void;
+  /** The sheet's title, which V1 sets to the job's own title rather than a fixed word. */
+  title: string;
+  /** The job's figures. Absent while the detail read is still out. */
+  job?: JobCostFacts;
 }
 
 /**
@@ -90,8 +117,50 @@ export interface JobCostSheetProps {
  * the same for every job and a blank Profile reads as "none recorded" rather than as a row the
  * reader has to notice is missing.
  */
-export const JobCostSheet: React.FC<JobCostSheetProps> = ({ job }) => {
-  const detail = job as JobDetail;
+/**
+ * V1's Cost & Tokens sheet (`JobsApp.cs:51`), opened by the Cost *and* Tokens cells.
+ *
+ * **It owns its panel**, like every other sheet here. It used to be a body `JobsView` wrapped in a
+ * `<Sheet>`, which meant it could not be looked at without a harness inventing chrome it does not
+ * have, and two callers could have given it different panels. The `<Sheet>` below is `JobsView`'s
+ * own, moved: the same `UxHelper.SheetWidth` ladder as the Debug and Output sheets, and the job's
+ * title rather than a fixed one.
+ */
+export const JobCostSheet: React.FC<JobCostSheetProps> = ({ isOpen, onClose, title, job }) => {
+  return (
+    <Sheet
+      open={isOpen}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <SheetContent
+        data-testid="job-cost-sheet-panel"
+        className="inset-y-0 flex w-full flex-col overflow-hidden p-0 sm:w-3/4 sm:max-w-none lg:w-1/2 xl:w-2/5"
+      >
+        <HeaderLayout
+          className="min-h-0 flex-1"
+          header={
+            <SheetHeader className="pr-8">
+              <SheetTitle>{title}</SheetTitle>
+            </SheetHeader>
+          }
+        >
+          {job ? (
+            <JobCostBody job={job} />
+          ) : (
+            <span className="text-xs text-muted-foreground" data-testid="job-cost-pending">
+              Loading job details…
+            </span>
+          )}
+        </HeaderLayout>
+      </SheetContent>
+    </Sheet>
+  );
+};
+
+/** The details list and breakdown table, which is what used to be the whole component. */
+const JobCostBody: React.FC<{ job: JobCostFacts }> = ({ job }) => {
   const buckets = buildJobCostBuckets(job);
   const bucketTotal = buckets.reduce((sum, bucket) => sum + bucket.tokens, 0);
   // The breakdown is the sum of what was reported; `tokens` is the daemon's own total. They agree on
@@ -100,9 +169,9 @@ export const JobCostSheet: React.FC<JobCostSheetProps> = ({ job }) => {
 
   const details: Array<[string, string]> = [
     ["Model", dash(job.model)],
-    ["Provider", dash(detail.provider)],
+    ["Provider", dash(job.provider)],
     ["Type", dash(job.type)],
-    ["Profile", dash(detail.executionProfile)],
+    ["Profile", dash(job.executionProfile)],
     ["Cost Reported by Agent", agentReportedCost(job)],
   ];
 
