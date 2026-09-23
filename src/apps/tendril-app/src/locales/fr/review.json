@@ -142,23 +142,6 @@
     "implementHint": "Accepte les recommandations cochées et relance le plan avec celles-ci comme demande de modifications.",
     "select": "Sélectionner « {{title}} »"
   },
-  "noteDialog": {
-    "submit": "Envoyer",
-    "accept": {
-      "title": "Accepter la recommandation",
-      "ariaLabel": "Accepter la recommandation",
-      "noteLabel": "Note de l'opérateur (facultatif) :",
-      "noteAriaLabel": "Note facultative",
-      "placeholder": "Saisissez des notes facultatives…"
-    },
-    "decline": {
-      "title": "Refuser la recommandation",
-      "ariaLabel": "Refuser la recommandation",
-      "noteLabel": "Motif du refus :",
-      "noteAriaLabel": "Motif du refus",
-      "placeholder": "Saisissez le motif du refus…"
-    }
-  },
   "actionsBar": {
     "tooltip": {
       "barDisabled": "Désactivé : {{reason}}",

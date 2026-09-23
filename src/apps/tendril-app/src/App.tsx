@@ -37,7 +37,6 @@ import { useTranslation } from "./i18n";
 
 import { Spinner } from "@ivy-interactive/components/ui";
 import { ShellLayout } from "./views/ShellLayout";
-import { NewPlanModal } from "./views/NewPlanModal";
 import { ErrorBanner } from "./components/ErrorBanner";
 // Type only, so this does not pull the view (and xterm.js with it) into the entry chunk.
 import type { ReviewActionTarget } from "./views/ReviewActionView";
@@ -58,14 +57,23 @@ const NoProjectsDialog = React.lazy(() =>
 );
 
 // Same reasoning, by module rather than the barrel: the two job sweeps are the only confirms the
-// shell itself owns, and both are rare.
-const ConfirmDialog = React.lazy(() =>
-  import("@ivy-interactive/components/dialogs").then((m) => ({ default: m.ConfirmDialog })),
+// shell itself owns, and both are rare. V1's copy (`JobsApp.DataTable.cs:319/335`) is the dialogs'.
+const StopQueuedJobsDialog = React.lazy(() =>
+  import("@ivy-interactive/components/dialogs").then((m) => ({ default: m.StopQueuedJobsDialog })),
+);
+const StopAllJobsDialog = React.lazy(() =>
+  import("@ivy-interactive/components/dialogs").then((m) => ({ default: m.StopAllJobsDialog })),
 );
 
 // V1's `showPlanSearchDialog` (`AppShell/Dialogs/PlanSearchDialog.cs`), the shell's own plan search.
 // Same reasoning again, and by module rather than the barrel for the same reason: it is the shell
 // that owns this dialog, and it is only ever mounted once the operator asks for it.
+// V1's `CreatePlanDialogLauncher`. Lazy, and mounted only while open, now that its dialog lives in
+// the library's `dialogs` entry: a static import would pull that chunk into the shell's eager one.
+const NewPlanModal = React.lazy(() =>
+  import("./views/NewPlanModal").then((m) => ({ default: m.NewPlanModal })),
+);
+
 const PlanSearchDialog = React.lazy(() =>
   import("./views/dialogs/PlanSearchDialog").then((m) => ({ default: m.PlanSearchDialog })),
 );
@@ -1365,47 +1373,47 @@ export const App: React.FC = () => {
         </React.Suspense>
       )}
 
-      <NewPlanModal
-        isOpen={isNewPlanOpen && !(projectsLoaded && projects.length === 0)}
-        onClose={() => {
-          setIsNewPlanOpen(false);
-          setNewPlanPrefill({});
-        }}
-        projects={projects}
-        initialTitle={newPlanPrefill.title}
-        initialDescription={newPlanPrefill.description}
-        initialSourceUrl={newPlanPrefill.sourceUrl}
-        initialProject={newPlanPrefill.project}
-        onJobStarted={(res) => {
-          handleSelectJob(res.jobId);
-        }}
-        // V1's project picker always ends with "+ Add New Project", which navigates to Settings.
-        // Without the handler the entry never renders, so a project the operator has not created yet
-        // is a dead end in the one flow that needs one. Same route as the no-projects dialog above.
-        onAddProject={() => {
-          setIsNewPlanOpen(false);
-          uiStore.setActiveNav("settings");
-        }}
-      />
+      {isNewPlanOpen && !(projectsLoaded && projects.length === 0) && (
+        <React.Suspense fallback={null}>
+          <NewPlanModal
+            isOpen
+            onClose={() => {
+              setIsNewPlanOpen(false);
+              setNewPlanPrefill({});
+            }}
+            projects={projects}
+            initialTitle={newPlanPrefill.title}
+            initialDescription={newPlanPrefill.description}
+            initialSourceUrl={newPlanPrefill.sourceUrl}
+            initialProject={newPlanPrefill.project}
+            onJobStarted={(res) => {
+              handleSelectJob(res.jobId);
+            }}
+            // V1's project picker always ends with "+ Add New Project", which navigates to Settings.
+            // Without the handler the entry never renders, so a project the operator has not created
+            // yet is a dead end in the one flow that needs one. Same route as the no-projects dialog.
+            onAddProject={() => {
+              setIsNewPlanOpen(false);
+              uiStore.setActiveNav("settings");
+            }}
+          />
+        </React.Suspense>
+      )}
 
       {/* The two job sweeps, with V1's copy verbatim (`JobsApp.DataTable`). Mounted only while open,
           so the dialog chunk is fetched at that moment. Both report how many they actually stopped:
           the count is re-snapshotted as jobs are cancelled, so it can differ from the label. */}
       {stopQueuedOpen && (
         <React.Suspense fallback={null}>
-          <ConfirmDialog
+          <StopQueuedJobsDialog
             isOpen
             onClose={() => {
               setStopQueuedOpen(false);
               setStopError(null);
             }}
-            title={t("stopQueued.title")}
-            body={t("stopQueued.body", { count: jobsStore.queuedJobCount() })}
-            confirmLabel={t("stopQueued.confirm")}
-            confirmVariant="destructive"
+            count={jobsStore.queuedJobCount()}
             isBusy={stopBusy}
             error={stopError}
-            testId="stop-queued-dialog"
             onConfirm={async () => {
               setStopBusy(true);
               setStopError(null);
@@ -1429,19 +1437,15 @@ export const App: React.FC = () => {
 
       {stopAllOpen && (
         <React.Suspense fallback={null}>
-          <ConfirmDialog
+          <StopAllJobsDialog
             isOpen
             onClose={() => {
               setStopAllOpen(false);
               setStopError(null);
             }}
-            title={t("stopAll.title")}
-            body={t("stopAll.body", { count: jobsStore.activeJobCount() })}
-            confirmLabel={t("stopAll.confirm")}
-            confirmVariant="destructive"
+            count={jobsStore.activeJobCount()}
             isBusy={stopBusy}
             error={stopError}
-            testId="stop-all-dialog"
             onConfirm={async () => {
               setStopBusy(true);
               setStopError(null);
@@ -1474,6 +1478,10 @@ export const App: React.FC = () => {
             isOpen
             onClose={() => setIsPlanSearchOpen(false)}
             onSelectPlan={(planId) => handleSelectSidebarItem("plans", planId, { planId })}
+            // V1 `PlanSearchDialog.ResolveTarget`: a Review/Failed pick opens in Review, an iced one
+            // in the Icebox; everything else keeps opening the plan's own tab.
+            onOpenReview={(planId) => handleSelectSidebarItem("review", planId, { planId })}
+            onOpenIcebox={() => uiStore.navigate({ appId: "icebox" })}
           />
         </React.Suspense>
       )}

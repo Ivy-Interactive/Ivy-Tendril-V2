@@ -12,8 +12,9 @@ import type { ProjectSummary } from "../src/types/api";
  *   : new Dialog(...).Width(Size.Rem(30))
  * ```
  *
- * Both dismiss the same three ways and carry the same title, so V2 expresses the swap as placement on
- * one surface rather than as a second component.
+ * Both dismiss the same ways and carry the same title, so V2 expresses the swap as placement on one
+ * surface - the library `CreatePlanDialog` on `DialogShell` with `mobileSheet` - rather than as a
+ * second component.
  */
 const projects: ProjectSummary[] = [
   { name: "Tendril-App", repos: ["/repos/Tendril-App"], verifications: ["RustBuild"] },
@@ -24,45 +25,48 @@ afterEach(() => {
 });
 
 describe("NewPlanModal surface", () => {
-  it("sits at the bottom of a narrow viewport and centres above sm", () => {
+  it("docks to the bottom of a narrow viewport and is 30rem wide above sm", () => {
     render(<NewPlanModal isOpen onClose={() => {}} projects={projects} />);
 
-    const backdrop = screen.getByTestId("new-plan-modal");
-    // Bottom-anchored by default, centred from `sm` up: V1's Sheet side and the Dialog respectively.
-    expect(backdrop.className).toContain("items-end");
-    expect(backdrop.className).toContain("sm:items-center");
-
-    const surface = screen.getByTestId("new-plan-surface");
-    // `Size.Fit()` height on mobile, `Size.Rem(30)` width on the dialog.
-    expect(surface.className).toContain("max-h-[90vh]");
-    expect(surface.className).toContain("rounded-t-box");
-    expect(surface.className).toContain("sm:max-w-[30rem]");
-    expect(surface.className).toContain("sm:rounded-box");
+    const surface = screen.getByTestId("new-plan-modal");
+    // V1's bottom `Sheet` below the mobile breakpoint, its `Size.Rem(30)` `Dialog` above it.
+    expect(surface).toHaveAttribute("data-mobile-sheet", "true");
+    expect(surface.className).toContain("max-sm:!bottom-0");
+    expect(surface.className).toContain("sm:!max-w-[30rem]");
   });
 
   /**
-   * The dialog carried a `border-b` under its header and no other divider. It was the only rule in the
-   * dialog and was asked for removal; the `pb-4` gap to the body stays, so this pins the line's absence
-   * rather than the spacing. Nothing else is affected: every other dialog composes `DialogShell`, whose
-   * `DialogHeader` draws no rule -- this one is hand-rolled.
+   * The hand-rolled overlay carried a `border-b` under its header, which was asked for removal. The
+   * dialog now composes `DialogShell`, whose `DialogHeader` draws no rule - pinned so it stays that way.
    */
   it("draws no rule under the header", () => {
     render(<NewPlanModal isOpen onClose={() => {}} projects={projects} />);
 
-    const header = screen.getByText("Create New Plan").parentElement!;
-    expect(header.className).not.toContain("border-b");
-    expect(header.className).toContain("pb-4");
+    const title = screen.getByText("Create New Plan");
+    expect(title.closest("[class*='border-b']")).toBeNull();
   });
 
-  it("dismisses on a backdrop click but not on a click inside the surface", () => {
+  /**
+   * `DialogShell`'s contract, which every dialog shares: Escape and the header close button dismiss,
+   * and a click on the overlay does not - a misplaced click must not lose a typed description.
+   */
+  it("dismisses on Escape and on the header close button", () => {
+    const onClose = vi.fn();
+    render(<NewPlanModal isOpen onClose={onClose} projects={projects} />);
+
+    fireEvent.keyDown(screen.getByTestId("new-plan-modal"), { key: "Escape" });
+    expect(onClose).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    expect(onClose).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not dismiss on a click inside the surface", () => {
     const onClose = vi.fn();
     render(<NewPlanModal isOpen onClose={onClose} projects={projects} />);
 
     fireEvent.click(screen.getByTestId("new-plan-surface"));
     expect(onClose).not.toHaveBeenCalled();
-
-    fireEvent.click(screen.getByTestId("new-plan-modal"));
-    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -70,8 +74,7 @@ describe("NewPlanModal project picker", () => {
   /**
    * `CreatePlanDialog.BuildProjectSelectOptions` always appends the entry, and its `UseEffect` on
    * `selectedProject` closes the dialog and navigates to Settings → Projects when it is chosen. V2
-   * gates the entry on `onAddProject`, which nothing in `App.tsx` supplies — so today the entry is
-   * absent from the running app. These two cases pin what the wiring does once it is supplied.
+   * gates the entry on `onAddProject`; `App.tsx` supplies it.
    */
   it("offers no Add Project entry without a handler to run it", () => {
     render(<NewPlanModal isOpen onClose={() => {}} projects={projects} />);

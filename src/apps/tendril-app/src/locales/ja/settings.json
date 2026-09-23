@@ -169,7 +169,11 @@
       "saved_chat": "チャットをチャットビューで開くよう設定しました",
       "saved_terminal": "チャットをターミナルで開くよう設定しました"
     },
-    "vaultThemesNote": "チーム Vault で公開されたテーマは一覧に表示されません。Vault のテーマ機能はこのビルドに含まれていないため、同梱のプリセットのみを表示しています。"
+    "vaultThemesNote": "チーム Vault で公開されたテーマは一覧に表示されません。Vault のテーマ機能はこのビルドに含まれていないため、同梱のプリセットのみを表示しています。",
+    "vaultThemes": {
+      "openGenerator": "テーマジェネレーターを開く",
+      "uploadUnavailable": "このビルドでは、チーム Vault へのテーマの公開はまだ利用できません。「構成をコピー」でテーマを JSON として共有できます。"
+    }
   },
   "levels": {
     "title": "優先度レベル",
@@ -198,23 +202,6 @@
     "removeConsequence": "このレベルに分類済みの計画は、plan.yaml にその名前を保持します。選択肢のレベルとして表示されなくなるだけです。",
     "noEffect": "レベルは config.yaml に保存され、MCP を通じて公開されますが、このアプリではまだどこからも読み取られていません。そのため、ここで編集しても目に見える動作は変わりません。"
   },
-  "removal": {
-    "title": "{{kind}} を削除",
-    "title_level": "レベルを削除",
-    "title_repository": "リポジトリを削除",
-    "title_reviewAction": "レビューアクションを削除",
-    "title_environmentFile": "環境変数ファイルを削除",
-    "title_mcpServer": "MCP サーバーを削除",
-    "title_customSkill": "カスタムスキルを削除",
-    "body": "{{kind}} <name>{{name}}</name> をこの構成から削除しますか？",
-    "body_level": "レベル <name>{{name}}</name> をこの構成から削除しますか？",
-    "body_repository": "リポジトリ <name>{{name}}</name> をこの構成から削除しますか？",
-    "body_reviewAction": "レビューアクション <name>{{name}}</name> をこの構成から削除しますか？",
-    "body_environmentFile": "環境変数ファイル <name>{{name}}</name> をこの構成から削除しますか？",
-    "body_mcpServer": "MCP サーバー <name>{{name}}</name> をこの構成から削除しますか？",
-    "body_customSkill": "カスタムスキル <name>{{name}}</name> をこの構成から削除しますか？",
-    "confirm": "削除"
-  },
   "fields": {
     "colorsLabel": "色",
     "chooseColor": "色を選択",
@@ -238,12 +225,7 @@
     "saved": "config.yaml を保存して再読み込みしました",
     "maskedNote_other": "{{count}} 件のシークレット値が {{mask}} と表示されています。保存済みの値を維持するにはプレースホルダーをそのままにし、新しい値を設定するには上書き入力してください。",
     "conflictReload": "ディスクから再読み込み",
-    "reload": "ディスクから再読み込み",
-    "discard": {
-      "title": "未保存の変更を破棄",
-      "confirm": "破棄して再読み込み",
-      "body": "再読み込みすると、エディタの内容がディスク上のファイルに置き換わります。保存していない編集内容は失われます。"
-    }
+    "reload": "ディスクから再読み込み"
   },
   "security": {
     "title": "セキュリティとトンネル",

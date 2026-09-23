@@ -66,7 +66,8 @@
     "completePlan": "計画を完了",
     "retryPlan": "計画を再試行",
     "acceptPartialDelivery": "部分的納品として承認",
-    "resetToDraft": "下書きに戻す…"
+    "resetToDraft": "下書きに戻す…",
+    "share": "共有"
   },
   "draftActions": {
     "execute": "計画を実行",
@@ -121,7 +122,23 @@
     "repositories": "リポジトリ",
     "noRepositories": "リポジトリが指定されていません",
     "commits": "コミット",
-    "noCommits": "コミットはまだありません"
+    "noCommits": "コミットはまだありません",
+    "jobs": {
+      "heading": "ジョブ",
+      "columns": {
+        "status": "ステータス",
+        "type": "タイプ",
+        "cost": "コスト",
+        "tokens": "トークン",
+        "message": "ステータスメッセージ",
+        "actions": "操作"
+      },
+      "debug": "デバッグ",
+      "debugTooltip": "このジョブのデバッグ詳細を表示",
+      "costTooltip": "コストとトークンの内訳を表示",
+      "costTitle": "コストとトークン",
+      "costTitleWithPlan": "コストとトークン — {{planId}}"
+    }
   },
   "verificationStatus": {
     "pass": "合格",
@@ -137,32 +154,12 @@
     "hideReport": "レポートを非表示",
     "noReport": "レポートはまだありません"
   },
-  "reportSheet": {
-    "title": "検証レポート",
-    "description": "{{name}} の検証レポートの詳細",
-    "descriptionFallback": "計画の検証レポートの詳細",
-    "loading": "検証レポートを読み込み中…",
-    "notFound": "「{{name}}」の検証レポートファイルが見つかりません。",
-    "empty": "{{name}} のレポートはありません。"
-  },
   "artifactSheet": {
     "thumbnail": {
       "openLabel": "{{fileName}} を開く",
       "noPreview": "プレビューなし",
       "loadingLabel": "{{fileName}} を読み込み中"
-    },
-    "fallbackTitle": "成果物",
-    "noPreviewTitle": "プレビューなし",
-    "showInFolder": "フォルダーに表示",
-    "loadingLabel": "{{fileName}} を読み込み中",
-    "imageFailed": "Tendril はこの画像を読み込めませんでした。",
-    "imageFailedWithError": "Tendril はこの画像を読み込めませんでした：{{error}}",
-    "binary": "{{fileName}} はテキストファイルではない（{{size}}）ため、ここではプレビューできません。",
-    "tooLarge": "{{fileName}} は {{size}} あり、ここでプレビューするには大きすぎます。",
-    "plainNotice": "プレーンテキストで表示しています：{{fileName}} は {{size}} あり、ハイライト表示するには大きすぎます。",
-    "plainNotice_markdown": "プレーンテキストで表示しています：{{fileName}} は {{size}} あり、Markdown としてレンダリングするには大きすぎます。",
-    "copyPath": "パスをコピー",
-    "revealLabel": "フォルダーに表示"
+    }
   },
   "pullRequests": {
     "title": "プルリクエスト",
@@ -215,16 +212,6 @@
     },
     "thawFailed": "計画 {{id}} を解凍できませんでした：{{error}}"
   },
-  "newPlan": {
-    "title": "新規計画を作成",
-    "closeLabel": "モーダルを閉じる",
-    "projectPickerLabel": "対象プロジェクト",
-    "autoProject": "自動",
-    "addProject": "+ 新しいプロジェクトを追加",
-    "submit": "作成",
-    "placeholder": "タスクの説明を入力…",
-    "emptyDescription": "新規計画の説明を入力してください。"
-  },
   "planActions": {
     "canExecute": {
       "alreadyCompleted": "計画はすでに完了しています。",
@@ -270,5 +257,9 @@
   "store": {
     "rollbackField": "ロールバック：{{field}} を更新できませんでした：{{error}}",
     "rollbackVerification": "検証の更新をロールバックしました：{{error}}"
+  },
+  "share": {
+    "linkCopiedTitle": "リンクをコピーしました",
+    "linkCopied": "計画の共有リンクをクリップボードにコピーしました"
   }
 }

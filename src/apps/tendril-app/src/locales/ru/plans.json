@@ -78,7 +78,8 @@
     "completePlan": "Завершить план",
     "retryPlan": "Повторить план",
     "acceptPartialDelivery": "Принять частичную доставку",
-    "resetToDraft": "Вернуть в черновик…"
+    "resetToDraft": "Вернуть в черновик…",
+    "share": "Поделиться"
   },
   "draftActions": {
     "execute": "Выполнить план",
@@ -139,7 +140,23 @@
     "repositories": "Репозитории",
     "noRepositories": "Репозитории не указаны",
     "commits": "Коммиты",
-    "noCommits": "Коммитов пока нет"
+    "noCommits": "Коммитов пока нет",
+    "jobs": {
+      "heading": "Задания",
+      "columns": {
+        "status": "Статус",
+        "type": "Тип",
+        "cost": "Стоимость",
+        "tokens": "Токены",
+        "message": "Сообщение о статусе",
+        "actions": "Действия"
+      },
+      "debug": "Отладка",
+      "debugTooltip": "Показать отладочные сведения для этого задания",
+      "costTooltip": "Показать разбивку стоимости и токенов",
+      "costTitle": "Стоимость и токены",
+      "costTitleWithPlan": "Стоимость и токены — {{planId}}"
+    }
   },
   "verificationStatus": {
     "pass": "Пройдена",
@@ -155,32 +172,12 @@
     "hideReport": "Скрыть отчёт",
     "noReport": "Отчёта пока нет"
   },
-  "reportSheet": {
-    "title": "Отчёт верификации",
-    "description": "Подробности отчёта верификации {{name}}",
-    "descriptionFallback": "Подробности отчёта верификации плана",
-    "loading": "Загрузка отчёта верификации…",
-    "notFound": "Файл отчёта верификации для «{{name}}» не найден.",
-    "empty": "Для {{name}} нет отчёта."
-  },
   "artifactSheet": {
     "thumbnail": {
       "openLabel": "Открыть {{fileName}}",
       "noPreview": "Нет предпросмотра",
       "loadingLabel": "Загрузка {{fileName}}"
-    },
-    "fallbackTitle": "Артефакт",
-    "noPreviewTitle": "Нет предпросмотра",
-    "showInFolder": "Показать в папке",
-    "loadingLabel": "Загрузка {{fileName}}",
-    "imageFailed": "Tendril не удалось загрузить это изображение.",
-    "imageFailedWithError": "Tendril не удалось загрузить это изображение: {{error}}",
-    "binary": "{{fileName}} — не текстовый файл ({{size}}), поэтому предпросмотр здесь недоступен.",
-    "tooLarge": "Файл {{fileName}} ({{size}}) слишком большой для предпросмотра.",
-    "plainNotice": "Показано как обычный текст: файл {{fileName}} ({{size}}) слишком большой для подсветки синтаксиса.",
-    "plainNotice_markdown": "Показано как обычный текст: файл {{fileName}} ({{size}}) слишком большой для отображения Markdown.",
-    "copyPath": "Копировать путь",
-    "revealLabel": "Показать в папке"
+    }
   },
   "pullRequests": {
     "title": "Пулл-реквесты",
@@ -236,16 +233,6 @@
     },
     "thawFailed": "Не удалось разморозить план {{id}}: {{error}}"
   },
-  "newPlan": {
-    "title": "Создать план",
-    "closeLabel": "Закрыть окно",
-    "projectPickerLabel": "Целевой проект",
-    "autoProject": "Авто",
-    "addProject": "+ Добавить проект",
-    "submit": "Создать",
-    "placeholder": "Введите описание задачи…",
-    "emptyDescription": "Введите описание нового плана."
-  },
   "planActions": {
     "canExecute": {
       "alreadyCompleted": "План уже завершён.",
@@ -291,5 +278,9 @@
   "store": {
     "rollbackField": "Откат: не удалось обновить поле {{field}}: {{error}}",
     "rollbackVerification": "Откат обновления верификации: {{error}}"
+  },
+  "share": {
+    "linkCopiedTitle": "Ссылка скопирована",
+    "linkCopied": "Ссылка для общего доступа к плану скопирована в буфер обмена"
   }
 }

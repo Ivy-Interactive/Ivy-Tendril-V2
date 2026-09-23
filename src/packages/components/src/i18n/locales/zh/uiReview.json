@@ -1,1 +1,55 @@
-{}
+{
+  "verificationReport": {
+    "title": "验证报告",
+    "description": "{{name}} 的验证报告详情",
+    "descriptionFallback": "计划的验证报告详情",
+    "loading": "正在加载验证报告…",
+    "notFound": "未找到“{{name}}”的验证报告文件。",
+    "empty": "{{name}} 没有可用的报告。",
+    "status": {
+      "pass": "通过",
+      "fail": "失败",
+      "pending": "待处理",
+      "skipped": "已跳过"
+    }
+  },
+  "filePreview": {
+    "noPreviewTitle": "无预览",
+    "showInFolder": "在文件夹中显示",
+    "loadingLabel": "正在加载 {{fileName}}",
+    "imageFailed": "Tendril 无法加载此图像。",
+    "imageFailedWithError": "Tendril 无法加载此图像：{{error}}",
+    "binary": "{{fileName}} 不是文本文件（{{size}}），因此此处无法预览。",
+    "tooLarge": "{{fileName}} 大小为 {{size}}，过大，此处无法预览。",
+    "plainNotice": "以纯文本显示：{{fileName}} 大小为 {{size}}，过大，无法高亮显示。",
+    "plainNotice_markdown": "以纯文本显示：{{fileName}} 大小为 {{size}}，过大，无法渲染为 Markdown。"
+  },
+  "artifactSheet": {
+    "fallbackTitle": "产物",
+    "copyPath": "复制路径",
+    "revealLabel": "在文件夹中显示"
+  },
+  "fileSheet": {
+    "fallbackTitle": "文件",
+    "openInEditor": "在 {{editor}} 中打开",
+    "copyPath": "复制路径",
+    "revealLabel": "在文件夹中显示"
+  },
+  "commitSheet": {
+    "title": "提交 {{hash}} — {{title}}",
+    "titleUntitled": "提交 {{hash}}",
+    "description": "提交 {{hash}} 的变更文件和差异",
+    "loadingLabel": "正在加载提交 {{hash}}",
+    "failed": "无法加载提交：{{error}}",
+    "notFound": "未找到提交。",
+    "noChanges": "此提交未更改任何文件。",
+    "changedFiles": "变更的文件",
+    "copyHash": "复制提交哈希",
+    "fileStatus": {
+      "added": "新增",
+      "deleted": "已删除",
+      "modified": "已修改",
+      "renamed": "已重命名"
+    }
+  }
+}

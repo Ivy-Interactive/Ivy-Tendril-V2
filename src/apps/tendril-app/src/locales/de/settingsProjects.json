@@ -232,8 +232,7 @@
       "consequence": "Agenten, die an diesem Projekt arbeiten, erhalten ihn nicht mehr. Dadurch wird nur der Verweis des Projekts darauf entfernt, nicht die Dateien des Skills selbst."
     },
     "saved": "Skill „{{name}}“ gespeichert",
-    "deleted": "Skill „{{name}}“ gelöscht",
-    "memoryNote": "Projekt-Erinnerungen liegen als Markdown-Dateien unter {{path}}. Der Daemon stellt dafür keine Route bereit, daher können sie hier noch nicht bearbeitet werden."
+    "deleted": "Skill „{{name}}“ gelöscht"
   },
   "dangerZone": {
     "title": "Gefahrenzone",
@@ -355,5 +354,28 @@
     "environmentFile": "Umgebungsdatei",
     "mcpServer": "MCP-Server",
     "customSkill": "Benutzerdefinierten Skill"
+  },
+  "importFromRepo": "Aus Repository importieren",
+  "importedFromRepo_one": "{{count}} Eintrag importiert",
+  "importedFromRepo_other": "{{count}} Einträge importiert",
+  "importedFromRepo_skills_one": "{{count}} benutzerdefinierter Skill importiert",
+  "importedFromRepo_skills_other": "{{count}} benutzerdefinierte Skills importiert",
+  "importedFromRepo_mcpServers_one": "{{count}} MCP-Server importiert",
+  "importedFromRepo_mcpServers_other": "{{count}} MCP-Server importiert",
+  "memory": {
+    "title": "Projekt-Memories",
+    "hint": "Markdown-Notizen zu diesem Projekt (Stack, Regeln, Konventionen), gespeichert unter {{path}}.",
+    "addButton": "Projekt-Memory hinzufügen",
+    "columns": {
+      "file": "Datei",
+      "snippet": "Zusammenfassung"
+    },
+    "empty": "Noch keine Memory-Dateien für dieses Projekt.",
+    "loadError": "Die Memories des Projekts konnten nicht gelesen werden: {{error}}",
+    "saved": "Memory-Datei '{{name}}' gespeichert",
+    "deleted": "Memory-Datei '{{name}}' gelöscht",
+    "removal": {
+      "consequence": "Die Datei wird aus dem Memory-Ordner des Projekts gelöscht."
+    }
   }
 }

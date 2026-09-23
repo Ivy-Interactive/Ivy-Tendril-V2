@@ -81,21 +81,7 @@
     "failed": "Speichern fehlgeschlagen: {{error}}"
   },
   "test": {
-    "title": "Coding-Agent-Test",
     "defaultModel": "Standard",
-    "columns": {
-      "test": "Test",
-      "result": "Ergebnis"
-    },
-    "status": {
-      "passed": "Bestanden",
-      "failed": "Fehlgeschlagen",
-      "warning": "Warnung",
-      "running": "Läuft",
-      "pending": "Ausstehend"
-    },
-    "showRawOutput": "Rohausgabe anzeigen",
-    "rawOutputTitle": "Rohausgabe",
     "rows": {
       "install": "Installation",
       "auth": "Authentifizierung",

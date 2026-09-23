@@ -1,1 +1,145 @@
-{}
+{
+  "actions": {
+    "cancel": "Cancelar"
+  },
+  "costSheet": {
+    "loading": "Cargando detalles del trabajo…",
+    "details": {
+      "model": "Modelo",
+      "provider": "Proveedor",
+      "type": "Tipo",
+      "profile": "Perfil",
+      "agentCost": "Coste informado por el agente"
+    },
+    "notProvided": "No proporcionado",
+    "estimated": "~{{cost}}",
+    "noUsage": "No se registró ningún desglose por token para este trabajo.",
+    "noUsage_total": "No se registró ningún desglose por token para este trabajo, solo un total de {{total}} tokens.",
+    "breakdown": {
+      "title": "Desglose",
+      "tokenType": "Tipo de token",
+      "tokens": "Tokens",
+      "total": "Total"
+    },
+    "buckets": {
+      "input": "Entrada",
+      "output": "Salida",
+      "cacheRead": "Lectura de caché",
+      "cacheWrite": "Escritura en caché",
+      "reasoning": "Razonamiento"
+    },
+    "totalCost": "Coste total"
+  },
+  "promptSheet": {
+    "title": "Prompt completo",
+    "empty": "Este trabajo no registró ningún texto de prompt."
+  },
+  "outputSheet": {
+    "noOutput": "No hay salida disponible.",
+    "statusCallout": {
+      "title": "Trabajo: {{status}}",
+      "title_pending": "Trabajo pendiente",
+      "title_queued": "Trabajo en cola",
+      "title_blocked": "Trabajo bloqueado",
+      "title_failed": "Trabajo fallido",
+      "title_timeout": "Trabajo con tiempo agotado",
+      "title_stopped": "Trabajo detenido",
+      "blocked": "Esperando a que se completen las dependencias o los trabajos anteriores.",
+      "pending": "El trabajo está en cola, esperando para iniciarse."
+    }
+  },
+  "deleteJob": {
+    "title": "Eliminar trabajo",
+    "body": "¿Seguro que quieres eliminar este trabajo? Esta acción no se puede deshacer.",
+    "confirm": "Eliminar"
+  },
+  "stopQueued": {
+    "title": "Detener trabajos en cola",
+    "body_one": "¿Detener {{count}} trabajo en cola? Los trabajos en ejecución no se ven afectados.",
+    "body_many": "¿Detener los {{count}} trabajos en cola? Los trabajos en ejecución no se ven afectados.",
+    "body_other": "¿Detener los {{count}} trabajos en cola? Los trabajos en ejecución no se ven afectados.",
+    "confirm": "Detener todos"
+  },
+  "stopAll": {
+    "title": "Detener todos los trabajos",
+    "body_one": "¿Detener {{count}} trabajo activo? Los agentes en ejecución se terminan y sus planes vuelven a su estado anterior. Esta acción no se puede deshacer.",
+    "body_many": "¿Detener los {{count}} trabajos activos? Los agentes en ejecución se terminan y sus planes vuelven a su estado anterior. Esta acción no se puede deshacer.",
+    "body_other": "¿Detener los {{count}} trabajos activos? Los agentes en ejecución se terminan y sus planes vuelven a su estado anterior. Esta acción no se puede deshacer.",
+    "confirm": "Detener todos"
+  },
+  "clearJobs": {
+    "confirm": "Limpiar",
+    "confirmCount": "Limpiar {{count}}",
+    "scopes": {
+      "completed": {
+        "title": "Limpiar completados",
+        "counting": "Contando trabajos completados…",
+        "empty": "No hay trabajos completados que limpiar.",
+        "confirm_one": "¿Eliminar {{count}} trabajo completado? Sus registros y su salida se eliminan con él, y esta acción no se puede deshacer.",
+        "confirm_other": "¿Eliminar {{count}} trabajos completados? Sus registros y su salida se eliminan con ellos, y esta acción no se puede deshacer.",
+        "confirm_many": "¿Eliminar {{count}} trabajos completados? Sus registros y su salida se eliminan con ellos, y esta acción no se puede deshacer."
+      },
+      "failed": {
+        "title": "Limpiar fallidos",
+        "counting": "Contando trabajos fallidos…",
+        "empty": "No hay trabajos fallidos que limpiar.",
+        "confirm_one": "¿Eliminar {{count}} trabajo fallido? Sus registros y su salida se eliminan con él, y esta acción no se puede deshacer.",
+        "confirm_other": "¿Eliminar {{count}} trabajos fallidos? Sus registros y su salida se eliminan con ellos, y esta acción no se puede deshacer.",
+        "confirm_many": "¿Eliminar {{count}} trabajos fallidos? Sus registros y su salida se eliminan con ellos, y esta acción no se puede deshacer."
+      },
+      "timeout": {
+        "title": "Limpiar con tiempo agotado",
+        "counting": "Contando trabajos con tiempo agotado…",
+        "empty": "No hay trabajos con tiempo agotado que limpiar.",
+        "confirm_one": "¿Eliminar {{count}} trabajo con tiempo agotado? Sus registros y su salida se eliminan con él, y esta acción no se puede deshacer.",
+        "confirm_other": "¿Eliminar {{count}} trabajos con tiempo agotado? Sus registros y su salida se eliminan con ellos, y esta acción no se puede deshacer.",
+        "confirm_many": "¿Eliminar {{count}} trabajos con tiempo agotado? Sus registros y su salida se eliminan con ellos, y esta acción no se puede deshacer."
+      },
+      "stopped": {
+        "title": "Limpiar detenidos",
+        "counting": "Contando trabajos detenidos…",
+        "empty": "No hay trabajos detenidos que limpiar.",
+        "confirm_one": "¿Eliminar {{count}} trabajo detenido? Sus registros y su salida se eliminan con él, y esta acción no se puede deshacer.",
+        "confirm_other": "¿Eliminar {{count}} trabajos detenidos? Sus registros y su salida se eliminan con ellos, y esta acción no se puede deshacer.",
+        "confirm_many": "¿Eliminar {{count}} trabajos detenidos? Sus registros y su salida se eliminan con ellos, y esta acción no se puede deshacer."
+      },
+      "all": {
+        "title": "Limpiar todos los finalizados",
+        "counting": "Contando trabajos finalizados…",
+        "empty": "No hay trabajos finalizados que limpiar.",
+        "confirm_one": "¿Eliminar {{count}} trabajo finalizado? Sus registros y su salida se eliminan con él, y esta acción no se puede deshacer.",
+        "confirm_other": "¿Eliminar {{count}} trabajos finalizados? Sus registros y su salida se eliminan con ellos, y esta acción no se puede deshacer.",
+        "confirm_many": "¿Eliminar {{count}} trabajos finalizados? Sus registros y su salida se eliminan con ellos, y esta acción no se puede deshacer."
+      }
+    }
+  },
+  "rerun": {
+    "title": "Volver a ejecutar {{type}}",
+    "intro": "Opcionalmente, indica al agente qué salió mal o qué debe hacer de otra forma. Déjalo vacío para volver a ejecutarlo sin cambios.",
+    "feedbackPlaceholder": "Comentarios para el agente (opcional)",
+    "feedbackAriaLabel": "Comentarios para el agente",
+    "unchanged": "¿Volver a ejecutar este trabajo con sus argumentos originales?",
+    "confirm": "Volver a ejecutar",
+    "busy": "Iniciando…"
+  },
+  "reportBug": {
+    "title": "Informar de un error",
+    "intro": "Describe el problema. Los registros del trabajo y una copia saneada de tu configuración (sin secretos) se adjuntarán a un issue público de GitHub.",
+    "descriptionPlaceholder": "¿Qué salió mal? ¿Cómo podemos reproducirlo?",
+    "descriptionAriaLabel": "Descripción del error",
+    "githubUserPlaceholder": "Tu nombre de usuario de GitHub (opcional)",
+    "githubUserAriaLabel": "Nombre de usuario de GitHub",
+    "submit": "Enviar informe",
+    "busy": "Enviando…"
+  },
+  "debugWithAgent": {
+    "title": "Depurar con {{agent}}",
+    "focusPlaceholder": "¿Hay algo en particular que quieras revisar? (opcional)",
+    "focusAriaLabel": "En qué centrarse",
+    "confirm": "Depurar con {{agent}}"
+  },
+  "jobDebug": {
+    "reportBug": "Informar de un error",
+    "debugWithAgent": "Depurar con {{agent}}"
+  }
+}

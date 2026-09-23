@@ -36,6 +36,7 @@ import type { ServiceInfo, VersionInfo } from "../types/api";
 import { OfflineBanner } from "../components/OfflineBanner";
 import { ServiceStatusBanner } from "../components/service";
 import { UpdateNotice } from "../components/UpdateNotice";
+import { getUpdateCommand } from "../utils/updateCommand";
 import { firstStringArg } from "../utils/eventArgs";
 import {
   pageTabTitle,
@@ -51,6 +52,14 @@ import { i18n, useTranslation, type TFunction } from "../i18n";
  * a test, say - hands them none. The shell passes its own, so a language change re-renders the rows.
  */
 const commonT = i18n.getFixedT(null, "common");
+
+/**
+ * V1 `AppShell/Dialogs/UpdateTendrilDialog.cs`, opened from the update banner. Lazy, because the
+ * shell is in the eager graph and the dialogs entry is not (see `dialogs.ts` in the components).
+ */
+const UpdateTendrilDialog = React.lazy(() =>
+  import("@ivy-interactive/components/dialogs").then((m) => ({ default: m.UpdateTendrilDialog })),
+);
 
 /**
  * V1 `TendrilAppShell.PageTabId`. Identifies the strip's leading tab, which reveals the page behind
@@ -554,6 +563,13 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
 
   const noop = () => {};
 
+  /**
+   * The update dialog. V2 cannot update itself yet: `tauri.conf.json` declares the updater plugin
+   * but the app installs neither `tauri-plugin-updater` nor `@tauri-apps/plugin-updater`, so this
+   * is V1's `CanSelfUpdate == false` branch - the terminal command for this platform, and OK.
+   */
+  const [isUpdateDialogOpen, setIsUpdateDialogOpen] = React.useState(false);
+
   return (
     <div className="flex h-screen w-screen flex-col overflow-hidden bg-background font-sans text-foreground">
       {/* Update Available Notice */}
@@ -562,7 +578,20 @@ export const ShellLayout: React.FC<ShellLayoutProps> = ({
         dismissedVersion={dismissedUpdateVersion}
         onDismiss={onDismissUpdate}
         onCopyCommand={onCopyUpdateCommand}
+        onShowDetails={() => setIsUpdateDialogOpen(true)}
       />
+      {isUpdateDialogOpen && versionInfo?.latestVersion && (
+        <React.Suspense fallback={null}>
+          <UpdateTendrilDialog
+            isOpen
+            onClose={() => setIsUpdateDialogOpen(false)}
+            currentVersion={versionInfo.currentVersion}
+            latestVersion={versionInfo.latestVersion}
+            canSelfUpdate={false}
+            updateCommand={getUpdateCommand()}
+          />
+        </React.Suspense>
+      )}
 
       {/* Top Offline / Reconnection Banner */}
       <OfflineBanner

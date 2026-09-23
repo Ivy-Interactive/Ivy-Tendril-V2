@@ -1,1 +1,131 @@
-{}
+{
+  "actions": {
+    "cancel": "キャンセル"
+  },
+  "costSheet": {
+    "loading": "ジョブの詳細を読み込み中…",
+    "details": {
+      "model": "モデル",
+      "provider": "プロバイダー",
+      "type": "タイプ",
+      "profile": "プロファイル",
+      "agentCost": "エージェントが報告したコスト"
+    },
+    "notProvided": "未提供",
+    "estimated": "約 {{cost}}",
+    "noUsage": "このジョブにはトークンごとの内訳が記録されていません。",
+    "noUsage_total": "このジョブにはトークンごとの内訳が記録されておらず、合計 {{total}} トークンのみが記録されています。",
+    "breakdown": {
+      "title": "内訳",
+      "tokenType": "トークンの種類",
+      "tokens": "トークン",
+      "total": "合計"
+    },
+    "buckets": {
+      "input": "入力",
+      "output": "出力",
+      "cacheRead": "キャッシュ読み取り",
+      "cacheWrite": "キャッシュ書き込み",
+      "reasoning": "推論"
+    },
+    "totalCost": "総コスト"
+  },
+  "promptSheet": {
+    "title": "完全なプロンプト",
+    "empty": "このジョブにはプロンプトテキストが記録されていません。"
+  },
+  "outputSheet": {
+    "noOutput": "出力はありません。",
+    "statusCallout": {
+      "title": "ジョブ：{{status}}",
+      "title_pending": "ジョブ：保留中",
+      "title_queued": "ジョブ：キュー待機中",
+      "title_blocked": "ジョブ：ブロック中",
+      "title_failed": "ジョブ：失敗",
+      "title_timeout": "ジョブ：タイムアウト",
+      "title_stopped": "ジョブ：停止済み",
+      "blocked": "依存関係または先行するジョブの完了を待っています。",
+      "pending": "ジョブはキューに入り、開始を待機しています。"
+    }
+  },
+  "deleteJob": {
+    "title": "ジョブを削除",
+    "body": "このジョブを削除しますか？この操作は元に戻せません。",
+    "confirm": "削除"
+  },
+  "stopQueued": {
+    "title": "キュー待機中のジョブを停止",
+    "body_other": "キュー待機中のジョブ {{count}} 件をすべて停止しますか？実行中のジョブには影響しません。",
+    "confirm": "すべて停止"
+  },
+  "stopAll": {
+    "title": "すべてのジョブを停止",
+    "body_other": "アクティブなジョブ {{count}} 件をすべて停止しますか？実行中のエージェントは強制終了され、その計画は以前の状態に戻ります。この操作は元に戻せません。",
+    "confirm": "すべて停止"
+  },
+  "clearJobs": {
+    "confirm": "消去",
+    "confirmCount": "{{count}} 件を消去",
+    "scopes": {
+      "completed": {
+        "title": "完了済みを消去",
+        "counting": "完了したジョブを数えています…",
+        "empty": "消去できる完了済みのジョブはありません。",
+        "confirm_other": "完了した {{count}} 件のジョブを削除しますか？ログと出力も一緒に削除され、この操作は元に戻せません。"
+      },
+      "failed": {
+        "title": "失敗を消去",
+        "counting": "失敗したジョブを数えています…",
+        "empty": "消去できる失敗したジョブはありません。",
+        "confirm_other": "失敗した {{count}} 件のジョブを削除しますか？ログと出力も一緒に削除され、この操作は元に戻せません。"
+      },
+      "timeout": {
+        "title": "タイムアウトを消去",
+        "counting": "タイムアウトしたジョブを数えています…",
+        "empty": "消去できるタイムアウトしたジョブはありません。",
+        "confirm_other": "タイムアウトした {{count}} 件のジョブを削除しますか？ログと出力も一緒に削除され、この操作は元に戻せません。"
+      },
+      "stopped": {
+        "title": "停止済みを消去",
+        "counting": "停止したジョブを数えています…",
+        "empty": "消去できる停止済みのジョブはありません。",
+        "confirm_other": "停止した {{count}} 件のジョブを削除しますか？ログと出力も一緒に削除され、この操作は元に戻せません。"
+      },
+      "all": {
+        "title": "終了済みをすべて消去",
+        "counting": "終了したジョブを数えています…",
+        "empty": "消去できる終了済みのジョブはありません。",
+        "confirm_other": "終了した {{count}} 件のジョブを削除しますか？ログと出力も一緒に削除され、この操作は元に戻せません。"
+      }
+    }
+  },
+  "rerun": {
+    "title": "{{type}} を再実行",
+    "intro": "必要に応じて、何が問題だったか、何を変えてほしいかをエージェントに伝えてください。変更せずに再実行する場合は空のままにします。",
+    "feedbackPlaceholder": "エージェントへのフィードバック（任意）",
+    "feedbackAriaLabel": "エージェントへのフィードバック",
+    "unchanged": "このジョブを元の引数で再実行しますか？",
+    "confirm": "再実行",
+    "busy": "開始中…"
+  },
+  "reportBug": {
+    "title": "バグを報告",
+    "intro": "問題を説明してください。ジョブのログと、設定の無害化済みコピー（シークレットは削除）が公開の GitHub Issue に添付されます。",
+    "descriptionPlaceholder": "何が問題でしたか？どうすれば再現できますか？",
+    "descriptionAriaLabel": "バグの説明",
+    "githubUserPlaceholder": "GitHub ユーザー名（任意）",
+    "githubUserAriaLabel": "GitHub ユーザー名",
+    "submit": "レポートを送信",
+    "busy": "送信中…"
+  },
+  "debugWithAgent": {
+    "title": "{{agent}} でデバッグ",
+    "focusPlaceholder": "特に確認したい点はありますか？（任意）",
+    "focusAriaLabel": "重点的に確認する内容",
+    "confirm": "{{agent}} でデバッグ"
+  },
+  "jobDebug": {
+    "reportBug": "バグを報告",
+    "debugWithAgent": "{{agent}} でデバッグ"
+  }
+}

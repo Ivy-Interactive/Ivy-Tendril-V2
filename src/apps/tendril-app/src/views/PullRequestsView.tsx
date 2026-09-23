@@ -5,18 +5,11 @@ import {
   Badge,
   Button,
   DataTable,
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
   type DataTableColumn,
   type DataTableRowAction,
 } from "@ivy-interactive/components/ui";
-import {
-  BadgeSelect,
-  PlanMarkdown,
-  type BadgeSelectOption,
-} from "@ivy-interactive/components/tendril";
+import { BadgeSelect, type BadgeSelectOption } from "@ivy-interactive/components/tendril";
+import { PlanRevisionSheet } from "@ivy-interactive/components/dialogs";
 import { useFormatters, type Formatters } from "@ivy-interactive/components/i18n";
 import { useTranslation, type TFunction } from "../i18n";
 import { bridge } from "../api/bridge";
@@ -28,6 +21,8 @@ import { useWireframeBaseUrl } from "../api/proxyOrigin";
 import { projectColor } from "../utils/jobStatus";
 import { PR_STATE_COLOR } from "../utils/prStatus";
 import { formatCost, formatTokensCompact } from "../utils/format";
+import { FileSheet } from "./sheets/FileSheet";
+import { planLinkTarget } from "./planDetail/planLinks";
 
 /** The original's `BatchSize` — a cross-plan PR list is long, so the page holds more than the default 10. */
 const DEFAULT_PAGE_SIZE = 50;
@@ -133,6 +128,11 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
   const [notice, setNotice] = useState<string | null>(null);
 
   const [sheetRow, setSheetRow] = useState<PrStatus | null>(null);
+  /**
+   * V1's `openFile` (`PullRequestApp.cs:35/43`): a local file the plan sheet's revision links to,
+   * opened in the `FileSheet` (`FileSheet.CreateLinkClickHandler(openFile)`).
+   */
+  const [openFile, setOpenFile] = useState<string | null>(null);
   // The daemon's origin, not the app's -- see useWireframeBaseUrl.
   const wireframeBaseUrl = useWireframeBaseUrl(sheetRow?.planId);
   const [revision, setRevision] = useState<string | null>(null);
@@ -521,43 +521,29 @@ export const PullRequestsView: React.FC<PullRequestsViewProps> = ({
         />
       )}
 
-      <Sheet
+      {/* `PullRequestApp.cs:37`'s plan sheet: the plan's latest revision. */}
+      <PlanRevisionSheet
         open={sheetRow !== null}
-        onOpenChange={(open) => {
-          if (!open) setSheetRow(null);
+        onClose={() => setSheetRow(null)}
+        planId={sheetRow?.planId}
+        planTitle={sheetRow?.planTitle}
+        revision={revision}
+        error={revisionError}
+        // The sheet shows a plan's revision, so its wireframes resolve the same way they do on the
+        // plan page itself.
+        wireframeBaseUrl={wireframeBaseUrl}
+        onFileClick={(href) => {
+          const target = planLinkTarget(href);
+          if (target?.kind === "file") setOpenFile(target.path);
         }}
-      >
-        <SheetContent className="w-full overflow-y-auto sm:max-w-2xl">
-          <SheetHeader>
-            <SheetTitle>
-              {sheetRow
-                ? `#${sheetRow.planId} ${sheetRow.planTitle}`
-                : t("pullRequests.sheet.titleFallback")}
-            </SheetTitle>
-          </SheetHeader>
-          <div className="mt-4">
-            {revisionError ? (
-              <p className="text-xs text-destructive">{revisionError}</p>
-            ) : revision === null ? (
-              <p className="text-sm text-muted-foreground">
-                {t("pullRequests.sheet.loadingRevision")}
-              </p>
-            ) : revision.trim() === "" ? (
-              <p className="text-sm text-muted-foreground">{t("pullRequests.sheet.notFound")}</p>
-            ) : (
-              <PlanMarkdown
-                id="pr-plan-revision"
-                content={revision}
-                // The sheet shows a plan's revision, so its wireframes resolve the same way they
-                // do on the plan page itself.
-                wireframeBaseUrl={wireframeBaseUrl}
-                article
-                dangerouslyAllowLocalFiles
-              />
-            )}
-          </div>
-        </SheetContent>
-      </Sheet>
+      />
+      <FileSheet
+        planId={sheetRow?.planId}
+        path={openFile}
+        onClose={() => setOpenFile(null)}
+        onOpenFile={setOpenFile}
+        wireframeBaseUrl={wireframeBaseUrl}
+      />
     </div>
   );
 };

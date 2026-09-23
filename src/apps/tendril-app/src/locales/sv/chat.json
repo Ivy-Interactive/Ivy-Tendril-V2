@@ -22,11 +22,6 @@
   "composerAttachment": {
     "remove": "Ta bort {{name}}"
   },
-  "lightbox": {
-    "fallbackTitle": "Förhandsvisning av bild",
-    "fallbackAlt": "Förhandsvisning av bilaga",
-    "closeLabel": "Stäng förhandsvisningen"
-  },
   "newChatButtons": {
     "label": "Ny chatt",
     "tooltip": "Ny chatt",
@@ -149,19 +144,8 @@
     "afternoon": "God eftermiddag!",
     "evening": "God kväll!"
   },
-  "deleteSession": {
-    "title": "Ta bort session",
-    "body": "Vill du ta bort ”{{title}}”? Det går inte att ångra.",
-    "bodyUntitled": "Vill du ta bort den här chattsessionen? Det går inte att ångra."
-  },
   "jobsReview": {
     "prompt": "Granska resultaten av jobben som den här konversationen startade och berätta vad som ändrades:\n{{jobs}}"
-  },
-  "search": {
-    "title": "Sök i chattar",
-    "inputLabel": "Sök i chattar",
-    "placeholder": "Sök i chattar",
-    "empty": "Inga chattar hittades."
   },
   "queue": {
     "title": "Köade meddelanden",

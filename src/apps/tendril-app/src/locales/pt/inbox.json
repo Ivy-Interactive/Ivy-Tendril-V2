@@ -164,21 +164,6 @@
       }
     }
   },
-  "sheet": {
-    "titleFallback": "Issue",
-    "assigned": "Atribuída a: {{assignees}}",
-    "openOnGitHub": "Abrir no GitHub",
-    "dismiss": {
-      "label": "Descartar",
-      "tooltip": "Descartar definitivamente: a verificação de issues atribuídas não vai propor esta issue novamente"
-    },
-    "accept": {
-      "label": "Aceitar",
-      "tooltip": "Iniciar um plano para esta issue em {{project}}"
-    },
-    "fireOff": "Iniciar no Tendril",
-    "noDescription": "Nenhuma descrição fornecida."
-  },
   "pullRequests": {
     "title": "Pull Requests",
     "status": {
@@ -229,11 +214,6 @@
     },
     "statusFilterPlaceholder": "Filtrar por status...",
     "resyncAll": "Ressincronizar Tudo",
-    "resyncing": "Ressincronizando...",
-    "sheet": {
-      "titleFallback": "Plano",
-      "loadingRevision": "Carregando revisão...",
-      "notFound": "Plano não encontrado ou vazio."
-    }
+    "resyncing": "Ressincronizando..."
   }
 }

@@ -1,54 +1,46 @@
 import React from "react";
-import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  BladeContainer,
-} from "@ivy-interactive/components/ui";
-import type { BladeDescriptor } from "@ivy-interactive/components/ui";
-import { useTranslation } from "../../i18n";
+import { KpiBreakdownSheet, type KpiBreakdownData } from "@ivy-interactive/components/dialogs";
+import type { DashboardAnalytics } from "../../hooks/useDashboardAnalytics";
 
 /**
- * The Dashboard's KPI drill-down, on the shared `ui/sheet.tsx` — same side, header and close
- * behaviour as `JobCostSheet`/`JobDebugSheet`'s sheets in JobsView. It used to be a hand-rolled
- * `fixed inset-0` overlay with a literal `max-w-[72rem]`, which had no responsive breakpoints and
- * clipped a blade's content on anything narrower.
+ * The connected half of the library's `KpiBreakdownSheet` (V1 `Apps/Views/Sheets/KpiBreakdownSheet.cs`):
+ * the Dashboard's KPI drill-down.
+ *
+ * It hands the sheet the analytics snapshot the Dashboard already holds - the same five series the
+ * cards are computed from (`utils/dashboardMetrics.ts`) - and the sheet does its own window
+ * arithmetic, as V1's does. Mapping into `KpiBreakdownData` here is also what keeps the daemon's
+ * DTOs and the library's shapes honest: a field renamed on either side fails `tsc` in this file.
  */
 export interface DashboardKpiSheetProps {
-  /** The selected KPI's blade, or `null` to keep the sheet closed. */
-  blade: BladeDescriptor | null;
+  /** The clicked card's KPI id, or `null` to keep the sheet closed. An id with no panel is ignored. */
+  kpiId: string | null;
+  analytics: Pick<
+    DashboardAnalytics,
+    "activity" | "shippedFeatures" | "mergedPrs" | "planCosts" | "agentCosts"
+  >;
   onClose: () => void;
 }
 
-export const DashboardKpiSheet: React.FC<DashboardKpiSheetProps> = ({ blade, onClose }) => {
-  const { t } = useTranslation("dashboard");
-  return (
-    <Sheet
-      open={blade !== null}
-      onOpenChange={(open) => {
-        if (!open) onClose();
-      }}
-    >
-      <SheetContent
-        data-testid="kpi-breakdown"
-        className="inset-y-0 flex w-full flex-col overflow-hidden p-0 sm:w-3/4 sm:max-w-none lg:w-3/4 xl:w-3/5"
-      >
-        <SheetHeader className="sr-only">
-          <SheetTitle>{blade?.title ?? t("kpiSheet.title")}</SheetTitle>
-        </SheetHeader>
-        {blade && (
-          <BladeContainer
-            root={{
-              ...blade,
-              // The descriptor's own width hint is what it gets when something pushes it deeper
-              // in a stack; as the root of this sheet it fills the panel instead.
-              width: "flex",
-            }}
-            className="min-h-0 flex-1"
-          />
-        )}
-      </SheetContent>
-    </Sheet>
+export const DashboardKpiSheet: React.FC<DashboardKpiSheetProps> = ({
+  kpiId,
+  analytics,
+  onClose,
+}) => {
+  const data = React.useMemo<KpiBreakdownData>(
+    () => ({
+      activity: analytics.activity,
+      shippedFeatures: analytics.shippedFeatures,
+      mergedPrs: analytics.mergedPrs,
+      planCosts: analytics.planCosts,
+      agentCosts: analytics.agentCosts,
+    }),
+    [
+      analytics.activity,
+      analytics.shippedFeatures,
+      analytics.mergedPrs,
+      analytics.planCosts,
+      analytics.agentCosts,
+    ],
   );
+  return <KpiBreakdownSheet kpiId={kpiId} data={data} onClose={onClose} />;
 };

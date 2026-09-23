@@ -75,6 +75,7 @@
     },
     "rerun": {
       "label": "Erneut ausführen",
+      "tooltip": "Diesen Job erneut ausführen",
       "unavailable": "Erneutes Ausführen nicht möglich: Die ursprünglichen Argumente wurden nicht gespeichert."
     },
     "forceStart": {
@@ -94,11 +95,8 @@
   "errors": {
     "stopFailed": "Stoppen fehlgeschlagen: {{error}}",
     "forceStartFailed": "Erzwungener Start fehlgeschlagen: {{error}}",
+    "rerunFailed": "Erneute Ausführung fehlgeschlagen: {{error}}",
     "deleteFailed": "Löschen fehlgeschlagen: {{error}}"
-  },
-  "deleteDialog": {
-    "title": "Job löschen",
-    "body": "Möchten Sie diesen Job wirklich löschen? Dies kann nicht rückgängig gemacht werden."
   },
   "statusMessage": {
     "blocked": "Wartet auf den Abschluss abhängiger Pläne.",
@@ -135,83 +133,30 @@
     "tokens": "Tokens {{tokens}}",
     "cost": "Kosten {{cost}}",
     "closeTab": "Sitzungs-Tab schließen",
-    "noOutput": "Keine Ausgabe verfügbar.",
-    "statusCallout": {
-      "title": "Job: {{status}}",
-      "title_pending": "Job ausstehend",
-      "title_queued": "Job in Warteschlange",
-      "title_blocked": "Job blockiert",
-      "title_failed": "Job fehlgeschlagen",
-      "title_timeout": "Zeitüberschreitung des Jobs",
-      "title_stopped": "Job gestoppt"
-    }
+    "noOutput": "Keine Ausgabe verfügbar."
   },
   "costSheet": {
     "title": "Kosten & Tokens",
-    "titleWithPlan": "Kosten & Tokens – {{planId}}",
-    "details": {
-      "model": "Modell",
-      "provider": "Provider",
-      "type": "Typ",
-      "profile": "Profil",
-      "agentCost": "Vom Agenten gemeldete Kosten"
-    },
-    "notProvided": "Nicht angegeben",
-    "noUsage": "Für diesen Job wurde keine Aufschlüsselung nach Token-Typ aufgezeichnet.",
-    "noUsage_total": "Für diesen Job wurde keine Aufschlüsselung nach Token-Typ aufgezeichnet, nur eine Gesamtzahl von {{total}} Tokens.",
-    "breakdown": {
-      "title": "Aufschlüsselung",
-      "tokenType": "Token-Typ",
-      "tokens": "Tokens",
-      "total": "Gesamt"
-    },
-    "totalCost": "Gesamtkosten"
-  },
-  "promptSheet": {
-    "title": "Vollständiger Prompt",
-    "empty": "Für diesen Job wurde kein Prompt-Text aufgezeichnet."
+    "titleWithPlan": "Kosten & Tokens – {{planId}}"
   },
   "clear": {
-    "dialogTitle": "Jobs löschen",
-    "confirm": "Löschen",
-    "confirmCount": "{{count}} löschen",
     "countFailed": "Jobs konnten nicht gezählt werden: {{error}}",
     "failed": "Löschen fehlgeschlagen: {{error}}",
     "scopes": {
       "completed": {
-        "label": "Abgeschlossene löschen",
-        "counting": "Abgeschlossene Jobs werden gezählt…",
-        "empty": "Es gibt keine abgeschlossenen Jobs zum Löschen.",
-        "confirm_one": "{{count}} abgeschlossenen Job löschen? Seine Logs und Ausgabe werden mit entfernt. Dies kann nicht rückgängig gemacht werden.",
-        "confirm_other": "{{count}} abgeschlossene Jobs löschen? Ihre Logs und Ausgabe werden mit entfernt. Dies kann nicht rückgängig gemacht werden."
+        "label": "Abgeschlossene löschen"
       },
       "failed": {
-        "label": "Fehlgeschlagene löschen",
-        "counting": "Fehlgeschlagene Jobs werden gezählt…",
-        "empty": "Es gibt keine fehlgeschlagenen Jobs zum Löschen.",
-        "confirm_one": "{{count}} fehlgeschlagenen Job löschen? Seine Logs und Ausgabe werden mit entfernt. Dies kann nicht rückgängig gemacht werden.",
-        "confirm_other": "{{count}} fehlgeschlagene Jobs löschen? Ihre Logs und Ausgabe werden mit entfernt. Dies kann nicht rückgängig gemacht werden."
+        "label": "Fehlgeschlagene löschen"
       },
       "timeout": {
-        "label": "Zeitüberschreitungen löschen",
-        "counting": "Jobs mit Zeitüberschreitung werden gezählt…",
-        "empty": "Es gibt keine Jobs mit Zeitüberschreitung zum Löschen.",
-        "confirm_one": "{{count}} Job mit Zeitüberschreitung löschen? Seine Logs und Ausgabe werden mit entfernt. Dies kann nicht rückgängig gemacht werden.",
-        "confirm_other": "{{count}} Jobs mit Zeitüberschreitung löschen? Ihre Logs und Ausgabe werden mit entfernt. Dies kann nicht rückgängig gemacht werden."
+        "label": "Zeitüberschreitungen löschen"
       },
       "stopped": {
-        "label": "Gestoppte löschen",
-        "counting": "Gestoppte Jobs werden gezählt…",
-        "empty": "Es gibt keine gestoppten Jobs zum Löschen.",
-        "confirm_one": "{{count}} gestoppten Job löschen? Seine Logs und Ausgabe werden mit entfernt. Dies kann nicht rückgängig gemacht werden.",
-        "confirm_other": "{{count}} gestoppte Jobs löschen? Ihre Logs und Ausgabe werden mit entfernt. Dies kann nicht rückgängig gemacht werden."
+        "label": "Gestoppte löschen"
       },
       "all": {
-        "label": "Alle beendeten löschen",
-        "counting": "Beendete Jobs werden gezählt…",
-        "empty": "Es gibt keine beendeten Jobs zum Löschen.",
-        "confirm_one": "{{count}} beendeten Job löschen? Seine Logs und Ausgabe werden mit entfernt. Dies kann nicht rückgängig gemacht werden.",
-        "confirm_other": "{{count}} beendete Jobs löschen? Ihre Logs und Ausgabe werden mit entfernt. Dies kann nicht rückgängig gemacht werden."
+        "label": "Alle beendeten löschen"
       }
     }
   },

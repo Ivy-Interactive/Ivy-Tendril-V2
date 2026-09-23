@@ -380,6 +380,48 @@ impl TendrilClient {
         Ok(())
     }
 
+    /// V1's Rerun: `POST /api/jobs/:id/rerun`, which deletes the finished job and starts it again from
+    /// its original args with `feedback` folded in. Answers the new job.
+    pub async fn rerun_job(
+        &self,
+        job_id: &str,
+        feedback: Option<&str>,
+    ) -> Result<StartJobResponseDto, BridgeError> {
+        let url = format!("{}/api/jobs/{}/rerun", self.base_url, urlencoding(job_id));
+        let resp = self
+            .client
+            .post(&url)
+            .headers(self.headers())
+            .json(&json!({ "feedback": feedback }))
+            .send()
+            .await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::new(
+                "RERUN_JOB_FAILED",
+                format!("Failed to rerun job '{job_id}' ({status}): {text}"),
+            ));
+        }
+
+        let val: serde_json::Value = resp.json().await?;
+        let new_id = val
+            .get("jobId")
+            .and_then(|v| v.as_str())
+            .unwrap_or_default()
+            .to_string();
+        let status = val
+            .get("status")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Started")
+            .to_string();
+        Ok(StartJobResponseDto {
+            job_id: new_id,
+            status,
+        })
+    }
+
     /// Bulk-clear finished jobs by scope: `POST /api/jobs/clear` with `{ "status": scope }`, answering
     /// how many rows went.
     ///

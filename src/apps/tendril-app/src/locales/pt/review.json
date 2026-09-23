@@ -142,23 +142,6 @@
     "implementHint": "Aceita as recomendações marcadas e tenta o plano novamente usando-as como solicitação de alteração.",
     "select": "Selecionar {{title}}"
   },
-  "noteDialog": {
-    "submit": "Enviar",
-    "accept": {
-      "title": "Aceitar Recomendação",
-      "ariaLabel": "Aceitar Recomendação",
-      "noteLabel": "Nota do Operador (opcional):",
-      "noteAriaLabel": "Nota opcional",
-      "placeholder": "Insira notas opcionais..."
-    },
-    "decline": {
-      "title": "Recusar Recomendação",
-      "ariaLabel": "Recusar Recomendação",
-      "noteLabel": "Motivo da Recusa:",
-      "noteAriaLabel": "Motivo da recusa",
-      "placeholder": "Informe o motivo da recusa..."
-    }
-  },
   "actionsBar": {
     "tooltip": {
       "barDisabled": "Desativado: {{reason}}",

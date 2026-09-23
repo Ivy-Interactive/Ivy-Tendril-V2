@@ -1,1 +1,191 @@
-{}
+{
+  "removal": {
+    "title": "{{kind}} を削除",
+    "title_level": "レベルを削除",
+    "title_repository": "リポジトリを削除",
+    "title_reviewAction": "レビューアクションを削除",
+    "title_environmentFile": "環境変数ファイルを削除",
+    "title_mcpServer": "MCP サーバーを削除",
+    "title_customSkill": "カスタムスキルを削除",
+    "body": "{{kind}} <name>{{name}}</name> をこの構成から削除しますか？",
+    "body_level": "レベル <name>{{name}}</name> をこの構成から削除しますか？",
+    "body_repository": "リポジトリ <name>{{name}}</name> をこの構成から削除しますか？",
+    "body_reviewAction": "レビューアクション <name>{{name}}</name> をこの構成から削除しますか？",
+    "body_environmentFile": "環境変数ファイル <name>{{name}}</name> をこの構成から削除しますか？",
+    "body_mcpServer": "MCP サーバー <name>{{name}}</name> をこの構成から削除しますか？",
+    "body_customSkill": "カスタムスキル <name>{{name}}</name> をこの構成から削除しますか？",
+    "title_memoryFile": "メモリファイルを削除",
+    "body_memoryFile": "メモリファイル <name>{{name}}</name> をこのプロジェクトから削除しますか？",
+    "confirm": "削除"
+  },
+  "configEditor": {
+    "discard": {
+      "title": "未保存の変更を破棄",
+      "confirm": "破棄して再読み込み",
+      "body": "再読み込みすると、エディタの内容がディスク上のファイルに置き換わります。保存していない編集内容は失われます。"
+    }
+  },
+  "agentTest": {
+    "title": "コーディングエージェントのテスト",
+    "columns": {
+      "test": "テスト",
+      "result": "結果"
+    },
+    "status": {
+      "passed": "合格",
+      "failed": "不合格",
+      "warning": "警告",
+      "running": "実行中",
+      "pending": "保留中"
+    },
+    "showRawOutput": "生の出力を表示",
+    "rawOutputTitle": "生の出力",
+    "close": "閉じる",
+    "cancel": "キャンセル"
+  },
+  "projectMemory": {
+    "addTitle": "プロジェクトメモリを追加",
+    "editTitle": "メモリを編集: {{fileName}}",
+    "description": "{{project}} の Memory フォルダーにある Markdown ファイルです。",
+    "loading": "メモリファイルを読み込んでいます...",
+    "fileName": {
+      "label": "ファイル名",
+      "placeholder": "メモリのファイル名 (例: stack.md、conventions.md)..."
+    },
+    "content": {
+      "label": "内容 (Markdown)",
+      "placeholder": "Markdown のメモリ内容 (例: 技術スタック、ルール、アーキテクチャの規約)..."
+    },
+    "cancel": "キャンセル",
+    "add": "追加",
+    "save": "保存"
+  },
+  "importRepoAssets": {
+    "title": "リポジトリからインポート",
+    "title_skills": "リポジトリからカスタムスキルをインポート",
+    "title_mcpServers": "リポジトリから MCP ツールとサーバーをインポート",
+    "cancel": "キャンセル",
+    "submit_other": "選択項目をインポート ({{count}})",
+    "source": {
+      "heading": "リポジトリのソース",
+      "modes": {
+        "repo": "プロジェクトのリポジトリ",
+        "gitUrl": "Git URL",
+        "localPath": "ローカルパス"
+      },
+      "repo": "プロジェクトのリポジトリ",
+      "gitUrl": "Git リポジトリの URL",
+      "localPath": "ローカルフォルダーのパス",
+      "localPathPlaceholder": "~/path/to/repository または /Users/..."
+    },
+    "fetchAndScan": "取得してスキャン",
+    "scan": "スキャン",
+    "scanning": "リポジトリをスキャンしています...",
+    "notScanned": "ソースを選んでスキャンすると、含まれているものが表示されます。",
+    "empty": "このリポジトリにはインポートできるものが見つかりませんでした。",
+    "empty_skills": "このリポジトリに SKILL.md ファイルが見つかりませんでした (.agents/skills、.gemini/skills、skills/ など)。",
+    "empty_mcpServers": "MCP 構成ファイル (.mcp.json、mcp_config.json、.vscode/mcp.json) が見つかりませんでした。",
+    "discovered": "検出されたもの",
+    "discovered_skills": "検出されたカスタムスキル",
+    "discovered_mcpServers": "検出された MCP サーバー"
+  },
+  "vaultThemes": {
+    "title": "チーム Vault のテーマ",
+    "createTitle": "カスタムテーマを作成",
+    "editTitle": "カスタムテーマを編集",
+    "close": "閉じる",
+    "cancel": "キャンセル",
+    "upload": "チーム Vault にアップロード",
+    "newTheme": "新しいカスタムテーマ",
+    "copyConfiguration": "構成をコピー",
+    "importConfiguration": "構成をインポート",
+    "defaults": {
+      "name": "チームブランド",
+      "description": "チーム Vault のカスタムテーマ"
+    },
+    "tabs": {
+      "generator": "テーマジェネレーター",
+      "themes_other": "Vault のテーマ ({{count}})"
+    },
+    "fields": {
+      "name": "テーマ名",
+      "description": "説明",
+      "preset": "テーマのプリセット",
+      "presetCustom": "カスタム",
+      "mode": "テーマモード",
+      "fontFamily": "フォントファミリー",
+      "fontSize": "フォントサイズ",
+      "radius": "角の丸み"
+    },
+    "mode": {
+      "light": "ライト",
+      "dark": "ダーク",
+      "lightBadge": "ライトモード",
+      "darkBadge": "ダークモード"
+    },
+    "sections": {
+      "preview": "コンポーネントのプレビュー",
+      "colors": "色",
+      "typography": "タイポグラフィとレイアウト"
+    },
+    "colorGroups": {
+      "main": "メインカラー",
+      "semantic": "セマンティックカラー",
+      "ui": "UI 要素の色"
+    },
+    "radius": {
+      "none": "なし",
+      "small": "小",
+      "medium": "中",
+      "large": "大",
+      "full": "最大"
+    },
+    "preview": {
+      "heading": "インタラクティブプレビュー",
+      "hint": "色、タイポグラフィ、角の丸みに反応するライブプレビュー",
+      "primary": "プライマリ",
+      "secondary": "セカンダリ",
+      "outline": "アウトライン",
+      "destructive": "破壊的",
+      "ghost": "ゴースト",
+      "textField": "テキストフィールド",
+      "switch": "トグルスイッチ",
+      "callout": "ボックス、フィールド、セレクターは角の丸みと色の変数を引き継ぎます。",
+      "metric": "サンプル指標",
+      "healthy": "正常"
+    },
+    "list": {
+      "loading": "Vault のテーマを読み込んでいます...",
+      "noDescription": "カスタムテーマ",
+      "active": "使用中",
+      "apply": "適用",
+      "edit": "編集",
+      "delete": "{{name}} を削除",
+      "count_other": "Vault 内のカスタムテーマ: {{count}} 件"
+    },
+    "empty": {
+      "title": "Vault にカスタムテーマがありません",
+      "body": "このチーム Vault にはまだカスタムテーマがありません。テーマジェネレーターで作成してアップロードしてください。"
+    },
+    "export": {
+      "title": "テーマ構成をエクスポート",
+      "format": "形式",
+      "jsonHint": "この JSON でテーマを保存したり共有したりできます。",
+      "cssHint": "この CSS をホストに貼り付けると、テーマの色が適用されます。",
+      "copy": "{{format}} をコピー"
+    },
+    "import": {
+      "title": "テーマ構成をインポート",
+      "description": "JSON のテーマ構成を貼り付けると、色、タイポグラフィ、角の丸みを取り込みます。",
+      "fieldLabel": "テーマ構成",
+      "submit": "テーマをインポート",
+      "invalidJson": "有効な JSON ではありません。",
+      "invalidShape": "テーマの色が見つかりません。\"light\" または \"dark\" を含む \"colors\" オブジェクトが必要です。"
+    },
+    "deleteConfirm": {
+      "title": "{{name}} を Vault から削除しますか？",
+      "body": "このテーマは、使用しているすべての人のために Vault リポジトリから削除されます。適用している人はデフォルトのテーマに戻ります。",
+      "confirm": "テーマを削除"
+    }
+  }
+}

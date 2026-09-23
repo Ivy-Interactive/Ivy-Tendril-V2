@@ -128,6 +128,7 @@ describe("project configuration", () => {
       cachePath: "/home/user/.tendril/models.json",
     });
     vi.spyOn(bridge, "getServiceLogs").mockResolvedValue([]);
+    vi.spyOn(bridge, "listProjectMemory").mockResolvedValue([]);
     notifySuccess = vi
       .spyOn(notificationsStore, "notifySuccess")
       .mockImplementation(() => undefined);
@@ -579,10 +580,43 @@ describe("project configuration", () => {
       });
     });
 
-    it("says project memories are not reachable rather than showing an empty list", async () => {
+    /** `ProjectMemoryTableView`: the `Memory/*.md` files, read through the daemon's memory route. */
+    it("lists the project's memory files with their snippets", async () => {
+      const list = vi
+        .spyOn(bridge, "listProjectMemory")
+        .mockResolvedValue([
+          { fileName: "stack.md", snippet: "Stack — Rust daemon", sizeBytes: 42 },
+        ]);
       await renderProject(configWith({}, { beta: true }));
 
-      expect(screen.getByTestId("project-memory-note")).toBeInTheDocument();
+      expect(list).toHaveBeenCalledWith("Tendril");
+      const table = await screen.findByTestId("project-memory-table");
+      expect(within(table).getByText("stack.md")).toBeInTheDocument();
+      expect(within(table).getByText("Stack — Rust daemon")).toBeInTheDocument();
+    });
+
+    it("deletes a memory file only once the removal is confirmed", async () => {
+      vi.spyOn(bridge, "listProjectMemory").mockResolvedValue([
+        { fileName: "stack.md", snippet: "Stack", sizeBytes: 5 },
+      ]);
+      const remove = vi.spyOn(bridge, "deleteProjectMemory").mockResolvedValue(undefined);
+      await renderProject(configWith({}, { beta: true }));
+
+      const table = await screen.findByTestId("project-memory-table");
+      const del = Array.from(table.querySelectorAll("button")).find(
+        (b) => b.getAttribute("aria-label") === "Delete",
+      ) as HTMLButtonElement;
+      await act(async () => {
+        fireEvent.click(del);
+      });
+      expect(remove).not.toHaveBeenCalled();
+
+      const dialog = screen.getByTestId("settings-remove-dialog");
+      expect(dialog.textContent).toContain("Remove memory file stack.md from this project?");
+      await act(async () => {
+        fireEvent.click(within(dialog).getByTestId("dialog-confirm"));
+      });
+      expect(remove).toHaveBeenCalledWith("Tendril", "stack.md");
     });
   });
 

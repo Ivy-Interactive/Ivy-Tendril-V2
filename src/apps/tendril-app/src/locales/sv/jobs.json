@@ -75,6 +75,7 @@
     },
     "rerun": {
       "label": "Kör igen",
+      "tooltip": "Kör det här jobbet igen",
       "unavailable": "Det går inte att köra igen: de ursprungliga argumenten sparades inte."
     },
     "forceStart": {
@@ -94,11 +95,8 @@
   "errors": {
     "stopFailed": "Det gick inte att stoppa: {{error}}",
     "forceStartFailed": "Det gick inte att tvinga start: {{error}}",
+    "rerunFailed": "Det gick inte att köra igen: {{error}}",
     "deleteFailed": "Det gick inte att ta bort: {{error}}"
-  },
-  "deleteDialog": {
-    "title": "Ta bort jobb",
-    "body": "Vill du ta bort det här jobbet? Det går inte att ångra."
   },
   "statusMessage": {
     "blocked": "Väntar på att beroende planer ska slutföras.",
@@ -135,83 +133,30 @@
     "tokens": "Tokens {{tokens}}",
     "cost": "Kostnad {{cost}}",
     "closeTab": "Stäng sessionsfliken",
-    "noOutput": "Ingen utdata tillgänglig.",
-    "statusCallout": {
-      "title": "Jobb: {{status}}",
-      "title_pending": "Jobbet väntar",
-      "title_queued": "Jobbet är köat",
-      "title_blocked": "Jobbet är blockerat",
-      "title_failed": "Jobbet misslyckades",
-      "title_timeout": "Jobbet fick timeout",
-      "title_stopped": "Jobbet stoppades"
-    }
+    "noOutput": "Ingen utdata tillgänglig."
   },
   "costSheet": {
     "title": "Kostnad & tokens",
-    "titleWithPlan": "Kostnad & tokens — {{planId}}",
-    "details": {
-      "model": "Modell",
-      "provider": "Leverantör",
-      "type": "Typ",
-      "profile": "Profil",
-      "agentCost": "Kostnad rapporterad av agenten"
-    },
-    "notProvided": "Ej angiven",
-    "noUsage": "Ingen uppdelning per token registrerades för jobbet.",
-    "noUsage_total": "Ingen uppdelning per token registrerades för jobbet, bara totalt {{total}} tokens.",
-    "breakdown": {
-      "title": "Uppdelning",
-      "tokenType": "Tokentyp",
-      "tokens": "Tokens",
-      "total": "Totalt"
-    },
-    "totalCost": "Total kostnad"
-  },
-  "promptSheet": {
-    "title": "Fullständig prompt",
-    "empty": "Jobbet sparade ingen prompttext."
+    "titleWithPlan": "Kostnad & tokens — {{planId}}"
   },
   "clear": {
-    "dialogTitle": "Rensa jobb",
-    "confirm": "Rensa",
-    "confirmCount": "Rensa {{count}}",
     "countFailed": "Det gick inte att räkna jobben: {{error}}",
     "failed": "Det gick inte att rensa: {{error}}",
     "scopes": {
       "completed": {
-        "label": "Rensa slutförda",
-        "counting": "Räknar slutförda jobb…",
-        "empty": "Det finns inga slutförda jobb att rensa.",
-        "confirm_one": "Vill du ta bort {{count}} slutfört jobb? Dess loggar och utdata tas bort samtidigt, och det går inte att ångra.",
-        "confirm_other": "Vill du ta bort {{count}} slutförda jobb? Deras loggar och utdata tas bort samtidigt, och det går inte att ångra."
+        "label": "Rensa slutförda"
       },
       "failed": {
-        "label": "Rensa misslyckade",
-        "counting": "Räknar misslyckade jobb…",
-        "empty": "Det finns inga misslyckade jobb att rensa.",
-        "confirm_one": "Vill du ta bort {{count}} misslyckat jobb? Dess loggar och utdata tas bort samtidigt, och det går inte att ångra.",
-        "confirm_other": "Vill du ta bort {{count}} misslyckade jobb? Deras loggar och utdata tas bort samtidigt, och det går inte att ångra."
+        "label": "Rensa misslyckade"
       },
       "timeout": {
-        "label": "Rensa jobb med timeout",
-        "counting": "Räknar jobb som fått timeout…",
-        "empty": "Det finns inga jobb med timeout att rensa.",
-        "confirm_one": "Vill du ta bort {{count}} jobb som fått timeout? Dess loggar och utdata tas bort samtidigt, och det går inte att ångra.",
-        "confirm_other": "Vill du ta bort {{count}} jobb som fått timeout? Deras loggar och utdata tas bort samtidigt, och det går inte att ångra."
+        "label": "Rensa jobb med timeout"
       },
       "stopped": {
-        "label": "Rensa stoppade",
-        "counting": "Räknar stoppade jobb…",
-        "empty": "Det finns inga stoppade jobb att rensa.",
-        "confirm_one": "Vill du ta bort {{count}} stoppat jobb? Dess loggar och utdata tas bort samtidigt, och det går inte att ångra.",
-        "confirm_other": "Vill du ta bort {{count}} stoppade jobb? Deras loggar och utdata tas bort samtidigt, och det går inte att ångra."
+        "label": "Rensa stoppade"
       },
       "all": {
-        "label": "Rensa alla avslutade",
-        "counting": "Räknar avslutade jobb…",
-        "empty": "Det finns inga avslutade jobb att rensa.",
-        "confirm_one": "Vill du ta bort {{count}} avslutat jobb? Dess loggar och utdata tas bort samtidigt, och det går inte att ångra.",
-        "confirm_other": "Vill du ta bort {{count}} avslutade jobb? Deras loggar och utdata tas bort samtidigt, och det går inte att ångra."
+        "label": "Rensa alla avslutade"
       }
     }
   },

@@ -81,21 +81,7 @@
     "failed": "सहेजने में विफल: {{error}}"
   },
   "test": {
-    "title": "कोडिंग एजेंट परीक्षण",
     "defaultModel": "डिफ़ॉल्ट",
-    "columns": {
-      "test": "परीक्षण",
-      "result": "परिणाम"
-    },
-    "status": {
-      "passed": "पास",
-      "failed": "विफल",
-      "warning": "चेतावनी",
-      "running": "चल रहा",
-      "pending": "लंबित"
-    },
-    "showRawOutput": "रॉ आउटपुट दिखाएं",
-    "rawOutputTitle": "रॉ आउटपुट",
     "rows": {
       "install": "इंस्टॉलेशन",
       "auth": "प्रमाणीकरण",

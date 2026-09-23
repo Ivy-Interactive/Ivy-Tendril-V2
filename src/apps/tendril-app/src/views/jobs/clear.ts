@@ -1,6 +1,6 @@
+import { describeJobClearPrompt } from "@ivy-interactive/components/dialogs";
 import { whereColumn } from "@ivy-interactive/components/ui";
 import { queryJobsPage } from "../../api/tableQuery";
-import type { TFunction } from "../../i18n";
 import type { JobStatus } from "../../types/api";
 import { jobsT } from "./format";
 
@@ -10,14 +10,17 @@ import { jobsT } from "./format";
  * deleted" - which is why the sentence is built here rather than in the dialog.
  */
 
-/** A scope's subtree in the `jobs` catalog: `clear.scopes.<key>`. */
+/**
+ * A scope's key: its menu label is `jobs:clear.scopes.<key>.label`, and its confirm's copy is the
+ * library's `ClearJobsDialog`, `uiJobs:clearJobs.scopes.<key>`.
+ */
 export type JobClearScopeKey = "completed" | "failed" | "timeout" | "stopped" | "all";
 
 /** One entry in the header menu's clear list. */
 export interface JobClearScope {
   /** The `status` value `POST /api/jobs/clear` is sent. */
   scope: string;
-  /** Where the scope's copy lives in the `jobs` catalog, `clear.scopes.<key>`. */
+  /** The scope's key, for its menu label here and its confirm's copy in `ClearJobsDialog`. */
   key: JobClearScopeKey;
   /** The menu label, and the dialog's title - in the language current when it is read. */
   readonly label: string;
@@ -91,42 +94,14 @@ export interface JobClearPrompt {
 }
 
 /**
- * The clear confirm's copy.
- *
- * A function rather than JSX in the dialog because the *sentence* is the safety mechanism: "Delete 412
- * completed jobs?" and "Delete completed jobs?" are different decisions, and V1 asks neither — it fires
- * `ClearCompletedJobs()` straight off the menu item. Three states, and each has to be right:
- *
- * - **not counted yet** (`null`): says so, and arms nothing. Offering a confirm a moment before the
- *   figure lands is how someone removes four hundred rows they thought were four.
- * - **nothing to remove**: says that instead of asking, and stays disarmed. A clear that would delete
- *   nothing is not a question worth answering.
- * - **n rows**: the number, the noun, and what goes with them.
+ * The clear confirm's copy, which is `ClearJobsDialog`'s own (`describeJobClearPrompt` in the
+ * library): not counted yet, nothing to remove, or the number and the noun. Kept here as the
+ * sentence the header menu's scope leads to, so the copy can be checked without opening a Radix menu
+ * and dialog over a rendered table.
  */
-export function describeClearPrompt(
-  scope: JobClearScope,
-  count: number | null,
-  t: TFunction<"jobs"> = jobsT,
-): JobClearPrompt {
-  if (count === null) {
-    return {
-      body: t(`clear.scopes.${scope.key}.counting`),
-      confirmLabel: t("clear.confirm"),
-      confirmDisabled: true,
-    };
-  }
-  if (count === 0) {
-    return {
-      body: t(`clear.scopes.${scope.key}.empty`),
-      confirmLabel: t("clear.confirm"),
-      confirmDisabled: true,
-    };
-  }
-  return {
-    body: t(`clear.scopes.${scope.key}.confirm`, { count }),
-    confirmLabel: t("clear.confirmCount", { count }),
-    confirmDisabled: false,
-  };
+export function describeClearPrompt(scope: JobClearScope, count: number | null): JobClearPrompt {
+  const { body, confirmLabel, confirmDisabled } = describeJobClearPrompt(scope.key, count);
+  return { body, confirmLabel, confirmDisabled };
 }
 
 /**

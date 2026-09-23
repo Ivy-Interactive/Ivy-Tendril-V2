@@ -70,7 +70,8 @@
     "completePlan": "Slutför plan",
     "retryPlan": "Försök igen med planen",
     "acceptPartialDelivery": "Acceptera delleverans",
-    "resetToDraft": "Återställ till utkast…"
+    "resetToDraft": "Återställ till utkast…",
+    "share": "Dela"
   },
   "draftActions": {
     "execute": "Exekvera plan",
@@ -127,7 +128,23 @@
     "repositories": "Arkiv",
     "noRepositories": "Inga arkiv angivna",
     "commits": "Commits",
-    "noCommits": "Inga commits än"
+    "noCommits": "Inga commits än",
+    "jobs": {
+      "heading": "Jobb",
+      "columns": {
+        "status": "Status",
+        "type": "Typ",
+        "cost": "Kostnad",
+        "tokens": "Tokens",
+        "message": "Statusmeddelande",
+        "actions": "Åtgärder"
+      },
+      "debug": "Felsök",
+      "debugTooltip": "Visa felsökningsinformation för jobbet",
+      "costTooltip": "Visa kostnads- och tokenfördelning",
+      "costTitle": "Kostnad & tokens",
+      "costTitleWithPlan": "Kostnad & tokens — {{planId}}"
+    }
   },
   "verificationStatus": {
     "pass": "Godkänd",
@@ -143,32 +160,12 @@
     "hideReport": "Dölj rapport",
     "noReport": "Ingen rapport än"
   },
-  "reportSheet": {
-    "title": "Verifieringsrapport",
-    "description": "Detaljer i verifieringsrapporten för {{name}}",
-    "descriptionFallback": "Detaljer i verifieringsrapporten för planen",
-    "loading": "Läser in verifieringsrapporten…",
-    "notFound": "Ingen verifieringsrapport hittades för ”{{name}}”.",
-    "empty": "Ingen rapport tillgänglig för {{name}}."
-  },
   "artifactSheet": {
     "thumbnail": {
       "openLabel": "Öppna {{fileName}}",
       "noPreview": "Ingen förhandsvisning",
       "loadingLabel": "Läser in {{fileName}}"
-    },
-    "fallbackTitle": "Artefakt",
-    "noPreviewTitle": "Ingen förhandsvisning",
-    "showInFolder": "Visa i mapp",
-    "loadingLabel": "Läser in {{fileName}}",
-    "imageFailed": "Tendril kunde inte läsa in bilden.",
-    "imageFailedWithError": "Tendril kunde inte läsa in bilden: {{error}}",
-    "binary": "{{fileName}} är inte en textfil ({{size}}), så den kan inte förhandsvisas här.",
-    "tooLarge": "{{fileName}} är {{size}}, för stor för att förhandsvisas här.",
-    "plainNotice": "Visas som oformaterad text: med {{size}} är {{fileName}} för stor för syntaxmarkering.",
-    "plainNotice_markdown": "Visas som oformaterad text: med {{size}} är {{fileName}} för stor för att återges som Markdown.",
-    "copyPath": "Kopiera sökväg",
-    "revealLabel": "Visa i mapp"
+    }
   },
   "pullRequests": {
     "title": "Pull requests",
@@ -222,16 +219,6 @@
     },
     "thawFailed": "Det gick inte att tina upp plan {{id}}: {{error}}"
   },
-  "newPlan": {
-    "title": "Skapa ny plan",
-    "closeLabel": "Stäng dialogrutan",
-    "projectPickerLabel": "Målprojekt",
-    "autoProject": "Automatiskt",
-    "addProject": "+ Lägg till nytt projekt",
-    "submit": "Skapa",
-    "placeholder": "Ange en uppgiftsbeskrivning…",
-    "emptyDescription": "Ange en beskrivning för den nya planen."
-  },
   "planActions": {
     "canExecute": {
       "alreadyCompleted": "Planen är redan slutförd.",
@@ -277,5 +264,9 @@
   "store": {
     "rollbackField": "Ändringen återställdes: det gick inte att uppdatera {{field}}: {{error}}",
     "rollbackVerification": "Verifieringsuppdateringen återställdes: {{error}}"
+  },
+  "share": {
+    "linkCopiedTitle": "Länken kopierad",
+    "linkCopied": "Planens delningslänk kopierades till urklipp"
   }
 }

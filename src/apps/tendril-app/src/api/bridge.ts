@@ -28,6 +28,7 @@ import type {
   PlanArtifactContent,
   PlanArtifacts,
   PlanChangesData,
+  PlanCommitDetail,
   PlanDetail,
   PlanGitData,
   PlanQuery,
@@ -42,6 +43,7 @@ import type {
   RecommendationItem,
   RecommendationState,
   RepoStatus,
+  IssueMetadata,
   ReviewActionConditionResult,
   ReviewActionConfig,
   RevisionResult,
@@ -64,6 +66,12 @@ import type {
   VersionInfo,
 } from "../types/api";
 import type { ChatAttachment } from "../types/chat";
+import type {
+  DiscoveredRepoAsset,
+  ProjectMemoryEntry,
+  ProjectMemoryFile,
+  RepoAssetKind,
+} from "../types/projectAssets";
 import { encodeBase64, isTauri } from "../utils/tauri";
 import { i18n } from "../i18n";
 
@@ -383,6 +391,19 @@ const tauriClient = {
   },
 
   /**
+   * Uncommitted-change status of each of a project's repos, with the base branch each syncs to - the
+   * create-plan dirty-repo preflight (V1 `UsePreflightCheck(project)`).
+   */
+  async getProjectRepoStatus(this: void, projectName: string): Promise<RepoStatus[]> {
+    return invoke<RepoStatus[]>("cmd_get_project_repo_status", { projectName });
+  },
+
+  /** A project's GitHub labels and assignable users (`gh`, cached daemon-side), for Create Issue. */
+  async getProjectIssueMetadata(this: void, projectName: string): Promise<IssueMetadata> {
+    return invoke<IssueMetadata>("cmd_get_project_issue_metadata", { projectName });
+  },
+
+  /**
    * The plan's worktrees, its commits grouped under them, and the reachability
    * verdict for the commits no worktree accounts for — the Git tab's data.
    */
@@ -430,6 +451,29 @@ const tauriClient = {
       { id, path },
       `/api/plans/${encodeURIComponent(id)}/artifacts/content?path=${encodeURIComponent(path)}`,
     );
+  },
+
+  /**
+   * One of a plan's commits for the commit detail sheet: its subject, files and per-file patch, from
+   * the first of the plan's repos (then worktrees) that holds it. `null` when none does any more.
+   * Read natively - see `commands::plan_files` in the Tauri crate.
+   */
+  async getPlanCommit(this: void, id: string, hash: string): Promise<PlanCommitDetail | null> {
+    return invoke<PlanCommitDetail | null>("cmd_get_plan_commit", { id, hash });
+  },
+
+  /**
+   * A local file markdown links to, for the file sheet. Refused (`VALIDATION_ERROR`) unless it
+   * resolves inside the plan's folder or one of the repos the plan targets - or, with no plan (an
+   * Inbox issue), inside a configured project's repo; answers `binary` /
+   * `tooLarge` the way the artifact read does. Images go through `getLocalFilePreview` instead.
+   */
+  async getPlanFileContent(
+    this: void,
+    id: string | null | undefined,
+    path: string,
+  ): Promise<PlanArtifactContent> {
+    return invoke<PlanArtifactContent>("cmd_get_plan_file_content", { id: id ?? null, path });
   },
 
   async getRevision(this: void, id: string, number?: number): Promise<string> {
@@ -638,6 +682,29 @@ const tauriClient = {
   /** Promotes a blocked or queued job past its gates so it runs next. */
   async forceStartJob(this: void, id: string): Promise<void> {
     return invoke<void>("cmd_force_start_job", { id });
+  },
+
+  /**
+   * V1's Rerun (`RerunJobDialog.cs`): the daemon deletes the finished job and starts it again from its
+   * original args, with `feedback` folded in - a `RetryPlan` change request, `UpdatePlan`
+   * instructions, or an `ExecutePlan` of the plan a `CreatePlan` produced. Answers the new job.
+   */
+  async rerunJob(this: void, id: string, feedback?: string): Promise<StartJobResponse> {
+    return invoke<StartJobResponse>("cmd_rerun_job", { id, feedback });
+  },
+
+  /**
+   * V1's Report Bug (`ReportBugDialog.cs` over `BugReportService`): the job's logs, its plan and a
+   * sanitized config go up as a **public** GitHub issue, through `tendril report-bug --submit`.
+   * Answers the issue's URL.
+   */
+  async reportJobBug(
+    this: void,
+    id: string,
+    description: string,
+    githubUser?: string,
+  ): Promise<string> {
+    return invoke<string>("cmd_report_job_bug", { id, description, githubUser });
   },
 
   /**
@@ -886,6 +953,94 @@ const tauriClient = {
     return invoke<AgentCostBreakdown[]>("cmd_get_agent_cost_breakdown", { days });
   },
 
+  /* --- Project memory & repo assets ---------------------------------------------------------------
+     `<TENDRIL_HOME>/Projects/<Project>/Memory/*.md` (V1's `ProjectMemoryTableView` and
+     `EditProjectMemorySheet`) and `ImportRepoAssetsDialog`'s scan/import. The daemon owns every path:
+     a memory file is addressed by its bare name, and a repo is re-scanned on import rather than
+     trusted from the client. */
+
+  async listProjectMemory(this: void, projectName: string): Promise<ProjectMemoryEntry[]> {
+    return invokeOrFetch<ProjectMemoryEntry[]>(
+      "cmd_list_project_memory",
+      { projectName },
+      `/api/projects/${encodeURIComponent(projectName)}/memory`,
+    );
+  },
+
+  async getProjectMemory(
+    this: void,
+    projectName: string,
+    fileName: string,
+  ): Promise<ProjectMemoryFile> {
+    return invokeOrFetch<ProjectMemoryFile>(
+      "cmd_get_project_memory",
+      { projectName, fileName },
+      `/api/projects/${encodeURIComponent(projectName)}/memory/${encodeURIComponent(fileName)}`,
+    );
+  },
+
+  /**
+   * Creates or overwrites a memory file; `.md` is appended by the daemon when missing. With
+   * `previousFileName` naming a different file the save is a rename, refused with `CONFLICT` when
+   * the new name is already taken.
+   */
+  async saveProjectMemory(
+    this: void,
+    projectName: string,
+    fileName: string,
+    content: string,
+    previousFileName?: string,
+  ): Promise<ProjectMemoryFile> {
+    return invokeOrFetch<ProjectMemoryFile>(
+      "cmd_put_project_memory",
+      { projectName, fileName, content, previousFileName },
+      `/api/projects/${encodeURIComponent(projectName)}/memory/${encodeURIComponent(fileName)}`,
+      { method: "PUT", body: JSON.stringify({ content, previousFileName }) },
+    );
+  },
+
+  async deleteProjectMemory(this: void, projectName: string, fileName: string): Promise<void> {
+    await invokeOrFetch<unknown>(
+      "cmd_delete_project_memory",
+      { projectName, fileName },
+      `/api/projects/${encodeURIComponent(projectName)}/memory/${encodeURIComponent(fileName)}`,
+      { method: "DELETE" },
+    );
+  },
+
+  /** Resolves `source` (a project repo path, a local folder, or a git URL it clones) and scans it. */
+  async scanRepoAssets(
+    this: void,
+    projectName: string,
+    kind: RepoAssetKind,
+    source: string,
+  ): Promise<DiscoveredRepoAsset[]> {
+    const res = await invokeOrFetch<{ items: DiscoveredRepoAsset[] }>(
+      "cmd_scan_repo_assets",
+      { projectName, kind, source },
+      `/api/projects/${encodeURIComponent(projectName)}/repo-assets/scan`,
+      { method: "POST", body: JSON.stringify({ kind, source }) },
+    );
+    return res.items;
+  },
+
+  /** Imports the named items into the project (skills are copied under its `Skills` folder). */
+  async importRepoAssets(
+    this: void,
+    projectName: string,
+    kind: RepoAssetKind,
+    source: string,
+    names: string[],
+  ): Promise<string[]> {
+    const res = await invokeOrFetch<{ imported: string[] }>(
+      "cmd_import_repo_assets",
+      { projectName, kind, source, names },
+      `/api/projects/${encodeURIComponent(projectName)}/repo-assets/import`,
+      { method: "POST", body: JSON.stringify({ kind, source, names }) },
+    );
+    return res.imported;
+  },
+
   /* --- Team Vault ------------------------------------------------------------------------------
      These wrappers are the only place that knows command names and route shapes: the vault
      components take plain data and callbacks. `vaultId` is optional everywhere — omitting it means
@@ -1105,6 +1260,25 @@ const tauriClient = {
     sessionId?: string,
   ): Promise<ChatAttachment> {
     return invoke<ChatAttachment>("cmd_upload_chat_attachment", { path, sessionId });
+  },
+
+  /**
+   * Stages a file the webview holds as bytes - one picked, dropped or pasted into a `ContentInput`,
+   * which arrives as a `File` with no path - under `<TendrilHome>/Attachments/<sessionId>/`, and
+   * answers with the staged attachment. `dataBase64` is the file's bytes, base64-encoded, as
+   * `ContentInput`'s `OnUploadFile` event carries them.
+   */
+  async uploadAttachmentBytes(
+    this: void,
+    fileName: string,
+    dataBase64: string,
+    sessionId?: string,
+  ): Promise<ChatAttachment> {
+    return invoke<ChatAttachment>("cmd_upload_attachment_bytes", {
+      fileName,
+      dataBase64,
+      sessionId,
+    });
   },
 };
 

@@ -4,8 +4,9 @@ import { Callout } from "../ui/callout";
 import { Textarea } from "../ui/textarea";
 import { useTranslation } from "@/i18n/uiDialogs";
 import { DialogShell } from "./DialogShell";
+import { DialogAttachments, type DialogAttachmentProps } from "./DialogAttachments";
 
-export interface UpdatePlanDialogProps {
+export interface UpdatePlanDialogProps extends DialogAttachmentProps {
   isOpen: boolean;
   onClose: () => void;
   /** The plan's id, as it appears in the title. */
@@ -43,6 +44,7 @@ export function UpdatePlanDialog({
   onSubmit,
   isBusy = false,
   error,
+  ...attachmentProps
 }: UpdatePlanDialogProps) {
   const { t } = useTranslation("uiDialogs");
   const [instructions, setInstructions] = React.useState("");
@@ -104,6 +106,7 @@ export function UpdatePlanDialog({
         placeholder={t("updatePlan.instructionsPlaceholder")}
         className="text-sm"
       />
+      <DialogAttachments {...attachmentProps} disabled={isBusy} />
       {error && <Callout.Error className="mt-4">{error}</Callout.Error>}
     </DialogShell>
   );

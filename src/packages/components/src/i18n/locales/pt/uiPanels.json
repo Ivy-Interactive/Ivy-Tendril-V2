@@ -1,1 +1,258 @@
-{}
+{
+  "chatSearch": {
+    "title": "Buscar Chats",
+    "inputLabel": "Buscar chats",
+    "placeholder": "Buscar chats",
+    "empty": "Nenhum chat encontrado.",
+    "close": "Fechar"
+  },
+  "deleteChatSession": {
+    "title": "Excluir Sessão",
+    "body": "Tem certeza de que deseja excluir \"{{title}}\"? Esta ação não pode ser desfeita.",
+    "bodyUntitled": "Tem certeza de que deseja excluir esta sessão de chat? Esta ação não pode ser desfeita.",
+    "confirm": "Excluir"
+  },
+  "lightbox": {
+    "fallbackTitle": "Pré-visualização da imagem",
+    "fallbackAlt": "Pré-visualização do anexo",
+    "closeLabel": "Fechar pré-visualização",
+    "close": "Fechar"
+  },
+  "shortcutsHelp": {
+    "title": "Atalhos de Teclado",
+    "empty": "Nenhum atalho de teclado está ativo.",
+    "close": "Fechar"
+  },
+  "inboxSheet": {
+    "titleFallback": "Issue",
+    "assigned": "Atribuída a: {{assignees}}",
+    "openOnGitHub": "Abrir no GitHub",
+    "dismiss": {
+      "label": "Descartar",
+      "tooltip": "Descartar definitivamente: a verificação de issues atribuídas não vai propor esta issue novamente"
+    },
+    "accept": {
+      "label": "Aceitar",
+      "tooltip": "Iniciar um plano para esta issue em {{project}}"
+    },
+    "fireOff": "Iniciar no Tendril",
+    "noDescription": "Nenhuma descrição fornecida."
+  },
+  "planRevisionSheet": {
+    "titleFallback": "Plano",
+    "loadingRevision": "Carregando revisão...",
+    "notFound": "Plano não encontrado ou vazio."
+  },
+  "kpiBreakdown": {
+    "titles": {
+      "featuresShipped": "Recursos Entregues",
+      "costPerFeature": "Custo Médio por Recurso",
+      "forecastMonth": "Previsão deste Mês",
+      "avgCostPlan": "Custo Médio/Plano"
+    },
+    "empty": {
+      "title": "Sem Dados"
+    },
+    "details": {
+      "metric": "Métrica",
+      "formula": "Fórmula"
+    },
+    "delta": {
+      "notAvailable": "N/D"
+    },
+    "agents": {
+      "title": "Gastos por Agente de Código",
+      "empty": "Nenhum gasto atribuído a agentes neste período.",
+      "columns": {
+        "agent": "Agente de Código",
+        "cost": "Gastos",
+        "costShare": "Parcela dos Gastos",
+        "tokens": "Tokens",
+        "tokenShare": "Parcela de Tokens",
+        "planCount": "Planos"
+      },
+      "shareNotAvailable": "N/D",
+      "unknownAgent": "Desconhecido",
+      "partialAttribution": {
+        "title": "Atribuição Parcial",
+        "body": "Os registros anteriores à captura do agente aparecem como {{agent}} e não podem ser atribuídos a um agente específico.",
+        "bodyWithShare": "Os registros anteriores à captura do agente aparecem como {{agent}} e não podem ser atribuídos a um agente específico. Isso representa {{share}} dos gastos neste período.",
+        "bodyUninformative": "Os registros anteriores à captura do agente aparecem como {{agent}} e não podem ser atribuídos a um agente específico. Isso representa {{share}} dos gastos neste período, então a divisão abaixo não traz nenhuma informação."
+      }
+    },
+    "featuresShipped": {
+      "subtitle": "PRs mesclados e issues resolvidas por trás da contagem",
+      "note": {
+        "title": "Métrica de Resultado",
+        "body_one": "Recursos Entregues conta os PRs mesclados e as issues resolvidas sem PR no último {{count}} dia. Um plano com três PRs conta como três recursos; um plano só com issue conta como um.",
+        "body_many": "Recursos Entregues conta os PRs mesclados e as issues resolvidas sem PR nos últimos {{count}} dias. Um plano com três PRs conta como três recursos; um plano só com issue conta como um.",
+        "body_other": "Recursos Entregues conta os PRs mesclados e as issues resolvidas sem PR nos últimos {{count}} dias. Um plano com três PRs conta como três recursos; um plano só com issue conta como um."
+      },
+      "metric": "Recursos Entregues",
+      "formula_one": "PRs mesclados + issues resolvidas, último {{count}} dia",
+      "formula_many": "PRs mesclados + issues resolvidas, últimos {{count}} dias",
+      "formula_other": "PRs mesclados + issues resolvidas, últimos {{count}} dias",
+      "last_one": "Último {{count}} Dia",
+      "last_many": "Últimos {{count}} Dias",
+      "last_other": "Últimos {{count}} Dias",
+      "prior_one": "{{count}} Dia Anterior",
+      "prior_many": "{{count}} Dias Anteriores",
+      "prior_other": "{{count}} Dias Anteriores",
+      "periodDelta": "Variação do Período de {{days}} Dias",
+      "byDay": {
+        "title_one": "Recursos por Dia (Último {{count}} Dia)",
+        "title_many": "Recursos por Dia (Últimos {{count}} Dias)",
+        "title_other": "Recursos por Dia (Últimos {{count}} Dias)",
+        "empty": "Nenhum recurso entregue no período de {{days}} dias.",
+        "columns": {
+          "date": "Data",
+          "count": "Recursos"
+        }
+      },
+      "mergedPrs": {
+        "title": "Pull Requests Mesclados Recentes",
+        "empty": "Nenhum pull request mesclado registrado ainda.",
+        "columns": {
+          "plan": "Plano",
+          "title": "Título",
+          "repo": "Repositório",
+          "merged": "Mesclado",
+          "prUrl": "URL do PR"
+        },
+        "open": "abrir"
+      }
+    },
+    "costPerFeature": {
+      "subtitle": "Os dois valores dos quais o quociente é calculado",
+      "note": {
+        "title": "Custo Unitário",
+        "body": "Custo Médio por Recurso divide os gastos de {{days}} dias pelos recursos entregues em {{days}} dias, então o cartão mostra o quociente exato dos dois cartões ao lado."
+      },
+      "metric": "Custo Médio por Recurso",
+      "formula": "gastos de {{days}} dias / recursos entregues em {{days}} dias",
+      "lastSpend_one": "Último {{count}} Dia (Gastos)",
+      "lastSpend_many": "Últimos {{count}} Dias (Gastos)",
+      "lastSpend_other": "Últimos {{count}} Dias (Gastos)",
+      "lastFeatures_one": "Último {{count}} Dia (Recursos)",
+      "lastFeatures_many": "Últimos {{count}} Dias (Recursos)",
+      "lastFeatures_other": "Últimos {{count}} Dias (Recursos)",
+      "lastCostPerFeature_one": "Último {{count}} Dia (Custo/Recurso)",
+      "lastCostPerFeature_many": "Últimos {{count}} Dias (Custo/Recurso)",
+      "lastCostPerFeature_other": "Últimos {{count}} Dias (Custo/Recurso)",
+      "priorSpend_one": "{{count}} Dia Anterior (Gastos)",
+      "priorSpend_many": "{{count}} Dias Anteriores (Gastos)",
+      "priorSpend_other": "{{count}} Dias Anteriores (Gastos)",
+      "priorFeatures_one": "{{count}} Dia Anterior (Recursos)",
+      "priorFeatures_many": "{{count}} Dias Anteriores (Recursos)",
+      "priorFeatures_other": "{{count}} Dias Anteriores (Recursos)",
+      "priorCostPerFeature_one": "{{count}} Dia Anterior (Custo/Recurso)",
+      "priorCostPerFeature_many": "{{count}} Dias Anteriores (Custo/Recurso)",
+      "priorCostPerFeature_other": "{{count}} Dias Anteriores (Custo/Recurso)",
+      "noValue": "n/d",
+      "periodDelta": "Variação do Período de {{days}} Dias"
+    },
+    "forecastMonth": {
+      "subtitle": "As duas bases de projeção e os dias por trás delas",
+      "empty": "Nenhuma atividade registrada.",
+      "note": {
+        "title": "Análise de Uso e Subsídio",
+        "bodySubsidized_one": "Previsão deste Mês projeta os gastos do fim do mês com base na atividade diária do último {{count}} dia. {{percent}} dos tokens neste período foram subsidiados por assinatura (valor equivalente de {{subsidizedValue}}), com {{apiCharges}} em cobranças diretas de API.",
+        "bodySubsidized_many": "Previsão deste Mês projeta os gastos do fim do mês com base na atividade diária dos últimos {{count}} dias. {{percent}} dos tokens neste período foram subsidiados por assinatura (valor equivalente de {{subsidizedValue}}), com {{apiCharges}} em cobranças diretas de API.",
+        "bodySubsidized_other": "Previsão deste Mês projeta os gastos do fim do mês com base na atividade diária dos últimos {{count}} dias. {{percent}} dos tokens neste período foram subsidiados por assinatura (valor equivalente de {{subsidizedValue}}), com {{apiCharges}} em cobranças diretas de API.",
+        "body_one": "Previsão deste Mês projeta os gastos do fim do mês com base na atividade diária do último {{count}} dia. As projeções diretas de API estimam os gastos efetivamente cobrados, enquanto as projeções totais refletem o valor de mercado total dos tokens.",
+        "body_many": "Previsão deste Mês projeta os gastos do fim do mês com base na atividade diária dos últimos {{count}} dias. As projeções diretas de API estimam os gastos efetivamente cobrados, enquanto as projeções totais refletem o valor de mercado total dos tokens.",
+        "body_other": "Previsão deste Mês projeta os gastos do fim do mês com base na atividade diária dos últimos {{count}} dias. As projeções diretas de API estimam os gastos efetivamente cobrados, enquanto as projeções totais refletem o valor de mercado total dos tokens."
+      },
+      "metric": "Previsão deste Mês",
+      "apiCalendar": "Previsão Direta de API (Dias Corridos)",
+      "apiActivity": "Previsão Direta de API (Dias com Atividade)",
+      "totalCalendar": "Previsão Total (Dias Corridos)",
+      "totalActivity": "Previsão Total (Dias com Atividade)",
+      "subsidizedTokenShare": "Parcela de Tokens Subsidiados",
+      "subsidizedTokenShareValue": "{{percent}} dos tokens",
+      "subsidizedValueShare": "Parcela do Valor Subsidiado",
+      "subsidizedValueShareValue": "{{percent}} do valor",
+      "mtdApiSpend": "Gastos Diretos com API no Mês",
+      "mtdSubsidizedValue": "Valor Subsidiado no Mês",
+      "mtdUnattributedSpend": "Gastos Não Atribuídos no Mês",
+      "mtdTotalMarketValue": "Valor de Mercado Total no Mês",
+      "calendarDays": "Dias Corridos no Período",
+      "activeDays": "Dias Ativos com Gastos",
+      "daysRemaining": "Dias Restantes",
+      "daysInMonth": "Dias no Mês",
+      "dayCount_zero": "Nenhum",
+      "dayCount_one": "{{count}} dia",
+      "dayCount_many": "{{count}} dias",
+      "dayCount_other": "{{count}} dias",
+      "daily": {
+        "title_one": "Gastos Diários (Último {{count}} Dia)",
+        "title_many": "Gastos Diários (Últimos {{count}} Dias)",
+        "title_other": "Gastos Diários (Últimos {{count}} Dias)",
+        "empty": "Nenhum registro de gastos diários encontrado no período de {{days}} dias.",
+        "columns": {
+          "date": "Data",
+          "cost": "Gastos Totais",
+          "apiCost": "Gastos com API",
+          "subsidizedCost": "Gastos Subsidiados",
+          "tokens": "Total de Tokens",
+          "subsidizedShare": "% Subsidiado"
+        },
+        "incompleteSplit": {
+          "title": "Divisão Incompleta",
+          "body": "{{amount}} dos gastos neste período não tem origem de custo, então está em Gastos Totais, mas não aparece nem na coluna de API nem na de Subsidiados. Por isso, essas duas colunas mostram valores abaixo do real e não devem ser lidas como uma divisão completa."
+        }
+      }
+    },
+    "avgCostPlan": {
+      "subtitle": "Planos recentes; um traço indica que os registros nunca foram precificados",
+      "note": {
+        "title": "Média Móvel de 7 Dias",
+        "body_one": "Custo Médio por Plano calcula a média dos gastos de execução e de agentes dos planos criados no último {{count}} dia que chegaram ao estado {{states}}. Planos sem preço (por exemplo, execuções por assinatura em que o custo é nulo) são excluídos do divisor para não reduzir artificialmente a média.",
+        "body_many": "Custo Médio por Plano calcula a média dos gastos de execução e de agentes dos planos criados nos últimos {{count}} dias que chegaram ao estado {{states}}. Planos sem preço (por exemplo, execuções por assinatura em que o custo é nulo) são excluídos do divisor para não reduzir artificialmente a média.",
+        "body_other": "Custo Médio por Plano calcula a média dos gastos de execução e de agentes dos planos criados nos últimos {{count}} dias que chegaram ao estado {{states}}. Planos sem preço (por exemplo, execuções por assinatura em que o custo é nulo) são excluídos do divisor para não reduzir artificialmente a média."
+      },
+      "metric": "Custo Médio por Plano",
+      "window": "Período",
+      "windowValue_one": "{{count}} dia (planos criados no último {{count}} dia)",
+      "windowValue_many": "{{count}} dias (planos criados nos últimos {{count}} dias)",
+      "windowValue_other": "{{count}} dias (planos criados nos últimos {{count}} dias)",
+      "statesIncluded": "Estados de Plano Incluídos",
+      "currentAverage": "Média Atual de {{days}} Dias",
+      "priorAverage": "Média dos {{days}} Dias Anteriores (Dias 8-14)",
+      "periodDelta": "Variação do Período de {{days}} Dias",
+      "plans": {
+        "title_one": "Planos no Período Móvel (Último {{count}} Dia)",
+        "title_many": "Planos no Período Móvel (Últimos {{count}} Dias)",
+        "title_other": "Planos no Período Móvel (Últimos {{count}} Dias)",
+        "empty": "Nenhum plano criado no período móvel de {{days}} dias.",
+        "columns": {
+          "plan": "Plano",
+          "title": "Título",
+          "state": "Estado",
+          "created": "Criado em",
+          "tokens": "Tokens",
+          "cost": "Custo Total"
+        }
+      }
+    },
+    "sheetTitle": "Detalhamento do KPI",
+    "planStates": {
+      "completed": "Concluído",
+      "failed": "Com falha",
+      "review": "Em revisão"
+    }
+  },
+  "updateTendril": {
+    "cancel": "Cancelar",
+    "retry": "Tentar Novamente",
+    "title": "Atualizar o Tendril",
+    "available": "A <strong>v{{latest}}</strong> está disponível (você tem a v{{current}}).",
+    "selfUpdateHint": "Clique em \"Atualizar Agora\" para baixar e instalar a atualização automaticamente. O Tendril será reiniciado automaticamente ao terminar.",
+    "manualHint": "A atualização automática não está disponível para este tipo de instalação. Execute o seguinte comando no seu terminal para atualizar:",
+    "failedTitle": "Falha na Atualização",
+    "updating": "Atualizando...",
+    "progressLabel": "Progresso da atualização",
+    "updateNow": "Atualizar Agora",
+    "ok": "OK"
+  }
+}

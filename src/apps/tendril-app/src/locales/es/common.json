@@ -102,10 +102,6 @@
     "planSearch": "Buscar planes",
     "showShortcuts": "Mostrar atajos de teclado"
   },
-  "shortcutsHelp": {
-    "title": "Atajos de teclado",
-    "empty": "No hay atajos de teclado activos."
-  },
   "updateCheck": {
     "available": {
       "title": "Actualización disponible",
@@ -122,7 +118,8 @@
   "updateNotice": {
     "available": "La v{{latest}} está disponible (tienes la v{{current}})",
     "copyCommand": "Copiar comando",
-    "dismiss": "Descartar"
+    "dismiss": "Descartar",
+    "showDetails": "Mostrar detalles"
   },
   "offlineBanner": {
     "reconnecting": "Tendril-Service se ha desconectado. Reconectando automáticamente en {{seconds}} s...",
@@ -143,11 +140,6 @@
     "dismissNavError": "Descartar error de navegación"
   },
   "stopQueued": {
-    "title": "Detener trabajos en cola",
-    "body_one": "¿Detener {{count}} trabajo en cola? Los trabajos en ejecución no se ven afectados.",
-    "body_many": "¿Detener los {{count}} trabajos en cola? Los trabajos en ejecución no se ven afectados.",
-    "body_other": "¿Detener los {{count}} trabajos en cola? Los trabajos en ejecución no se ven afectados.",
-    "confirm": "Detener todos",
     "toast": {
       "title": "Trabajos",
       "description_one": "Se ha detenido {{count}} trabajo en cola.",
@@ -156,11 +148,6 @@
     }
   },
   "stopAll": {
-    "title": "Detener todos los trabajos",
-    "body_one": "¿Detener {{count}} trabajo activo? Los agentes en ejecución se terminan y sus planes vuelven a su estado anterior. Esta acción no se puede deshacer.",
-    "body_many": "¿Detener los {{count}} trabajos activos? Los agentes en ejecución se terminan y sus planes vuelven a su estado anterior. Esta acción no se puede deshacer.",
-    "body_other": "¿Detener los {{count}} trabajos activos? Los agentes en ejecución se terminan y sus planes vuelven a su estado anterior. Esta acción no se puede deshacer.",
-    "confirm": "Detener todos",
     "toast": {
       "title": "Trabajos detenidos",
       "description_one": "Se ha detenido {{count}} trabajo",

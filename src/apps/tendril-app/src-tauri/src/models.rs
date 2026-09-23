@@ -232,6 +232,10 @@ pub struct RepoStatusDto {
     pub change_count: Option<usize>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
+    /// The branch the repo syncs to. Only the project-scoped route
+    /// (`GET /api/projects/:name/repo-status`) sends it, for chaining a SyncRepo job.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub base_branch: Option<String>,
 }
 
 /// One of a plan's recorded commits, resolved against a repo that still holds it.

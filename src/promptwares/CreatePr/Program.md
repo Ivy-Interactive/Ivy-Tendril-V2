@@ -48,6 +48,7 @@ Before processing, read `plan.yaml` and check the `state` field. After reading, 
   - `PrReviewer` — comma-separated GitHub usernames to request as reviewers (default: none)
   - `PrComment` — Review comment text (default: none)
   - `PrDraft` — `true`/`false` (default: `false`)
+  - `PrBaseBranch` — Target branch for pull request (default: repo default branch or project configured base branch)
 
 ### 2. For Each Worktree
 
@@ -165,10 +166,11 @@ rm -f "$body_file"
   ```
 
 - **Base branch:**
-  1. Read plan.yaml and get the project name
-  2. For each repo, check the firmware header for `baseBranch` configuration
-  3. If configured, use that value
-  4. Otherwise, auto-detect via: `gh repo view <owner/repo> --json defaultBranchRef -q .defaultBranchRef.name`
+  1. Check if `PrBaseBranch` is specified in the firmware header; if present and non-empty, use that branch for every repo
+  2. Otherwise read plan.yaml and get the project name
+  3. For each repo, check the firmware header for `baseBranch` configuration
+  4. If configured, use that value
+  5. Otherwise, auto-detect via: `gh repo view <owner/repo> --json defaultBranchRef -q .defaultBranchRef.name`
 - **Title:** `[<planId>] <plan title>`
 - **Body:** 
   1. **If SourceUrl is present in firmware header** and it's a GitHub issue URL (format: `https://github.com/owner/repo/issues/NUMBER`), prepend `Fixes #NUMBER\n\n` to the body

@@ -82,21 +82,7 @@
     "failed": "Falha ao salvar: {{error}}"
   },
   "test": {
-    "title": "Teste do Agente de Código",
     "defaultModel": "Padrão",
-    "columns": {
-      "test": "Teste",
-      "result": "Resultado"
-    },
-    "status": {
-      "passed": "Aprovado",
-      "failed": "Com falha",
-      "warning": "Aviso",
-      "running": "Em execução",
-      "pending": "Pendente"
-    },
-    "showRawOutput": "Mostrar saída bruta",
-    "rawOutputTitle": "Saída Bruta",
     "rows": {
       "install": "Instalação",
       "auth": "Autenticação",

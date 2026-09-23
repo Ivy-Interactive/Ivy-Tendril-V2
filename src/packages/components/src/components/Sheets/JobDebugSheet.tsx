@@ -1,10 +1,11 @@
 import React, { useState } from "react";
-import { ClipboardCopy } from "lucide-react";
+import { Bug, ClipboardCopy } from "lucide-react";
 import { copyToClipboard } from "../../lib/clipboard";
 import { Button } from "../ui/button";
 import { HeaderLayout } from "../ui/panel-layout";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../ui/sheet";
 import { i18n, useTranslation, type TFunction } from "@/i18n/uiDialogs";
+import { useTranslation as useJobsTranslation } from "@/i18n/uiJobs";
 /**
  * A job as this sheet renders it.
  *
@@ -56,11 +57,12 @@ export interface JobDebugDetail {
  * renders, so the two can never disagree. That is reproduced literally: {@link buildJobDebugFields} is
  * the record, and both the panel and {@link formatJobDebugDetails} read it.
  *
- * V1 also carries a `Report Bug` dialog and, under `#if DEBUG`, a "Debug with {agent}" button that
- * opens a chat pre-loaded with these details and the `/tendril-debug-job` skill. Neither is here: the
- * first needs `ReportBugDialog`, the second needs `ChatLauncher`, and both are their own ports. The
- * Copy Details text is deliberately the *same* block V1 feeds that agent prompt, so pasting it into a
- * chat by hand reaches the same place.
+ * V1 also carries a `Report Bug` button and, under `#if DEBUG`, a "Debug with {agent}" button that
+ * opens a chat pre-loaded with these details and the `/tendril-debug-job` skill. Both are here as
+ * callbacks - `onReportBug` and `onDebugWithAgent` - and each button renders only when its callback
+ * is passed, because the dialogs they open (`ReportBugDialog`, `DebugWithAgentDialog`) and what those
+ * dialogs do belong to the app. The agent prompt is built from {@link formatJobDebugDetails}, the
+ * same block Copy Details puts on the clipboard, exactly as V1 feeds `FormatCopyDetails` to both.
  */
 
 /** The fields of the debug panel, by stable id. Each names its label in the catalog. */
@@ -228,12 +230,42 @@ export function formatJobDebugDetails(fields: readonly JobDebugField[]): string 
   return fields.map((field) => `${field.label}: ${field.value}`).join("\n");
 }
 
+/**
+ * The Copy Details text for a job, in English whatever the UI language: the same block the sheet's
+ * Copy Details button puts on the clipboard, for a caller that needs it without the sheet.
+ */
+export function formatJobDebugDetailsForJob(job: JobDebugDetail): string {
+  return formatJobDebugDetails(buildJobDebugFields(job, translateInEnglish));
+}
+
+/**
+ * The prompt V1's "Debug with {agent}" opens a chat with (`JobDebugSheet.cs`, under `#if DEBUG`),
+ * verbatim - its wording included, since the `/tendril-debug-job` skill is written against it. It is
+ * instructions to an agent, not UI, so it is English in every language, followed by the job's Copy
+ * Details block.
+ */
+export function formatJobDebugPrompt(job: JobDebugDetail, focus?: string): string {
+  let prompt = `I want to debug job ${job.id} for what might have gone wrong of what we can improve. Use the /tendril-debug-job skill if available. \n\n`;
+  const trimmed = focus?.trim();
+  if (trimmed) prompt += `In particular, focus on: ${trimmed}\n\n`;
+  return prompt + formatJobDebugDetailsForJob(job);
+}
+
 export interface JobDebugSheetProps {
   isOpen: boolean;
   onClose: () => void;
   /** The job's detail. Absent while the read is still out, which the sheet says rather than
    *  rendering a table of blanks. */
   job?: JobDebugDetail;
+  /** V1's `Report Bug` button (`JobDebugSheet.cs`), which opens `ReportBugDialog`. Omitted, no button. */
+  onReportBug?: () => void;
+  /**
+   * V1's "Debug with {agent}" button, which opens `DebugWithAgentDialog`. V1 compiles it in only
+   * under `#if DEBUG`, so the host decides whether to pass it. Omitted, no button.
+   */
+  onDebugWithAgent?: () => void;
+  /** The configured coding agent's name for that button, V1's `AgentBranding.Label`. */
+  debugAgentLabel?: string;
 }
 
 /**
@@ -252,7 +284,14 @@ export interface JobDebugSheetProps {
  * moved — same `UxHelper.SheetWidth` ladder, same "Job Debug" title V1 uses, and the same
  * `HeaderLayout` that keeps the title still while a long `Args` blob scrolls under it.
  */
-export const JobDebugSheet: React.FC<JobDebugSheetProps> = ({ isOpen, onClose, job }) => {
+export const JobDebugSheet: React.FC<JobDebugSheetProps> = ({
+  isOpen,
+  onClose,
+  job,
+  onReportBug,
+  onDebugWithAgent,
+  debugAgentLabel,
+}) => {
   const { t } = useTranslation("uiDialogs");
   return (
     <Sheet
@@ -274,7 +313,12 @@ export const JobDebugSheet: React.FC<JobDebugSheetProps> = ({ isOpen, onClose, j
           }
         >
           {job ? (
-            <JobDebugBody job={job} />
+            <JobDebugBody
+              job={job}
+              onReportBug={onReportBug}
+              onDebugWithAgent={onDebugWithAgent}
+              debugAgentLabel={debugAgentLabel}
+            />
           ) : (
             /* The detail is the sheet, so there is nothing to render until it lands - and if the
                daemon could not answer, this is the honest state rather than a table of blanks. */
@@ -289,8 +333,13 @@ export const JobDebugSheet: React.FC<JobDebugSheetProps> = ({ isOpen, onClose, j
 };
 
 /** The details table itself, which is what used to be the whole component. */
-const JobDebugBody: React.FC<{ job: JobDebugDetail }> = ({ job }) => {
+const JobDebugBody: React.FC<
+  Pick<JobDebugSheetProps, "onReportBug" | "onDebugWithAgent" | "debugAgentLabel"> & {
+    job: JobDebugDetail;
+  }
+> = ({ job, onReportBug, onDebugWithAgent, debugAgentLabel }) => {
   const { t } = useTranslation("uiDialogs");
+  const { t: tJobs } = useJobsTranslation("uiJobs");
   const fields = buildJobDebugFields(job, t);
   const [copied, setCopied] = useState(false);
   // The clipboard's own message when it gave one; `message` absent means the sheet's fallback.
@@ -312,7 +361,7 @@ const JobDebugBody: React.FC<{ job: JobDebugDetail }> = ({ job }) => {
     <HeaderLayout
       className="min-h-0 flex-1"
       header={
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             type="button"
             variant="outline"
@@ -323,6 +372,29 @@ const JobDebugBody: React.FC<{ job: JobDebugDetail }> = ({ job }) => {
             <ClipboardCopy aria-hidden="true" />
             {copied ? t("jobDebug.copied") : t("jobDebug.copy")}
           </Button>
+          {/* V1's header, in V1's order: Copy Details, Report Bug, then the DEBUG-only agent. */}
+          {onReportBug && (
+            <Button
+              type="button"
+              size="sm"
+              onClick={onReportBug}
+              data-testid="job-debug-report-bug"
+            >
+              <Bug aria-hidden="true" />
+              {tJobs("jobDebug.reportBug")}
+            </Button>
+          )}
+          {onDebugWithAgent && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={onDebugWithAgent}
+              data-testid="job-debug-with-agent"
+            >
+              {tJobs("jobDebug.debugWithAgent", { agent: debugAgentLabel ?? "Agent" })}
+            </Button>
+          )}
           {copyError && (
             <span role="alert" className="text-xs text-destructive">
               {copyError.message ?? t("jobDebug.copyFailed")}

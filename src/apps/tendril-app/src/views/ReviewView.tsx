@@ -55,7 +55,14 @@ import { PartialDeliveryDialog } from "./dialogs/PartialDeliveryDialog";
 import { ResetToDraftDialog } from "./dialogs/ResetToDraftDialog";
 import { SuggestChangesDialog } from "./dialogs/SuggestChangesDialog";
 import { DetailRow, ExecutionFailedCallout, planLinkLabel } from "./planDetail/helpers";
-import { PlanDocumentPane } from "./planDetail/tabPanes";
+import { CommitLink, PlanDocumentPane } from "./planDetail/tabPanes";
+import { PlanJobs } from "./planDetail/PlanJobs";
+import { planLinkHandlers } from "./planDetail/planLinks";
+import { sharePlan, useBetaFlag } from "./planDetail/share";
+import { CommitDetailSheet } from "./sheets/CommitDetailSheet";
+import { FileSheet } from "./sheets/FileSheet";
+import { PlanJobSheets } from "./sheets/PlanJobSheets";
+import { ShareTunnelDialog } from "./dialogs/ShareTunnelDialog";
 import { PlanPullRequests } from "./PlanPullRequests";
 import { useTranslation, type TFunction } from "../i18n";
 import { planStateLabel, useEnumLabels } from "../i18n/enumLabels";
@@ -281,6 +288,18 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
    * `openArtifact` state in `Review/ContentView.cs`.
    */
   const [openArtifact, setOpenArtifact] = useState<string | null>(null);
+  /**
+   * The page's other sheets, `Review/ContentView.cs`'s state for each: `openCommit` (the Git and
+   * Details tabs' commits, `:458`), `openFile` (a local link in the summary or plan, `FileSheet`,
+   * `:475`), and the two job sheets the Details tab's Jobs section opens (`:109` Debug, `:119` Cost).
+   */
+  const [openCommit, setOpenCommit] = useState<string | null>(null);
+  const [openFile, setOpenFile] = useState<string | null>(null);
+  const [debugJobId, setDebugJobId] = useState<string | null>(null);
+  const [costJobId, setCostJobId] = useState<string | null>(null);
+  /** `showShareModal` (`Review/ContentView.cs:89`): the Share Tunnel dialog, from the Share action. */
+  const [shareOpen, setShareOpen] = useState(false);
+  const isBeta = useBetaFlag();
 
   /**
    * `PlanSelectionHelper.ResolveSelection`, re-resolved on every render as V1 re-resolves it on every
@@ -536,6 +555,17 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
 
   const wireframeBaseUrl = useWireframeBaseUrl(selectedPlan?.id);
 
+  /**
+   * Where the summary's and plan's links go - `Review/ContentView.cs:499`'s
+   * `FileSheet.CreateLinkClickHandler(openFile, planId => ...)`: a local file to the `FileSheet`,
+   * `plan://N` to that plan's page, a web link to the browser.
+   */
+  const documentLinks = planLinkHandlers({
+    planFolder: planDetail?.folderPath,
+    onOpenFile: setOpenFile,
+    onOpenPlan: onSelectPlan,
+  });
+
   useEffect(() => {
     setSelectedTab(initialTab ?? SUMMARY_TAB);
     setSummaryContent(null);
@@ -544,6 +574,8 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
     setChangesData(null);
     setArtifacts(null);
     setOpenArtifact(null);
+    setOpenCommit(null);
+    setOpenFile(null);
     if (!selectedId) return;
 
     let cancelled = false;
@@ -966,7 +998,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
    * is registered by the widget itself from that action's `shortcut` (`useActionShortcuts`), gated on
    * its own `hostModalOpen()` - so binding them here too would fire each action twice.
    */
-  const modalOpen = activeDialog !== null || activeNoteDialog !== null;
+  const modalOpen = activeDialog !== null || activeNoteDialog !== null || shareOpen;
 
   useShortcut(
     "review:previous-plan",
@@ -1001,6 +1033,11 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
           shortcut: REQUEST_CHANGES_SHORTCUT,
           badge: draftComments.length > 0 ? String(draftComments.length) : undefined,
         },
+        // `if (ctx.IsBeta) actions.Action("Share", "Share", Icons.Share2, SharePlan)`
+        // (`ReviewActions.cs:88`), right after Request Changes.
+        ...(isBeta
+          ? [{ tag: "Share", label: t("plans:actions.share"), icon: "Share2" } as PlanActionDto]
+          : []),
       ]
     : [];
 
@@ -1079,6 +1116,10 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
         return;
       case "RequestChanges":
         setActiveDialog("suggestChanges");
+        return;
+      case "Share":
+        // `ReviewActions.SharePlan`: copy the link when a tunnel is up, else open the dialog.
+        if (selectedPlan) void sharePlan(selectedPlan.id, true, () => setShareOpen(true));
         return;
       case "ResetToDraft":
         setActiveDialog("reset");
@@ -1356,6 +1397,8 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                     ) : null
                   }
                   id="review-summary-markdown"
+                  onFileClick={documentLinks.onFileClick}
+                  onLinkClick={documentLinks.onLinkClick}
                   content={
                     typeof summaryContent === "string" && summaryContent
                       ? summaryContent
@@ -1373,6 +1416,8 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                     planDetail && <ExecutionFailedCallout plan={planDetail} jobs={jobs ?? []} />
                   }
                   id="review-plan-markdown"
+                  onFileClick={documentLinks.onFileClick}
+                  onLinkClick={documentLinks.onLinkClick}
                   content={planDetail?.latestRevisionContent || `# ${t("plan.noSpecification")}`}
                   wireframeBaseUrl={wireframeBaseUrl}
                 />
@@ -1482,7 +1527,11 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                         </h4>
                         <ul className="mt-2 space-y-1 font-mono text-sm text-muted-foreground">
                           {planDetail?.commits && planDetail.commits.length > 0 ? (
-                            planDetail.commits.map((c, i) => <li key={i}>{c}</li>)
+                            planDetail.commits.map((c, i) => (
+                              <li key={i}>
+                                <CommitLink hash={c} onOpen={setOpenCommit} />
+                              </li>
+                            ))
                           ) : (
                             <li className="font-sans text-muted-foreground/70">
                               {t("details.commits.empty")}
@@ -1530,6 +1579,15 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                         )}
                       </div>
                     </div>
+
+                    {/* `DetailsTabView`'s Jobs section, with its Debug and Cost & Tokens triggers
+                        (`Review/ContentView.cs:546`: `showDebugJob, showCostJob`). */}
+                    <PlanJobs
+                      jobs={jobs ?? []}
+                      planId={selectedPlan.id}
+                      onOpenDebug={setDebugJobId}
+                      onOpenCost={setCostJobId}
+                    />
                   </div>
                 </div>
               ),
@@ -1551,6 +1609,7 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
                         prs={planDetail?.prs ?? []}
                         planState={selectedPlan.state}
                         onOpenUrl={(url) => void openPath(url)}
+                        onOpenCommit={setOpenCommit}
                       />
                     ) : (
                       <p className="text-sm text-muted-foreground/70">{t("git.loading")}</p>
@@ -1875,6 +1934,32 @@ export const ReviewView: React.FC<ReviewViewProps> = ({
             planFolderPath={planDetail?.folderPath}
             onOpenArtifact={setOpenArtifact}
             wireframeBaseUrl={wireframeBaseUrl}
+          />
+          <CommitDetailSheet
+            planId={selectedPlan.id}
+            hash={openCommit}
+            onClose={() => setOpenCommit(null)}
+          />
+          <FileSheet
+            planId={selectedPlan.id}
+            path={openFile}
+            onClose={() => setOpenFile(null)}
+            onOpenFile={setOpenFile}
+            wireframeBaseUrl={wireframeBaseUrl}
+          />
+          <PlanJobSheets
+            jobs={jobs ?? []}
+            debugJobId={debugJobId}
+            costJobId={costJobId}
+            onCloseDebug={() => setDebugJobId(null)}
+            onCloseCost={() => setCostJobId(null)}
+          />
+          {/* `new ShareTunnelModal(isOpen, selectedPlanState.Value?.FolderName, isReview: true)`. */}
+          <ShareTunnelDialog
+            isOpen={shareOpen}
+            onClose={() => setShareOpen(false)}
+            planId={selectedPlan.id}
+            isReview
           />
         </>
       )}

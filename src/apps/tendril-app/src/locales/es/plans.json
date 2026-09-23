@@ -74,7 +74,8 @@
     "completePlan": "Completar plan",
     "retryPlan": "Reintentar plan",
     "acceptPartialDelivery": "Aceptar entrega parcial",
-    "resetToDraft": "Restablecer a borrador…"
+    "resetToDraft": "Restablecer a borrador…",
+    "share": "Compartir"
   },
   "draftActions": {
     "execute": "Ejecutar plan",
@@ -133,7 +134,23 @@
     "repositories": "Repositorios",
     "noRepositories": "No se han especificado repositorios",
     "commits": "Commits",
-    "noCommits": "Aún no hay commits"
+    "noCommits": "Aún no hay commits",
+    "jobs": {
+      "heading": "Trabajos",
+      "columns": {
+        "status": "Estado",
+        "type": "Tipo",
+        "cost": "Coste",
+        "tokens": "Tokens",
+        "message": "Mensaje de estado",
+        "actions": "Acciones"
+      },
+      "debug": "Depurar",
+      "debugTooltip": "Mostrar los detalles de depuración de este trabajo",
+      "costTooltip": "Mostrar el desglose de coste y tokens",
+      "costTitle": "Costes y tokens",
+      "costTitleWithPlan": "Costes y tokens — {{planId}}"
+    }
   },
   "verificationStatus": {
     "pass": "Superada",
@@ -149,32 +166,12 @@
     "hideReport": "Ocultar informe",
     "noReport": "Aún no hay informe"
   },
-  "reportSheet": {
-    "title": "Informe de verificación",
-    "description": "Detalles del informe de verificación de {{name}}",
-    "descriptionFallback": "Detalles del informe de verificación del plan",
-    "loading": "Cargando el informe de verificación…",
-    "notFound": "No se encontró ningún archivo de informe de verificación para \"{{name}}\".",
-    "empty": "No hay ningún informe disponible para {{name}}."
-  },
   "artifactSheet": {
     "thumbnail": {
       "openLabel": "Abrir {{fileName}}",
       "noPreview": "Sin vista previa",
       "loadingLabel": "Cargando {{fileName}}"
-    },
-    "fallbackTitle": "Artefacto",
-    "noPreviewTitle": "Sin vista previa",
-    "showInFolder": "Mostrar en la carpeta",
-    "loadingLabel": "Cargando {{fileName}}",
-    "imageFailed": "Tendril no pudo cargar esta imagen.",
-    "imageFailedWithError": "Tendril no pudo cargar esta imagen: {{error}}",
-    "binary": "{{fileName}} no es un archivo de texto ({{size}}), así que aquí no tiene vista previa.",
-    "tooLarge": "{{fileName}} ocupa {{size}}, demasiado para mostrar una vista previa aquí.",
-    "plainNotice": "Se muestra como texto sin formato: con {{size}}, {{fileName}} es demasiado grande para resaltar su sintaxis.",
-    "plainNotice_markdown": "Se muestra como texto sin formato: con {{size}}, {{fileName}} es demasiado grande para representarlo como Markdown.",
-    "copyPath": "Copiar ruta",
-    "revealLabel": "Mostrar en la carpeta"
+    }
   },
   "pullRequests": {
     "title": "Pull requests",
@@ -229,16 +226,6 @@
     },
     "thawFailed": "No se pudo descongelar el plan {{id}}: {{error}}"
   },
-  "newPlan": {
-    "title": "Crear plan nuevo",
-    "closeLabel": "Cerrar ventana",
-    "projectPickerLabel": "Proyecto de destino",
-    "autoProject": "Automático",
-    "addProject": "+ Añadir proyecto nuevo",
-    "submit": "Crear",
-    "placeholder": "Introduce la descripción de la tarea...",
-    "emptyDescription": "Introduce una descripción para el nuevo plan."
-  },
   "planActions": {
     "canExecute": {
       "alreadyCompleted": "El plan ya está completado.",
@@ -284,5 +271,9 @@
   "store": {
     "rollbackField": "Reversión: no se pudo actualizar {{field}}: {{error}}",
     "rollbackVerification": "Reversión de la actualización de la verificación: {{error}}"
+  },
+  "share": {
+    "linkCopiedTitle": "Enlace copiado",
+    "linkCopied": "Enlace para compartir el plan copiado al portapapeles"
   }
 }

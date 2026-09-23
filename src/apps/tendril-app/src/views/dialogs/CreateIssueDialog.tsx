@@ -5,6 +5,8 @@ import {
   type CreateIssueSubmit,
 } from "@ivy-interactive/components/dialogs";
 import { PlanActionsController } from "../../controllers/planActions";
+import { bridge } from "../../api/bridge";
+import { parseProjects } from "../PlansView";
 import {
   describeBridgeError,
   type PlanDetail,
@@ -50,6 +52,42 @@ export function CreateIssueDialog({
 }: CreateIssueDialogProps) {
   const [isBusy, setIsBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  // V1's `assigneesQuery` / `labelsQuery` (`GetAssigneesAsync` / `GetLabelsAsync`), read per
+  // opening from the project's `issues/metadata`, which unions every repo's lists and caches them
+  // daemon-side. V1 keys its queries on the selected repo; the daemon answers per project, so the
+  // lists do not change with the repo select.
+  const [assigneeOptions, setAssigneeOptions] = React.useState<string[]>([]);
+  const [labelOptions, setLabelOptions] = React.useState<string[]>([]);
+  const [metadataLoading, setMetadataLoading] = React.useState(false);
+  const [metadataError, setMetadataError] = React.useState<string | null>(null);
+  const project = parseProjects(plan.project)[0];
+
+  React.useEffect(() => {
+    if (!isOpen || !project || project === "Auto") return;
+    let cancelled = false;
+    setMetadataLoading(true);
+    setMetadataError(null);
+    void Promise.resolve()
+      .then(() => bridge.getProjectIssueMetadata(project))
+      .then((metadata) => {
+        if (cancelled) return;
+        setAssigneeOptions(Array.isArray(metadata?.assignees) ? metadata.assignees : []);
+        setLabelOptions(Array.isArray(metadata?.labels) ? metadata.labels : []);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        // The fields fall back to free text, so a repo `gh` cannot read still gets an issue.
+        setAssigneeOptions([]);
+        setLabelOptions([]);
+        setMetadataError(describeBridgeError(err));
+      })
+      .finally(() => {
+        if (!cancelled) setMetadataLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen, project]);
 
   const repos = React.useMemo(() => {
     const planRepos = "repos" in plan && plan.repos ? plan.repos : [];
@@ -84,6 +122,10 @@ export function CreateIssueDialog({
       planId={plan.id}
       repos={repos}
       subject={subject}
+      assigneeOptions={assigneeOptions}
+      labelOptions={labelOptions}
+      metadataLoading={metadataLoading}
+      metadataError={metadataError}
       onSubmit={handleSubmit}
       isBusy={isBusy}
       error={error}

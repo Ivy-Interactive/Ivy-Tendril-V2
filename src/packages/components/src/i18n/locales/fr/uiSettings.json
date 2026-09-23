@@ -1,1 +1,197 @@
-{}
+{
+  "removal": {
+    "title": "Retirer : {{kind}}",
+    "title_level": "Retirer le niveau",
+    "title_repository": "Retirer le dépôt",
+    "title_reviewAction": "Retirer l'action de revue",
+    "title_environmentFile": "Retirer le fichier d'environnement",
+    "title_mcpServer": "Retirer le serveur MCP",
+    "title_customSkill": "Retirer la compétence personnalisée",
+    "body": "Retirer <name>{{name}}</name> ({{kind}}) de cette configuration ?",
+    "body_level": "Retirer le niveau <name>{{name}}</name> de cette configuration ?",
+    "body_repository": "Retirer le dépôt <name>{{name}}</name> de cette configuration ?",
+    "body_reviewAction": "Retirer l'action de revue <name>{{name}}</name> de cette configuration ?",
+    "body_environmentFile": "Retirer le fichier d'environnement <name>{{name}}</name> de cette configuration ?",
+    "body_mcpServer": "Retirer le serveur MCP <name>{{name}}</name> de cette configuration ?",
+    "body_customSkill": "Retirer la compétence personnalisée <name>{{name}}</name> de cette configuration ?",
+    "title_memoryFile": "Retirer le fichier mémoire",
+    "body_memoryFile": "Retirer le fichier mémoire <name>{{name}}</name> de ce projet ?",
+    "confirm": "Retirer"
+  },
+  "configEditor": {
+    "discard": {
+      "title": "Abandonner les modifications non enregistrées",
+      "confirm": "Abandonner et recharger",
+      "body": "Le rechargement remplace le contenu de l'éditeur par le fichier sur le disque. Les modifications non enregistrées sont perdues."
+    }
+  },
+  "agentTest": {
+    "title": "Test de l'agent de codage",
+    "columns": {
+      "test": "Test",
+      "result": "Résultat"
+    },
+    "status": {
+      "passed": "Réussi",
+      "failed": "Échec",
+      "warning": "Avertissement",
+      "running": "En cours",
+      "pending": "En attente"
+    },
+    "showRawOutput": "Afficher la sortie brute",
+    "rawOutputTitle": "Sortie brute",
+    "close": "Fermer",
+    "cancel": "Annuler"
+  },
+  "projectMemory": {
+    "addTitle": "Ajouter une mémoire de projet",
+    "editTitle": "Modifier la mémoire : {{fileName}}",
+    "description": "Un fichier Markdown dans le dossier Memory de {{project}}.",
+    "loading": "Chargement du fichier mémoire...",
+    "fileName": {
+      "label": "Nom du fichier",
+      "placeholder": "Nom du fichier mémoire (p. ex. stack.md, conventions.md)..."
+    },
+    "content": {
+      "label": "Contenu (Markdown)",
+      "placeholder": "Contenu de la mémoire en Markdown (p. ex. stack technique, règles, conventions d'architecture)..."
+    },
+    "cancel": "Annuler",
+    "add": "Ajouter",
+    "save": "Enregistrer"
+  },
+  "importRepoAssets": {
+    "title": "Importer depuis le dépôt",
+    "title_skills": "Importer des skills personnalisés depuis le dépôt",
+    "title_mcpServers": "Importer des outils et serveurs MCP depuis le dépôt",
+    "cancel": "Annuler",
+    "submit_one": "Importer la sélection ({{count}})",
+    "submit_many": "Importer la sélection ({{count}})",
+    "submit_other": "Importer la sélection ({{count}})",
+    "source": {
+      "heading": "Source du dépôt",
+      "modes": {
+        "repo": "Dépôt du projet",
+        "gitUrl": "URL Git",
+        "localPath": "Chemin local"
+      },
+      "repo": "Dépôt du projet",
+      "gitUrl": "URL du dépôt Git",
+      "localPath": "Chemin du dossier local",
+      "localPathPlaceholder": "~/chemin/vers/le/depot ou /Users/..."
+    },
+    "fetchAndScan": "Récupérer et analyser",
+    "scan": "Analyser",
+    "scanning": "Analyse du dépôt...",
+    "notScanned": "Choisissez une source et analysez-la pour voir ce qu'elle contient.",
+    "empty": "Rien à importer n'a été trouvé dans ce dépôt.",
+    "empty_skills": "Aucun fichier SKILL.md trouvé dans ce dépôt (.agents/skills, .gemini/skills, skills/, etc.).",
+    "empty_mcpServers": "Aucun fichier de configuration MCP (.mcp.json, mcp_config.json, .vscode/mcp.json) trouvé.",
+    "discovered": "Trouvé",
+    "discovered_skills": "Skills personnalisés trouvés",
+    "discovered_mcpServers": "Serveurs MCP trouvés"
+  },
+  "vaultThemes": {
+    "title": "Thèmes du Team Vault",
+    "createTitle": "Créer un thème personnalisé",
+    "editTitle": "Modifier le thème personnalisé",
+    "close": "Fermer",
+    "cancel": "Annuler",
+    "upload": "Envoyer vers le Team Vault",
+    "newTheme": "Nouveau thème personnalisé",
+    "copyConfiguration": "Copier la configuration",
+    "importConfiguration": "Importer une configuration",
+    "defaults": {
+      "name": "Marque de l'équipe",
+      "description": "Thème personnalisé du vault de l'équipe"
+    },
+    "tabs": {
+      "generator": "Générateur de thèmes",
+      "themes_one": "Thèmes du vault ({{count}})",
+      "themes_many": "Thèmes du vault ({{count}})",
+      "themes_other": "Thèmes du vault ({{count}})"
+    },
+    "fields": {
+      "name": "Nom du thème",
+      "description": "Description",
+      "preset": "Thème prédéfini",
+      "presetCustom": "Personnalisé",
+      "mode": "Mode du thème",
+      "fontFamily": "Famille de police",
+      "fontSize": "Taille de police",
+      "radius": "Arrondi des bords"
+    },
+    "mode": {
+      "light": "Clair",
+      "dark": "Sombre",
+      "lightBadge": "Mode clair",
+      "darkBadge": "Mode sombre"
+    },
+    "sections": {
+      "preview": "Aperçu des composants",
+      "colors": "Couleurs",
+      "typography": "Typographie et mise en page"
+    },
+    "colorGroups": {
+      "main": "Couleurs principales",
+      "semantic": "Couleurs sémantiques",
+      "ui": "Couleurs des éléments d'interface"
+    },
+    "radius": {
+      "none": "Aucun",
+      "small": "Petit",
+      "medium": "Moyen",
+      "large": "Grand",
+      "full": "Complet"
+    },
+    "preview": {
+      "heading": "Aperçu interactif",
+      "hint": "Aperçu en direct qui réagit aux couleurs, à la typographie et à l'arrondi des bords",
+      "primary": "Principal",
+      "secondary": "Secondaire",
+      "outline": "Contour",
+      "destructive": "Destructif",
+      "ghost": "Fantôme",
+      "textField": "Champ de texte",
+      "switch": "Interrupteur",
+      "callout": "Les boîtes, champs et sélecteurs héritent de votre arrondi des bords et de vos variables de couleur.",
+      "metric": "Métrique d'exemple",
+      "healthy": "Sain"
+    },
+    "list": {
+      "loading": "Chargement des thèmes du vault...",
+      "noDescription": "Thème personnalisé",
+      "active": "Actif",
+      "apply": "Appliquer",
+      "edit": "Modifier",
+      "delete": "Supprimer {{name}}",
+      "count_one": "{{count}} thème personnalisé dans le vault",
+      "count_many": "{{count}} de thèmes personnalisés dans le vault",
+      "count_other": "{{count}} thèmes personnalisés dans le vault"
+    },
+    "empty": {
+      "title": "Aucun thème personnalisé dans le vault",
+      "body": "Ce vault d'équipe n'a pas encore de thème personnalisé. Utilisez le générateur de thèmes pour en créer un et l'envoyer."
+    },
+    "export": {
+      "title": "Exporter la configuration du thème",
+      "format": "Format",
+      "jsonHint": "Utilisez ce JSON pour conserver ou partager le thème.",
+      "cssHint": "Collez ce CSS dans un hôte pour appliquer les couleurs du thème.",
+      "copy": "Copier le {{format}}"
+    },
+    "import": {
+      "title": "Importer une configuration de thème",
+      "description": "Collez une configuration de thème JSON pour importer ses couleurs, sa typographie et son arrondi des bords.",
+      "fieldLabel": "Configuration du thème",
+      "submit": "Importer le thème",
+      "invalidJson": "Ce n'est pas du JSON valide.",
+      "invalidShape": "Aucune couleur de thème trouvée : un objet \"colors\" avec \"light\" et/ou \"dark\" est attendu."
+    },
+    "deleteConfirm": {
+      "title": "Supprimer {{name}} du vault ?",
+      "body": "Le thème est supprimé du dépôt du vault pour tous ceux qui l'utilisent. Ceux qui l'ont appliqué reviennent au thème par défaut.",
+      "confirm": "Supprimer le thème"
+    }
+  }
+}

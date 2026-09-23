@@ -1,60 +1,192 @@
 /**
- * KPI drill-down panels, one per clickable dashboard card.
+ * The Dashboard's KPI drill-down: one panel per clickable KPI card. Port of V1
+ * `Apps/Views/Sheets/KpiBreakdownSheet.cs`.
  *
- * The original opened a right-hand sheet (`KpiBreakdownSheet`). This uses the blade stack from
- * plan 00548, which is the host the plan's `kpi-drilldown-host` question recommends and the
- * master → detail idiom the rest of the port is moving to. Inside that host each panel is what
- * `KpiBreakdownSheet.Build` composes: an explanatory callout, a details list of the figures the
- * card was computed from, the rows behind it, and — on the three money cards — the per-agent
- * split (`KpiBreakdownSheet.BuildAgentBreakdownSection`).
+ * V1 opens a right-hand sheet whose body `KpiBreakdownSheet.Build` composes: an explanatory callout,
+ * a details list of the figures the card was computed from, the rows behind it, and - on the three
+ * money cards - the per-agent split (`BuildAgentBreakdownSection`). Here that body is a blade (plan
+ * 00548's master -> detail idiom) at the root of the sheet, so a later drill-in has somewhere to go.
  *
- * The window arithmetic is recomputed here rather than shared with `buildKpis`, which is what
- * `KpiBreakdownSheet` does too: the sheet takes the raw series and derives its own last-30 and
- * prior-30 sums instead of being handed the card's.
+ * **Presentational.** It takes the analytics the Dashboard already holds ({@link KpiBreakdownData})
+ * and reaches nothing itself. The window arithmetic lives here rather than being handed in, which is
+ * what V1 does too: the sheet takes the raw series and derives its own last-30 and prior-30 sums
+ * instead of being given the card's.
  *
  * The one rule every panel obeys: an unpriced cost renders as an em dash, never `$0.00`. The
  * `Option<f64>` the query returns means "these rows carried tokens without a charge", and if that
  * distinction dies at the last render then the whole `PricedRows` guard behind it was pointless.
  *
- * Every string is the `dashboard` catalog's. `buildKpiBlade` is handed the view's `t`, so the blade
- * is rebuilt in the new language whenever the Dashboard re-renders for one; the figures go through
- * the current language's formatters at the same moment.
+ * Every string is the `uiPanels` catalog's `kpiBreakdown` section, and every figure goes through the
+ * current language's formatters, so a language change re-renders the panel in the new language.
  */
 
-import type React from "react";
-import { Callout, DataTable, DetailItem, Details } from "@ivy-interactive/components/ui";
-import type { BladeDescriptor, DataTableColumn } from "@ivy-interactive/components/ui";
-import { formatList, formatNumber } from "@ivy-interactive/components/i18n";
-import { useTranslation, type TFunction } from "../i18n";
-import { planStateLabel } from "../i18n/enumLabels";
-import type {
-  AgentCostBreakdown,
-  DashboardActivity,
-  DashboardDailyCost,
-  RecentMergedPr,
-  RecentPlanCost,
-  ShippedFeatureDay,
-} from "../types/api";
+import type * as React from "react";
+import { BladeContainer, type BladeDescriptor } from "../ui/blades";
+import { Callout } from "../ui/callout";
+import { DataTable, type DataTableColumn } from "../ui/data-table";
+import { DetailItem, Details } from "../ui/detail";
+import { Sheet, SheetContent, SheetHeader, SheetTitle } from "../ui/sheet";
+import { NO_VALUE } from "../../lib/formatters";
 import {
-  KPI_WINDOW_DAYS,
-  NO_VALUE,
-  formatCurrency,
-  formatPercentValue,
-  formatWholeDollars,
-} from "../utils/dashboardMetrics";
-import { toDayNumber, toIsoDate, todayDayNumber } from "../utils/rollingAverage";
+  formatCurrency as formatMoney,
+  formatList,
+  formatNumber,
+  useTranslation,
+  type TFunction,
+} from "@/i18n/uiPanels";
 
-type DashboardT = TFunction<"dashboard">;
+type PanelsT = TFunction;
+
+// --- the data this sheet renders ----------------------------------------------
+//
+// Declared here rather than borrowed from the app's DTOs: the component that renders a shape owns
+// it, and the library cannot import from the app. The app's `DashboardActivity`, `ShippedFeatureDay`,
+// `RecentMergedPr`, `RecentPlanCost` and `AgentCostBreakdown` are structurally these.
+//
+// `null` is meaningful throughout: it means "unknown", never "zero".
+
+/** One day of spend. `cost` may exceed `apiCost + subsidizedCost`: see {@link unclassifiedCost}. */
+export interface KpiDailyCost {
+  date: string;
+  cost: number;
+  tokens: number;
+  apiCost: number;
+  apiTokens: number;
+  subsidizedCost: number;
+  subsidizedTokens: number;
+}
+
+/** The month's projection, both bases side by side. */
+export interface KpiForecast {
+  calendarProjection: number | null;
+  calendarDays: number;
+  activityProjection: number | null;
+  activityDays: number;
+  daysInMonth: number;
+  apiCalendarProjection: number | null;
+  apiActivityProjection: number | null;
+  totalApiSpend: number;
+  totalSubsidizedSpend: number;
+  subsidizedTokenPercent: number;
+  subsidizedCostPercent: number;
+}
+
+export interface KpiActivity {
+  prevWeekAvgCost: number;
+  dailyCosts: readonly KpiDailyCost[];
+  forecast: KpiForecast;
+}
+
+export interface KpiShippedFeatureDay {
+  date: string;
+  count: number;
+}
+
+export interface KpiMergedPr {
+  prUrl: string;
+  planId: number;
+  title: string;
+  repo: string | null;
+  updated: string;
+}
+
+export interface KpiPlanCost {
+  planId: number;
+  title: string;
+  /** The raw plan state; shown by its label. */
+  state: string;
+  created: string;
+  /** `null` when no row was priced. Renders as a dash, never $0.00. */
+  cost: number | null;
+  tokens: number;
+}
+
+export interface KpiAgentCost {
+  agent: string;
+  cost: number;
+  tokens: number;
+  planCount: number;
+}
 
 export interface KpiBreakdownData {
-  activity: DashboardActivity | null;
-  shippedFeatures: readonly ShippedFeatureDay[];
-  mergedPrs: readonly RecentMergedPr[];
-  planCosts: readonly RecentPlanCost[];
-  agentCosts: readonly AgentCostBreakdown[];
-  /** Injected so the windows can be tested at a fixed date. */
+  activity: KpiActivity | null;
+  shippedFeatures: readonly KpiShippedFeatureDay[];
+  mergedPrs: readonly KpiMergedPr[];
+  planCosts: readonly KpiPlanCost[];
+  agentCosts: readonly KpiAgentCost[];
+  /** Days since the epoch (UTC). Injected so the windows can be pinned in tests and stories. */
   today?: number;
 }
+
+// --- dates and figures ----------------------------------------------------------
+
+/**
+ * The reporting period every "recent" KPI uses. The same 30 the app's `dashboardMetrics`
+ * (`KPI_WINDOW_DAYS`) computes the cards with, so a card and its panel agree.
+ */
+export const KPI_WINDOW_DAYS = 30;
+
+const MS_PER_DAY = 86_400_000;
+
+/** Days since the epoch for a `YYYY-MM-DD` date, parsed as UTC like the daemon's dates. */
+const toDayNumber = (isoDate: string): number | null => {
+  const ms = Date.parse(`${isoDate}T00:00:00Z`);
+  return Number.isNaN(ms) ? null : Math.floor(ms / MS_PER_DAY);
+};
+
+const toIsoDate = (dayNumber: number): string =>
+  new Date(dayNumber * MS_PER_DAY).toISOString().slice(0, 10);
+
+/** Today as a day number, in UTC to match the daemon's `Utc::now().date_naive()`. */
+const todayDayNumber = (now: Date = new Date()): number => Math.floor(now.getTime() / MS_PER_DAY);
+
+/**
+ * `value` rounded the way `toFixed` rounds it: on the binary value, so `0.145` is `0.14`. `Intl`
+ * rounds the shortest decimal instead, which would move a figure by a cent at every such tie. The
+ * arithmetic decides the digits and the formatter only writes them, as the app's `dashboardMetrics`
+ * does for the cards.
+ */
+const roundAsToFixed = (value: number, digits: number): number => Number(value.toFixed(digits));
+
+const CENTS: Intl.NumberFormatOptions = {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+  useGrouping: false,
+};
+const WHOLE: Intl.NumberFormatOptions = { minimumFractionDigits: 0, maximumFractionDigits: 0 };
+
+/** Whole dollars with the language's grouping: `$1,235` in English. */
+const formatWholeDollars = (value: number): string => formatMoney(Math.round(value), "USD", WHOLE);
+
+/** Cents below a thousand dollars, whole dollars above: `$6.67`, `$1,235` in English. */
+const formatCurrency = (value: number): string =>
+  value >= 1000 ? formatWholeDollars(value) : formatMoney(roundAsToFixed(value, 2), "USD", CENTS);
+
+/** A percentage that is already one (`38` for 38%), in the language's own shape. */
+function formatPercentValue(
+  value: number,
+  maximumFractionDigits = 0,
+  signDisplay?: "always",
+): string {
+  return formatNumber(value, {
+    style: "unit",
+    unit: "percent",
+    minimumFractionDigits: 0,
+    maximumFractionDigits,
+    useGrouping: false,
+    ...(signDisplay ? { signDisplay } : {}),
+  });
+}
+
+/** The plan states this sheet names, by label. Anything else is shown as it came. */
+const PLAN_STATE_KEYS = {
+  Completed: "kpiBreakdown.planStates.completed",
+  Failed: "kpiBreakdown.planStates.failed",
+  Review: "kpiBreakdown.planStates.review",
+} as const;
+
+const planStateLabel = (t: PanelsT, state: string): string =>
+  state in PLAN_STATE_KEYS ? t(PLAN_STATE_KEYS[state as keyof typeof PLAN_STATE_KEYS]) : state;
 
 /** The rolling window every "recent" figure on this page uses, as the cards do. */
 const WINDOW_DAYS = KPI_WINDOW_DAYS;
@@ -75,8 +207,8 @@ const PLAN_STATES_INCLUDED = ["Completed", "Failed", "Review"] as const;
 const UNKNOWN_AGENT = "Unknown";
 
 /** An agent as the table shows it: its own name, or the label of the daemon's "Unknown" row. */
-const agentLabel = (t: DashboardT, agent: string): string =>
-  agent === UNKNOWN_AGENT ? t("breakdown.agents.unknownAgent") : agent;
+const agentLabel = (t: PanelsT, agent: string): string =>
+  agent === UNKNOWN_AGENT ? t("kpiBreakdown.agents.unknownAgent") : agent;
 
 /** An amount that may not exist. `null` is unknown and renders as a dash. */
 const cost = (value: number | null | undefined): string =>
@@ -98,7 +230,7 @@ const CENT = 0.005;
  * for a database of mostly historical rows the "API spend" it shows is near zero. So the panels state
  * the remainder as its own figure instead.
  */
-const unclassifiedCost = (row: DashboardDailyCost): number =>
+const unclassifiedCost = (row: KpiDailyCost): number =>
   Math.max(0, row.cost - row.apiCost - row.subsidizedCost);
 
 /**
@@ -126,8 +258,8 @@ const count = (value: number): string => formatNumber(value);
  * `KpiBreakdownSheet.CalculateDelta`. "N/A" when either side is missing, because a change from
  * nothing is not a percentage; two decimals below 10% where the digits still carry information.
  */
-const delta = (t: DashboardT, current: number, previous: number): string => {
-  if (previous <= 0 || current <= 0) return t("breakdown.delta.notAvailable");
+const delta = (t: PanelsT, current: number, previous: number): string => {
+  if (previous <= 0 || current <= 0) return t("kpiBreakdown.delta.notAvailable");
   const pct = ((current - previous) / previous) * 100;
   const wide = Math.abs(pct) >= 10;
   const magnitude = wide ? Math.round(Math.abs(pct)) : Number(Math.abs(pct).toFixed(2));
@@ -159,9 +291,9 @@ const windows = (today: number) => {
 };
 
 const EmptyNote: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { t } = useTranslation("dashboard");
+  const { t } = useTranslation("uiPanels");
   return (
-    <Callout.Info title={t("breakdown.empty.title")} className="m-4">
+    <Callout.Info title={t("kpiBreakdown.empty.title")} className="m-4">
       {children}
     </Callout.Info>
   );
@@ -178,49 +310,49 @@ const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title
 // --- Spend by Coding Agent ---------------------------------------------------
 
 const agentCostColumns = (
-  t: DashboardT,
+  t: PanelsT,
   totalCost: number,
   totalTokens: number,
-): DataTableColumn<AgentCostBreakdown>[] => [
+): DataTableColumn<KpiAgentCost>[] => [
   {
     name: "agent",
-    header: t("breakdown.agents.columns.agent"),
+    header: t("kpiBreakdown.agents.columns.agent"),
     accessor: (r) => r.agent,
     cell: (value) => (typeof value === "string" ? agentLabel(t, value) : null),
   },
   {
     name: "cost",
-    header: t("breakdown.agents.columns.cost"),
+    header: t("kpiBreakdown.agents.columns.cost"),
     align: "Right",
     accessor: (r) => r.cost,
     cell: (value) => roundedCost(value as number),
   },
   {
     name: "costShare",
-    header: t("breakdown.agents.columns.costShare"),
+    header: t("kpiBreakdown.agents.columns.costShare"),
     align: "Right",
     accessor: (r) => (totalCost > 0 ? (r.cost / totalCost) * 100 : null),
     cell: (value) =>
-      value == null ? t("breakdown.agents.shareNotAvailable") : percent(value as number),
+      value == null ? t("kpiBreakdown.agents.shareNotAvailable") : percent(value as number),
   },
   {
     name: "tokens",
-    header: t("breakdown.agents.columns.tokens"),
+    header: t("kpiBreakdown.agents.columns.tokens"),
     align: "Right",
     accessor: (r) => r.tokens,
     cell: (value) => count(value as number),
   },
   {
     name: "tokenShare",
-    header: t("breakdown.agents.columns.tokenShare"),
+    header: t("kpiBreakdown.agents.columns.tokenShare"),
     align: "Right",
     accessor: (r) => (totalTokens > 0 ? (r.tokens / totalTokens) * 100 : null),
     cell: (value) =>
-      value == null ? t("breakdown.agents.shareNotAvailable") : percent(value as number),
+      value == null ? t("kpiBreakdown.agents.shareNotAvailable") : percent(value as number),
   },
   {
     name: "planCount",
-    header: t("breakdown.agents.columns.planCount"),
+    header: t("kpiBreakdown.agents.columns.planCount"),
     align: "Right",
     accessor: (r) => r.planCount,
   },
@@ -232,15 +364,13 @@ const agentCostColumns = (
  * average); the analytics hook fetches one snapshot at the daemon's default window, so the heading
  * claims no window rather than a wrong one.
  */
-const AgentBreakdown: React.FC<{ agentCosts: readonly AgentCostBreakdown[] }> = ({
-  agentCosts,
-}) => {
-  const { t } = useTranslation("dashboard");
+const AgentBreakdown: React.FC<{ agentCosts: readonly KpiAgentCost[] }> = ({ agentCosts }) => {
+  const { t } = useTranslation("uiPanels");
 
   if (agentCosts.length === 0) {
     return (
-      <Section title={t("breakdown.agents.title")}>
-        <EmptyNote>{t("breakdown.agents.empty")}</EmptyNote>
+      <Section title={t("kpiBreakdown.agents.title")}>
+        <EmptyNote>{t("kpiBreakdown.agents.empty")}</EmptyNote>
       </Section>
     );
   }
@@ -250,7 +380,7 @@ const AgentBreakdown: React.FC<{ agentCosts: readonly AgentCostBreakdown[] }> = 
   const unknownCost = agentCosts.find((a) => a.agent === UNKNOWN_AGENT)?.cost ?? null;
 
   return (
-    <Section title={t("breakdown.agents.title")}>
+    <Section title={t("kpiBreakdown.agents.title")}>
       <DataTable
         columns={agentCostColumns(t, totalCost, totalTokens)}
         rows={[...agentCosts]}
@@ -258,18 +388,18 @@ const AgentBreakdown: React.FC<{ agentCosts: readonly AgentCostBreakdown[] }> = 
         paginated={false}
       />
       {unknownCost != null && (
-        <Callout.Info title={t("breakdown.agents.partialAttribution.title")} className="m-4">
+        <Callout.Info title={t("kpiBreakdown.agents.partialAttribution.title")} className="m-4">
           {totalCost > 0
             ? t(
                 unknownCost >= totalCost - CENT
-                  ? "breakdown.agents.partialAttribution.bodyUninformative"
-                  : "breakdown.agents.partialAttribution.bodyWithShare",
+                  ? "kpiBreakdown.agents.partialAttribution.bodyUninformative"
+                  : "kpiBreakdown.agents.partialAttribution.bodyWithShare",
                 {
                   agent: agentLabel(t, UNKNOWN_AGENT),
                   share: percent((unknownCost / totalCost) * 100),
                 },
               )
-            : t("breakdown.agents.partialAttribution.body", {
+            : t("kpiBreakdown.agents.partialAttribution.body", {
                 agent: agentLabel(t, UNKNOWN_AGENT),
               })}
         </Callout.Info>
@@ -280,38 +410,38 @@ const AgentBreakdown: React.FC<{ agentCosts: readonly AgentCostBreakdown[] }> = 
 
 // --- featuresShipped ---------------------------------------------------------
 
-const featureDayColumns = (t: DashboardT): DataTableColumn<ShippedFeatureDay>[] => [
+const featureDayColumns = (t: PanelsT): DataTableColumn<KpiShippedFeatureDay>[] => [
   {
     name: "date",
-    header: t("breakdown.featuresShipped.byDay.columns.date"),
+    header: t("kpiBreakdown.featuresShipped.byDay.columns.date"),
     width: "140px",
     accessor: (r) => r.date,
   },
   {
     name: "count",
-    header: t("breakdown.featuresShipped.byDay.columns.count"),
+    header: t("kpiBreakdown.featuresShipped.byDay.columns.count"),
     align: "Right",
     accessor: (r) => r.count,
     cell: (value) => count(value as number),
   },
 ];
 
-const mergedPrColumns = (t: DashboardT): DataTableColumn<RecentMergedPr>[] => [
+const mergedPrColumns = (t: PanelsT): DataTableColumn<KpiMergedPr>[] => [
   {
     name: "planId",
-    header: t("breakdown.featuresShipped.mergedPrs.columns.plan"),
+    header: t("kpiBreakdown.featuresShipped.mergedPrs.columns.plan"),
     width: "80px",
     accessor: (r) => r.planId,
   },
   {
     name: "title",
-    header: t("breakdown.featuresShipped.mergedPrs.columns.title"),
+    header: t("kpiBreakdown.featuresShipped.mergedPrs.columns.title"),
     accessor: (r) => r.title,
     wrapText: true,
   },
   {
     name: "repo",
-    header: t("breakdown.featuresShipped.mergedPrs.columns.repo"),
+    header: t("kpiBreakdown.featuresShipped.mergedPrs.columns.repo"),
     accessor: (r) => r.repo,
     // Wrapped, like the title beside it. A repo is a local path with no spaces, and an unwrapped
     // cell's minimum width is the whole of it: once the sheet stopped growing to fit its content,
@@ -324,20 +454,20 @@ const mergedPrColumns = (t: DashboardT): DataTableColumn<RecentMergedPr>[] => [
   },
   {
     name: "updated",
-    header: t("breakdown.featuresShipped.mergedPrs.columns.merged"),
+    header: t("kpiBreakdown.featuresShipped.mergedPrs.columns.merged"),
     width: "170px",
     accessor: (r) => r.updated,
   },
   {
     name: "prUrl",
-    header: t("breakdown.featuresShipped.mergedPrs.columns.prUrl"),
+    header: t("kpiBreakdown.featuresShipped.mergedPrs.columns.prUrl"),
     width: "60px",
     sortable: false,
     accessor: (r) => r.prUrl,
     cell: (value) =>
       typeof value === "string" ? (
         <a href={value} target="_blank" rel="noreferrer" className="text-xs underline">
-          {t("breakdown.featuresShipped.mergedPrs.open")}
+          {t("kpiBreakdown.featuresShipped.mergedPrs.open")}
         </a>
       ) : null,
   },
@@ -345,37 +475,37 @@ const mergedPrColumns = (t: DashboardT): DataTableColumn<RecentMergedPr>[] => [
 
 // --- forecastMonth -----------------------------------------------------------
 
-const dailyCostColumns = (t: DashboardT): DataTableColumn<DashboardDailyCost>[] => [
+const dailyCostColumns = (t: PanelsT): DataTableColumn<KpiDailyCost>[] => [
   {
     name: "date",
-    header: t("breakdown.forecastMonth.daily.columns.date"),
+    header: t("kpiBreakdown.forecastMonth.daily.columns.date"),
     width: "110px",
     accessor: (r) => r.date,
   },
   {
     name: "cost",
-    header: t("breakdown.forecastMonth.daily.columns.cost"),
+    header: t("kpiBreakdown.forecastMonth.daily.columns.cost"),
     align: "Right",
     accessor: (r) => r.cost,
     cell: (value) => roundedCost(value as number),
   },
   {
     name: "apiCost",
-    header: t("breakdown.forecastMonth.daily.columns.apiCost"),
+    header: t("kpiBreakdown.forecastMonth.daily.columns.apiCost"),
     align: "Right",
     accessor: (r) => r.apiCost,
     cell: (value) => roundedCost(value as number),
   },
   {
     name: "subsidizedCost",
-    header: t("breakdown.forecastMonth.daily.columns.subsidizedCost"),
+    header: t("kpiBreakdown.forecastMonth.daily.columns.subsidizedCost"),
     align: "Right",
     accessor: (r) => r.subsidizedCost,
     cell: (value) => roundedCost(value as number),
   },
   {
     name: "tokens",
-    header: t("breakdown.forecastMonth.daily.columns.tokens"),
+    header: t("kpiBreakdown.forecastMonth.daily.columns.tokens"),
     align: "Right",
     // The greater of the two token counts, the guard V1 applies here: the rollup under-reports
     // whenever a row carried tokens it missed.
@@ -384,7 +514,7 @@ const dailyCostColumns = (t: DashboardT): DataTableColumn<DashboardDailyCost>[] 
   },
   {
     name: "subsidizedShare",
-    header: t("breakdown.forecastMonth.daily.columns.subsidizedShare"),
+    header: t("kpiBreakdown.forecastMonth.daily.columns.subsidizedShare"),
     align: "Right",
     accessor: (r) => {
       const total = Math.max(r.tokens, r.apiTokens + r.subsidizedTokens);
@@ -397,43 +527,43 @@ const dailyCostColumns = (t: DashboardT): DataTableColumn<DashboardDailyCost>[] 
 
 // --- avgCostPlan -------------------------------------------------------------
 
-const planCostColumns = (t: DashboardT): DataTableColumn<RecentPlanCost>[] => [
+const planCostColumns = (t: PanelsT): DataTableColumn<KpiPlanCost>[] => [
   {
     name: "planId",
-    header: t("breakdown.avgCostPlan.plans.columns.plan"),
+    header: t("kpiBreakdown.avgCostPlan.plans.columns.plan"),
     width: "80px",
     accessor: (r) => r.planId,
   },
   {
     name: "title",
-    header: t("breakdown.avgCostPlan.plans.columns.title"),
+    header: t("kpiBreakdown.avgCostPlan.plans.columns.title"),
     accessor: (r) => r.title,
     wrapText: true,
   },
   {
     name: "state",
-    header: t("breakdown.avgCostPlan.plans.columns.state"),
+    header: t("kpiBreakdown.avgCostPlan.plans.columns.state"),
     width: "110px",
     // Sorted on the raw state, shown by its label.
     accessor: (r) => r.state,
-    cell: (value) => (typeof value === "string" ? planStateLabel(value) : null),
+    cell: (value) => (typeof value === "string" ? planStateLabel(t, value) : null),
   },
   {
     name: "created",
-    header: t("breakdown.avgCostPlan.plans.columns.created"),
+    header: t("kpiBreakdown.avgCostPlan.plans.columns.created"),
     width: "170px",
     accessor: (r) => r.created,
   },
   {
     name: "tokens",
-    header: t("breakdown.avgCostPlan.plans.columns.tokens"),
+    header: t("kpiBreakdown.avgCostPlan.plans.columns.tokens"),
     align: "Right",
     accessor: (r) => r.tokens,
     cell: (value) => count(value as number),
   },
   {
     name: "cost",
-    header: t("breakdown.avgCostPlan.plans.columns.cost"),
+    header: t("kpiBreakdown.avgCostPlan.plans.columns.cost"),
     align: "Right",
     accessor: (r) => r.cost,
     // The whole point of the null: a plan whose rows carried tokens without a charge cost an
@@ -462,16 +592,17 @@ export const isKpiBreakdownId = (value: string): value is KpiBreakdownId =>
   (KPI_BREAKDOWN_IDS as readonly string[]).includes(value);
 
 /** Panel titles, from `DashboardApp.GetKpiSheetTitle`. */
-const kpiTitle = (t: DashboardT, kpiId: KpiBreakdownId): string => t(`breakdown.titles.${kpiId}`);
+const kpiTitle = (t: PanelsT, kpiId: KpiBreakdownId): string => t(`kpiBreakdown.titles.${kpiId}`);
 
 /**
- * The blade for one KPI, or `null` when the id is not one we drill into. `t` is the calling view's,
- * so the blade is rebuilt - in the new language - on the render a language change causes.
+ * The blade for one KPI, or `null` when the id is not one we drill into. `t` is the sheet's, so the
+ * blade is rebuilt - in the new language - on the render a language change causes. Exported for
+ * tests that want a panel without the sheet around it.
  */
 export function buildKpiBlade(
   kpiId: string,
   data: KpiBreakdownData,
-  t: DashboardT,
+  t: PanelsT,
 ): BladeDescriptor | null {
   if (!isKpiBreakdownId(kpiId)) return null;
   const { activity, shippedFeatures, mergedPrs, planCosts, agentCosts } = data;
@@ -496,34 +627,38 @@ export function buildKpiBlade(
         })
         .sort((a, b) => b.date.localeCompare(a.date));
 
-      return blade(t("breakdown.featuresShipped.subtitle"), [
-        <Callout.Info key="note" title={t("breakdown.featuresShipped.note.title")} className="m-4">
-          {t("breakdown.featuresShipped.note.body", { count: WINDOW_DAYS })}
+      return blade(t("kpiBreakdown.featuresShipped.subtitle"), [
+        <Callout.Info
+          key="note"
+          title={t("kpiBreakdown.featuresShipped.note.title")}
+          className="m-4"
+        >
+          {t("kpiBreakdown.featuresShipped.note.body", { count: WINDOW_DAYS })}
         </Callout.Info>,
         <Details key="details" className="px-4 pb-4">
-          <DetailItem label={t("breakdown.details.metric")}>
-            {t("breakdown.featuresShipped.metric")}
+          <DetailItem label={t("kpiBreakdown.details.metric")}>
+            {t("kpiBreakdown.featuresShipped.metric")}
           </DetailItem>
-          <DetailItem label={t("breakdown.details.formula")}>
-            {t("breakdown.featuresShipped.formula", { count: WINDOW_DAYS })}
+          <DetailItem label={t("kpiBreakdown.details.formula")}>
+            {t("kpiBreakdown.featuresShipped.formula", { count: WINDOW_DAYS })}
           </DetailItem>
-          <DetailItem label={t("breakdown.featuresShipped.last", { count: WINDOW_DAYS })}>
+          <DetailItem label={t("kpiBreakdown.featuresShipped.last", { count: WINDOW_DAYS })}>
             {count(features)}
           </DetailItem>
-          <DetailItem label={t("breakdown.featuresShipped.prior", { count: WINDOW_DAYS })}>
+          <DetailItem label={t("kpiBreakdown.featuresShipped.prior", { count: WINDOW_DAYS })}>
             {count(priorFeatures)}
           </DetailItem>
-          <DetailItem label={t("breakdown.featuresShipped.periodDelta", { days: WINDOW_DAYS })}>
+          <DetailItem label={t("kpiBreakdown.featuresShipped.periodDelta", { days: WINDOW_DAYS })}>
             {delta(t, features, priorFeatures)}
           </DetailItem>
         </Details>,
         <Section
           key="days"
-          title={t("breakdown.featuresShipped.byDay.title", { count: WINDOW_DAYS })}
+          title={t("kpiBreakdown.featuresShipped.byDay.title", { count: WINDOW_DAYS })}
         >
           {inWindow.length === 0 ? (
             <EmptyNote>
-              {t("breakdown.featuresShipped.byDay.empty", { days: WINDOW_DAYS })}
+              {t("kpiBreakdown.featuresShipped.byDay.empty", { days: WINDOW_DAYS })}
             </EmptyNote>
           ) : (
             <DataTable
@@ -534,9 +669,9 @@ export function buildKpiBlade(
             />
           )}
         </Section>,
-        <Section key="prs" title={t("breakdown.featuresShipped.mergedPrs.title")}>
+        <Section key="prs" title={t("kpiBreakdown.featuresShipped.mergedPrs.title")}>
           {mergedPrs.length === 0 ? (
-            <EmptyNote>{t("breakdown.featuresShipped.mergedPrs.empty")}</EmptyNote>
+            <EmptyNote>{t("kpiBreakdown.featuresShipped.mergedPrs.empty")}</EmptyNote>
           ) : (
             <DataTable
               columns={mergedPrColumns(t)}
@@ -558,40 +693,46 @@ export function buildKpiBlade(
       const perFeature = features > 0 ? spend / features : 0;
       const priorPerFeature = priorFeatures > 0 ? priorSpend / priorFeatures : 0;
 
-      return blade(t("breakdown.costPerFeature.subtitle"), [
-        <Callout.Info key="note" title={t("breakdown.costPerFeature.note.title")} className="m-4">
-          {t("breakdown.costPerFeature.note.body", { days: WINDOW_DAYS })}
+      return blade(t("kpiBreakdown.costPerFeature.subtitle"), [
+        <Callout.Info
+          key="note"
+          title={t("kpiBreakdown.costPerFeature.note.title")}
+          className="m-4"
+        >
+          {t("kpiBreakdown.costPerFeature.note.body", { days: WINDOW_DAYS })}
         </Callout.Info>,
         <Details key="details" className="px-4 pb-4">
-          <DetailItem label={t("breakdown.details.metric")}>
-            {t("breakdown.costPerFeature.metric")}
+          <DetailItem label={t("kpiBreakdown.details.metric")}>
+            {t("kpiBreakdown.costPerFeature.metric")}
           </DetailItem>
-          <DetailItem label={t("breakdown.details.formula")}>
-            {t("breakdown.costPerFeature.formula", { days: WINDOW_DAYS })}
+          <DetailItem label={t("kpiBreakdown.details.formula")}>
+            {t("kpiBreakdown.costPerFeature.formula", { days: WINDOW_DAYS })}
           </DetailItem>
-          <DetailItem label={t("breakdown.costPerFeature.lastSpend", { count: WINDOW_DAYS })}>
+          <DetailItem label={t("kpiBreakdown.costPerFeature.lastSpend", { count: WINDOW_DAYS })}>
             {cost(spend)}
           </DetailItem>
-          <DetailItem label={t("breakdown.costPerFeature.lastFeatures", { count: WINDOW_DAYS })}>
+          <DetailItem label={t("kpiBreakdown.costPerFeature.lastFeatures", { count: WINDOW_DAYS })}>
             {count(features)}
           </DetailItem>
           <DetailItem
-            label={t("breakdown.costPerFeature.lastCostPerFeature", { count: WINDOW_DAYS })}
+            label={t("kpiBreakdown.costPerFeature.lastCostPerFeature", { count: WINDOW_DAYS })}
           >
-            {features > 0 ? cost(perFeature) : t("breakdown.costPerFeature.noValue")}
+            {features > 0 ? cost(perFeature) : t("kpiBreakdown.costPerFeature.noValue")}
           </DetailItem>
-          <DetailItem label={t("breakdown.costPerFeature.priorSpend", { count: WINDOW_DAYS })}>
+          <DetailItem label={t("kpiBreakdown.costPerFeature.priorSpend", { count: WINDOW_DAYS })}>
             {cost(priorSpend)}
           </DetailItem>
-          <DetailItem label={t("breakdown.costPerFeature.priorFeatures", { count: WINDOW_DAYS })}>
+          <DetailItem
+            label={t("kpiBreakdown.costPerFeature.priorFeatures", { count: WINDOW_DAYS })}
+          >
             {count(priorFeatures)}
           </DetailItem>
           <DetailItem
-            label={t("breakdown.costPerFeature.priorCostPerFeature", { count: WINDOW_DAYS })}
+            label={t("kpiBreakdown.costPerFeature.priorCostPerFeature", { count: WINDOW_DAYS })}
           >
-            {priorFeatures > 0 ? cost(priorPerFeature) : t("breakdown.costPerFeature.noValue")}
+            {priorFeatures > 0 ? cost(priorPerFeature) : t("kpiBreakdown.costPerFeature.noValue")}
           </DetailItem>
-          <DetailItem label={t("breakdown.costPerFeature.periodDelta", { days: WINDOW_DAYS })}>
+          <DetailItem label={t("kpiBreakdown.costPerFeature.periodDelta", { days: WINDOW_DAYS })}>
             {delta(t, perFeature, priorPerFeature)}
           </DetailItem>
         </Details>,
@@ -601,8 +742,8 @@ export function buildKpiBlade(
 
     case "forecastMonth": {
       if (activity == null) {
-        return blade(t("breakdown.forecastMonth.subtitle"), [
-          <EmptyNote key="empty">{t("breakdown.forecastMonth.empty")}</EmptyNote>,
+        return blade(t("kpiBreakdown.forecastMonth.subtitle"), [
+          <EmptyNote key="empty">{t("kpiBreakdown.forecastMonth.empty")}</EmptyNote>,
         ]);
       }
 
@@ -627,79 +768,81 @@ export function buildKpiBlade(
         .sort((a, b) => b.date.localeCompare(a.date));
       const windowUnclassified = inWindow.reduce((acc, d) => acc + unclassifiedCost(d), 0);
 
-      return blade(t("breakdown.forecastMonth.subtitle"), [
-        <Callout.Info key="note" title={t("breakdown.forecastMonth.note.title")} className="m-4">
+      return blade(t("kpiBreakdown.forecastMonth.subtitle"), [
+        <Callout.Info key="note" title={t("kpiBreakdown.forecastMonth.note.title")} className="m-4">
           {forecast.subsidizedTokenPercent > 0
-            ? t("breakdown.forecastMonth.note.bodySubsidized", {
+            ? t("kpiBreakdown.forecastMonth.note.bodySubsidized", {
                 count: WINDOW_DAYS,
                 percent: wholePercent(forecast.subsidizedTokenPercent),
                 subsidizedValue: roundedCost(forecast.totalSubsidizedSpend),
                 apiCharges: roundedCost(forecast.totalApiSpend),
               })
-            : t("breakdown.forecastMonth.note.body", { count: WINDOW_DAYS })}
+            : t("kpiBreakdown.forecastMonth.note.body", { count: WINDOW_DAYS })}
         </Callout.Info>,
         // Both bases side by side rather than one headline figure. Neither is right on its own: the
         // calendar basis assumes the idle days keep coming, the activity basis assumes every day is
         // a working day, and for bursty usage the gap between them *is* the uncertainty.
         <Details key="details" className="px-4 pb-4">
-          <DetailItem label={t("breakdown.details.metric")}>
-            {t("breakdown.forecastMonth.metric")}
+          <DetailItem label={t("kpiBreakdown.details.metric")}>
+            {t("kpiBreakdown.forecastMonth.metric")}
           </DetailItem>
-          <DetailItem label={t("breakdown.forecastMonth.apiCalendar")}>
+          <DetailItem label={t("kpiBreakdown.forecastMonth.apiCalendar")}>
             {roundedCost(forecast.apiCalendarProjection)}
           </DetailItem>
-          <DetailItem label={t("breakdown.forecastMonth.apiActivity")}>
+          <DetailItem label={t("kpiBreakdown.forecastMonth.apiActivity")}>
             {roundedCost(forecast.apiActivityProjection)}
           </DetailItem>
-          <DetailItem label={t("breakdown.forecastMonth.totalCalendar")}>
+          <DetailItem label={t("kpiBreakdown.forecastMonth.totalCalendar")}>
             {roundedCost(forecast.calendarProjection)}
           </DetailItem>
-          <DetailItem label={t("breakdown.forecastMonth.totalActivity")}>
+          <DetailItem label={t("kpiBreakdown.forecastMonth.totalActivity")}>
             {roundedCost(forecast.activityProjection)}
           </DetailItem>
-          <DetailItem label={t("breakdown.forecastMonth.subsidizedTokenShare")}>
-            {t("breakdown.forecastMonth.subsidizedTokenShareValue", {
+          <DetailItem label={t("kpiBreakdown.forecastMonth.subsidizedTokenShare")}>
+            {t("kpiBreakdown.forecastMonth.subsidizedTokenShareValue", {
               percent: wholePercent(forecast.subsidizedTokenPercent),
             })}
           </DetailItem>
-          <DetailItem label={t("breakdown.forecastMonth.subsidizedValueShare")}>
-            {t("breakdown.forecastMonth.subsidizedValueShareValue", {
+          <DetailItem label={t("kpiBreakdown.forecastMonth.subsidizedValueShare")}>
+            {t("kpiBreakdown.forecastMonth.subsidizedValueShareValue", {
               percent: wholePercent(forecast.subsidizedCostPercent),
             })}
           </DetailItem>
-          <DetailItem label={t("breakdown.forecastMonth.mtdApiSpend")}>
+          <DetailItem label={t("kpiBreakdown.forecastMonth.mtdApiSpend")}>
             {roundedCost(mtdApi)}
           </DetailItem>
-          <DetailItem label={t("breakdown.forecastMonth.mtdSubsidizedValue")}>
+          <DetailItem label={t("kpiBreakdown.forecastMonth.mtdSubsidizedValue")}>
             {roundedCost(mtdSubsidized)}
           </DetailItem>
           {mtdUnclassified > CENT && (
-            <DetailItem label={t("breakdown.forecastMonth.mtdUnattributedSpend")}>
+            <DetailItem label={t("kpiBreakdown.forecastMonth.mtdUnattributedSpend")}>
               {roundedCost(mtdUnclassified)}
             </DetailItem>
           )}
-          <DetailItem label={t("breakdown.forecastMonth.mtdTotalMarketValue")}>
+          <DetailItem label={t("kpiBreakdown.forecastMonth.mtdTotalMarketValue")}>
             {roundedCost(mtdTotal)}
           </DetailItem>
-          <DetailItem label={t("breakdown.forecastMonth.calendarDays")}>
-            {t("breakdown.forecastMonth.dayCount", { count: forecast.calendarDays })}
+          <DetailItem label={t("kpiBreakdown.forecastMonth.calendarDays")}>
+            {t("kpiBreakdown.forecastMonth.dayCount", { count: forecast.calendarDays })}
           </DetailItem>
-          <DetailItem label={t("breakdown.forecastMonth.activeDays")}>
-            {t("breakdown.forecastMonth.dayCount", { count: forecast.activityDays })}
+          <DetailItem label={t("kpiBreakdown.forecastMonth.activeDays")}>
+            {t("kpiBreakdown.forecastMonth.dayCount", { count: forecast.activityDays })}
           </DetailItem>
-          <DetailItem label={t("breakdown.forecastMonth.daysRemaining")}>
-            {t("breakdown.forecastMonth.dayCount", { count: daysRemaining })}
+          <DetailItem label={t("kpiBreakdown.forecastMonth.daysRemaining")}>
+            {t("kpiBreakdown.forecastMonth.dayCount", { count: daysRemaining })}
           </DetailItem>
-          <DetailItem label={t("breakdown.forecastMonth.daysInMonth")}>
-            {t("breakdown.forecastMonth.dayCount", { count: forecast.daysInMonth })}
+          <DetailItem label={t("kpiBreakdown.forecastMonth.daysInMonth")}>
+            {t("kpiBreakdown.forecastMonth.dayCount", { count: forecast.daysInMonth })}
           </DetailItem>
         </Details>,
         <Section
           key="daily"
-          title={t("breakdown.forecastMonth.daily.title", { count: WINDOW_DAYS })}
+          title={t("kpiBreakdown.forecastMonth.daily.title", { count: WINDOW_DAYS })}
         >
           {inWindow.length === 0 ? (
-            <EmptyNote>{t("breakdown.forecastMonth.daily.empty", { days: WINDOW_DAYS })}</EmptyNote>
+            <EmptyNote>
+              {t("kpiBreakdown.forecastMonth.daily.empty", { days: WINDOW_DAYS })}
+            </EmptyNote>
           ) : (
             <>
               <DataTable
@@ -710,10 +853,10 @@ export function buildKpiBlade(
               />
               {windowUnclassified > CENT && (
                 <Callout.Info
-                  title={t("breakdown.forecastMonth.daily.incompleteSplit.title")}
+                  title={t("kpiBreakdown.forecastMonth.daily.incompleteSplit.title")}
                   className="m-4"
                 >
-                  {t("breakdown.forecastMonth.daily.incompleteSplit.body", {
+                  {t("kpiBreakdown.forecastMonth.daily.incompleteSplit.body", {
                     amount: roundedCost(windowUnclassified),
                   })}
                 </Callout.Info>
@@ -736,44 +879,48 @@ export function buildKpiBlade(
           ? priced.reduce((acc, plan) => acc + (plan.cost ?? 0), 0) / priced.length
           : 0;
       const priorAvg = activity?.prevWeekAvgCost ?? 0;
-      const stateLabels = PLAN_STATES_INCLUDED.map((state) => planStateLabel(state));
+      const stateLabels = PLAN_STATES_INCLUDED.map((state) => planStateLabel(t, state));
 
-      return blade(t("breakdown.avgCostPlan.subtitle"), [
-        <Callout.Info key="note" title={t("breakdown.avgCostPlan.note.title")} className="m-4">
-          {t("breakdown.avgCostPlan.note.body", {
+      return blade(t("kpiBreakdown.avgCostPlan.subtitle"), [
+        <Callout.Info key="note" title={t("kpiBreakdown.avgCostPlan.note.title")} className="m-4">
+          {t("kpiBreakdown.avgCostPlan.note.body", {
             count: PLAN_WINDOW_DAYS,
             // "Completed, Failed, or Review" in English.
             states: formatList(stateLabels, { type: "disjunction" }),
           })}
         </Callout.Info>,
         <Details key="details" className="px-4 pb-4">
-          <DetailItem label={t("breakdown.details.metric")}>
-            {t("breakdown.avgCostPlan.metric")}
+          <DetailItem label={t("kpiBreakdown.details.metric")}>
+            {t("kpiBreakdown.avgCostPlan.metric")}
           </DetailItem>
-          <DetailItem label={t("breakdown.avgCostPlan.window")}>
-            {t("breakdown.avgCostPlan.windowValue", { count: PLAN_WINDOW_DAYS })}
+          <DetailItem label={t("kpiBreakdown.avgCostPlan.window")}>
+            {t("kpiBreakdown.avgCostPlan.windowValue", { count: PLAN_WINDOW_DAYS })}
           </DetailItem>
-          <DetailItem label={t("breakdown.avgCostPlan.statesIncluded")}>
+          <DetailItem label={t("kpiBreakdown.avgCostPlan.statesIncluded")}>
             {/* "Completed, Failed, Review" in English: a plain list, no "and". */}
             {formatList(stateLabels, { type: "unit", style: "short" })}
           </DetailItem>
-          <DetailItem label={t("breakdown.avgCostPlan.currentAverage", { days: PLAN_WINDOW_DAYS })}>
+          <DetailItem
+            label={t("kpiBreakdown.avgCostPlan.currentAverage", { days: PLAN_WINDOW_DAYS })}
+          >
             {priced.length > 0 ? cost(currentAvg) : NO_VALUE}
           </DetailItem>
-          <DetailItem label={t("breakdown.avgCostPlan.priorAverage", { days: PLAN_WINDOW_DAYS })}>
+          <DetailItem
+            label={t("kpiBreakdown.avgCostPlan.priorAverage", { days: PLAN_WINDOW_DAYS })}
+          >
             {priorAvg > 0 ? cost(priorAvg) : NO_VALUE}
           </DetailItem>
-          <DetailItem label={t("breakdown.avgCostPlan.periodDelta", { days: PLAN_WINDOW_DAYS })}>
+          <DetailItem label={t("kpiBreakdown.avgCostPlan.periodDelta", { days: PLAN_WINDOW_DAYS })}>
             {delta(t, currentAvg, priorAvg)}
           </DetailItem>
         </Details>,
         <Section
           key="plans"
-          title={t("breakdown.avgCostPlan.plans.title", { count: PLAN_WINDOW_DAYS })}
+          title={t("kpiBreakdown.avgCostPlan.plans.title", { count: PLAN_WINDOW_DAYS })}
         >
           {planCosts.length === 0 ? (
             <EmptyNote>
-              {t("breakdown.avgCostPlan.plans.empty", { days: PLAN_WINDOW_DAYS })}
+              {t("kpiBreakdown.avgCostPlan.plans.empty", { days: PLAN_WINDOW_DAYS })}
             </EmptyNote>
           ) : (
             <DataTable
@@ -788,4 +935,58 @@ export function buildKpiBlade(
       ]);
     }
   }
+}
+
+// --- the sheet ---------------------------------------------------------------
+
+export interface KpiBreakdownSheetProps {
+  /**
+   * The clicked card's KPI id, or `null` for closed. An id with no panel (anything outside
+   * {@link KPI_BREAKDOWN_IDS}) keeps the sheet closed, so the host can pass the card's id through.
+   */
+  kpiId: string | null;
+  data: KpiBreakdownData;
+  onClose: () => void;
+}
+
+/**
+ * The drill-down sheet itself, on the shared `ui/sheet.tsx` - same side, header and close behaviour
+ * as the app's other sheets. The blade is its whole body and brings its own header, so the sheet's
+ * title is for assistive technology only.
+ *
+ * Wider than `SheetPanel`'s `UxHelper.SheetWidth` ladder on purpose: the forecast and plan tables
+ * carry six columns, and at two fifths of a wide window they wrap every cell.
+ */
+export function KpiBreakdownSheet({ kpiId, data, onClose }: KpiBreakdownSheetProps) {
+  const { t } = useTranslation("uiPanels");
+  const blade = kpiId == null ? null : buildKpiBlade(kpiId, data, t);
+  return (
+    <Sheet
+      open={blade !== null}
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+    >
+      <SheetContent
+        data-testid="kpi-breakdown"
+        className="inset-y-0 flex w-full flex-col overflow-hidden p-0 sm:w-3/4 sm:max-w-none lg:w-3/4 xl:w-3/5"
+        aria-describedby={undefined}
+      >
+        <SheetHeader className="sr-only">
+          <SheetTitle>{blade?.title ?? t("kpiBreakdown.sheetTitle")}</SheetTitle>
+        </SheetHeader>
+        {blade && (
+          <BladeContainer
+            root={{
+              ...blade,
+              // The descriptor's own width hint is what it gets when something pushes it deeper in
+              // a stack; as the root of this sheet it fills the panel instead.
+              width: "flex",
+            }}
+            className="min-h-0 flex-1"
+          />
+        )}
+      </SheetContent>
+    </Sheet>
+  );
 }

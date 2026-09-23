@@ -102,10 +102,6 @@
     "planSearch": "Buscar planos",
     "showShortcuts": "Mostrar atalhos de teclado"
   },
-  "shortcutsHelp": {
-    "title": "Atalhos de Teclado",
-    "empty": "Nenhum atalho de teclado está ativo."
-  },
   "updateCheck": {
     "available": {
       "title": "Atualização Disponível",
@@ -122,7 +118,8 @@
   "updateNotice": {
     "available": "A v{{latest}} está disponível (você tem a v{{current}})",
     "copyCommand": "Copiar Comando",
-    "dismiss": "Descartar"
+    "dismiss": "Descartar",
+    "showDetails": "Mostrar Detalhes"
   },
   "offlineBanner": {
     "reconnecting": "Tendril-Service desconectado. Reconectando automaticamente em {{seconds}}s...",
@@ -143,11 +140,6 @@
     "dismissNavError": "Descartar erro de navegação"
   },
   "stopQueued": {
-    "title": "Parar Tarefas na Fila",
-    "body_one": "Parar {{count}} tarefa na fila? As tarefas em execução não são afetadas.",
-    "body_many": "Parar todas as {{count}} tarefas na fila? As tarefas em execução não são afetadas.",
-    "body_other": "Parar todas as {{count}} tarefas na fila? As tarefas em execução não são afetadas.",
-    "confirm": "Parar Todas",
     "toast": {
       "title": "Tarefas",
       "description_one": "{{count}} tarefa na fila foi interrompida.",
@@ -156,11 +148,6 @@
     }
   },
   "stopAll": {
-    "title": "Parar Todas as Tarefas",
-    "body_one": "Parar {{count}} tarefa ativa? Os agentes em execução são encerrados e os planos deles voltam ao estado anterior. Esta ação não pode ser desfeita.",
-    "body_many": "Parar todas as {{count}} tarefas ativas? Os agentes em execução são encerrados e os planos deles voltam ao estado anterior. Esta ação não pode ser desfeita.",
-    "body_other": "Parar todas as {{count}} tarefas ativas? Os agentes em execução são encerrados e os planos deles voltam ao estado anterior. Esta ação não pode ser desfeita.",
-    "confirm": "Parar Todas",
     "toast": {
       "title": "Tarefas Interrompidas",
       "description_one": "{{count}} tarefa interrompida",

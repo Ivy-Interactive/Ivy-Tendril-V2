@@ -220,3 +220,56 @@ describe("CreatePrDialog option pass-through", () => {
     expect(startJob).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * V1 `CreatePrDialog`: the Target Branch defaults to the configured base branch of the plan's first
+ * repo, and Reviewers is a pick list of GitHub's assignable users.
+ */
+describe("CreatePrDialog target branch and reviewers", () => {
+  const withRepo = planDetail({
+    id: "00021",
+    state: "Review",
+    project: "Tendril",
+    repos: ["/repos/Tendril"],
+    verifications: [verification("NpmLint", "Pass")],
+  });
+
+  it("leads with the repo's configured base branch and sends a custom one", async () => {
+    vi.spyOn(bridge, "getConfig").mockResolvedValue({
+      raw: {
+        projects: [
+          { name: "Tendril", repos: [{ path: "/repos/Tendril", baseBranch: "development" }] },
+        ],
+      },
+    });
+    vi.spyOn(bridge, "getProjectIssueMetadata").mockResolvedValue({
+      labels: [],
+      assignees: ["octocat", "hubot"],
+    });
+    const startJob = mockStartJob();
+
+    render(<CreatePrDialog isOpen onClose={vi.fn()} plan={withRepo} />);
+
+    expect(
+      await screen.findByRole("option", { name: "development (default)" }),
+    ).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Target Branch"), {
+      target: { value: "__custom_branch__" },
+    });
+    fireEvent.change(screen.getByPlaceholderText("Enter custom branch name..."), {
+      target: { value: "release/2.0" },
+    });
+    fireEvent.click(await screen.findByRole("button", { name: "hubot" }));
+    fireEvent.click(screen.getByTestId("dialog-confirm"));
+
+    await waitFor(() =>
+      expect(startJob).toHaveBeenCalledWith(
+        expect.objectContaining({
+          type: "CreatePr",
+          baseBranch: "release/2.0",
+          reviewers: ["hubot"],
+        }),
+      ),
+    );
+  });
+});

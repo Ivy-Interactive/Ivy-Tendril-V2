@@ -22,11 +22,6 @@
   "composerAttachment": {
     "remove": "{{name}} を削除"
   },
-  "lightbox": {
-    "fallbackTitle": "画像のプレビュー",
-    "fallbackAlt": "添付ファイルのプレビュー",
-    "closeLabel": "プレビューを閉じる"
-  },
   "newChatButtons": {
     "label": "新しいチャット",
     "tooltip": "新しいチャット",
@@ -142,19 +137,8 @@
     "afternoon": "こんにちは",
     "evening": "こんばんは"
   },
-  "deleteSession": {
-    "title": "セッションを削除",
-    "body": "「{{title}}」を削除しますか？この操作は元に戻せません。",
-    "bodyUntitled": "このチャットセッションを削除しますか？この操作は元に戻せません。"
-  },
   "jobsReview": {
     "prompt": "この会話で開始したジョブの結果をレビューし、何が変わったかを教えてください：\n{{jobs}}"
-  },
-  "search": {
-    "title": "チャットを検索",
-    "inputLabel": "チャットを検索",
-    "placeholder": "チャットを検索",
-    "empty": "チャットが見つかりません。"
   },
   "queue": {
     "title": "送信待ちのメッセージ",

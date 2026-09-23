@@ -499,6 +499,45 @@ pub async fn force_start_job(
     }
 }
 
+/// `{ "feedback": "..." }`, optional: what the agent should do differently this time.
+#[derive(Debug, Deserialize)]
+pub struct RerunJobRequest {
+    #[serde(default)]
+    pub feedback: Option<String>,
+}
+
+/// V1's `RerunJobDialog`: deletes a finished job and starts it again from its original args, with
+/// the operator's feedback folded in. Answers the new job's id.
+pub async fn rerun_job(
+    State(state): State<Arc<AppState>>,
+    Path(job_id): Path<String>,
+    Json(req): Json<Option<RerunJobRequest>>,
+) -> impl IntoResponse {
+    let feedback = req.and_then(|r| r.feedback);
+    match state
+        .job_manager
+        .rerun_job(&job_id, feedback.as_deref())
+        .await
+    {
+        Ok(new_id) => (
+            StatusCode::OK,
+            Json(json!({ "jobId": new_id, "status": "Started" })),
+        ),
+        Err(TendrilError::JobNotFound(_)) => (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": "Job not found" })),
+        ),
+        Err(TendrilError::Conflict(msg)) | Err(TendrilError::DuplicateJob(msg)) => (
+            StatusCode::CONFLICT,
+            Json(json!({ "error": msg, "status": "Conflict" })),
+        ),
+        Err(e) => (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "error": format!("Failed to rerun job: {}", e) })),
+        ),
+    }
+}
+
 /// Stops every job that has not finished.
 pub async fn stop_all_jobs(State(state): State<Arc<AppState>>) -> impl IntoResponse {
     match state.job_manager.stop_all_jobs().await {

@@ -82,21 +82,7 @@
     "failed": "Error al guardar: {{error}}"
   },
   "test": {
-    "title": "Prueba del agente de código",
     "defaultModel": "Predeterminado",
-    "columns": {
-      "test": "Prueba",
-      "result": "Resultado"
-    },
-    "status": {
-      "passed": "Superada",
-      "failed": "Fallida",
-      "warning": "Advertencia",
-      "running": "En ejecución",
-      "pending": "Pendiente"
-    },
-    "showRawOutput": "Mostrar salida sin procesar",
-    "rawOutputTitle": "Salida sin procesar",
     "rows": {
       "install": "Instalación",
       "auth": "Autenticación",

@@ -375,7 +375,8 @@ describe("Operator Views Component & Accessibility Tests", () => {
       // button (`SubmitLabel("Create")`); there is no separate footer submit.
       expect(screen.getByTitle("Create")).toBeInTheDocument();
 
-      const closeBtn = screen.getByRole("button", { name: /close modal/i });
+      // `DialogShell`'s header close button, which every dialog shares.
+      const closeBtn = screen.getByRole("button", { name: "Close" });
       fireEvent.click(closeBtn);
       expect(handleClose).toHaveBeenCalled();
     });

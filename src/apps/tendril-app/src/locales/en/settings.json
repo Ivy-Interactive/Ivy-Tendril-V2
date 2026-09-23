@@ -169,7 +169,11 @@
       "saved_chat": "Chat opens as chat",
       "saved_terminal": "Chat opens as terminal"
     },
-    "vaultThemesNote": "Themes published by a Team Vault are not listed: the vault theme subsystem is not part of this build, so only the shipped presets are offered."
+    "vaultThemesNote": "Themes published by a Team Vault are not listed: the vault theme subsystem is not part of this build, so only the shipped presets are offered.",
+    "vaultThemes": {
+      "openGenerator": "Open Theme Generator",
+      "uploadUnavailable": "Publishing themes to a Team Vault is not available in this build yet. Use Copy Configuration to share a theme as JSON."
+    }
   },
   "levels": {
     "title": "Priority Levels",
@@ -198,23 +202,6 @@
     "removeConsequence": "Plans already categorised at this level keep the name in their plan.yaml; it simply stops being one of the levels offered.",
     "noEffect": "Levels are stored in config.yaml and advertised over MCP, but nothing in this app reads them yet, so editing them here changes no behaviour you can see."
   },
-  "removal": {
-    "title": "Remove {{kind}}",
-    "title_level": "Remove Level",
-    "title_repository": "Remove Repository",
-    "title_reviewAction": "Remove Review action",
-    "title_environmentFile": "Remove Environment file",
-    "title_mcpServer": "Remove MCP server",
-    "title_customSkill": "Remove Custom skill",
-    "body": "Remove {{kind}} <name>{{name}}</name> from this configuration?",
-    "body_level": "Remove level <name>{{name}}</name> from this configuration?",
-    "body_repository": "Remove repository <name>{{name}}</name> from this configuration?",
-    "body_reviewAction": "Remove review action <name>{{name}}</name> from this configuration?",
-    "body_environmentFile": "Remove environment file <name>{{name}}</name> from this configuration?",
-    "body_mcpServer": "Remove MCP server <name>{{name}}</name> from this configuration?",
-    "body_customSkill": "Remove custom skill <name>{{name}}</name> from this configuration?",
-    "confirm": "Remove"
-  },
   "fields": {
     "colorsLabel": "Colors",
     "chooseColor": "Choose color",
@@ -239,12 +226,7 @@
     "maskedNote_one": "{{count}} secret value is shown as {{mask}}. Leave a placeholder as it is to keep the stored value; overtype it to set a new one.",
     "maskedNote_other": "{{count}} secret values are shown as {{mask}}. Leave a placeholder as it is to keep the stored value; overtype it to set a new one.",
     "conflictReload": "Reload from disk",
-    "reload": "Reload from disk",
-    "discard": {
-      "title": "Discard Unsaved Changes",
-      "confirm": "Discard and reload",
-      "body": "Reloading replaces the editor with the file on disk. The edits you have not saved are lost."
-    }
+    "reload": "Reload from disk"
   },
   "security": {
     "title": "Security & Tunneling",

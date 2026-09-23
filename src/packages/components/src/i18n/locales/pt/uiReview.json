@@ -1,1 +1,55 @@
-{}
+{
+  "verificationReport": {
+    "title": "Relatório de Verificação",
+    "description": "Detalhes do relatório de verificação de {{name}}",
+    "descriptionFallback": "Detalhes do relatório de verificação do plano",
+    "loading": "Carregando o relatório de verificação…",
+    "notFound": "Nenhum arquivo de relatório de verificação encontrado para \"{{name}}\".",
+    "empty": "Nenhum relatório disponível para {{name}}.",
+    "status": {
+      "pass": "Aprovado",
+      "fail": "Falha",
+      "pending": "Pendente",
+      "skipped": "Ignorado"
+    }
+  },
+  "filePreview": {
+    "noPreviewTitle": "Sem pré-visualização",
+    "showInFolder": "Mostrar na pasta",
+    "loadingLabel": "Carregando {{fileName}}",
+    "imageFailed": "O Tendril não conseguiu carregar esta imagem.",
+    "imageFailedWithError": "O Tendril não conseguiu carregar esta imagem: {{error}}",
+    "binary": "{{fileName}} não é um arquivo de texto ({{size}}), então não há pré-visualização aqui.",
+    "tooLarge": "{{fileName}} tem {{size}}, grande demais para pré-visualizar aqui.",
+    "plainNotice": "Exibido como texto simples: com {{size}}, {{fileName}} é grande demais para o realce de sintaxe.",
+    "plainNotice_markdown": "Exibido como texto simples: com {{size}}, {{fileName}} é grande demais para ser renderizado como markdown."
+  },
+  "artifactSheet": {
+    "fallbackTitle": "Artefato",
+    "copyPath": "Copiar caminho",
+    "revealLabel": "Mostrar na pasta"
+  },
+  "fileSheet": {
+    "fallbackTitle": "Arquivo",
+    "openInEditor": "Abrir no {{editor}}",
+    "copyPath": "Copiar caminho",
+    "revealLabel": "Mostrar na pasta"
+  },
+  "commitSheet": {
+    "title": "Commit {{hash}} — {{title}}",
+    "titleUntitled": "Commit {{hash}}",
+    "description": "Arquivos alterados e diff do commit {{hash}}",
+    "loadingLabel": "Carregando o commit {{hash}}",
+    "failed": "Falha ao carregar o commit: {{error}}",
+    "notFound": "Commit não encontrado.",
+    "noChanges": "Este commit não alterou nenhum arquivo.",
+    "changedFiles": "Arquivos alterados",
+    "copyHash": "Copiar hash do commit",
+    "fileStatus": {
+      "added": "Adicionado",
+      "deleted": "Excluído",
+      "modified": "Modificado",
+      "renamed": "Renomeado"
+    }
+  }
+}

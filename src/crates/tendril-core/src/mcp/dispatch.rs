@@ -1028,6 +1028,7 @@ pub fn build_job_args(
                 },
                 comment: request.comment.clone(),
                 draft: request.draft,
+                base_branch: None,
             })
         }
         "createissue" => JobArgs::CreateIssue(CreateIssueArgs {

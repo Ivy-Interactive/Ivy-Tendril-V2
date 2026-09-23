@@ -232,8 +232,7 @@
       "consequence": "Les agents qui travaillent sur ce projet ne la reçoivent plus. Cette action retire la référence du projet à cette compétence, pas ses propres fichiers."
     },
     "saved": "Compétence « {{name}} » enregistrée",
-    "deleted": "Compétence « {{name}} » supprimée",
-    "memoryNote": "Les mémoires du projet sont stockées sous forme de fichiers Markdown sous {{path}}. Le démon n'expose aucune route pour elles ; elles ne peuvent donc pas encore être modifiées ici."
+    "deleted": "Compétence « {{name}} » supprimée"
   },
   "dangerZone": {
     "title": "Zone de danger",
@@ -355,5 +354,31 @@
     "environmentFile": "fichier d'environnement",
     "mcpServer": "serveur MCP",
     "customSkill": "compétence personnalisée"
+  },
+  "importFromRepo": "Importer depuis le dépôt",
+  "importedFromRepo_one": "{{count}} élément importé",
+  "importedFromRepo_many": "{{count}} d'éléments importés",
+  "importedFromRepo_other": "{{count}} éléments importés",
+  "importedFromRepo_skills_one": "{{count}} skill personnalisé importé",
+  "importedFromRepo_skills_many": "{{count}} de skills personnalisés importés",
+  "importedFromRepo_skills_other": "{{count}} skills personnalisés importés",
+  "importedFromRepo_mcpServers_one": "{{count}} serveur MCP importé",
+  "importedFromRepo_mcpServers_many": "{{count}} de serveurs MCP importés",
+  "importedFromRepo_mcpServers_other": "{{count}} serveurs MCP importés",
+  "memory": {
+    "title": "Mémoires du projet",
+    "hint": "Notes Markdown sur ce projet (stack, règles, conventions), stockées sous {{path}}.",
+    "addButton": "Ajouter une mémoire de projet",
+    "columns": {
+      "file": "Fichier",
+      "snippet": "Résumé"
+    },
+    "empty": "Ce projet n'a pas encore de fichier mémoire.",
+    "loadError": "Impossible de lire les mémoires du projet : {{error}}",
+    "saved": "Fichier mémoire « {{name}} » enregistré",
+    "deleted": "Fichier mémoire « {{name}} » supprimé",
+    "removal": {
+      "consequence": "Le fichier est supprimé du dossier Memory du projet."
+    }
   }
 }

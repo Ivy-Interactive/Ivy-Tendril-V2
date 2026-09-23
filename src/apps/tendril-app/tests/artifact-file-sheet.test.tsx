@@ -33,19 +33,15 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
 }));
 
 /*
- * `CodeBlock` is wrapped, not replaced, so each test can see which highlighter language the sheet
- * asked for. The highlighter itself is a lazy chunk, and whether it has arrived yet is not what
- * these tests are about.
+ * Which highlighter language the sheet asked for, read off the code block's `data-language`. The
+ * sheet lives in the component library now, so its `CodeBlock` is no longer one this file can wrap
+ * through the package entry; the attribute says the same thing. The highlighter itself is a lazy
+ * chunk, and whether it has arrived yet is not what these tests are about.
  */
-const codeBlockLanguages = vi.hoisted(() => [] as Array<string | undefined>);
-vi.mock("@ivy-interactive/components/tendril", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@ivy-interactive/components/tendril")>();
-  const CodeBlock: typeof actual.CodeBlock = (props) => {
-    codeBlockLanguages.push(props.language);
-    return <actual.CodeBlock {...props} />;
-  };
-  return { ...actual, CodeBlock };
-});
+const codeBlockLanguages = (): Array<string | undefined> =>
+  screen
+    .queryAllByTestId("artifact-sheet-code")
+    .map((block) => block.getAttribute("data-language") || undefined);
 
 const PLAN_FOLDER = "/Users/me/.tendril/Plans/00021-BuildDesktopOperatorExperience";
 const ARTIFACTS = `${PLAN_FOLDER}/Artifacts`;
@@ -54,7 +50,6 @@ beforeEach(() => {
   revealItemInDir.mockClear();
   openPath.mockClear();
   openUrl.mockClear();
-  codeBlockLanguages.length = 0;
 });
 
 afterEach(() => {
@@ -169,7 +164,7 @@ describe("ArtifactFileSheet", () => {
     // The part that tells artifacts apart is what shows; the whole path is the tooltip.
     expect(within(sheet).getByText("Artifacts/output.log")).toHaveAttribute("title", path);
     expect(await within(sheet).findByText(/all 42 tests passed/)).toBeInTheDocument();
-    expect(codeBlockLanguages).toContain("log");
+    expect(codeBlockLanguages()).toContain("log");
   });
 
   it("shows the whole path while the plan folder is not known", async () => {
@@ -195,8 +190,8 @@ describe("ArtifactFileSheet", () => {
     render(<ArtifactFileSheet planId="00021" path={`${ARTIFACTS}/LICENSE`} onClose={vi.fn()} />);
 
     expect(await screen.findByText("MIT License")).toBeInTheDocument();
-    expect(codeBlockLanguages).not.toHaveLength(0);
-    expect(codeBlockLanguages.every((language) => language === undefined)).toBe(true);
+    expect(codeBlockLanguages()).not.toHaveLength(0);
+    expect(codeBlockLanguages().every((language) => language === undefined)).toBe(true);
   });
 
   it("shows a large text artifact plain, so the highlighter cannot stall the app", async () => {
@@ -215,7 +210,7 @@ describe("ArtifactFileSheet", () => {
       "too large to highlight",
     );
     expect(screen.getByText(/"results"/)).toBeInTheDocument();
-    expect(codeBlockLanguages.every((language) => language === undefined)).toBe(true);
+    expect(codeBlockLanguages().every((language) => language === undefined)).toBe(true);
   });
 
   it("highlights the same file at the limit", async () => {
@@ -229,7 +224,7 @@ describe("ArtifactFileSheet", () => {
       <ArtifactFileSheet planId="00021" path={`${ARTIFACTS}/results.json`} onClose={vi.fn()} />,
     );
 
-    await waitFor(() => expect(codeBlockLanguages).toContain("json"));
+    await waitFor(() => expect(codeBlockLanguages()).toContain("json"));
     expect(screen.queryByTestId("artifact-sheet-plain-notice")).not.toBeInTheDocument();
   });
 
@@ -473,7 +468,8 @@ describe("artifact screenshot previews", () => {
     expect(preview).toHaveBeenCalledTimes(65);
     await load("/shots/0.png");
     expect(preview).toHaveBeenCalledTimes(66);
-  });
+    // 67 sequential mount/wait/unmount rounds: well past the 5s default on a loaded machine.
+  }, 30_000);
 });
 
 describe("ReviewView Artifacts tab", () => {

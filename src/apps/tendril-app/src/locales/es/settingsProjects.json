@@ -232,8 +232,7 @@
       "consequence": "Los agentes que trabajan en este proyecto dejan de recibirla. Esto quita la referencia del proyecto a la skill, no los archivos de la propia skill."
     },
     "saved": "Skill \"{{name}}\" guardada",
-    "deleted": "Skill \"{{name}}\" eliminada",
-    "memoryNote": "Las memorias del proyecto se guardan como archivos Markdown en {{path}}. El daemon no expone ningún endpoint para ellas, así que todavía no se pueden editar aquí."
+    "deleted": "Skill \"{{name}}\" eliminada"
   },
   "dangerZone": {
     "title": "Zona de peligro",
@@ -355,5 +354,31 @@
     "environmentFile": "archivo de entorno",
     "mcpServer": "servidor MCP",
     "customSkill": "skill personalizada"
+  },
+  "importFromRepo": "Importar desde el repositorio",
+  "importedFromRepo_one": "Se importó {{count}} elemento",
+  "importedFromRepo_many": "Se importaron {{count}} de elementos",
+  "importedFromRepo_other": "Se importaron {{count}} elementos",
+  "importedFromRepo_skills_one": "Se importó {{count}} skill personalizada",
+  "importedFromRepo_skills_many": "Se importaron {{count}} de skills personalizadas",
+  "importedFromRepo_skills_other": "Se importaron {{count}} skills personalizadas",
+  "importedFromRepo_mcpServers_one": "Se importó {{count}} servidor MCP",
+  "importedFromRepo_mcpServers_many": "Se importaron {{count}} de servidores MCP",
+  "importedFromRepo_mcpServers_other": "Se importaron {{count}} servidores MCP",
+  "memory": {
+    "title": "Memorias del proyecto",
+    "hint": "Notas en Markdown sobre este proyecto (stack, reglas, convenciones), guardadas en {{path}}.",
+    "addButton": "Añadir memoria del proyecto",
+    "columns": {
+      "file": "Archivo",
+      "snippet": "Resumen"
+    },
+    "empty": "Este proyecto aún no tiene archivos de memoria.",
+    "loadError": "No se pudieron leer las memorias del proyecto: {{error}}",
+    "saved": "Archivo de memoria '{{name}}' guardado",
+    "deleted": "Archivo de memoria '{{name}}' eliminado",
+    "removal": {
+      "consequence": "El archivo se elimina de la carpeta Memory del proyecto."
+    }
   }
 }

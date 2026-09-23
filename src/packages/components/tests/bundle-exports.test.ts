@@ -33,9 +33,16 @@ describe("Bundle Exports and Code-Splitting", () => {
     expect(content).not.toMatch(staticRefractorAll);
   });
 
+  // The highlighter's import can land in a chunk the entry shares with `dialogs.mjs` (the sheets
+  // render markdown too), so look through the chunks tendril.mjs imports statically as well.
   it("uses refractor/core instead of refractor/all", () => {
-    const content = readFileSync(tendrilMjsPath, "utf-8");
-    expect(content).toContain('from "refractor/core"');
+    const entry = readFileSync(tendrilMjsPath, "utf-8");
+    const chunks = [...entry.matchAll(/from\s+["']\.\/([\w.-]+\.mjs)["']/g)].map((m) =>
+      readFileSync(join(repoRoot, "dist", m[1]), "utf-8"),
+    );
+    expect([entry, ...chunks].some((content) => content.includes('from "refractor/core"'))).toBe(
+      true,
+    );
   });
 
   // CodeBlock and ErrorDisplay both render the Prism highlighter, and both are

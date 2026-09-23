@@ -1,5 +1,7 @@
+import * as React from "react";
 import type { Meta, StoryObj } from "@storybook/react";
-import { JobDebugSheet, type JobDebugDetail } from "./JobDebugSheet";
+import { Button } from "../ui/button";
+import { JobDebugSheet, type JobDebugDetail, type JobDebugSheetProps } from "./JobDebugSheet";
 
 function job(overrides: Partial<JobDebugDetail> = {}): JobDebugDetail {
   return {
@@ -18,13 +20,24 @@ function job(overrides: Partial<JobDebugDetail> = {}): JobDebugDetail {
   };
 }
 
+/** The Jobs row menu's Debug, which is what opens this sheet. Open on load. */
+function WithTrigger(props: Omit<JobDebugSheetProps, "isOpen" | "onClose">) {
+  const [open, setOpen] = React.useState(true);
+  return (
+    <div className="p-4">
+      <Button variant="outline" onClick={() => setOpen(true)} data-testid="job-debug-story-trigger">
+        Open Job Debug
+      </Button>
+      <JobDebugSheet {...props} isOpen={open} onClose={() => setOpen(false)} />
+    </div>
+  );
+}
+
 /**
  * V1's `Apps/Views/Sheets/JobDebugSheet.cs`: the details table behind a job row's Debug action,
  * and its Copy Details button.
  *
- * The only sheet V2 has so far, against V1's twelve, and it had no coverage of any kind before
- * this. Unlike the dialogs it takes no `isOpen`/`onClose` — it is a sheet *body*, rendered inside a
- * host that owns the open state, so it owes none of `DialogShell`'s contract.
+ * It owns its panel, so each story opens it from a trigger the way the Jobs row menu does.
  *
  * Every field is rendered only when present, so these stories are about how much of the table
  * exists at each point in a job's life.
@@ -33,7 +46,7 @@ const meta: Meta<typeof JobDebugSheet> = {
   title: "Sheets/JobDebugSheet",
   component: JobDebugSheet,
   parameters: { layout: "fullscreen" },
-  args: { isOpen: true, onClose: () => {} },
+  render: (args) => <WithTrigger {...args} />,
 };
 
 export default meta;
@@ -128,4 +141,22 @@ export const LongArgsBlob: Story = {
       ),
     }),
   },
+};
+
+/**
+ * With V1's other two header buttons: Report Bug, and the DEBUG-build "Debug with {agent}". Each is
+ * drawn only when the host passes its callback.
+ */
+export const WithReportAndDebugActions: Story = {
+  args: {
+    job: job({ status: "Failed", reportedFailureReason: "Agent exited with code 1" }),
+    onReportBug: () => {},
+    onDebugWithAgent: () => {},
+    debugAgentLabel: "Claude",
+  },
+};
+
+/** The detail read is still out. */
+export const Loading: Story = {
+  args: { job: undefined },
 };

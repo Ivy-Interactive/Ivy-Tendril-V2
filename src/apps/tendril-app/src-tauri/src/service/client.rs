@@ -18,6 +18,7 @@ mod jobs;
 mod local_file;
 mod onboarding;
 mod plans;
+mod project_assets;
 mod projects;
 mod promptwares;
 mod pull_requests;

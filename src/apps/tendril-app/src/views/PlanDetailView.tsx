@@ -39,6 +39,12 @@ import {
 } from "./PlansView";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { VerificationReportSheet } from "./sheets/VerificationReportSheet";
+import { CommitDetailSheet } from "./sheets/CommitDetailSheet";
+import { FileSheet } from "./sheets/FileSheet";
+import { PlanJobSheets } from "./sheets/PlanJobSheets";
+import { ShareTunnelDialog } from "./dialogs/ShareTunnelDialog";
+import { planLinkHandlers } from "./planDetail/planLinks";
+import { sharePlan, useBetaFlag } from "./planDetail/share";
 import { ProjectBadges } from "../components/ProjectBadges";
 import { LevelBadge } from "../components/LevelBadge";
 import { RecommendationNoteDialog } from "../components/RecommendationNoteDialog";
@@ -249,6 +255,18 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
    * same shape, and the same reason, as `scrollTo`. "Discuss with agent" is the one thing that sets it.
    */
   const [openVerification, setOpenVerification] = useState<string | null>(null);
+  /**
+   * The page's other sheets, V1's `Plans/ContentView.cs` state for each: `openCommit` (the Git and
+   * Details tabs' commits), `openFile` (a local link in the plan document, `FileSheet`), and the two
+   * `UseTrigger<string>` job sheets the Details tab's Jobs section opens (`:86` Debug, `:96` Cost).
+   */
+  const [openCommit, setOpenCommit] = useState<string | null>(null);
+  const [openFile, setOpenFile] = useState<string | null>(null);
+  const [debugJobId, setDebugJobId] = useState<string | null>(null);
+  const [costJobId, setCostJobId] = useState<string | null>(null);
+  /** `showShareModal` (`Plans/ContentView.cs:72`): the Share Tunnel dialog, from the Share action. */
+  const [shareOpen, setShareOpen] = useState(false);
+  const isBeta = useBetaFlag();
   const [chatDraft, setChatDraft] = useState<{ text: string; token: number }>({
     text: "",
     token: 0,
@@ -946,8 +964,12 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
     annotations,
     answeredQuestionCount,
     hasActiveJob,
+    isBeta,
     t,
   });
+
+  /** Where the plan document's links go: `PlanTabView`'s `FileSheet.CreateLinkClickHandler`. */
+  const documentLinks = planLinkHandlers({ planFolder: plan.folderPath, onOpenFile: setOpenFile });
 
   const handleWorkspaceAction = async (tag: string) => {
     const draft = draftSet.find((action) => action.id === tag);
@@ -956,6 +978,10 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
       return;
     }
     switch (tag) {
+      case "share":
+        // `DraftActions.SharePlan`: copy the link when a tunnel is up, else open the dialog.
+        await sharePlan(plan.id, false, () => setShareOpen(true));
+        return;
       case "CompletePlan":
         void (async () => {
           setActionError(null);
@@ -1185,6 +1211,8 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
                 scrollTo={scrollTo}
                 handleAnnotationsChange={handleAnnotationsChange}
                 applyAnswer={applyAnswer}
+                onFileClick={documentLinks.onFileClick}
+                onLinkClick={documentLinks.onLinkClick}
               />
             ) : (
               <OtherTabsPane
@@ -1197,6 +1225,10 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
                 gitData={gitData}
                 gitError={gitError}
                 runAction={runAction}
+                onOpenCommit={setOpenCommit}
+                jobs={jobs}
+                onOpenJobDebug={setDebugJobId}
+                onOpenJobCost={setCostJobId}
               />
             ),
           ],
@@ -1295,6 +1327,28 @@ export const PlanDetailView: React.FC<PlanDetailViewProps> = ({
         }
         onClose={() => setOpenVerification(null)}
         wireframeBaseUrl={wireframeBaseUrl}
+      />
+      <CommitDetailSheet planId={plan.id} hash={openCommit} onClose={() => setOpenCommit(null)} />
+      <FileSheet
+        planId={plan.id}
+        path={openFile}
+        onClose={() => setOpenFile(null)}
+        onOpenFile={setOpenFile}
+        wireframeBaseUrl={wireframeBaseUrl}
+      />
+      <PlanJobSheets
+        jobs={jobs}
+        debugJobId={debugJobId}
+        costJobId={costJobId}
+        onCloseDebug={() => setDebugJobId(null)}
+        onCloseCost={() => setCostJobId(null)}
+      />
+      {/* `new ShareTunnelModal(isOpen, selectedPlan.FolderName, isReview: false)`. */}
+      <ShareTunnelDialog
+        isOpen={shareOpen}
+        onClose={() => setShareOpen(false)}
+        planId={plan.id}
+        isReview={false}
       />
     </div>
   );

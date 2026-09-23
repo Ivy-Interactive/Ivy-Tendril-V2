@@ -169,7 +169,11 @@
       "saved_chat": "O Chat abre como chat",
       "saved_terminal": "O Chat abre como terminal"
     },
-    "vaultThemesNote": "Os temas publicados por um Team Vault não são listados: o subsistema de temas do vault não faz parte desta versão, então apenas as predefinições incluídas são oferecidas."
+    "vaultThemesNote": "Os temas publicados por um Team Vault não são listados: o subsistema de temas do vault não faz parte desta versão, então apenas as predefinições incluídas são oferecidas.",
+    "vaultThemes": {
+      "openGenerator": "Abrir o gerador de temas",
+      "uploadUnavailable": "Publicar temas em um Team Vault ainda não está disponível nesta versão. Use Copiar configuração para compartilhar um tema como JSON."
+    }
   },
   "levels": {
     "title": "Níveis de Prioridade",
@@ -198,23 +202,6 @@
     "removeConsequence": "Os planos já categorizados neste nível mantêm o nome no plan.yaml; ele apenas deixa de ser um dos níveis oferecidos.",
     "noEffect": "Os níveis ficam armazenados no config.yaml e são anunciados via MCP, mas nada neste aplicativo os lê ainda, então editá-los aqui não muda nenhum comportamento visível."
   },
-  "removal": {
-    "title": "Remover {{kind}}",
-    "title_level": "Remover Nível",
-    "title_repository": "Remover Repositório",
-    "title_reviewAction": "Remover Ação de Revisão",
-    "title_environmentFile": "Remover Arquivo de Ambiente",
-    "title_mcpServer": "Remover Servidor MCP",
-    "title_customSkill": "Remover Habilidade Personalizada",
-    "body": "Remover {{kind}} <name>{{name}}</name> desta configuração?",
-    "body_level": "Remover o nível <name>{{name}}</name> desta configuração?",
-    "body_repository": "Remover o repositório <name>{{name}}</name> desta configuração?",
-    "body_reviewAction": "Remover a ação de revisão <name>{{name}}</name> desta configuração?",
-    "body_environmentFile": "Remover o arquivo de ambiente <name>{{name}}</name> desta configuração?",
-    "body_mcpServer": "Remover o servidor MCP <name>{{name}}</name> desta configuração?",
-    "body_customSkill": "Remover a habilidade personalizada <name>{{name}}</name> desta configuração?",
-    "confirm": "Remover"
-  },
   "fields": {
     "colorsLabel": "Cores",
     "chooseColor": "Escolher cor",
@@ -240,12 +227,7 @@
     "maskedNote_many": "{{count}} valores secretos são exibidos como {{mask}}. Deixe um marcador como está para manter o valor armazenado; digite por cima para definir um novo.",
     "maskedNote_other": "{{count}} valores secretos são exibidos como {{mask}}. Deixe um marcador como está para manter o valor armazenado; digite por cima para definir um novo.",
     "conflictReload": "Recarregar do disco",
-    "reload": "Recarregar do disco",
-    "discard": {
-      "title": "Descartar Alterações Não Salvas",
-      "confirm": "Descartar e recarregar",
-      "body": "Recarregar substitui o conteúdo do editor pelo arquivo no disco. As edições não salvas serão perdidas."
-    }
+    "reload": "Recarregar do disco"
   },
   "security": {
     "title": "Segurança e Tunelamento",

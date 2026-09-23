@@ -169,7 +169,11 @@
       "saved_chat": "Chat öffnet sich als Chat",
       "saved_terminal": "Chat öffnet sich als Terminal"
     },
-    "vaultThemesNote": "Von einem Team Vault veröffentlichte Designs werden nicht aufgeführt: Das Vault-Design-Subsystem ist nicht Teil dieses Builds, daher werden nur die mitgelieferten Vorlagen angeboten."
+    "vaultThemesNote": "Von einem Team Vault veröffentlichte Designs werden nicht aufgeführt: Das Vault-Design-Subsystem ist nicht Teil dieses Builds, daher werden nur die mitgelieferten Vorlagen angeboten.",
+    "vaultThemes": {
+      "openGenerator": "Theme-Generator öffnen",
+      "uploadUnavailable": "Das Veröffentlichen von Themes in einem Team Vault ist in diesem Build noch nicht verfügbar. Mit „Konfiguration kopieren“ kannst du ein Theme als JSON teilen."
+    }
   },
   "levels": {
     "title": "Prioritätsstufen",
@@ -198,23 +202,6 @@
     "removeConsequence": "Pläne, die bereits dieser Stufe zugeordnet sind, behalten den Namen in ihrer plan.yaml; er wird lediglich nicht mehr als Stufe angeboten.",
     "noEffect": "Stufen werden in config.yaml gespeichert und über MCP bereitgestellt, aber noch liest nichts in dieser App sie aus. Änderungen hier haben daher keine sichtbare Auswirkung."
   },
-  "removal": {
-    "title": "{{kind}} entfernen",
-    "title_level": "Stufe entfernen",
-    "title_repository": "Repository entfernen",
-    "title_reviewAction": "Review-Aktion entfernen",
-    "title_environmentFile": "Umgebungsdatei entfernen",
-    "title_mcpServer": "MCP-Server entfernen",
-    "title_customSkill": "Benutzerdefinierten Skill entfernen",
-    "body": "{{kind}} <name>{{name}}</name> aus dieser Konfiguration entfernen?",
-    "body_level": "Stufe <name>{{name}}</name> aus dieser Konfiguration entfernen?",
-    "body_repository": "Repository <name>{{name}}</name> aus dieser Konfiguration entfernen?",
-    "body_reviewAction": "Review-Aktion <name>{{name}}</name> aus dieser Konfiguration entfernen?",
-    "body_environmentFile": "Umgebungsdatei <name>{{name}}</name> aus dieser Konfiguration entfernen?",
-    "body_mcpServer": "MCP-Server <name>{{name}}</name> aus dieser Konfiguration entfernen?",
-    "body_customSkill": "Benutzerdefinierten Skill <name>{{name}}</name> aus dieser Konfiguration entfernen?",
-    "confirm": "Entfernen"
-  },
   "fields": {
     "colorsLabel": "Farben",
     "chooseColor": "Farbe auswählen",
@@ -239,12 +226,7 @@
     "maskedNote_one": "{{count}} geheimer Wert wird als {{mask}} angezeigt. Lassen Sie einen Platzhalter unverändert, um den gespeicherten Wert zu behalten; überschreiben Sie ihn, um einen neuen Wert festzulegen.",
     "maskedNote_other": "{{count}} geheime Werte werden als {{mask}} angezeigt. Lassen Sie einen Platzhalter unverändert, um den gespeicherten Wert zu behalten; überschreiben Sie ihn, um einen neuen Wert festzulegen.",
     "conflictReload": "Von Festplatte neu laden",
-    "reload": "Von Festplatte neu laden",
-    "discard": {
-      "title": "Nicht gespeicherte Änderungen verwerfen",
-      "confirm": "Verwerfen und neu laden",
-      "body": "Beim Neuladen wird der Editorinhalt durch die Datei auf der Festplatte ersetzt. Nicht gespeicherte Änderungen gehen verloren."
-    }
+    "reload": "Von Festplatte neu laden"
   },
   "security": {
     "title": "Sicherheit & Tunneling",

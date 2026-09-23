@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { render, screen, fireEvent, waitFor, within } from "@testing-library/react";
 import { ChatView } from "../src/views/ChatView";
-import { ImageLightbox } from "../src/components/chat/ImageLightbox";
+import { ImageLightbox } from "@ivy-interactive/components/dialogs";
 import { isImageAttachment, resetAttachmentPreviewsForTesting } from "../src/views/ChatMessageRow";
 import { bridge } from "../src/api/bridge";
 import { chatStore } from "../src/state/chatStore";

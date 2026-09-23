@@ -1,1 +1,55 @@
-{}
+{
+  "verificationReport": {
+    "title": "Verifieringsrapport",
+    "description": "Detaljer i verifieringsrapporten för {{name}}",
+    "descriptionFallback": "Detaljer i verifieringsrapporten för planen",
+    "loading": "Läser in verifieringsrapporten…",
+    "notFound": "Ingen verifieringsrapport hittades för ”{{name}}”.",
+    "empty": "Ingen rapport tillgänglig för {{name}}.",
+    "status": {
+      "pass": "Godkänd",
+      "fail": "Underkänd",
+      "pending": "Väntar",
+      "skipped": "Överhoppad"
+    }
+  },
+  "filePreview": {
+    "noPreviewTitle": "Ingen förhandsvisning",
+    "showInFolder": "Visa i mapp",
+    "loadingLabel": "Läser in {{fileName}}",
+    "imageFailed": "Tendril kunde inte läsa in bilden.",
+    "imageFailedWithError": "Tendril kunde inte läsa in bilden: {{error}}",
+    "binary": "{{fileName}} är inte en textfil ({{size}}), så den kan inte förhandsvisas här.",
+    "tooLarge": "{{fileName}} är {{size}}, för stor för att förhandsvisas här.",
+    "plainNotice": "Visas som oformaterad text: med {{size}} är {{fileName}} för stor för syntaxmarkering.",
+    "plainNotice_markdown": "Visas som oformaterad text: med {{size}} är {{fileName}} för stor för att återges som Markdown."
+  },
+  "artifactSheet": {
+    "fallbackTitle": "Artefakt",
+    "copyPath": "Kopiera sökväg",
+    "revealLabel": "Visa i mapp"
+  },
+  "fileSheet": {
+    "fallbackTitle": "Fil",
+    "openInEditor": "Öppna i {{editor}}",
+    "copyPath": "Kopiera sökväg",
+    "revealLabel": "Visa i mapp"
+  },
+  "commitSheet": {
+    "title": "Commit {{hash}} — {{title}}",
+    "titleUntitled": "Commit {{hash}}",
+    "description": "Ändrade filer och diff för commit {{hash}}",
+    "loadingLabel": "Läser in commit {{hash}}",
+    "failed": "Det gick inte att läsa in commit: {{error}}",
+    "notFound": "Commit hittades inte.",
+    "noChanges": "Den här committen ändrade inga filer.",
+    "changedFiles": "Ändrade filer",
+    "copyHash": "Kopiera commit-hash",
+    "fileStatus": {
+      "added": "Tillagd",
+      "deleted": "Borttagen",
+      "modified": "Ändrad",
+      "renamed": "Omdöpt"
+    }
+  }
+}

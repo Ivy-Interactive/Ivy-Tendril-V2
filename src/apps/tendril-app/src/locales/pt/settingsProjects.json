@@ -232,8 +232,7 @@
       "consequence": "Os agentes que trabalham neste projeto deixam de recebê-la. Isso remove a referência do projeto à habilidade, não os arquivos da própria habilidade."
     },
     "saved": "Habilidade \"{{name}}\" salva",
-    "deleted": "Habilidade \"{{name}}\" excluída",
-    "memoryNote": "As memórias do projeto ficam em arquivos markdown em {{path}}. O daemon não expõe nenhuma rota para elas, então ainda não podem ser editadas aqui."
+    "deleted": "Habilidade \"{{name}}\" excluída"
   },
   "dangerZone": {
     "title": "Zona de Perigo",
@@ -355,5 +354,31 @@
     "environmentFile": "arquivo de ambiente",
     "mcpServer": "servidor MCP",
     "customSkill": "habilidade personalizada"
+  },
+  "importFromRepo": "Importar do repositório",
+  "importedFromRepo_one": "{{count}} item importado",
+  "importedFromRepo_many": "{{count}} de itens importados",
+  "importedFromRepo_other": "{{count}} itens importados",
+  "importedFromRepo_skills_one": "{{count}} skill personalizada importada",
+  "importedFromRepo_skills_many": "{{count}} de skills personalizadas importadas",
+  "importedFromRepo_skills_other": "{{count}} skills personalizadas importadas",
+  "importedFromRepo_mcpServers_one": "{{count}} servidor MCP importado",
+  "importedFromRepo_mcpServers_many": "{{count}} de servidores MCP importados",
+  "importedFromRepo_mcpServers_other": "{{count}} servidores MCP importados",
+  "memory": {
+    "title": "Memórias do projeto",
+    "hint": "Notas em Markdown sobre este projeto (stack, regras, convenções), armazenadas em {{path}}.",
+    "addButton": "Adicionar memória do projeto",
+    "columns": {
+      "file": "Arquivo",
+      "snippet": "Resumo"
+    },
+    "empty": "Este projeto ainda não tem arquivos de memória.",
+    "loadError": "Não foi possível ler as memórias do projeto: {{error}}",
+    "saved": "Arquivo de memória '{{name}}' salvo",
+    "deleted": "Arquivo de memória '{{name}}' excluído",
+    "removal": {
+      "consequence": "O arquivo é excluído da pasta Memory do projeto."
+    }
   }
 }

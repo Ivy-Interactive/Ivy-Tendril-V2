@@ -91,6 +91,22 @@ export type PlanArtifactContent =
   | { kind: "binary"; size: number }
   | { kind: "tooLarge"; size: number };
 
+/**
+ * One of a plan's commits, for the commit detail sheet (`cmd_get_plan_commit`). V1's
+ * `PlanContentHelpers.CommitDetailData`, with the patch already split per file and the repo the
+ * commit was found in.
+ */
+export interface PlanCommitDetail {
+  hash: string;
+  title: string;
+  repository: string;
+  /** `git diff-tree --name-status`: the status letter (`A`, `M`, `D`, `R100`) and the path. */
+  files: Array<{ status: string; path: string }>;
+  changes: ChangedFile[];
+  totalAdditions: number;
+  totalDeletions: number;
+}
+
 /** Mirrors `JobStatus` in tendril-core `models/job.rs`. */
 export type JobStatus =
   | "Pending"
@@ -466,6 +482,17 @@ export interface RepoStatus {
   /** Total changed entries, which may exceed `changes.length`. */
   changeCount?: number;
   error?: string;
+  /**
+   * The branch the repo syncs to. Only `getProjectRepoStatus` (the create-plan preflight) sends it,
+   * because it is what a chained SyncRepo job is given.
+   */
+  baseBranch?: string;
+}
+
+/** A project's GitHub labels and assignable users, for the Create Issue dialog's pickers. */
+export interface IssueMetadata {
+  labels: string[];
+  assignees: string[];
 }
 
 /**
@@ -497,6 +524,8 @@ export interface CreatePrOptions {
   draft?: boolean;
   reviewers?: string[];
   comment?: string;
+  /** The PR's target branch, when the operator picked one other than each repo's base branch. */
+  baseBranch?: string;
 }
 
 /** Fields the Create Issue dialog collects for the `CreateIssue` job. */

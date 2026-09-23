@@ -1,1 +1,55 @@
-{}
+{
+  "verificationReport": {
+    "title": "検証レポート",
+    "description": "{{name}} の検証レポートの詳細",
+    "descriptionFallback": "計画の検証レポートの詳細",
+    "loading": "検証レポートを読み込み中…",
+    "notFound": "「{{name}}」の検証レポートファイルが見つかりません。",
+    "empty": "{{name}} のレポートはありません。",
+    "status": {
+      "pass": "合格",
+      "fail": "不合格",
+      "pending": "保留中",
+      "skipped": "スキップ"
+    }
+  },
+  "filePreview": {
+    "noPreviewTitle": "プレビューなし",
+    "showInFolder": "フォルダーに表示",
+    "loadingLabel": "{{fileName}} を読み込み中",
+    "imageFailed": "Tendril はこの画像を読み込めませんでした。",
+    "imageFailedWithError": "Tendril はこの画像を読み込めませんでした：{{error}}",
+    "binary": "{{fileName}} はテキストファイルではない（{{size}}）ため、ここではプレビューできません。",
+    "tooLarge": "{{fileName}} は {{size}} あり、ここでプレビューするには大きすぎます。",
+    "plainNotice": "プレーンテキストで表示しています：{{fileName}} は {{size}} あり、ハイライト表示するには大きすぎます。",
+    "plainNotice_markdown": "プレーンテキストで表示しています：{{fileName}} は {{size}} あり、Markdown としてレンダリングするには大きすぎます。"
+  },
+  "artifactSheet": {
+    "fallbackTitle": "成果物",
+    "copyPath": "パスをコピー",
+    "revealLabel": "フォルダーに表示"
+  },
+  "fileSheet": {
+    "fallbackTitle": "ファイル",
+    "openInEditor": "{{editor}} で開く",
+    "copyPath": "パスをコピー",
+    "revealLabel": "フォルダーに表示"
+  },
+  "commitSheet": {
+    "title": "コミット {{hash}} — {{title}}",
+    "titleUntitled": "コミット {{hash}}",
+    "description": "コミット {{hash}} の変更ファイルと差分",
+    "loadingLabel": "コミット {{hash}} を読み込み中",
+    "failed": "コミットを読み込めませんでした：{{error}}",
+    "notFound": "コミットが見つかりません。",
+    "noChanges": "このコミットで変更されたファイルはありません。",
+    "changedFiles": "変更されたファイル",
+    "copyHash": "コミットハッシュをコピー",
+    "fileStatus": {
+      "added": "追加",
+      "deleted": "削除",
+      "modified": "変更",
+      "renamed": "名前変更"
+    }
+  }
+}

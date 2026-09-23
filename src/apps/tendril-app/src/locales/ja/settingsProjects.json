@@ -232,8 +232,7 @@
       "consequence": "このプロジェクトで作業するエージェントに、このスキルが提供されなくなります。削除されるのはプロジェクトからの参照のみで、スキル自体のファイルは削除されません。"
     },
     "saved": "スキル「{{name}}」を保存しました",
-    "deleted": "スキル「{{name}}」を削除しました",
-    "memoryNote": "プロジェクトメモリは Markdown ファイルとして {{path}} に保存されます。デーモンにはこれらを扱うルートがないため、まだここでは編集できません。"
+    "deleted": "スキル「{{name}}」を削除しました"
   },
   "dangerZone": {
     "title": "Danger Zone",
@@ -355,5 +354,25 @@
     "environmentFile": "環境変数ファイル",
     "mcpServer": "MCP サーバー",
     "customSkill": "カスタムスキル"
+  },
+  "importFromRepo": "リポジトリからインポート",
+  "importedFromRepo_other": "{{count}} 件をインポートしました",
+  "importedFromRepo_skills_other": "カスタムスキルを {{count}} 件インポートしました",
+  "importedFromRepo_mcpServers_other": "MCP サーバーを {{count}} 件インポートしました",
+  "memory": {
+    "title": "プロジェクトメモリ",
+    "hint": "このプロジェクトに関する Markdown のメモ (スタック、ルール、規約)。{{path}} に保存されます。",
+    "addButton": "プロジェクトメモリを追加",
+    "columns": {
+      "file": "ファイル",
+      "snippet": "概要"
+    },
+    "empty": "このプロジェクトのメモリファイルはまだありません。",
+    "loadError": "プロジェクトのメモリを読み込めませんでした: {{error}}",
+    "saved": "メモリファイル '{{name}}' を保存しました",
+    "deleted": "メモリファイル '{{name}}' を削除しました",
+    "removal": {
+      "consequence": "ファイルはプロジェクトの Memory フォルダーから削除されます。"
+    }
   }
 }

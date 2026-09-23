@@ -36,3 +36,19 @@ export const Busy: Story = { args: { isBusy: true } };
 export const Refused: Story = {
   args: { error: "Plan 00412 is held by a running job (#1184) and cannot be deleted." },
 };
+
+/**
+ * V1's `Icebox/Dialogs/DeletePlanDialog`: a bare permanent-delete confirm. The plan is already on
+ * ice, so the Plans page's Skip/Icebox answers are not offered.
+ */
+export const Icebox: Story = {
+  args: { variant: "icebox", onSkip: undefined, onArchive: undefined },
+};
+
+/** The Icebox confirm, refused. */
+export const IceboxRefused: Story = {
+  args: {
+    variant: "icebox",
+    error: "Plan 00412 could not be deleted: the plan folder is in use by another process.",
+  },
+};

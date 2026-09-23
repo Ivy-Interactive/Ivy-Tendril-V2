@@ -1,1 +1,55 @@
-{}
+{
+  "verificationReport": {
+    "title": "सत्यापन रिपोर्ट",
+    "description": "{{name}} के लिए सत्यापन रिपोर्ट का विवरण",
+    "descriptionFallback": "योजना के लिए सत्यापन रिपोर्ट का विवरण",
+    "loading": "सत्यापन रिपोर्ट लोड हो रही है…",
+    "notFound": "\"{{name}}\" के लिए कोई सत्यापन रिपोर्ट फ़ाइल नहीं मिली।",
+    "empty": "{{name}} के लिए कोई रिपोर्ट उपलब्ध नहीं है।",
+    "status": {
+      "pass": "पास",
+      "fail": "फ़ेल",
+      "pending": "लंबित",
+      "skipped": "छोड़ा गया"
+    }
+  },
+  "filePreview": {
+    "noPreviewTitle": "कोई पूर्वावलोकन नहीं",
+    "showInFolder": "फ़ोल्डर में दिखाएं",
+    "loadingLabel": "{{fileName}} लोड हो रही है",
+    "imageFailed": "Tendril यह छवि लोड नहीं कर सका।",
+    "imageFailedWithError": "Tendril यह छवि लोड नहीं कर सका: {{error}}",
+    "binary": "{{fileName}} टेक्स्ट फ़ाइल नहीं है ({{size}}), इसलिए यहाँ इसका पूर्वावलोकन नहीं है।",
+    "tooLarge": "{{fileName}} का आकार {{size}} है, जो यहाँ पूर्वावलोकन के लिए बहुत बड़ा है।",
+    "plainNotice": "सादे टेक्स्ट के रूप में दिखाया गया: {{size}} आकार के साथ {{fileName}} हाइलाइट करने के लिए बहुत बड़ी है।",
+    "plainNotice_markdown": "सादे टेक्स्ट के रूप में दिखाया गया: {{size}} आकार के साथ {{fileName}} Markdown के रूप में रेंडर करने के लिए बहुत बड़ी है।"
+  },
+  "artifactSheet": {
+    "fallbackTitle": "आर्टिफ़ैक्ट",
+    "copyPath": "पथ कॉपी करें",
+    "revealLabel": "फ़ोल्डर में दिखाएं"
+  },
+  "fileSheet": {
+    "fallbackTitle": "फ़ाइल",
+    "openInEditor": "{{editor}} में खोलें",
+    "copyPath": "पथ कॉपी करें",
+    "revealLabel": "फ़ोल्डर में दिखाएं"
+  },
+  "commitSheet": {
+    "title": "कमिट {{hash}} — {{title}}",
+    "titleUntitled": "कमिट {{hash}}",
+    "description": "कमिट {{hash}} की बदली गई फ़ाइलें और डिफ़",
+    "loadingLabel": "कमिट {{hash}} लोड हो रहा है",
+    "failed": "कमिट लोड नहीं हो सका: {{error}}",
+    "notFound": "कमिट नहीं मिला।",
+    "noChanges": "इस कमिट ने कोई फ़ाइल नहीं बदली।",
+    "changedFiles": "बदली गई फ़ाइलें",
+    "copyHash": "कमिट हैश कॉपी करें",
+    "fileStatus": {
+      "added": "जोड़ा गया",
+      "deleted": "हटाया गया",
+      "modified": "बदला गया",
+      "renamed": "नाम बदला गया"
+    }
+  }
+}

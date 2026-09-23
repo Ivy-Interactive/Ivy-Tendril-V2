@@ -80,21 +80,7 @@
     "failed": "保存失败：{{error}}"
   },
   "test": {
-    "title": "编程智能体测试",
     "defaultModel": "默认",
-    "columns": {
-      "test": "测试",
-      "result": "结果"
-    },
-    "status": {
-      "passed": "通过",
-      "failed": "失败",
-      "warning": "警告",
-      "running": "运行中",
-      "pending": "待处理"
-    },
-    "showRawOutput": "显示原始输出",
-    "rawOutputTitle": "原始输出",
     "rows": {
       "install": "安装",
       "auth": "认证",

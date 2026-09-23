@@ -1,1 +1,55 @@
-{}
+{
+  "verificationReport": {
+    "title": "Informe de verificación",
+    "description": "Detalles del informe de verificación de {{name}}",
+    "descriptionFallback": "Detalles del informe de verificación del plan",
+    "loading": "Cargando el informe de verificación…",
+    "notFound": "No se encontró ningún archivo de informe de verificación para \"{{name}}\".",
+    "empty": "No hay ningún informe disponible para {{name}}.",
+    "status": {
+      "pass": "Superada",
+      "fail": "Fallida",
+      "pending": "Pendiente",
+      "skipped": "Omitida"
+    }
+  },
+  "filePreview": {
+    "noPreviewTitle": "Sin vista previa",
+    "showInFolder": "Mostrar en la carpeta",
+    "loadingLabel": "Cargando {{fileName}}",
+    "imageFailed": "Tendril no pudo cargar esta imagen.",
+    "imageFailedWithError": "Tendril no pudo cargar esta imagen: {{error}}",
+    "binary": "{{fileName}} no es un archivo de texto ({{size}}), así que aquí no tiene vista previa.",
+    "tooLarge": "{{fileName}} ocupa {{size}}, demasiado para mostrar una vista previa aquí.",
+    "plainNotice": "Se muestra como texto sin formato: con {{size}}, {{fileName}} es demasiado grande para resaltar su sintaxis.",
+    "plainNotice_markdown": "Se muestra como texto sin formato: con {{size}}, {{fileName}} es demasiado grande para representarlo como Markdown."
+  },
+  "artifactSheet": {
+    "fallbackTitle": "Artefacto",
+    "copyPath": "Copiar ruta",
+    "revealLabel": "Mostrar en la carpeta"
+  },
+  "fileSheet": {
+    "fallbackTitle": "Archivo",
+    "openInEditor": "Abrir en {{editor}}",
+    "copyPath": "Copiar ruta",
+    "revealLabel": "Mostrar en la carpeta"
+  },
+  "commitSheet": {
+    "title": "Commit {{hash}} — {{title}}",
+    "titleUntitled": "Commit {{hash}}",
+    "description": "Archivos modificados y diff del commit {{hash}}",
+    "loadingLabel": "Cargando el commit {{hash}}",
+    "failed": "No se pudo cargar el commit: {{error}}",
+    "notFound": "No se encontró el commit.",
+    "noChanges": "Este commit no modificó ningún archivo.",
+    "changedFiles": "Archivos modificados",
+    "copyHash": "Copiar el hash del commit",
+    "fileStatus": {
+      "added": "Añadido",
+      "deleted": "Eliminado",
+      "modified": "Modificado",
+      "renamed": "Renombrado"
+    }
+  }
+}

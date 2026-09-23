@@ -77,4 +77,29 @@ describe("UpdateNotice", () => {
     fireEvent.click(screen.getByText("Dismiss"));
     expect(onDismiss).toHaveBeenCalledWith("1.2.0");
   });
+
+  // V1 `UpdateNoticeView`'s "Show Details", which opens `UpdateTendrilDialog`.
+  it("offers Show Details only when the shell can open the update dialog", () => {
+    const onShowDetails = vi.fn();
+    const { rerender } = render(
+      <UpdateNotice
+        info={makeInfo()}
+        dismissedVersion={null}
+        onDismiss={vi.fn()}
+        onCopyCommand={vi.fn()}
+      />,
+    );
+    expect(screen.queryByTestId("update-notice-details")).not.toBeInTheDocument();
+    rerender(
+      <UpdateNotice
+        info={makeInfo()}
+        dismissedVersion={null}
+        onDismiss={vi.fn()}
+        onCopyCommand={vi.fn()}
+        onShowDetails={onShowDetails}
+      />,
+    );
+    fireEvent.click(screen.getByText("Show Details"));
+    expect(onShowDetails).toHaveBeenCalledTimes(1);
+  });
 });

@@ -109,3 +109,17 @@ export const NotTakingChanges: Story = {
     ],
   },
 };
+
+/** V1's uploads on the diff-side request: staged files referenced from the change request. */
+export const WithAttachments: Story = {
+  args: {
+    onAttachFiles: () => {},
+    onRemoveAttachment: () => {},
+    attachments: [
+      {
+        name: "misaligned-header.png",
+        path: "/Users/dev/.tendril/Attachments/9c1e/misaligned-header.png",
+      },
+    ],
+  },
+};

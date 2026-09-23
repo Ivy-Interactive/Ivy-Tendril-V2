@@ -154,21 +154,6 @@
       }
     }
   },
-  "sheet": {
-    "titleFallback": "Issue",
-    "assigned": "担当者：{{assignees}}",
-    "openOnGitHub": "GitHub で開く",
-    "dismiss": {
-      "label": "却下",
-      "tooltip": "完全に却下：割り当て済み Issue の確認で、この Issue が再び提案されることはありません"
-    },
-    "accept": {
-      "label": "承認",
-      "tooltip": "{{project}} でこの Issue の計画を開始"
-    },
-    "fireOff": "Tendril で開始",
-    "noDescription": "説明はありません。"
-  },
   "pullRequests": {
     "title": "プルリクエスト",
     "status": {
@@ -219,11 +204,6 @@
     },
     "statusFilterPlaceholder": "ステータスで絞り込み…",
     "resyncAll": "すべて再同期",
-    "resyncing": "再同期中…",
-    "sheet": {
-      "titleFallback": "計画",
-      "loadingRevision": "リビジョンを読み込み中…",
-      "notFound": "計画が見つからないか、空です。"
-    }
+    "resyncing": "再同期中…"
   }
 }

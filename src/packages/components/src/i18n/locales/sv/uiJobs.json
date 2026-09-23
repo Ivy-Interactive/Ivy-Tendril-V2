@@ -1,1 +1,138 @@
-{}
+{
+  "actions": {
+    "cancel": "Avbryt"
+  },
+  "costSheet": {
+    "loading": "Läser in jobbdetaljer…",
+    "details": {
+      "model": "Modell",
+      "provider": "Leverantör",
+      "type": "Typ",
+      "profile": "Profil",
+      "agentCost": "Kostnad rapporterad av agenten"
+    },
+    "notProvided": "Ej angiven",
+    "estimated": "~{{cost}}",
+    "noUsage": "Ingen uppdelning per token registrerades för jobbet.",
+    "noUsage_total": "Ingen uppdelning per token registrerades för jobbet, bara totalt {{total}} tokens.",
+    "breakdown": {
+      "title": "Uppdelning",
+      "tokenType": "Tokentyp",
+      "tokens": "Tokens",
+      "total": "Totalt"
+    },
+    "buckets": {
+      "input": "Indata",
+      "output": "Utdata",
+      "cacheRead": "Cacheläsning",
+      "cacheWrite": "Cacheskrivning",
+      "reasoning": "Resonemang"
+    },
+    "totalCost": "Total kostnad"
+  },
+  "promptSheet": {
+    "title": "Fullständig prompt",
+    "empty": "Jobbet sparade ingen prompttext."
+  },
+  "outputSheet": {
+    "noOutput": "Ingen utdata tillgänglig.",
+    "statusCallout": {
+      "title": "Jobb: {{status}}",
+      "title_pending": "Jobbet väntar",
+      "title_queued": "Jobbet är köat",
+      "title_blocked": "Jobbet är blockerat",
+      "title_failed": "Jobbet misslyckades",
+      "title_timeout": "Jobbet fick timeout",
+      "title_stopped": "Jobbet stoppades",
+      "blocked": "Väntar på att beroenden eller föregående jobb ska slutföras.",
+      "pending": "Jobbet står i kö och väntar på att starta."
+    }
+  },
+  "deleteJob": {
+    "title": "Ta bort jobb",
+    "body": "Vill du ta bort det här jobbet? Det går inte att ångra.",
+    "confirm": "Ta bort"
+  },
+  "stopQueued": {
+    "title": "Stoppa köade jobb",
+    "body_one": "Vill du stoppa {{count}} köat jobb? Jobb som körs påverkas inte.",
+    "body_other": "Vill du stoppa alla {{count}} köade jobb? Jobb som körs påverkas inte.",
+    "confirm": "Stoppa alla"
+  },
+  "stopAll": {
+    "title": "Stoppa alla jobb",
+    "body_one": "Vill du stoppa {{count}} aktivt jobb? Agenter som körs avslutas och deras planer återgår till sitt tidigare tillstånd. Det går inte att ångra.",
+    "body_other": "Vill du stoppa alla {{count}} aktiva jobb? Agenter som körs avslutas och deras planer återgår till sitt tidigare tillstånd. Det går inte att ångra.",
+    "confirm": "Stoppa alla"
+  },
+  "clearJobs": {
+    "confirm": "Rensa",
+    "confirmCount": "Rensa {{count}}",
+    "scopes": {
+      "completed": {
+        "title": "Rensa slutförda",
+        "counting": "Räknar slutförda jobb…",
+        "empty": "Det finns inga slutförda jobb att rensa.",
+        "confirm_one": "Vill du ta bort {{count}} slutfört jobb? Dess loggar och utdata tas bort samtidigt, och det går inte att ångra.",
+        "confirm_other": "Vill du ta bort {{count}} slutförda jobb? Deras loggar och utdata tas bort samtidigt, och det går inte att ångra."
+      },
+      "failed": {
+        "title": "Rensa misslyckade",
+        "counting": "Räknar misslyckade jobb…",
+        "empty": "Det finns inga misslyckade jobb att rensa.",
+        "confirm_one": "Vill du ta bort {{count}} misslyckat jobb? Dess loggar och utdata tas bort samtidigt, och det går inte att ångra.",
+        "confirm_other": "Vill du ta bort {{count}} misslyckade jobb? Deras loggar och utdata tas bort samtidigt, och det går inte att ångra."
+      },
+      "timeout": {
+        "title": "Rensa jobb med timeout",
+        "counting": "Räknar jobb som fått timeout…",
+        "empty": "Det finns inga jobb med timeout att rensa.",
+        "confirm_one": "Vill du ta bort {{count}} jobb som fått timeout? Dess loggar och utdata tas bort samtidigt, och det går inte att ångra.",
+        "confirm_other": "Vill du ta bort {{count}} jobb som fått timeout? Deras loggar och utdata tas bort samtidigt, och det går inte att ångra."
+      },
+      "stopped": {
+        "title": "Rensa stoppade",
+        "counting": "Räknar stoppade jobb…",
+        "empty": "Det finns inga stoppade jobb att rensa.",
+        "confirm_one": "Vill du ta bort {{count}} stoppat jobb? Dess loggar och utdata tas bort samtidigt, och det går inte att ångra.",
+        "confirm_other": "Vill du ta bort {{count}} stoppade jobb? Deras loggar och utdata tas bort samtidigt, och det går inte att ångra."
+      },
+      "all": {
+        "title": "Rensa alla avslutade",
+        "counting": "Räknar avslutade jobb…",
+        "empty": "Det finns inga avslutade jobb att rensa.",
+        "confirm_one": "Vill du ta bort {{count}} avslutat jobb? Dess loggar och utdata tas bort samtidigt, och det går inte att ångra.",
+        "confirm_other": "Vill du ta bort {{count}} avslutade jobb? Deras loggar och utdata tas bort samtidigt, och det går inte att ångra."
+      }
+    }
+  },
+  "rerun": {
+    "title": "Kör {{type}} igen",
+    "intro": "Berätta gärna för agenten vad som gick fel eller vad den ska göra annorlunda. Lämna tomt för att köra igen oförändrat.",
+    "feedbackPlaceholder": "Återkoppling till agenten (valfritt)",
+    "feedbackAriaLabel": "Återkoppling till agenten",
+    "unchanged": "Köra det här jobbet igen med dess ursprungliga argument?",
+    "confirm": "Kör igen",
+    "busy": "Startar…"
+  },
+  "reportBug": {
+    "title": "Rapportera fel",
+    "intro": "Beskriv problemet. Jobbloggar och en rensad kopia av din konfiguration (hemligheter borttagna) bifogas ett offentligt GitHub-ärende.",
+    "descriptionPlaceholder": "Vad gick fel? Hur kan vi återskapa det?",
+    "descriptionAriaLabel": "Felbeskrivning",
+    "githubUserPlaceholder": "Ditt GitHub-användarnamn (valfritt)",
+    "githubUserAriaLabel": "GitHub-användarnamn",
+    "submit": "Skicka rapport",
+    "busy": "Skickar…"
+  },
+  "debugWithAgent": {
+    "title": "Felsök med {{agent}}",
+    "focusPlaceholder": "Något särskilt du vill att den tittar efter? (valfritt)",
+    "focusAriaLabel": "Vad fokus ska ligga på",
+    "confirm": "Felsök med {{agent}}"
+  },
+  "jobDebug": {
+    "reportBug": "Rapportera fel",
+    "debugWithAgent": "Felsök med {{agent}}"
+  }
+}

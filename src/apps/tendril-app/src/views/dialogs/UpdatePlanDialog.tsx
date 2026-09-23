@@ -1,6 +1,9 @@
 import * as React from "react";
 import { UpdatePlanDialog as UpdatePlanDialogView } from "@ivy-interactive/components/dialogs";
 import { PlanActionsController } from "../../controllers/planActions";
+import { bridge } from "../../api/bridge";
+import { i18n } from "../../i18n";
+import { useDialogAttachments, withFileRefs } from "./useDialogAttachments";
 import {
   describeBridgeError,
   type Job,
@@ -43,6 +46,9 @@ export function UpdatePlanDialog({
 }: UpdatePlanDialogProps) {
   const [isBusy, setIsBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
+  // V1's `UpdatePlanDialog` `UseUpload`: files staged under this opening's upload session, which
+  // `UpdatePlanArgs.uploadSessionId` names so the daemon moves them into the plan folder on success.
+  const attach = useDialogAttachments(isOpen, i18n.t("chat:attachments.pickerTitle"));
 
   React.useEffect(() => {
     if (isOpen) {
@@ -59,7 +65,21 @@ export function UpdatePlanDialog({
     setIsBusy(true);
     setError(null);
     try {
-      const response = await PlanActionsController.updatePlan(plan, instructions);
+      let response: StartJobResponse;
+      if (attach.attachments.length === 0) {
+        response = await PlanActionsController.updatePlan(plan, instructions);
+      } else {
+        // The controller's gate, then the same dispatch with the attachments riding along: the
+        // references in the text for the agent, the session for the daemon's promotion.
+        const check = PlanActionsController.canRefine(plan);
+        if (!check.allowed) throw new Error(check.reason ?? "");
+        response = await bridge.startJob({
+          type: "UpdatePlan",
+          folderPath: plan.id,
+          instructions: withFileRefs(instructions, attach.attachments),
+          uploadSessionId: attach.sessionId,
+        });
+      }
       onJobStarted?.(response);
       onClose();
     } catch (err) {
@@ -78,6 +98,7 @@ export function UpdatePlanDialog({
       onSubmit={handleSubmit}
       isBusy={isBusy}
       error={error}
+      {...attach.props}
     />
   );
 }

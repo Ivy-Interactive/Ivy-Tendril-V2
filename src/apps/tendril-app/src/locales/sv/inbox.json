@@ -159,21 +159,6 @@
       }
     }
   },
-  "sheet": {
-    "titleFallback": "Ärende",
-    "assigned": "Tilldelad: {{assignees}}",
-    "openOnGitHub": "Öppna på GitHub",
-    "dismiss": {
-      "label": "Avfärda",
-      "tooltip": "Avfärda permanent: kontrollen av tilldelade ärenden föreslår inte det här ärendet igen"
-    },
-    "accept": {
-      "label": "Acceptera",
-      "tooltip": "Starta en plan för det här ärendet i {{project}}"
-    },
-    "fireOff": "Starta i Tendril",
-    "noDescription": "Ingen beskrivning angavs."
-  },
   "pullRequests": {
     "title": "Pull requests",
     "status": {
@@ -224,11 +209,6 @@
     },
     "statusFilterPlaceholder": "Filtrera efter status…",
     "resyncAll": "Synka om alla",
-    "resyncing": "Synkar om…",
-    "sheet": {
-      "titleFallback": "Plan",
-      "loadingRevision": "Läser in revision…",
-      "notFound": "Planen hittades inte eller är tom."
-    }
+    "resyncing": "Synkar om…"
   }
 }

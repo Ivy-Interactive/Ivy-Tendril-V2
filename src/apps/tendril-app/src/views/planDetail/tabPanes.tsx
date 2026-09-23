@@ -14,6 +14,7 @@ import { ErrorBanner } from "../../components/ErrorBanner";
 import { RecommendationCard } from "../../components/RecommendationCard";
 import { PlanPullRequests } from "../PlanPullRequests";
 import { PlanRevisionDiff } from "../PlanRevisionDiff";
+import { PlanJobs } from "./PlanJobs";
 import { useTranslation } from "../../i18n";
 import { useEnumLabels } from "../../i18n/enumLabels";
 import {
@@ -53,6 +54,13 @@ interface PlanPaneProps {
   scrollTo: { questionId: string; token: number } | null;
   handleAnnotationsChange: (next: Annotation[]) => void;
   applyAnswer: (questionId: string, answer: string[]) => Promise<void>;
+  /**
+   * `PlanTabView`'s `.OnLinkClick(FileSheet.CreateLinkClickHandler(openFile, ...))`: where the
+   * document's links go - a local file to the `FileSheet`, `plan://N` to that plan, a web link to the
+   * browser. Built by `planLinkHandlers`.
+   */
+  onFileClick?: (href: string) => void;
+  onLinkClick?: (href: string) => void;
 }
 
 type PlanDocumentPaneProps = Omit<
@@ -136,10 +144,14 @@ export const PlanPane: React.FC<PlanPaneProps> = ({
   scrollTo,
   handleAnnotationsChange,
   applyAnswer,
+  onFileClick,
+  onLinkClick,
 }) => {
   const { t } = useTranslation("plans");
   return (
     <PlanDocumentPane
+      onFileClick={onFileClick}
+      onLinkClick={onLinkClick}
       /* `PlanTabView.Build`: a failed plan leads with why, above the plan itself. */
       lead={
         effectivePlan.state === "Failed" && (
@@ -251,6 +263,13 @@ interface OtherTabsPaneProps {
     id: PlanRunAction,
     action: ((planId: string) => void | Promise<void>) | undefined,
   ) => Promise<boolean>;
+  /** V1's `openCommit.Set(hash)`: the Git tab's and Details tab's commits open `CommitDetailSheet`. */
+  onOpenCommit?: (hash: string) => void;
+  /** The live job list, for the Details tab's Jobs section (`DetailsTabView`'s `jobs`). */
+  jobs?: Job[];
+  /** V1's `showDebugJob` / `showCostJob`, handed to the Jobs section. */
+  onOpenJobDebug?: (jobId: string) => void;
+  onOpenJobCost?: (jobId: string) => void;
 }
 
 /** Every tab body but the Plan tab's, which owns its own scroll. */
@@ -263,6 +282,10 @@ export const OtherTabsPane: React.FC<OtherTabsPaneProps> = ({
   gitData,
   gitError,
   runAction,
+  onOpenCommit,
+  jobs = [],
+  onOpenJobDebug,
+  onOpenJobCost,
 }) => {
   const { t } = useTranslation("plans");
   const labels = useEnumLabels();
@@ -321,6 +344,7 @@ export const OtherTabsPane: React.FC<OtherTabsPaneProps> = ({
                 prs={plan.prs ?? []}
                 planState={effectivePlan.state}
                 onOpenUrl={(url) => void openPath(url)}
+                onOpenCommit={onOpenCommit}
               />
             ) : (
               <p className="text-sm text-muted-foreground/70">{t("gitTab.loading")}</p>
@@ -427,7 +451,11 @@ export const OtherTabsPane: React.FC<OtherTabsPaneProps> = ({
                 </h4>
                 <ul className="mt-2 space-y-1 font-mono text-sm text-muted-foreground">
                   {plan.commits && plan.commits.length > 0 ? (
-                    plan.commits.map((c, i) => <li key={i}>{c}</li>)
+                    plan.commits.map((c, i) => (
+                      <li key={i}>
+                        <CommitLink hash={c} onOpen={onOpenCommit} />
+                      </li>
+                    ))
                   ) : (
                     <li className="font-sans text-muted-foreground/70">{t("details.noCommits")}</li>
                   )}
@@ -439,9 +467,41 @@ export const OtherTabsPane: React.FC<OtherTabsPaneProps> = ({
                 <PlanPullRequests planId={plan.id} prs={plan.prs} />
               )}
             </div>
+
+            {/* `DetailsTabView`: `jobs.Count > 0 ? (Text.H4("Jobs") | PlanJobsDataTableView) : null`. */}
+            {onOpenJobDebug && onOpenJobCost && (
+              <PlanJobs
+                jobs={jobs}
+                planId={plan.id}
+                onOpenDebug={onOpenJobDebug}
+                onOpenCost={onOpenJobCost}
+              />
+            )}
           </div>
         )}
       </div>
     </div>
   );
 };
+
+/**
+ * A recorded commit hash in a Details tab's Commits list. With `onOpen` it opens the commit's detail
+ * sheet, as the Git tab's rows do; without it, it is the plain hash it always was.
+ */
+export const CommitLink: React.FC<{ hash: string; onOpen?: (hash: string) => void }> = ({
+  hash,
+  onOpen,
+}) =>
+  onOpen ? (
+    <button
+      type="button"
+      title={hash}
+      data-testid={`details-commit-${hash}`}
+      onClick={() => onOpen(hash)}
+      className="break-all text-left font-mono text-primary hover:underline"
+    >
+      {hash}
+    </button>
+  ) : (
+    <>{hash}</>
+  );

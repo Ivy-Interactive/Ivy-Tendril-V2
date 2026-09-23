@@ -22,11 +22,6 @@
   "composerAttachment": {
     "remove": "Quitar {{name}}"
   },
-  "lightbox": {
-    "fallbackTitle": "Vista previa de la imagen",
-    "fallbackAlt": "Vista previa del adjunto",
-    "closeLabel": "Cerrar vista previa"
-  },
   "newChatButtons": {
     "label": "Nuevo chat",
     "tooltip": "Nuevo chat",
@@ -156,19 +151,8 @@
     "afternoon": "¡Buenas tardes!",
     "evening": "¡Buenas noches!"
   },
-  "deleteSession": {
-    "title": "Eliminar sesión",
-    "body": "¿Seguro que quieres eliminar \"{{title}}\"? Esta acción no se puede deshacer.",
-    "bodyUntitled": "¿Seguro que quieres eliminar esta sesión de chat? Esta acción no se puede deshacer."
-  },
   "jobsReview": {
     "prompt": "Revisa los resultados de los trabajos que inició esta conversación y dime qué ha cambiado:\n{{jobs}}"
-  },
-  "search": {
-    "title": "Buscar chats",
-    "inputLabel": "Buscar chats",
-    "placeholder": "Buscar chats",
-    "empty": "No se encontraron chats."
   },
   "queue": {
     "title": "Mensajes en cola",

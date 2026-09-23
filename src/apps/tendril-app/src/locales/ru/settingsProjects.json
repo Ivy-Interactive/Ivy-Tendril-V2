@@ -232,8 +232,7 @@
       "consequence": "Агенты, работающие над этим проектом, перестанут его получать. Удаляется только ссылка проекта на навык, а не собственные файлы навыка."
     },
     "saved": "Навык «{{name}}» сохранён",
-    "deleted": "Навык «{{name}}» удалён",
-    "memoryNote": "Память проекта хранится в виде файлов Markdown в {{path}}. Демон не предоставляет для неё маршрута, поэтому здесь её пока нельзя редактировать."
+    "deleted": "Навык «{{name}}» удалён"
   },
   "dangerZone": {
     "title": "Опасная зона",
@@ -355,5 +354,34 @@
     "environmentFile": "файл окружения",
     "mcpServer": "MCP-сервер",
     "customSkill": "пользовательский навык"
+  },
+  "importFromRepo": "Импорт из репозитория",
+  "importedFromRepo_one": "Импортирован {{count}} элемент",
+  "importedFromRepo_few": "Импортировано {{count}} элемента",
+  "importedFromRepo_many": "Импортировано {{count}} элементов",
+  "importedFromRepo_other": "Импортировано {{count}} элемента",
+  "importedFromRepo_skills_one": "Импортирован {{count}} пользовательский навык",
+  "importedFromRepo_skills_few": "Импортировано {{count}} пользовательских навыка",
+  "importedFromRepo_skills_many": "Импортировано {{count}} пользовательских навыков",
+  "importedFromRepo_skills_other": "Импортировано {{count}} пользовательского навыка",
+  "importedFromRepo_mcpServers_one": "Импортирован {{count}} сервер MCP",
+  "importedFromRepo_mcpServers_few": "Импортировано {{count}} сервера MCP",
+  "importedFromRepo_mcpServers_many": "Импортировано {{count}} серверов MCP",
+  "importedFromRepo_mcpServers_other": "Импортировано {{count}} сервера MCP",
+  "memory": {
+    "title": "Память проекта",
+    "hint": "Заметки в Markdown об этом проекте (стек, правила, соглашения), хранятся в {{path}}.",
+    "addButton": "Добавить память проекта",
+    "columns": {
+      "file": "Файл",
+      "snippet": "Кратко"
+    },
+    "empty": "У этого проекта пока нет файлов памяти.",
+    "loadError": "Не удалось прочитать память проекта: {{error}}",
+    "saved": "Файл памяти «{{name}}» сохранён",
+    "deleted": "Файл памяти «{{name}}» удалён",
+    "removal": {
+      "consequence": "Файл будет удалён из папки Memory проекта."
+    }
   }
 }

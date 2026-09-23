@@ -1,1 +1,194 @@
-{}
+{
+  "removal": {
+    "title": "Remove {{kind}}",
+    "title_level": "Remove Level",
+    "title_repository": "Remove Repository",
+    "title_reviewAction": "Remove Review action",
+    "title_environmentFile": "Remove Environment file",
+    "title_mcpServer": "Remove MCP server",
+    "title_customSkill": "Remove Custom skill",
+    "body": "Remove {{kind}} <name>{{name}}</name> from this configuration?",
+    "body_level": "Remove level <name>{{name}}</name> from this configuration?",
+    "body_repository": "Remove repository <name>{{name}}</name> from this configuration?",
+    "body_reviewAction": "Remove review action <name>{{name}}</name> from this configuration?",
+    "body_environmentFile": "Remove environment file <name>{{name}}</name> from this configuration?",
+    "body_mcpServer": "Remove MCP server <name>{{name}}</name> from this configuration?",
+    "body_customSkill": "Remove custom skill <name>{{name}}</name> from this configuration?",
+    "title_memoryFile": "Remove Memory file",
+    "body_memoryFile": "Remove memory file <name>{{name}}</name> from this project?",
+    "confirm": "Remove"
+  },
+  "configEditor": {
+    "discard": {
+      "title": "Discard Unsaved Changes",
+      "confirm": "Discard and reload",
+      "body": "Reloading replaces the editor with the file on disk. The edits you have not saved are lost."
+    }
+  },
+  "agentTest": {
+    "title": "Coding Agent Test",
+    "columns": {
+      "test": "Test",
+      "result": "Result"
+    },
+    "status": {
+      "passed": "Passed",
+      "failed": "Failed",
+      "warning": "Warning",
+      "running": "Running",
+      "pending": "Pending"
+    },
+    "showRawOutput": "Show raw output",
+    "rawOutputTitle": "Raw Output",
+    "close": "Close",
+    "cancel": "Cancel"
+  },
+  "projectMemory": {
+    "addTitle": "Add Project Memory",
+    "editTitle": "Edit Memory: {{fileName}}",
+    "description": "A markdown file in {{project}}'s Memory folder.",
+    "loading": "Loading memory file...",
+    "fileName": {
+      "label": "Filename",
+      "placeholder": "Memory filename (e.g. stack.md, conventions.md)..."
+    },
+    "content": {
+      "label": "Content (Markdown)",
+      "placeholder": "Markdown memory content (e.g. tech stack, rules, architectural conventions)..."
+    },
+    "cancel": "Cancel",
+    "add": "Add",
+    "save": "Save"
+  },
+  "importRepoAssets": {
+    "title": "Import from Repository",
+    "title_skills": "Import Custom Skills from Repository",
+    "title_mcpServers": "Import MCP Tools & Servers from Repository",
+    "cancel": "Cancel",
+    "submit_one": "Import Selected ({{count}})",
+    "submit_other": "Import Selected ({{count}})",
+    "source": {
+      "heading": "Repository Source",
+      "modes": {
+        "repo": "Project Repo",
+        "gitUrl": "Git URL",
+        "localPath": "Local Path"
+      },
+      "repo": "Project Repository",
+      "gitUrl": "Git Repository URL",
+      "localPath": "Local Folder Path",
+      "localPathPlaceholder": "~/path/to/repository or /Users/..."
+    },
+    "fetchAndScan": "Fetch & Scan",
+    "scan": "Scan",
+    "scanning": "Scanning repository...",
+    "notScanned": "Pick a source and scan it to see what it contains.",
+    "empty": "Nothing to import was found in this repository.",
+    "empty_skills": "No SKILL.md files found in this repository (.agents/skills, .gemini/skills, skills/, etc.).",
+    "empty_mcpServers": "No MCP configuration files (.mcp.json, mcp_config.json, .vscode/mcp.json) found.",
+    "discovered": "Discovered",
+    "discovered_skills": "Discovered Custom Skills",
+    "discovered_mcpServers": "Discovered MCP Servers"
+  },
+  "vaultThemes": {
+    "title": "Team Vault Themes",
+    "createTitle": "Create Custom Theme",
+    "editTitle": "Edit Custom Theme",
+    "close": "Close",
+    "cancel": "Cancel",
+    "upload": "Upload to Team Vault",
+    "newTheme": "New Custom Theme",
+    "copyConfiguration": "Copy Configuration",
+    "importConfiguration": "Import Configuration",
+    "defaults": {
+      "name": "Team Brand",
+      "description": "Custom team vault theme"
+    },
+    "tabs": {
+      "generator": "Theme Generator",
+      "themes_one": "Vault Themes ({{count}})",
+      "themes_other": "Vault Themes ({{count}})"
+    },
+    "fields": {
+      "name": "Theme Name",
+      "description": "Description",
+      "preset": "Theme Preset",
+      "presetCustom": "Custom",
+      "mode": "Theme Mode",
+      "fontFamily": "Font Family",
+      "fontSize": "Font Size",
+      "radius": "Border Radius"
+    },
+    "mode": {
+      "light": "Light",
+      "dark": "Dark",
+      "lightBadge": "Light Mode",
+      "darkBadge": "Dark Mode"
+    },
+    "sections": {
+      "preview": "Mock Components Preview",
+      "colors": "Colors",
+      "typography": "Typography & Layout"
+    },
+    "colorGroups": {
+      "main": "Main Colors",
+      "semantic": "Semantic Colors",
+      "ui": "UI Element Colors"
+    },
+    "radius": {
+      "none": "None",
+      "small": "Small",
+      "medium": "Medium",
+      "large": "Large",
+      "full": "Full"
+    },
+    "preview": {
+      "heading": "Interactive Preview",
+      "hint": "Live preview responding to colors, typography, and border radius",
+      "primary": "Primary",
+      "secondary": "Secondary",
+      "outline": "Outline",
+      "destructive": "Destructive",
+      "ghost": "Ghost",
+      "textField": "Text Field",
+      "switch": "Toggle Switch",
+      "callout": "Boxes, fields, and selectors inherit your border radius and color variables.",
+      "metric": "Sample Metric",
+      "healthy": "Healthy"
+    },
+    "list": {
+      "loading": "Loading vault themes...",
+      "noDescription": "Custom theme",
+      "active": "Active",
+      "apply": "Apply",
+      "edit": "Edit",
+      "delete": "Delete {{name}}",
+      "count_one": "{{count}} Custom Theme in Vault",
+      "count_other": "{{count}} Custom Themes in Vault"
+    },
+    "empty": {
+      "title": "No Custom Themes in Vault",
+      "body": "This team vault doesn't have any custom themes yet. Use the Theme Generator to create and upload one."
+    },
+    "export": {
+      "title": "Export Theme Configuration",
+      "format": "Format",
+      "jsonHint": "Use this JSON to persist or share the theme.",
+      "cssHint": "Paste this CSS into a host to apply the theme's colors.",
+      "copy": "Copy {{format}}"
+    },
+    "import": {
+      "title": "Import Theme Configuration",
+      "description": "Paste a JSON theme configuration to import its colors, typography, and border radius.",
+      "fieldLabel": "Theme configuration",
+      "submit": "Import Theme",
+      "invalidJson": "That is not valid JSON.",
+      "invalidShape": "No theme colors were found: expected a \"colors\" object with \"light\" and/or \"dark\"."
+    },
+    "deleteConfirm": {
+      "title": "Delete {{name}} from the Vault?",
+      "body": "The theme is removed from the vault repository for everyone who uses it. Anyone who has it applied falls back to the default theme.",
+      "confirm": "Delete Theme"
+    }
+  }
+}

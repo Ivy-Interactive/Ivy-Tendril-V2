@@ -1,1 +1,194 @@
-{}
+{
+  "removal": {
+    "title": "{{kind}} निकालें",
+    "title_level": "स्तर निकालें",
+    "title_repository": "रिपॉजिटरी निकालें",
+    "title_reviewAction": "समीक्षा क्रिया निकालें",
+    "title_environmentFile": "पर्यावरण फ़ाइल निकालें",
+    "title_mcpServer": "MCP सर्वर निकालें",
+    "title_customSkill": "कस्टम स्किल निकालें",
+    "body": "इस कॉन्फ़िगरेशन से {{kind}} <name>{{name}}</name> निकालें?",
+    "body_level": "इस कॉन्फ़िगरेशन से स्तर <name>{{name}}</name> निकालें?",
+    "body_repository": "इस कॉन्फ़िगरेशन से रिपॉजिटरी <name>{{name}}</name> निकालें?",
+    "body_reviewAction": "इस कॉन्फ़िगरेशन से समीक्षा क्रिया <name>{{name}}</name> निकालें?",
+    "body_environmentFile": "इस कॉन्फ़िगरेशन से पर्यावरण फ़ाइल <name>{{name}}</name> निकालें?",
+    "body_mcpServer": "इस कॉन्फ़िगरेशन से MCP सर्वर <name>{{name}}</name> निकालें?",
+    "body_customSkill": "इस कॉन्फ़िगरेशन से कस्टम स्किल <name>{{name}}</name> निकालें?",
+    "title_memoryFile": "मेमोरी फ़ाइल निकालें",
+    "body_memoryFile": "मेमोरी फ़ाइल <name>{{name}}</name> को इस प्रोजेक्ट से निकालें?",
+    "confirm": "निकालें"
+  },
+  "configEditor": {
+    "discard": {
+      "title": "बिना सहेजे परिवर्तन छोड़ें",
+      "confirm": "छोड़ें और फिर से लोड करें",
+      "body": "फिर से लोड करने पर एडिटर में डिस्क वाली फ़ाइल आ जाती है। जो संपादन आपने नहीं सहेजे हैं, वे खो जाएंगे।"
+    }
+  },
+  "agentTest": {
+    "title": "कोडिंग एजेंट परीक्षण",
+    "columns": {
+      "test": "परीक्षण",
+      "result": "परिणाम"
+    },
+    "status": {
+      "passed": "पास",
+      "failed": "विफल",
+      "warning": "चेतावनी",
+      "running": "चल रहा",
+      "pending": "लंबित"
+    },
+    "showRawOutput": "रॉ आउटपुट दिखाएं",
+    "rawOutputTitle": "रॉ आउटपुट",
+    "close": "बंद करें",
+    "cancel": "रद्द करें"
+  },
+  "projectMemory": {
+    "addTitle": "प्रोजेक्ट मेमोरी जोड़ें",
+    "editTitle": "मेमोरी संपादित करें: {{fileName}}",
+    "description": "{{project}} के Memory फ़ोल्डर में एक Markdown फ़ाइल।",
+    "loading": "मेमोरी फ़ाइल लोड हो रही है...",
+    "fileName": {
+      "label": "फ़ाइल नाम",
+      "placeholder": "मेमोरी फ़ाइल का नाम (जैसे stack.md, conventions.md)..."
+    },
+    "content": {
+      "label": "सामग्री (Markdown)",
+      "placeholder": "Markdown में मेमोरी सामग्री (जैसे टेक स्टैक, नियम, आर्किटेक्चर की परंपराएँ)..."
+    },
+    "cancel": "रद्द करें",
+    "add": "जोड़ें",
+    "save": "सहेजें"
+  },
+  "importRepoAssets": {
+    "title": "रिपॉज़िटरी से इंपोर्ट करें",
+    "title_skills": "रिपॉज़िटरी से कस्टम स्किल इंपोर्ट करें",
+    "title_mcpServers": "रिपॉज़िटरी से MCP टूल और सर्वर इंपोर्ट करें",
+    "cancel": "रद्द करें",
+    "submit_one": "चुने गए इंपोर्ट करें ({{count}})",
+    "submit_other": "चुने गए इंपोर्ट करें ({{count}})",
+    "source": {
+      "heading": "रिपॉज़िटरी स्रोत",
+      "modes": {
+        "repo": "प्रोजेक्ट रिपो",
+        "gitUrl": "Git URL",
+        "localPath": "लोकल पाथ"
+      },
+      "repo": "प्रोजेक्ट रिपॉज़िटरी",
+      "gitUrl": "Git रिपॉज़िटरी URL",
+      "localPath": "लोकल फ़ोल्डर पाथ",
+      "localPathPlaceholder": "~/path/to/repository या /Users/..."
+    },
+    "fetchAndScan": "लाएँ और स्कैन करें",
+    "scan": "स्कैन करें",
+    "scanning": "रिपॉज़िटरी स्कैन हो रही है...",
+    "notScanned": "कोई स्रोत चुनें और उसे स्कैन करें ताकि पता चले कि उसमें क्या है।",
+    "empty": "इस रिपॉज़िटरी में इंपोर्ट करने लायक कुछ नहीं मिला।",
+    "empty_skills": "इस रिपॉज़िटरी में कोई SKILL.md फ़ाइल नहीं मिली (.agents/skills, .gemini/skills, skills/ आदि)।",
+    "empty_mcpServers": "कोई MCP कॉन्फ़िगरेशन फ़ाइल (.mcp.json, mcp_config.json, .vscode/mcp.json) नहीं मिली।",
+    "discovered": "मिले",
+    "discovered_skills": "मिली कस्टम स्किल",
+    "discovered_mcpServers": "मिले MCP सर्वर"
+  },
+  "vaultThemes": {
+    "title": "टीम Vault थीम",
+    "createTitle": "कस्टम थीम बनाएँ",
+    "editTitle": "कस्टम थीम संपादित करें",
+    "close": "बंद करें",
+    "cancel": "रद्द करें",
+    "upload": "टीम Vault पर अपलोड करें",
+    "newTheme": "नई कस्टम थीम",
+    "copyConfiguration": "कॉन्फ़िगरेशन कॉपी करें",
+    "importConfiguration": "कॉन्फ़िगरेशन इंपोर्ट करें",
+    "defaults": {
+      "name": "टीम ब्रांड",
+      "description": "टीम Vault की कस्टम थीम"
+    },
+    "tabs": {
+      "generator": "थीम जनरेटर",
+      "themes_one": "Vault थीम ({{count}})",
+      "themes_other": "Vault थीम ({{count}})"
+    },
+    "fields": {
+      "name": "थीम का नाम",
+      "description": "विवरण",
+      "preset": "थीम प्रीसेट",
+      "presetCustom": "कस्टम",
+      "mode": "थीम मोड",
+      "fontFamily": "फ़ॉन्ट फ़ैमिली",
+      "fontSize": "फ़ॉन्ट आकार",
+      "radius": "कोनों की गोलाई"
+    },
+    "mode": {
+      "light": "लाइट",
+      "dark": "डार्क",
+      "lightBadge": "लाइट मोड",
+      "darkBadge": "डार्क मोड"
+    },
+    "sections": {
+      "preview": "कंपोनेंट का पूर्वावलोकन",
+      "colors": "रंग",
+      "typography": "टाइपोग्राफ़ी और लेआउट"
+    },
+    "colorGroups": {
+      "main": "मुख्य रंग",
+      "semantic": "सिमैंटिक रंग",
+      "ui": "UI तत्वों के रंग"
+    },
+    "radius": {
+      "none": "कोई नहीं",
+      "small": "छोटा",
+      "medium": "मध्यम",
+      "large": "बड़ा",
+      "full": "पूरा"
+    },
+    "preview": {
+      "heading": "इंटरैक्टिव पूर्वावलोकन",
+      "hint": "रंग, टाइपोग्राफ़ी और कोनों की गोलाई पर तुरंत बदलने वाला पूर्वावलोकन",
+      "primary": "प्राथमिक",
+      "secondary": "द्वितीयक",
+      "outline": "आउटलाइन",
+      "destructive": "विनाशकारी",
+      "ghost": "घोस्ट",
+      "textField": "टेक्स्ट फ़ील्ड",
+      "switch": "टॉगल स्विच",
+      "callout": "बॉक्स, फ़ील्ड और सिलेक्टर आपके कोनों की गोलाई और रंग वेरिएबल अपनाते हैं।",
+      "metric": "नमूना मीट्रिक",
+      "healthy": "स्वस्थ"
+    },
+    "list": {
+      "loading": "Vault थीम लोड हो रही हैं...",
+      "noDescription": "कस्टम थीम",
+      "active": "सक्रिय",
+      "apply": "लागू करें",
+      "edit": "संपादित करें",
+      "delete": "{{name}} हटाएँ",
+      "count_one": "Vault में {{count}} कस्टम थीम",
+      "count_other": "Vault में {{count}} कस्टम थीम"
+    },
+    "empty": {
+      "title": "Vault में कोई कस्टम थीम नहीं",
+      "body": "इस टीम Vault में अभी कोई कस्टम थीम नहीं है। थीम जनरेटर से एक बनाएँ और अपलोड करें।"
+    },
+    "export": {
+      "title": "थीम कॉन्फ़िगरेशन एक्सपोर्ट करें",
+      "format": "फ़ॉर्मैट",
+      "jsonHint": "थीम को सहेजने या साझा करने के लिए इस JSON का उपयोग करें।",
+      "cssHint": "थीम के रंग लागू करने के लिए इस CSS को किसी होस्ट में पेस्ट करें।",
+      "copy": "{{format}} कॉपी करें"
+    },
+    "import": {
+      "title": "थीम कॉन्फ़िगरेशन इंपोर्ट करें",
+      "description": "रंग, टाइपोग्राफ़ी और कोनों की गोलाई इंपोर्ट करने के लिए JSON थीम कॉन्फ़िगरेशन पेस्ट करें।",
+      "fieldLabel": "थीम कॉन्फ़िगरेशन",
+      "submit": "थीम इंपोर्ट करें",
+      "invalidJson": "यह मान्य JSON नहीं है।",
+      "invalidShape": "कोई थीम रंग नहीं मिला: \"light\" और/या \"dark\" वाला \"colors\" ऑब्जेक्ट अपेक्षित है।"
+    },
+    "deleteConfirm": {
+      "title": "{{name}} को Vault से हटाएँ?",
+      "body": "थीम इसे इस्तेमाल करने वाले सभी लोगों के लिए Vault रिपॉज़िटरी से हटा दी जाती है। जिन्होंने इसे लागू किया है, वे डिफ़ॉल्ट थीम पर लौट आएँगे।",
+      "confirm": "थीम हटाएँ"
+    }
+  }
+}

@@ -151,3 +151,23 @@ describe("DeletePlanDialog", () => {
     expect(onClose).not.toHaveBeenCalled();
   });
 });
+
+/** V1's `Icebox/Dialogs/DeletePlanDialog`: the plan is already on ice, so only the delete is asked. */
+describe("DeletePlanDialog icebox variant", () => {
+  it("offers neither Skip nor Icebox, and still deletes", async () => {
+    const deletePlan = vi.spyOn(bridge, "deletePlan").mockResolvedValue(undefined);
+    render(
+      <DeletePlanDialog
+        isOpen
+        variant="icebox"
+        onClose={vi.fn()}
+        plan={planDetail({ id: "00077", state: "Icebox" })}
+      />,
+    );
+
+    expect(screen.queryByTestId("dialog-skip")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("dialog-archive")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("dialog-confirm"));
+    await waitFor(() => expect(deletePlan).toHaveBeenCalledWith("00077"));
+  });
+});

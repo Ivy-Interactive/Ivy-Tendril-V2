@@ -21,10 +21,6 @@ import {
   Button,
   DataTable,
   NativeSelect,
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
   SidebarListRow,
   SidebarListRowExpandable,
   SidebarListRowSubItem,
@@ -33,11 +29,8 @@ import {
   type DataTableRowAction,
   type SidebarListRowIcon,
 } from "@ivy-interactive/components/ui";
-import {
-  BadgeSelect,
-  PlanMarkdown,
-  type BadgeSelectOption,
-} from "@ivy-interactive/components/tendril";
+import { BadgeSelect, type BadgeSelectOption } from "@ivy-interactive/components/tendril";
+import { InboxIssueSheet } from "@ivy-interactive/components/dialogs";
 import {
   selectRelativeTimeUnit,
   useFormatters,
@@ -52,6 +45,8 @@ import type { GitHubIssue, InboxProposal, ProjectSummary, SweepReport } from "..
 import { ErrorBanner } from "../components/ErrorBanner";
 import { NoContentView } from "../components/NoContentView";
 import { AutoAcceptSettingsDialog } from "./dialogs/AutoAcceptSettingsDialog";
+import { FileSheet } from "./sheets/FileSheet";
+import { planLinkTarget } from "./planDetail/planLinks";
 
 export type InboxCategory = "my-issues" | "review-requests" | "project-issues";
 
@@ -464,6 +459,11 @@ export const InboxView: React.FC<InboxViewProps> = ({
 
   // The row/sheet the operator drilled into (V1's `UseTrigger<GitHubIssue>` sheet).
   const [sheetIssue, setSheetIssue] = useState<GitHubIssue | null>(null);
+  /**
+   * V1's `openFile` (`Inbox/ContentView.cs:160/196`): a local file an issue's markdown links to,
+   * opened in the `FileSheet` over the issue sheet (`FileSheet.CreateLinkClickHandler(openFile)`).
+   */
+  const [openFile, setOpenFile] = useState<string | null>(null);
 
   /** `config.Settings.Inbox.AutoAcceptAssignedIssues`, behind the Auto-Accept badge. */
   const [autoAccept, setAutoAccept] = useState<boolean | null>(null);
@@ -1873,144 +1873,51 @@ export const InboxView: React.FC<InboxViewProps> = ({
         )}
       </div>
 
-      {/* V1's issue and review sheets (`ContentView.Build`'s two `UseTrigger` blocks). */}
-      <Sheet
-        open={sheetIssue !== null}
-        onOpenChange={(open) => {
-          if (!open) setSheetIssue(null);
+      {/* V1's issue and review sheets (`ContentView.Build`'s two `UseTrigger` blocks), one library
+          sheet told apart by `kind`. The GitHub url resolves the way the row action resolves it. */}
+      <InboxIssueSheet
+        kind={isReviews ? "review" : "issue"}
+        item={
+          sheetIssue && {
+            number: sheetIssue.number,
+            title: sheetIssue.title,
+            body: sheetIssue.body,
+            repoLabel: repoLabelOf(sheetIssue) || undefined,
+            assignees: sheetIssue.assignees.map((a) => a.login),
+            labels: sheetIssue.labels.map((l) => l.name),
+            url: isReviews ? sheetIssue.url : resolveIssueUrl(sheetIssue),
+          }
+        }
+        onClose={() => setSheetIssue(null)}
+        onOpenGitHub={(url) => void handleOpenGitHub(url)}
+        // The row's own decision, for the reason `rowActionsFor` gives; each closes the sheet.
+        proposal={sheetProposal ? { project: sheetProposal.project } : null}
+        isDeciding={sheetProposal !== undefined && decidingId === sheetProposal.id}
+        onAccept={() => {
+          if (sheetProposal) void handleAcceptProposal(sheetProposal.id);
+          setSheetIssue(null);
         }}
-      >
-        {/* `UxHelper.SheetWidth`: full on mobile, three quarters on tablet, half on desktop, two
-            fifths when wide. `inset-y-0` is repeated from the `side="right"` variant on purpose —
-            see the same note in `PullRequestsView`. */}
-        <SheetContent className="inset-y-0 w-full overflow-y-auto sm:w-3/4 sm:max-w-none lg:w-1/2 xl:w-2/5">
-          <SheetHeader>
-            <SheetTitle>
-              {sheetIssue ? `#${sheetIssue.number} ${sheetIssue.title}` : t("sheet.titleFallback")}
-            </SheetTitle>
-          </SheetHeader>
-          {sheetIssue && (
-            <div className="mt-4 space-y-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-2">
-                  {repoLabelOf(sheetIssue) && (
-                    <Badge variant="secondary" density="Small">
-                      {repoLabelOf(sheetIssue)}
-                    </Badge>
-                  )}
-                  {sheetIssue.assignees.length > 0 && (
-                    <span className="text-xs text-muted-foreground">
-                      {t("sheet.assigned", {
-                        assignees: format.list(
-                          sheetIssue.assignees.map((a) => a.login),
-                          { type: "unit", style: "short" },
-                        ),
-                      })}
-                    </span>
-                  )}
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  {isReviews ? (
-                    <Button
-                      type="button"
-                      size="sm"
-                      onClick={() => void handleOpenGitHub(sheetIssue.url)}
-                    >
-                      <ExternalLink aria-hidden="true" />
-                      {t("sheet.openOnGitHub")}
-                    </Button>
-                  ) : (
-                    <>
-                      {/* V1's sheet shows the GitHub button only when a url resolves, and resolves
-                          it the same way the row action does. */}
-                      {resolveIssueUrl(sheetIssue) && (
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => void handleOpenGitHub(resolveIssueUrl(sheetIssue))}
-                        >
-                          <ExternalLink aria-hidden="true" />
-                          GitHub
-                        </Button>
-                      )}
-                      {/* The row's own decision, for the reason `rowActionsFor` gives. */}
-                      {sheetProposal ? (
-                        <>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            title={t("sheet.dismiss.tooltip")}
-                            disabled={decidingId === sheetProposal.id}
-                            onClick={() => {
-                              void handleDismissProposal(sheetProposal.id);
-                              setSheetIssue(null);
-                            }}
-                          >
-                            <X aria-hidden="true" />
-                            {t("sheet.dismiss.label")}
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            title={t("sheet.accept.tooltip", { project: sheetProposal.project })}
-                            disabled={decidingId === sheetProposal.id}
-                            onClick={() => {
-                              void handleAcceptProposal(sheetProposal.id);
-                              setSheetIssue(null);
-                            }}
-                          >
-                            <Check aria-hidden="true" />
-                            {t("sheet.accept.label")}
-                          </Button>
-                        </>
-                      ) : (
-                        <Button
-                          type="button"
-                          size="sm"
-                          disabled={isFiring}
-                          onClick={() => {
-                            void fireOffIssues([sheetIssue]);
-                            setSheetIssue(null);
-                          }}
-                        >
-                          <Zap aria-hidden="true" />
-                          {t("sheet.fireOff")}
-                        </Button>
-                      )}
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {/* V1 shows the label row on the issue sheet only; its review sheet carries a branch
-                  badge instead, which `GitHubIssue` has no field for. */}
-              {!isReviews && sheetIssue.labels.length > 0 && (
-                <div className="flex flex-wrap items-center gap-1">
-                  {sheetIssue.labels.map((l) => (
-                    <Badge key={l.name} variant="outline" density="Small">
-                      {l.name}
-                    </Badge>
-                  ))}
-                </div>
-              )}
-
-              {sheetIssue.body.trim() ? (
-                <PlanMarkdown
-                  id="inbox-issue-body"
-                  content={sheetIssue.body}
-                  article
-                  dangerouslyAllowLocalFiles
-                />
-              ) : (
-                <p className="text-sm text-muted-foreground">{t("sheet.noDescription")}</p>
-              )}
-            </div>
-          )}
-        </SheetContent>
-      </Sheet>
+        onDismiss={() => {
+          if (sheetProposal) void handleDismissProposal(sheetProposal.id);
+          setSheetIssue(null);
+        }}
+        onFireOff={() => {
+          if (sheetIssue) void fireOffIssues([sheetIssue]);
+          setSheetIssue(null);
+        }}
+        isFiring={isFiring}
+        onFileClick={(href) => {
+          const target = planLinkTarget(href);
+          if (target?.kind === "file") setOpenFile(target.path);
+        }}
+      />
+      {/* An issue belongs to no plan, so the read may reach the configured projects' repos. */}
+      <FileSheet
+        planId={null}
+        path={openFile}
+        onClose={() => setOpenFile(null)}
+        onOpenFile={setOpenFile}
+      />
 
       {/* V1 renders this alongside the sheets in the same fragment, outside the header that opens it,
           so the dialog survives a category switch that unmounts the gear. */}

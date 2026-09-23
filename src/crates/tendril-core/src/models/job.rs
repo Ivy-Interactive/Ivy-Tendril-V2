@@ -120,6 +120,15 @@ pub struct CreatePrArgs {
     pub comment: Option<String>,
     #[serde(default)]
     pub draft: bool,
+    /// The branch the PR targets when the operator picked one in the dialog's Target Branch field
+    /// (V1 `CreatePrArgs.BaseBranch`). Absent means "each repo's own base branch", which is what
+    /// `RepoConfigs` carries without it.
+    #[serde(
+        rename = "baseBranch",
+        default,
+        skip_serializing_if = "Option::is_none"
+    )]
+    pub base_branch: Option<String>,
 }
 
 fn default_true() -> bool {

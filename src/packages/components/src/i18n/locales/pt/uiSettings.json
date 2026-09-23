@@ -1,1 +1,197 @@
-{}
+{
+  "removal": {
+    "title": "Remover {{kind}}",
+    "title_level": "Remover Nível",
+    "title_repository": "Remover Repositório",
+    "title_reviewAction": "Remover Ação de Revisão",
+    "title_environmentFile": "Remover Arquivo de Ambiente",
+    "title_mcpServer": "Remover Servidor MCP",
+    "title_customSkill": "Remover Habilidade Personalizada",
+    "body": "Remover {{kind}} <name>{{name}}</name> desta configuração?",
+    "body_level": "Remover o nível <name>{{name}}</name> desta configuração?",
+    "body_repository": "Remover o repositório <name>{{name}}</name> desta configuração?",
+    "body_reviewAction": "Remover a ação de revisão <name>{{name}}</name> desta configuração?",
+    "body_environmentFile": "Remover o arquivo de ambiente <name>{{name}}</name> desta configuração?",
+    "body_mcpServer": "Remover o servidor MCP <name>{{name}}</name> desta configuração?",
+    "body_customSkill": "Remover a habilidade personalizada <name>{{name}}</name> desta configuração?",
+    "title_memoryFile": "Remover arquivo de memória",
+    "body_memoryFile": "Remover o arquivo de memória <name>{{name}}</name> deste projeto?",
+    "confirm": "Remover"
+  },
+  "configEditor": {
+    "discard": {
+      "title": "Descartar Alterações Não Salvas",
+      "confirm": "Descartar e recarregar",
+      "body": "Recarregar substitui o conteúdo do editor pelo arquivo no disco. As edições não salvas serão perdidas."
+    }
+  },
+  "agentTest": {
+    "title": "Teste do Agente de Código",
+    "columns": {
+      "test": "Teste",
+      "result": "Resultado"
+    },
+    "status": {
+      "passed": "Aprovado",
+      "failed": "Com falha",
+      "warning": "Aviso",
+      "running": "Em execução",
+      "pending": "Pendente"
+    },
+    "showRawOutput": "Mostrar saída bruta",
+    "rawOutputTitle": "Saída Bruta",
+    "close": "Fechar",
+    "cancel": "Cancelar"
+  },
+  "projectMemory": {
+    "addTitle": "Adicionar memória do projeto",
+    "editTitle": "Editar memória: {{fileName}}",
+    "description": "Um arquivo Markdown na pasta Memory de {{project}}.",
+    "loading": "Carregando o arquivo de memória...",
+    "fileName": {
+      "label": "Nome do arquivo",
+      "placeholder": "Nome do arquivo de memória (ex.: stack.md, conventions.md)..."
+    },
+    "content": {
+      "label": "Conteúdo (Markdown)",
+      "placeholder": "Conteúdo da memória em Markdown (ex.: stack tecnológica, regras, convenções de arquitetura)..."
+    },
+    "cancel": "Cancelar",
+    "add": "Adicionar",
+    "save": "Salvar"
+  },
+  "importRepoAssets": {
+    "title": "Importar do repositório",
+    "title_skills": "Importar skills personalizadas do repositório",
+    "title_mcpServers": "Importar ferramentas e servidores MCP do repositório",
+    "cancel": "Cancelar",
+    "submit_one": "Importar selecionados ({{count}})",
+    "submit_many": "Importar selecionados ({{count}})",
+    "submit_other": "Importar selecionados ({{count}})",
+    "source": {
+      "heading": "Origem do repositório",
+      "modes": {
+        "repo": "Repo do projeto",
+        "gitUrl": "URL do Git",
+        "localPath": "Caminho local"
+      },
+      "repo": "Repositório do projeto",
+      "gitUrl": "URL do repositório Git",
+      "localPath": "Caminho da pasta local",
+      "localPathPlaceholder": "~/caminho/para/o/repositorio ou /Users/..."
+    },
+    "fetchAndScan": "Buscar e analisar",
+    "scan": "Analisar",
+    "scanning": "Analisando o repositório...",
+    "notScanned": "Escolha uma origem e analise-a para ver o que ela contém.",
+    "empty": "Nada para importar foi encontrado neste repositório.",
+    "empty_skills": "Nenhum arquivo SKILL.md encontrado neste repositório (.agents/skills, .gemini/skills, skills/ etc.).",
+    "empty_mcpServers": "Nenhum arquivo de configuração MCP (.mcp.json, mcp_config.json, .vscode/mcp.json) encontrado.",
+    "discovered": "Encontrados",
+    "discovered_skills": "Skills personalizadas encontradas",
+    "discovered_mcpServers": "Servidores MCP encontrados"
+  },
+  "vaultThemes": {
+    "title": "Temas do Team Vault",
+    "createTitle": "Criar tema personalizado",
+    "editTitle": "Editar tema personalizado",
+    "close": "Fechar",
+    "cancel": "Cancelar",
+    "upload": "Enviar para o Team Vault",
+    "newTheme": "Novo tema personalizado",
+    "copyConfiguration": "Copiar configuração",
+    "importConfiguration": "Importar configuração",
+    "defaults": {
+      "name": "Marca da equipe",
+      "description": "Tema personalizado do vault da equipe"
+    },
+    "tabs": {
+      "generator": "Gerador de temas",
+      "themes_one": "Temas do vault ({{count}})",
+      "themes_many": "Temas do vault ({{count}})",
+      "themes_other": "Temas do vault ({{count}})"
+    },
+    "fields": {
+      "name": "Nome do tema",
+      "description": "Descrição",
+      "preset": "Tema predefinido",
+      "presetCustom": "Personalizado",
+      "mode": "Modo do tema",
+      "fontFamily": "Família da fonte",
+      "fontSize": "Tamanho da fonte",
+      "radius": "Raio da borda"
+    },
+    "mode": {
+      "light": "Claro",
+      "dark": "Escuro",
+      "lightBadge": "Modo claro",
+      "darkBadge": "Modo escuro"
+    },
+    "sections": {
+      "preview": "Prévia dos componentes",
+      "colors": "Cores",
+      "typography": "Tipografia e layout"
+    },
+    "colorGroups": {
+      "main": "Cores principais",
+      "semantic": "Cores semânticas",
+      "ui": "Cores dos elementos da interface"
+    },
+    "radius": {
+      "none": "Nenhum",
+      "small": "Pequeno",
+      "medium": "Médio",
+      "large": "Grande",
+      "full": "Total"
+    },
+    "preview": {
+      "heading": "Prévia interativa",
+      "hint": "Prévia ao vivo que responde às cores, à tipografia e ao raio da borda",
+      "primary": "Primário",
+      "secondary": "Secundário",
+      "outline": "Contorno",
+      "destructive": "Destrutivo",
+      "ghost": "Fantasma",
+      "textField": "Campo de texto",
+      "switch": "Interruptor",
+      "callout": "Caixas, campos e seletores herdam seu raio de borda e suas variáveis de cor.",
+      "metric": "Métrica de exemplo",
+      "healthy": "Saudável"
+    },
+    "list": {
+      "loading": "Carregando os temas do vault...",
+      "noDescription": "Tema personalizado",
+      "active": "Ativo",
+      "apply": "Aplicar",
+      "edit": "Editar",
+      "delete": "Excluir {{name}}",
+      "count_one": "{{count}} tema personalizado no vault",
+      "count_many": "{{count}} de temas personalizados no vault",
+      "count_other": "{{count}} temas personalizados no vault"
+    },
+    "empty": {
+      "title": "Nenhum tema personalizado no vault",
+      "body": "Este vault da equipe ainda não tem temas personalizados. Use o gerador de temas para criar um e enviá-lo."
+    },
+    "export": {
+      "title": "Exportar configuração do tema",
+      "format": "Formato",
+      "jsonHint": "Use este JSON para guardar ou compartilhar o tema.",
+      "cssHint": "Cole este CSS em um host para aplicar as cores do tema.",
+      "copy": "Copiar {{format}}"
+    },
+    "import": {
+      "title": "Importar configuração de tema",
+      "description": "Cole uma configuração de tema em JSON para importar suas cores, tipografia e raio de borda.",
+      "fieldLabel": "Configuração do tema",
+      "submit": "Importar tema",
+      "invalidJson": "Isso não é um JSON válido.",
+      "invalidShape": "Nenhuma cor de tema encontrada: era esperado um objeto \"colors\" com \"light\" e/ou \"dark\"."
+    },
+    "deleteConfirm": {
+      "title": "Excluir {{name}} do vault?",
+      "body": "O tema é removido do repositório do vault para todos que o usam. Quem estiver com ele aplicado volta ao tema padrão.",
+      "confirm": "Excluir tema"
+    }
+  }
+}

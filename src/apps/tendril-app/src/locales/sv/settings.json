@@ -169,7 +169,11 @@
       "saved_chat": "Chatten öppnas i chattvyn",
       "saved_terminal": "Chatten öppnas i terminalen"
     },
-    "vaultThemesNote": "Teman som publicerats i ett Team Vault visas inte: valvets temadelsystem ingår inte i den här versionen, så bara de medföljande förinställningarna erbjuds."
+    "vaultThemesNote": "Teman som publicerats i ett Team Vault visas inte: valvets temadelsystem ingår inte i den här versionen, så bara de medföljande förinställningarna erbjuds.",
+    "vaultThemes": {
+      "openGenerator": "Öppna temageneratorn",
+      "uploadUnavailable": "Att publicera teman i en Team Vault är inte tillgängligt i den här versionen än. Använd Kopiera konfiguration för att dela ett tema som JSON."
+    }
   },
   "levels": {
     "title": "Prioritetsnivåer",
@@ -198,23 +202,6 @@
     "removeConsequence": "Planer som redan har kategoriserats med den här nivån behåller namnet i sin plan.yaml; nivån erbjuds bara inte längre som ett av alternativen.",
     "noEffect": "Nivåerna lagras i config.yaml och publiceras via MCP, men ingenting i den här appen läser dem ännu, så ändringar här ger ingen synlig effekt."
   },
-  "removal": {
-    "title": "Ta bort {{kind}}",
-    "title_level": "Ta bort nivå",
-    "title_repository": "Ta bort arkiv",
-    "title_reviewAction": "Ta bort granskningsåtgärd",
-    "title_environmentFile": "Ta bort miljöfil",
-    "title_mcpServer": "Ta bort MCP-server",
-    "title_customSkill": "Ta bort anpassad färdighet",
-    "body": "Vill du ta bort {{kind}} <name>{{name}}</name> från den här konfigurationen?",
-    "body_level": "Vill du ta bort nivån <name>{{name}}</name> från den här konfigurationen?",
-    "body_repository": "Vill du ta bort arkivet <name>{{name}}</name> från den här konfigurationen?",
-    "body_reviewAction": "Vill du ta bort granskningsåtgärden <name>{{name}}</name> från den här konfigurationen?",
-    "body_environmentFile": "Vill du ta bort miljöfilen <name>{{name}}</name> från den här konfigurationen?",
-    "body_mcpServer": "Vill du ta bort MCP-servern <name>{{name}}</name> från den här konfigurationen?",
-    "body_customSkill": "Vill du ta bort den anpassade färdigheten <name>{{name}}</name> från den här konfigurationen?",
-    "confirm": "Ta bort"
-  },
   "fields": {
     "colorsLabel": "Färger",
     "chooseColor": "Välj färg",
@@ -239,12 +226,7 @@
     "maskedNote_one": "{{count}} hemligt värde visas som {{mask}}. Låt platshållaren stå kvar om du vill behålla det lagrade värdet; skriv över den för att ange ett nytt.",
     "maskedNote_other": "{{count}} hemliga värden visas som {{mask}}. Låt en platshållare stå kvar om du vill behålla det lagrade värdet; skriv över den för att ange ett nytt.",
     "conflictReload": "Läs in från disken igen",
-    "reload": "Läs in från disken igen",
-    "discard": {
-      "title": "Kassera osparade ändringar",
-      "confirm": "Kassera och läs in igen",
-      "body": "När du läser in igen ersätts innehållet i redigeraren med filen på disken. De ändringar du inte har sparat går förlorade."
-    }
+    "reload": "Läs in från disken igen"
   },
   "security": {
     "title": "Säkerhet och tunnling",

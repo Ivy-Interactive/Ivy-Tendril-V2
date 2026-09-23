@@ -87,3 +87,50 @@ pub async fn cmd_upload_chat_attachment(
         .upload_attachment(session, &file_name, bytes)
         .await
 }
+
+/// Stages bytes the webview already holds — a file picked, dropped or pasted into a `ContentInput`,
+/// which a webview hands over as a `File` with no path — into the attachment directory for
+/// `session_id`, and answers with the staged attachment.
+///
+/// The path-based [`cmd_upload_chat_attachment`] cannot serve those: there is no path to read. V1's
+/// dialogs upload the stream itself (`UseUpload` in `CreatePlanDialog`, `UpdatePlanDialog`,
+/// `SuggestChangesDialog`), and this is that half. The bytes arrive base64-encoded because that is
+/// what `FileReader.readAsDataURL` gives `ContentInput`'s `OnUploadFile` event.
+#[tauri::command]
+pub async fn cmd_upload_attachment_bytes(
+    file_name: String,
+    data_base64: String,
+    session_id: Option<String>,
+) -> Result<ChatAttachmentDto, BridgeError> {
+    use base64::Engine as _;
+
+    let file_name = safe_attachment_name(file_name.trim()).ok_or_else(|| {
+        BridgeError::validation(format!(
+            "'{file_name}' is not a usable attachment file name"
+        ))
+    })?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(data_base64.trim())
+        .map_err(|err| {
+            BridgeError::validation(format!("The attachment is not valid base64: {err}"))
+        })?;
+    if bytes.is_empty() {
+        return Err(BridgeError::validation(format!("'{file_name}' is empty")));
+    }
+    if bytes.len() > MAX_ATTACHMENT_BYTES {
+        return Err(BridgeError::validation(format!(
+            "'{file_name}' is larger than {} MiB and cannot be attached",
+            MAX_ATTACHMENT_BYTES / (1024 * 1024)
+        )));
+    }
+
+    let session = session_id
+        .as_deref()
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .unwrap_or(UNASSIGNED_SESSION);
+
+    get_client_from_master()?
+        .upload_attachment(session, &file_name, bytes)
+        .await
+}

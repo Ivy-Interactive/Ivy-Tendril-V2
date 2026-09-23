@@ -18,8 +18,12 @@ export const DIALOG_WIDTH = {
   rem30: "sm:!max-w-[30rem]",
   /** `Size.Rem(32)`: the guard dialogs, and Update Plan from the app preview. */
   rem32: "sm:!max-w-[32rem]",
+  /** `Size.Rem(36)`: Import Repo Assets (`ImportRepoAssetsDialog.cs`). */
+  rem36: "sm:!max-w-[36rem]",
   /** `Size.Rem(40)`: Delete Plan, and the SyncRepo policy dialog. */
   rem40: "sm:!max-w-[40rem]",
+  /** `Size.Units(190)` (47.5rem): Vault Themes, the one dialog wide enough for a colour grid. */
+  units190: "sm:!max-w-[47.5rem]",
   /** `Size.Px(560)`: the shell's plan search dialog, the one call site given in px rather than rem. */
   px560: "sm:!max-w-[560px]",
 } as const;

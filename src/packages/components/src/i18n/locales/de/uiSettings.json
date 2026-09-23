@@ -1,1 +1,194 @@
-{}
+{
+  "removal": {
+    "title": "{{kind}} entfernen",
+    "title_level": "Stufe entfernen",
+    "title_repository": "Repository entfernen",
+    "title_reviewAction": "Review-Aktion entfernen",
+    "title_environmentFile": "Umgebungsdatei entfernen",
+    "title_mcpServer": "MCP-Server entfernen",
+    "title_customSkill": "Benutzerdefinierten Skill entfernen",
+    "body": "{{kind}} <name>{{name}}</name> aus dieser Konfiguration entfernen?",
+    "body_level": "Stufe <name>{{name}}</name> aus dieser Konfiguration entfernen?",
+    "body_repository": "Repository <name>{{name}}</name> aus dieser Konfiguration entfernen?",
+    "body_reviewAction": "Review-Aktion <name>{{name}}</name> aus dieser Konfiguration entfernen?",
+    "body_environmentFile": "Umgebungsdatei <name>{{name}}</name> aus dieser Konfiguration entfernen?",
+    "body_mcpServer": "MCP-Server <name>{{name}}</name> aus dieser Konfiguration entfernen?",
+    "body_customSkill": "Benutzerdefinierten Skill <name>{{name}}</name> aus dieser Konfiguration entfernen?",
+    "title_memoryFile": "Memory-Datei entfernen",
+    "body_memoryFile": "Memory-Datei <name>{{name}}</name> aus diesem Projekt entfernen?",
+    "confirm": "Entfernen"
+  },
+  "configEditor": {
+    "discard": {
+      "title": "Nicht gespeicherte Änderungen verwerfen",
+      "confirm": "Verwerfen und neu laden",
+      "body": "Beim Neuladen wird der Editorinhalt durch die Datei auf der Festplatte ersetzt. Nicht gespeicherte Änderungen gehen verloren."
+    }
+  },
+  "agentTest": {
+    "title": "Coding-Agent-Test",
+    "columns": {
+      "test": "Test",
+      "result": "Ergebnis"
+    },
+    "status": {
+      "passed": "Bestanden",
+      "failed": "Fehlgeschlagen",
+      "warning": "Warnung",
+      "running": "Läuft",
+      "pending": "Ausstehend"
+    },
+    "showRawOutput": "Rohausgabe anzeigen",
+    "rawOutputTitle": "Rohausgabe",
+    "close": "Schließen",
+    "cancel": "Abbrechen"
+  },
+  "projectMemory": {
+    "addTitle": "Projekt-Memory hinzufügen",
+    "editTitle": "Memory bearbeiten: {{fileName}}",
+    "description": "Eine Markdown-Datei im Memory-Ordner von {{project}}.",
+    "loading": "Memory-Datei wird geladen...",
+    "fileName": {
+      "label": "Dateiname",
+      "placeholder": "Dateiname der Memory (z. B. stack.md, conventions.md)..."
+    },
+    "content": {
+      "label": "Inhalt (Markdown)",
+      "placeholder": "Memory-Inhalt in Markdown (z. B. Tech-Stack, Regeln, Architekturkonventionen)..."
+    },
+    "cancel": "Abbrechen",
+    "add": "Hinzufügen",
+    "save": "Speichern"
+  },
+  "importRepoAssets": {
+    "title": "Aus Repository importieren",
+    "title_skills": "Benutzerdefinierte Skills aus Repository importieren",
+    "title_mcpServers": "MCP-Tools und -Server aus Repository importieren",
+    "cancel": "Abbrechen",
+    "submit_one": "Auswahl importieren ({{count}})",
+    "submit_other": "Auswahl importieren ({{count}})",
+    "source": {
+      "heading": "Repository-Quelle",
+      "modes": {
+        "repo": "Projekt-Repo",
+        "gitUrl": "Git-URL",
+        "localPath": "Lokaler Pfad"
+      },
+      "repo": "Projekt-Repository",
+      "gitUrl": "Git-Repository-URL",
+      "localPath": "Lokaler Ordnerpfad",
+      "localPathPlaceholder": "~/pfad/zum/repository oder /Users/..."
+    },
+    "fetchAndScan": "Abrufen und scannen",
+    "scan": "Scannen",
+    "scanning": "Repository wird gescannt...",
+    "notScanned": "Wähle eine Quelle und scanne sie, um zu sehen, was sie enthält.",
+    "empty": "In diesem Repository wurde nichts zum Importieren gefunden.",
+    "empty_skills": "In diesem Repository wurden keine SKILL.md-Dateien gefunden (.agents/skills, .gemini/skills, skills/ usw.).",
+    "empty_mcpServers": "Keine MCP-Konfigurationsdateien (.mcp.json, mcp_config.json, .vscode/mcp.json) gefunden.",
+    "discovered": "Gefunden",
+    "discovered_skills": "Gefundene benutzerdefinierte Skills",
+    "discovered_mcpServers": "Gefundene MCP-Server"
+  },
+  "vaultThemes": {
+    "title": "Team-Vault-Themes",
+    "createTitle": "Benutzerdefiniertes Theme erstellen",
+    "editTitle": "Benutzerdefiniertes Theme bearbeiten",
+    "close": "Schließen",
+    "cancel": "Abbrechen",
+    "upload": "In Team Vault hochladen",
+    "newTheme": "Neues benutzerdefiniertes Theme",
+    "copyConfiguration": "Konfiguration kopieren",
+    "importConfiguration": "Konfiguration importieren",
+    "defaults": {
+      "name": "Team-Marke",
+      "description": "Benutzerdefiniertes Team-Vault-Theme"
+    },
+    "tabs": {
+      "generator": "Theme-Generator",
+      "themes_one": "Vault-Themes ({{count}})",
+      "themes_other": "Vault-Themes ({{count}})"
+    },
+    "fields": {
+      "name": "Theme-Name",
+      "description": "Beschreibung",
+      "preset": "Theme-Vorlage",
+      "presetCustom": "Benutzerdefiniert",
+      "mode": "Theme-Modus",
+      "fontFamily": "Schriftfamilie",
+      "fontSize": "Schriftgröße",
+      "radius": "Eckenradius"
+    },
+    "mode": {
+      "light": "Hell",
+      "dark": "Dunkel",
+      "lightBadge": "Heller Modus",
+      "darkBadge": "Dunkler Modus"
+    },
+    "sections": {
+      "preview": "Vorschau der Komponenten",
+      "colors": "Farben",
+      "typography": "Typografie und Layout"
+    },
+    "colorGroups": {
+      "main": "Hauptfarben",
+      "semantic": "Semantische Farben",
+      "ui": "Farben der UI-Elemente"
+    },
+    "radius": {
+      "none": "Keiner",
+      "small": "Klein",
+      "medium": "Mittel",
+      "large": "Groß",
+      "full": "Voll"
+    },
+    "preview": {
+      "heading": "Interaktive Vorschau",
+      "hint": "Live-Vorschau, die auf Farben, Typografie und Eckenradius reagiert",
+      "primary": "Primär",
+      "secondary": "Sekundär",
+      "outline": "Kontur",
+      "destructive": "Destruktiv",
+      "ghost": "Ghost",
+      "textField": "Textfeld",
+      "switch": "Schalter",
+      "callout": "Boxen, Felder und Auswahlen übernehmen deinen Eckenradius und deine Farbvariablen.",
+      "metric": "Beispielmetrik",
+      "healthy": "Gesund"
+    },
+    "list": {
+      "loading": "Vault-Themes werden geladen...",
+      "noDescription": "Benutzerdefiniertes Theme",
+      "active": "Aktiv",
+      "apply": "Anwenden",
+      "edit": "Bearbeiten",
+      "delete": "{{name}} löschen",
+      "count_one": "{{count}} benutzerdefiniertes Theme im Vault",
+      "count_other": "{{count}} benutzerdefinierte Themes im Vault"
+    },
+    "empty": {
+      "title": "Keine benutzerdefinierten Themes im Vault",
+      "body": "Dieser Team-Vault hat noch keine benutzerdefinierten Themes. Erstelle eines mit dem Theme-Generator und lade es hoch."
+    },
+    "export": {
+      "title": "Theme-Konfiguration exportieren",
+      "format": "Format",
+      "jsonHint": "Verwende dieses JSON, um das Theme zu speichern oder zu teilen.",
+      "cssHint": "Füge dieses CSS in einen Host ein, um die Farben des Themes anzuwenden.",
+      "copy": "{{format}} kopieren"
+    },
+    "import": {
+      "title": "Theme-Konfiguration importieren",
+      "description": "Füge eine JSON-Theme-Konfiguration ein, um ihre Farben, Typografie und ihren Eckenradius zu übernehmen.",
+      "fieldLabel": "Theme-Konfiguration",
+      "submit": "Theme importieren",
+      "invalidJson": "Das ist kein gültiges JSON.",
+      "invalidShape": "Keine Theme-Farben gefunden: Erwartet wird ein \"colors\"-Objekt mit \"light\" und/oder \"dark\"."
+    },
+    "deleteConfirm": {
+      "title": "{{name}} aus dem Vault löschen?",
+      "body": "Das Theme wird für alle, die es verwenden, aus dem Vault-Repository entfernt. Wer es angewendet hat, fällt auf das Standard-Theme zurück.",
+      "confirm": "Theme löschen"
+    }
+  }
+}

@@ -159,21 +159,6 @@
       }
     }
   },
-  "sheet": {
-    "titleFallback": "Issue",
-    "assigned": "Zugewiesen: {{assignees}}",
-    "openOnGitHub": "Auf GitHub öffnen",
-    "dismiss": {
-      "label": "Verwerfen",
-      "tooltip": "Endgültig verwerfen: Die Prüfung zugewiesener Issues schlägt dieses Issue nicht erneut vor"
-    },
-    "accept": {
-      "label": "Annehmen",
-      "tooltip": "Einen Plan für dieses Issue in {{project}} starten"
-    },
-    "fireOff": "In Tendril starten",
-    "noDescription": "Keine Beschreibung angegeben."
-  },
   "pullRequests": {
     "title": "Pull Requests",
     "status": {
@@ -224,11 +209,6 @@
     },
     "statusFilterPlaceholder": "Nach Status filtern…",
     "resyncAll": "Alle neu synchronisieren",
-    "resyncing": "Wird neu synchronisiert…",
-    "sheet": {
-      "titleFallback": "Plan",
-      "loadingRevision": "Revision wird geladen…",
-      "notFound": "Plan nicht gefunden oder leer."
-    }
+    "resyncing": "Wird neu synchronisiert…"
   }
 }

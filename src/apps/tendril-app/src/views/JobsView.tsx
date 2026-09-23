@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { EllipsisVertical, Pause, Trash } from "lucide-react";
+import { ClearJobsDialog, DeleteJobDialog } from "@ivy-interactive/components/dialogs";
 import {
   Button,
   DataTable,
@@ -7,12 +8,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  HeaderLayout,
   resolveRemoteSort,
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
   Spinner,
   StackedProgress,
   useRemoteDataTable,
@@ -27,14 +23,9 @@ import { useEnumLabels } from "../i18n/enumLabels";
 import { describeBridgeError, type Job, type JobDetail } from "../types/api";
 import { isActiveStatus, jobsStore } from "../state/jobsStore";
 import { ErrorBanner } from "../components/ErrorBanner";
-import { ConfirmDialog } from "./dialogs";
+import { RerunJobDialog } from "./dialogs/RerunJobDialog";
 import { parseProjects } from "./PlansView";
-import {
-  JOB_CLEAR_SCOPES,
-  countJobsByStatus,
-  describeClearPrompt,
-  type JobClearScope,
-} from "./jobs/clear";
+import { JOB_CLEAR_SCOPES, countJobsByStatus, type JobClearScope } from "./jobs/clear";
 import { JOBS_INITIAL_SORT, SORT_COLUMNS, useColumnValues, useJobColumns } from "./jobs/columns";
 import {
   buildJobRowActions,
@@ -82,9 +73,10 @@ export {
  * its header actions and its status progress bar - over V2's shared `DataTable`, which is the
  * component the structural-parity pass exists to reach ("Tables are tables").
  *
- * What V1 has and V2 cannot yet reach is called out at each site rather than faked: the row menu's
- * Rerun (V1's `RerunJobDialog` needs `JobItem.TypedArgs`, which the Tauri DTO drops), the full-prompt
- * sheet and the Cost & Tokens sheet.
+ * Every sheet and dialog V1's Jobs app opens over the table is reachable from here: the output
+ * sheet (row click), the Cost & Tokens and Full Prompt sheets (the Cost, Tokens and Prompt cells), the
+ * Job Debug sheet with its Report Bug and Debug-with-agent dialogs, and the row menu's Rerun and
+ * Delete confirms. Each is a library component; this view holds only which one is open.
  */
 
 /**
@@ -95,26 +87,31 @@ const JobOutput = React.lazy(() =>
   import("./JobSessionView").then((m) => ({ default: m.JobSessionView })),
 );
 
+/** V1's output sheet chrome (`Apps/Jobs/Sheets/OutputSheet.cs`), around the connected body above. */
+const JobOutputSheet = React.lazy(() =>
+  import("@ivy-interactive/components/dialogs").then((m) => ({ default: m.JobOutputSheet })),
+);
+
 /**
- * V1's Job Debug sheet. Lazy for the same reason as the output sheet: it is opened from one row action
- * and has no business in the table's own chunk.
+ * V1's Job Debug sheet, with its Report Bug and Debug-with-agent dialogs wired. Lazy for the same
+ * reason as the output sheet: it is opened from one row action and has no business in the table's
+ * own chunk.
  */
 const JobDebug = React.lazy(() =>
-  import("@ivy-interactive/components/dialogs").then((m) => ({ default: m.JobDebugSheet })),
+  import("./sheets/JobDebugSheet").then((m) => ({ default: m.JobDebugSheet })),
 );
 
 /** V1's Cost & Tokens sheet, opened by the Cost and Tokens cells. Lazy for the same reason. */
 const JobCost = React.lazy(() =>
-  import("./JobCostSheet").then((m) => ({ default: m.JobCostSheet })),
+  import("@ivy-interactive/components/dialogs").then((m) => ({ default: m.JobCostSheet })),
 );
 
 /**
- * V1's Full Prompt sheet (`Apps/Jobs/Sheets/PromptSheet.cs`), whose entire body is
- * `new CodeBlock(promptText, Languages.Text).WrapLines()`. Lazy because `CodeBlock` is the door to
- * the syntax-highlighter chunk, which has no business loading with a table of jobs.
+ * V1's Full Prompt sheet (`Apps/Jobs/Sheets/PromptSheet.cs`), opened by the Prompt cell. Lazy for the
+ * same reason; the sheet in turn defers `CodeBlock`, the door to the syntax-highlighter chunk.
  */
-const JobPromptBlock = React.lazy(() =>
-  import("@ivy-interactive/components/tendril").then((m) => ({ default: m.CodeBlock })),
+const JobPrompt = React.lazy(() =>
+  import("@ivy-interactive/components/dialogs").then((m) => ({ default: m.JobPromptSheet })),
 );
 
 /**
@@ -194,6 +191,8 @@ export const JobsView: React.FC<JobsViewProps> = ({
   const [filter, setFilter] = useState<RemoteTableFilter | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [deleteJobId, setDeleteJobId] = useState<string | null>(null);
+  /** V1's `showRerun(id)` (`JobsApp.cs:82`): the Rerun dialog for a finished job. */
+  const [rerunJobId, setRerunJobId] = useState<string | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
 
@@ -349,6 +348,8 @@ export const JobsView: React.FC<JobsViewProps> = ({
   const capabilities: JobRowActionCapabilities = {
     canDelete: jobsStore.canDeleteJob(),
     canForceStart: jobsStore.canForceStartJob(),
+    // `bridge.rerunJob` - `POST /api/jobs/:id/rerun` - which is the daemon reading the args it kept.
+    canRerun: true,
   };
 
   /** `failure` is the action's own whole sentence, not a verb dropped into a shared one. */
@@ -365,11 +366,6 @@ export const JobsView: React.FC<JobsViewProps> = ({
       setActionError(t(failure, { error: describeBridgeError(err) }));
     }
   };
-
-  const clearPrompt = pendingClear
-    ? describeClearPrompt(pendingClear, clearCount, t)
-    : // Not rendered while `pendingClear` is null; the placeholder keeps the dialog's props unconditional.
-      { body: "", confirmLabel: t("clear.confirm"), confirmDisabled: true };
 
   /** Opens a clear's confirm and asks the daemon how many rows it covers. */
   const openClearDialog = (scope: JobClearScope) => {
@@ -487,6 +483,9 @@ export const JobsView: React.FC<JobsViewProps> = ({
   const canClear = jobsStore.canClearJobs();
 
   const jobToDelete = deleteJobId ? jobs.find((job) => job.id === deleteJobId) : undefined;
+  const rerunJob = rerunJobId
+    ? (windowJobs.find((job) => job.id === rerunJobId) ?? jobs.find((job) => job.id === rerunJobId))
+    : undefined;
 
   // The sheet reads the list row, or the fetched detail for a job the list no longer carries (it is
   // capped, and Clear removes rows). `JobSessionView` merges the store's own copy over this anyway.
@@ -516,12 +515,12 @@ export const JobsView: React.FC<JobsViewProps> = ({
    */
   const costJob = costJobId
     ? (jobDetails?.[costJobId] ??
-       windowJobs.find((job) => job.id === costJobId) ??
-       jobs.find((job) => job.id === costJobId))
+      windowJobs.find((job) => job.id === costJobId) ??
+      jobs.find((job) => job.id === costJobId))
     : undefined;
   const rowJob = promptJobId
     ? (windowJobs.find((job) => job.id === promptJobId) ??
-       jobs.find((job) => job.id === promptJobId))
+      jobs.find((job) => job.id === promptJobId))
     : undefined;
   const detailJob = promptJobId ? jobDetails?.[promptJobId] : undefined;
   const promptJob = detailJob ?? rowJob;
@@ -610,11 +609,12 @@ export const JobsView: React.FC<JobsViewProps> = ({
             void runAction(() => jobsStore.forceStartJob(row.id), "errors.forceStartFailed");
           } else if (tag === "debug-job") {
             openJobDebug(row.id);
+          } else if (tag === "rerun-job") {
+            setRerunJobId(row.id);
           } else if (tag === "delete-job") {
             setDeleteError(null);
             setDeleteJobId(row.id);
           }
-          // `rerun-job` is unreachable: the entry is disabled. See `RERUN_UNAVAILABLE_REASON`.
         }}
         onRowClick={(row) => openJobOutput(row.id)}
         emptyState={
@@ -714,49 +714,10 @@ export const JobsView: React.FC<JobsViewProps> = ({
 
       {/* V1's output sheet (`JobsApp.cs:39-49`): opened over the table, titled
           `$"{job.Type} {ExtractPlanId(job.PlanFile)}"` - and "Job Output" for a job the service no
-          longer has - at `UxHelper.SheetWidth`. `inset-y-0` is repeated from the `side="right"`
-          variant for the same reason the other ported sheets repeat it. */}
-      <Sheet
-        open={openJobId !== null}
-        onOpenChange={(open) => {
-          if (!open) setOpenJobId(null);
-        }}
-      >
-        {/* `HeaderLayout`, which is the framework's structure for a panel with fixed chrome over
-            scrolling content (`widgets/layouts/HeaderLayoutWidget.tsx`): the title stays put, the body
-            scrolls under it, and the header takes a shadow once it does — so a reader can see that the
-            output continues above the fold. `p-0` on the sheet because the layout owns the padding, which
-            is what the framework's own `remove-parent-padding` does to its container. */}
-        <SheetContent
-          data-testid="job-output-sheet"
-          className="inset-y-0 flex w-full flex-col overflow-hidden p-0 sm:w-3/4 sm:max-w-none lg:w-1/2 xl:w-2/5"
-        >
-          {/* `scrollContent={false}` hands the scrolling to the log, and is what puts the metrics
-              footer back in the footer. The scrolling branch wraps its children in Radix's viewport,
-              which injects a `display: table` div of its own (`react-scroll-area/dist/index.mjs:130`) —
-              a definite height dies there, so `AgentViewer`'s `height="full"` resolved against an
-              auto-height ancestor and the viewer sized to its content instead of to the sheet. The
-              footer is `flex: 0 0 auto` against a body that gives up its height, so it was pinned to
-              the bottom of a box that ended wherever the log happened to end: mid-sheet, with dead
-              space under it. `AgentTerminalView` makes the same trade for xterm.js, and for the same
-              reason — the viewer windows its own rows and an outer scroller fights the virtualizer for
-              the scroll position. `contentClassName` re-establishes the flex column the default `p-4`
-              wrapper would otherwise break.
-
-              `showDivider={false}`: the sheet title already reads as chrome against the body, and the
-              rule under it was the first of three stacked down this sheet. Per call site, so the Job
-              Debug sheet below and the other `HeaderLayout` consumers keep theirs. */}
-          <HeaderLayout
-            className="min-h-0 flex-1"
-            showDivider={false}
-            scrollContent={false}
-            contentClassName="flex h-full min-h-0 flex-col"
-            header={
-              <SheetHeader className="pl-2 pr-8">
-                <SheetTitle>{openJobTitle}</SheetTitle>
-              </SheetHeader>
-            }
-          >
+          longer has. The chrome is the library's; the body is `JobSessionView`, which streams. */}
+      {openJobId !== null && (
+        <React.Suspense fallback={null}>
+          <JobOutputSheet isOpen onClose={() => setOpenJobId(null)} title={openJobTitle}>
             {openJob && (
               <React.Suspense
                 fallback={
@@ -770,9 +731,9 @@ export const JobsView: React.FC<JobsViewProps> = ({
                 <JobOutput job={openJob} layout="sheet" onCloseTab={() => setOpenJobId(null)} />
               </React.Suspense>
             )}
-          </HeaderLayout>
-        </SheetContent>
-      </Sheet>
+          </JobOutputSheet>
+        </React.Suspense>
+      )}
 
       {/* V1's Job Debug sheet (`JobsApp.cs:62-70`), opened by the Debug row action. The panel is
           the sheet's own now rather than assembled here, so there is one Job Debug sheet rather
@@ -786,102 +747,38 @@ export const JobsView: React.FC<JobsViewProps> = ({
       </React.Suspense>
 
       {/* V1's Cost & Tokens sheet (`JobsApp.cs:51`), opened by the Cost *and* Tokens cells
-          (`JobsApp.DataTable.cs:149-162`) at the same `UxHelper.SheetWidth` as the sheets above. */}
-      <Sheet
-        open={costJobId !== null}
-        onOpenChange={(open) => {
-          if (!open) setCostJobId(null);
-        }}
-      >
-        <SheetContent
-          data-testid="job-cost-sheet-panel"
-          className="inset-y-0 flex w-full flex-col overflow-hidden p-0 sm:w-3/4 sm:max-w-none lg:w-1/2 xl:w-2/5"
-        >
-          <HeaderLayout
-            className="min-h-0 flex-1"
-            header={
-              <SheetHeader className="pr-8">
-                <SheetTitle>{costJobTitle}</SheetTitle>
-              </SheetHeader>
-            }
-          >
-            {costJob ? (
-              <React.Suspense
-                fallback={
-                  <div className="flex h-32 items-center justify-center text-muted-foreground">
-                    <Spinner size="lg" className="text-success" aria-hidden="true" />
-                  </div>
-                }
-              >
-                <JobCost job={costJob} />
-              </React.Suspense>
-            ) : null}
-          </HeaderLayout>
-        </SheetContent>
-      </Sheet>
+          (`JobsApp.DataTable.cs:149-162`). */}
+      {costJobId !== null && (
+        <React.Suspense fallback={null}>
+          <JobCost
+            isOpen
+            onClose={() => setCostJobId(null)}
+            title={costJobTitle}
+            job={costJob}
+            formatType={labels.jobType}
+          />
+        </React.Suspense>
+      )}
 
-      {/* V1's Full Prompt sheet (`JobsApp.cs:51`), opened by the Prompt cell. Its whole body is one
-          wrapped code block, which is what `PromptSheet.cs` renders. */}
-      <Sheet
-        open={promptJobId !== null}
-        onOpenChange={(open) => {
-          if (!open) setPromptJobId(null);
-        }}
-      >
-        <SheetContent
-          data-testid="job-prompt-sheet"
-          className="inset-y-0 flex w-full flex-col overflow-hidden p-0 sm:w-3/4 sm:max-w-none lg:w-1/2 xl:w-2/5"
-        >
-          <HeaderLayout
-            className="min-h-0 flex-1"
-            header={
-              <SheetHeader className="pr-8">
-                <SheetTitle>{t("promptSheet.title")}</SheetTitle>
-              </SheetHeader>
-            }
-          >
-            {promptText ? (
-              <React.Suspense
-                fallback={
-                  <div className="flex h-32 items-center justify-center text-muted-foreground">
-                    <Spinner size="lg" className="text-success" aria-hidden="true" />
-                  </div>
-                }
-              >
-                {/* `WrapLines()`: a prompt is prose, so it wraps rather than scrolling sideways. */}
-                <JobPromptBlock content={promptText} wrapLines />
-              </React.Suspense>
-            ) : (
-              /* A job type that carries no prose of its own - `ExpandPlan`, `SplitPlan` - reaches the
-                 sheet with nothing to show. Saying so beats an empty box. */
-              <span className="text-xs text-muted-foreground" data-testid="job-prompt-empty">
-                {t("promptSheet.empty")}
-              </span>
-            )}
-          </HeaderLayout>
-        </SheetContent>
-      </Sheet>
+      {/* V1's Full Prompt sheet (`JobsApp.cs:51`), opened by the Prompt cell. */}
+      {promptJobId !== null && (
+        <React.Suspense fallback={null}>
+          <JobPrompt isOpen onClose={() => setPromptJobId(null)} prompt={promptText} />
+        </React.Suspense>
+      )}
 
-      {/* The bulk clears' confirm. V1 fires `ClearCompletedJobs()` straight off the menu item with no
-          dialog at all; that is the one place this deliberately does not follow it, because a bulk delete
-          of unbounded size is exactly what Framework's confirmation contract exists for. One dialog
-          serves all five scopes - they differ only in a noun and a count. */}
-      <ConfirmDialog
+      {/* The bulk clears' confirm, V2's own: V1 fires `ClearCompletedJobs()` straight off the menu
+          item. The copy and the arming rule are `ClearJobsDialog`'s. */}
+      <ClearJobsDialog
         isOpen={pendingClear !== null}
         onClose={() => {
           setPendingClear(null);
           setClearError(null);
         }}
-        title={pendingClear?.label ?? t("clear.dialogTitle")}
-        // The copy and the arming rule both live in {@link describeClearPrompt}: the sentence *is* the
-        // safety mechanism here, so it is a function with its own tests rather than a ternary in JSX.
-        body={<p data-testid="jobs-clear-body">{clearPrompt.body}</p>}
-        confirmLabel={clearPrompt.confirmLabel}
-        confirmVariant="destructive"
-        confirmDisabled={clearPrompt.confirmDisabled}
+        scope={pendingClear?.key ?? "all"}
+        count={clearCount}
         isBusy={isClearing}
         error={clearError}
-        testId="jobs-clear-dialog"
         onConfirm={async () => {
           if (!pendingClear) return;
           setIsClearing(true);
@@ -902,18 +799,22 @@ export const JobsView: React.FC<JobsViewProps> = ({
         }}
       />
 
+      {/* V1's `RerunJobDialog` (`JobsApp.cs:82-88`), opened by the row menu's Rerun. */}
+      <RerunJobDialog
+        isOpen={rerunJobId !== null}
+        onClose={() => setRerunJobId(null)}
+        job={rerunJob}
+        onRerun={() => refreshTable()}
+      />
+
       {/* `JobsApp.DataTable.cs:296-317`, copy included. The handler is `jobsStore.deleteJob`, which
           carries V1's "stop a Running or Queued job first, then delete, then re-read" sequence. */}
-      <ConfirmDialog
+      <DeleteJobDialog
         isOpen={deleteJobId !== null}
         onClose={() => {
           setDeleteJobId(null);
           setDeleteError(null);
         }}
-        title={t("deleteDialog.title")}
-        body={<p>{t("deleteDialog.body")}</p>}
-        confirmLabel={t("common:actions.delete")}
-        confirmVariant="destructive"
         isBusy={isDeleting}
         error={deleteError}
         testId="jobs-delete-dialog"

@@ -70,7 +70,8 @@
     "completePlan": "योजना पूर्ण करें",
     "retryPlan": "योजना पर पुनः प्रयास करें",
     "acceptPartialDelivery": "आंशिक वितरण स्वीकार करें",
-    "resetToDraft": "ड्राफ़्ट पर रीसेट करें…"
+    "resetToDraft": "ड्राफ़्ट पर रीसेट करें…",
+    "share": "साझा करें"
   },
   "draftActions": {
     "execute": "योजना निष्पादित करें",
@@ -127,7 +128,23 @@
     "repositories": "रिपॉजिटरी",
     "noRepositories": "कोई रिपॉजिटरी निर्दिष्ट नहीं",
     "commits": "कमिट",
-    "noCommits": "अभी तक कोई कमिट नहीं"
+    "noCommits": "अभी तक कोई कमिट नहीं",
+    "jobs": {
+      "heading": "जॉब्स",
+      "columns": {
+        "status": "स्थिति",
+        "type": "प्रकार",
+        "cost": "लागत",
+        "tokens": "टोकन",
+        "message": "स्थिति संदेश",
+        "actions": "कार्रवाइयाँ"
+      },
+      "debug": "डीबग",
+      "debugTooltip": "इस जॉब का डीबग विवरण दिखाएं",
+      "costTooltip": "लागत और टोकन का विवरण दिखाएं",
+      "costTitle": "लागत और टोकन",
+      "costTitleWithPlan": "लागत और टोकन — {{planId}}"
+    }
   },
   "verificationStatus": {
     "pass": "पास",
@@ -143,32 +160,12 @@
     "hideReport": "रिपोर्ट छिपाएं",
     "noReport": "अभी तक कोई रिपोर्ट नहीं"
   },
-  "reportSheet": {
-    "title": "सत्यापन रिपोर्ट",
-    "description": "{{name}} के लिए सत्यापन रिपोर्ट का विवरण",
-    "descriptionFallback": "योजना के लिए सत्यापन रिपोर्ट का विवरण",
-    "loading": "सत्यापन रिपोर्ट लोड हो रही है…",
-    "notFound": "\"{{name}}\" के लिए कोई सत्यापन रिपोर्ट फ़ाइल नहीं मिली।",
-    "empty": "{{name}} के लिए कोई रिपोर्ट उपलब्ध नहीं है।"
-  },
   "artifactSheet": {
     "thumbnail": {
       "openLabel": "{{fileName}} खोलें",
       "noPreview": "कोई पूर्वावलोकन नहीं",
       "loadingLabel": "{{fileName}} लोड हो रही है"
-    },
-    "fallbackTitle": "आर्टिफ़ैक्ट",
-    "noPreviewTitle": "कोई पूर्वावलोकन नहीं",
-    "showInFolder": "फ़ोल्डर में दिखाएं",
-    "loadingLabel": "{{fileName}} लोड हो रही है",
-    "imageFailed": "Tendril यह छवि लोड नहीं कर सका।",
-    "imageFailedWithError": "Tendril यह छवि लोड नहीं कर सका: {{error}}",
-    "binary": "{{fileName}} टेक्स्ट फ़ाइल नहीं है ({{size}}), इसलिए यहाँ इसका पूर्वावलोकन नहीं है।",
-    "tooLarge": "{{fileName}} का आकार {{size}} है, जो यहाँ पूर्वावलोकन के लिए बहुत बड़ा है।",
-    "plainNotice": "सादे टेक्स्ट के रूप में दिखाया गया: {{size}} आकार के साथ {{fileName}} हाइलाइट करने के लिए बहुत बड़ी है।",
-    "plainNotice_markdown": "सादे टेक्स्ट के रूप में दिखाया गया: {{size}} आकार के साथ {{fileName}} Markdown के रूप में रेंडर करने के लिए बहुत बड़ी है।",
-    "copyPath": "पथ कॉपी करें",
-    "revealLabel": "फ़ोल्डर में दिखाएं"
+    }
   },
   "pullRequests": {
     "title": "पुल रिक्वेस्ट्स",
@@ -222,16 +219,6 @@
     },
     "thawFailed": "योजना {{id}} को पिघलाया नहीं जा सका: {{error}}"
   },
-  "newPlan": {
-    "title": "नई योजना बनाएं",
-    "closeLabel": "मोडल बंद करें",
-    "projectPickerLabel": "लक्षित प्रोजेक्ट",
-    "autoProject": "स्वचालित",
-    "addProject": "+ नया प्रोजेक्ट जोड़ें",
-    "submit": "बनाएं",
-    "placeholder": "कार्य का विवरण दर्ज करें…",
-    "emptyDescription": "कृपया नई योजना के लिए विवरण दर्ज करें।"
-  },
   "planActions": {
     "canExecute": {
       "alreadyCompleted": "योजना पहले ही पूर्ण हो चुकी है।",
@@ -277,5 +264,9 @@
   "store": {
     "rollbackField": "रोलबैक: {{field}} अपडेट करने में विफल: {{error}}",
     "rollbackVerification": "सत्यापन अपडेट का रोलबैक: {{error}}"
+  },
+  "share": {
+    "linkCopiedTitle": "लिंक कॉपी किया गया",
+    "linkCopied": "योजना का साझा लिंक क्लिपबोर्ड पर कॉपी किया गया"
   }
 }

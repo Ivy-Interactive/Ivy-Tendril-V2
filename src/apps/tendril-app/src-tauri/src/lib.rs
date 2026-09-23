@@ -14,7 +14,9 @@ pub use commands::github::*;
 pub use commands::inbox::*;
 pub use commands::jobs::*;
 pub use commands::local_file::*;
+pub use commands::plan_files::*;
 pub use commands::plans::*;
+pub use commands::project_assets::*;
 pub use commands::promptwares::*;
 pub use commands::pull_requests::*;
 pub use commands::state::*;
@@ -135,6 +137,9 @@ pub fn run() {
             cmd_get_plan_summary,
             cmd_get_plan_artifacts,
             cmd_get_plan_artifact_content,
+            // The commit and file sheets on the plan and review pages - see `commands::plan_files`.
+            cmd_get_plan_commit,
+            cmd_get_plan_file_content,
             cmd_get_revision,
             cmd_write_revision,
             cmd_update_latest_revision,
@@ -157,6 +162,8 @@ pub fn run() {
             cmd_cancel_job,
             cmd_delete_job,
             cmd_force_start_job,
+            cmd_rerun_job,
+            cmd_report_job_bug,
             cmd_clear_jobs,
             cmd_subscribe_job_events,
             cmd_unsubscribe_job_events,
@@ -170,7 +177,10 @@ pub fn run() {
             // The other half of the preview: a file picked from outside every local-file root is copied
             // into `<TendrilHome>/Attachments/<session>/` so that the route above will serve it back.
             cmd_upload_chat_attachment,
+            cmd_upload_attachment_bytes,
             cmd_list_projects,
+            cmd_get_project_repo_status,
+            cmd_get_project_issue_metadata,
             cmd_create_project,
             // The only way the app may add a repository to an existing project: `PUT /api/config`
             // stores what it is handed, so a remote URL added that way keeps its credentials and
@@ -245,6 +255,13 @@ pub fn run() {
             cmd_vault_import,
             cmd_vault_merge,
             cmd_vault_delete_project,
+            // Project memory files and repo-asset import (Settings > project).
+            cmd_list_project_memory,
+            cmd_get_project_memory,
+            cmd_put_project_memory,
+            cmd_delete_project_memory,
+            cmd_scan_repo_assets,
+            cmd_import_repo_assets,
             cmd_check_inbox,
             cmd_list_inbox_proposals,
             cmd_accept_inbox_proposal,

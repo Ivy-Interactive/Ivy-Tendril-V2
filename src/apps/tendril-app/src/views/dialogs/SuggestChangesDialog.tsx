@@ -5,6 +5,8 @@ import {
 } from "@ivy-interactive/components/dialogs";
 import { PlanActionsController } from "../../controllers/planActions";
 import { bridge } from "../../api/bridge";
+import { i18n } from "../../i18n";
+import { useDialogAttachments, withFileRefs } from "./useDialogAttachments";
 import {
   describeBridgeError,
   type Job,
@@ -91,6 +93,11 @@ export function SuggestChangesDialog({
     }
   }, [isOpen]);
 
+  // V1's `SuggestChangesDialog` `UseUpload`: staged under an upload session and referenced from the
+  // change request. `RetryPlanArgs` has no `uploadSessionId` (in V1 either), so the files are not
+  // promoted into the plan folder; the agent reads them where they were staged.
+  const attach = useDialogAttachments(isOpen, i18n.t("chat:attachments.pickerTitle"));
+
   const jobs = planJobs ?? [];
   const fromApp = appComments !== undefined && appComments.length > 0;
   const waitFor = fromApp ? jobsToWaitFor(jobs) : [];
@@ -111,7 +118,10 @@ export function SuggestChangesDialog({
         });
         onJobStarted?.(response);
       } else {
-        const response = await PlanActionsController.retryPlan(plan, changeRequest);
+        const response = await PlanActionsController.retryPlan(
+          plan,
+          withFileRefs(changeRequest, attach.attachments),
+        );
         if ((inlineCommentCount ?? 0) > 0) {
           void bridge.clearDiffComments(plan.id).catch(() => undefined);
         }
@@ -140,6 +150,9 @@ export function SuggestChangesDialog({
       onSubmit={handleSubmit}
       isBusy={isBusy}
       error={error}
+      // Diff-side only: the app-preview request has no field to attach to (V1's
+      // `UpdateFromCommentsDialog` takes no uploads).
+      {...(fromApp ? {} : attach.props)}
     />
   );
 }

@@ -23,7 +23,6 @@ import { rollingAverage, toDayNumber, toIsoDate, todayDayNumber } from "../utils
 /* The pipeline counts moved out of this view when the Plans and Review wallpapers started rendering
    the same widget: V1 computes them once in `TendrilProcessStatusService` for exactly that reason. */
 import { ACTIVE_JOB_STATUSES, computeProcessStatus } from "../utils/processStatus";
-import { buildKpiBlade, isKpiBreakdownId } from "./KpiBreakdown";
 import { DashboardKpiSheet } from "./sheets/DashboardKpiSheet";
 
 interface DashboardViewProps {
@@ -269,21 +268,6 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         ? []
         : fallbackKpis(t);
 
-  const blade =
-    selectedKpi == null
-      ? null
-      : buildKpiBlade(
-          selectedKpi,
-          {
-            activity,
-            shippedFeatures: analytics.shippedFeatures,
-            mergedPrs: analytics.mergedPrs,
-            planCosts: analytics.planCosts,
-            agentCosts: analytics.agentCosts,
-          },
-          t,
-        );
-
   // Active Jobs lists the unfinished jobs only, capped (`DashboardApp.BuildActiveJobs`). A finished
   // job in a card headed "Active Jobs" is the one thing this card must never show.
   //
@@ -325,7 +309,8 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
           }
           if (evt === "OnSelectKpi") {
             const kpiId = firstStringArg(args);
-            if (kpiId && isKpiBreakdownId(kpiId)) setSelectedKpi(kpiId);
+            // Any card id: the sheet opens only for the four that have a panel.
+            if (kpiId) setSelectedKpi(kpiId);
             return;
           }
           const nav = NAV_BY_EVENT[evt];
@@ -367,7 +352,11 @@ export const DashboardView: React.FC<DashboardViewProps> = ({
         }}
       />
 
-      <DashboardKpiSheet blade={blade} onClose={() => setSelectedKpi(null)} />
+      <DashboardKpiSheet
+        kpiId={selectedKpi}
+        analytics={analytics}
+        onClose={() => setSelectedKpi(null)}
+      />
     </div>
   );
 };

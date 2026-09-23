@@ -1,1 +1,55 @@
-{}
+{
+  "verificationReport": {
+    "title": "Отчёт верификации",
+    "description": "Подробности отчёта верификации {{name}}",
+    "descriptionFallback": "Подробности отчёта верификации плана",
+    "loading": "Загрузка отчёта верификации…",
+    "notFound": "Файл отчёта верификации для «{{name}}» не найден.",
+    "empty": "Для {{name}} нет отчёта.",
+    "status": {
+      "pass": "Пройдена",
+      "fail": "Не пройдена",
+      "pending": "Ожидает",
+      "skipped": "Пропущена"
+    }
+  },
+  "filePreview": {
+    "noPreviewTitle": "Нет предпросмотра",
+    "showInFolder": "Показать в папке",
+    "loadingLabel": "Загрузка {{fileName}}",
+    "imageFailed": "Tendril не удалось загрузить это изображение.",
+    "imageFailedWithError": "Tendril не удалось загрузить это изображение: {{error}}",
+    "binary": "{{fileName}} — не текстовый файл ({{size}}), поэтому предпросмотр здесь недоступен.",
+    "tooLarge": "Файл {{fileName}} ({{size}}) слишком большой для предпросмотра.",
+    "plainNotice": "Показано как обычный текст: файл {{fileName}} ({{size}}) слишком большой для подсветки синтаксиса.",
+    "plainNotice_markdown": "Показано как обычный текст: файл {{fileName}} ({{size}}) слишком большой для отображения Markdown."
+  },
+  "artifactSheet": {
+    "fallbackTitle": "Артефакт",
+    "copyPath": "Копировать путь",
+    "revealLabel": "Показать в папке"
+  },
+  "fileSheet": {
+    "fallbackTitle": "Файл",
+    "openInEditor": "Открыть в {{editor}}",
+    "copyPath": "Копировать путь",
+    "revealLabel": "Показать в папке"
+  },
+  "commitSheet": {
+    "title": "Коммит {{hash}} — {{title}}",
+    "titleUntitled": "Коммит {{hash}}",
+    "description": "Изменённые файлы и diff коммита {{hash}}",
+    "loadingLabel": "Загрузка коммита {{hash}}",
+    "failed": "Не удалось загрузить коммит: {{error}}",
+    "notFound": "Коммит не найден.",
+    "noChanges": "Этот коммит не изменил ни одного файла.",
+    "changedFiles": "Изменённые файлы",
+    "copyHash": "Копировать хеш коммита",
+    "fileStatus": {
+      "added": "Добавлен",
+      "deleted": "Удалён",
+      "modified": "Изменён",
+      "renamed": "Переименован"
+    }
+  }
+}

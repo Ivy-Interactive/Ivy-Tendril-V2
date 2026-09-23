@@ -102,10 +102,6 @@
     "planSearch": "計画を検索",
     "showShortcuts": "キーボードショートカットを表示"
   },
-  "shortcutsHelp": {
-    "title": "キーボードショートカット",
-    "empty": "有効なキーボードショートカットはありません。"
-  },
   "updateCheck": {
     "available": {
       "title": "アップデートあり",
@@ -122,7 +118,8 @@
   "updateNotice": {
     "available": "v{{latest}} を利用できます（現在は v{{current}}）",
     "copyCommand": "コマンドをコピー",
-    "dismiss": "閉じる"
+    "dismiss": "閉じる",
+    "showDetails": "詳細を表示"
   },
   "offlineBanner": {
     "reconnecting": "Tendril-Service との接続が切断されました。{{seconds}} 秒後に自動で再接続します…",
@@ -143,18 +140,12 @@
     "dismissNavError": "ナビゲーションエラーを閉じる"
   },
   "stopQueued": {
-    "title": "キュー待機中のジョブを停止",
-    "body_other": "キュー待機中のジョブ {{count}} 件をすべて停止しますか？実行中のジョブには影響しません。",
-    "confirm": "すべて停止",
     "toast": {
       "title": "ジョブ",
       "description_other": "キュー待機中のジョブ {{count}} 件を停止しました。"
     }
   },
   "stopAll": {
-    "title": "すべてのジョブを停止",
-    "body_other": "アクティブなジョブ {{count}} 件をすべて停止しますか？実行中のエージェントは強制終了され、その計画は以前の状態に戻ります。この操作は元に戻せません。",
-    "confirm": "すべて停止",
     "toast": {
       "title": "ジョブを停止しました",
       "description_other": "{{count}} 件のジョブを停止しました"

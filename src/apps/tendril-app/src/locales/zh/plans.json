@@ -66,7 +66,8 @@
     "completePlan": "完成计划",
     "retryPlan": "重试计划",
     "acceptPartialDelivery": "接受部分交付",
-    "resetToDraft": "重置为草稿…"
+    "resetToDraft": "重置为草稿…",
+    "share": "共享"
   },
   "draftActions": {
     "execute": "执行计划",
@@ -121,7 +122,23 @@
     "repositories": "仓库",
     "noRepositories": "未指定仓库",
     "commits": "提交",
-    "noCommits": "暂无提交"
+    "noCommits": "暂无提交",
+    "jobs": {
+      "heading": "任务",
+      "columns": {
+        "status": "状态",
+        "type": "类型",
+        "cost": "成本",
+        "tokens": "Token",
+        "message": "状态消息",
+        "actions": "操作"
+      },
+      "debug": "调试",
+      "debugTooltip": "显示此任务的调试详情",
+      "costTooltip": "显示成本和令牌明细",
+      "costTitle": "成本与 Token",
+      "costTitleWithPlan": "成本与 Token：{{planId}}"
+    }
   },
   "verificationStatus": {
     "pass": "通过",
@@ -137,32 +154,12 @@
     "hideReport": "隐藏报告",
     "noReport": "尚无报告"
   },
-  "reportSheet": {
-    "title": "验证报告",
-    "description": "{{name}} 的验证报告详情",
-    "descriptionFallback": "计划的验证报告详情",
-    "loading": "正在加载验证报告…",
-    "notFound": "未找到“{{name}}”的验证报告文件。",
-    "empty": "{{name}} 没有可用的报告。"
-  },
   "artifactSheet": {
     "thumbnail": {
       "openLabel": "打开 {{fileName}}",
       "noPreview": "无预览",
       "loadingLabel": "正在加载 {{fileName}}"
-    },
-    "fallbackTitle": "产物",
-    "noPreviewTitle": "无预览",
-    "showInFolder": "在文件夹中显示",
-    "loadingLabel": "正在加载 {{fileName}}",
-    "imageFailed": "Tendril 无法加载此图像。",
-    "imageFailedWithError": "Tendril 无法加载此图像：{{error}}",
-    "binary": "{{fileName}} 不是文本文件（{{size}}），因此此处无法预览。",
-    "tooLarge": "{{fileName}} 大小为 {{size}}，过大，此处无法预览。",
-    "plainNotice": "以纯文本显示：{{fileName}} 大小为 {{size}}，过大，无法高亮显示。",
-    "plainNotice_markdown": "以纯文本显示：{{fileName}} 大小为 {{size}}，过大，无法渲染为 Markdown。",
-    "copyPath": "复制路径",
-    "revealLabel": "在文件夹中显示"
+    }
   },
   "pullRequests": {
     "title": "Pull Requests",
@@ -215,16 +212,6 @@
     },
     "thawFailed": "无法解冻计划 {{id}}：{{error}}"
   },
-  "newPlan": {
-    "title": "新建计划",
-    "closeLabel": "关闭对话框",
-    "projectPickerLabel": "目标项目",
-    "autoProject": "自动",
-    "addProject": "+ 添加新项目",
-    "submit": "创建",
-    "placeholder": "输入需求描述…",
-    "emptyDescription": "请输入新计划的描述。"
-  },
   "planActions": {
     "canExecute": {
       "alreadyCompleted": "计划已完成。",
@@ -270,5 +257,9 @@
   "store": {
     "rollbackField": "已回滚：更新 {{field}} 失败：{{error}}",
     "rollbackVerification": "已回滚验证更新：{{error}}"
+  },
+  "share": {
+    "linkCopiedTitle": "已复制链接",
+    "linkCopied": "已将计划共享链接复制到剪贴板"
   }
 }

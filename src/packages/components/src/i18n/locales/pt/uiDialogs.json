@@ -60,7 +60,8 @@
       "hint": "O caminho do repositório local no qual a issue é aberta, não um slug owner/name."
     },
     "assignee": {
-      "label": "Responsável"
+      "label": "Responsável",
+      "none": "Sem responsável"
     },
     "labels": {
       "label": "Rótulos",
@@ -69,7 +70,9 @@
     "comment": {
       "label": "Comentário",
       "placeholder": "Contexto extra a acrescentar ao corpo da issue…"
-    }
+    },
+    "metadataLoading": "Carregando responsáveis e rótulos do GitHub…",
+    "metadataError": "Não foi possível carregar responsáveis e rótulos do GitHub: {{error}}"
   },
   "createPr": {
     "title": "Criar PR para #{{planId}}",
@@ -99,11 +102,22 @@
     },
     "reviewers": {
       "label": "Revisores",
-      "hint": "Logins do GitHub separados por vírgula. A V2 não tem um campo separado de responsável — a CLI inclui o responsável na lista de revisores, então ambos são o mesmo canal."
+      "hint": "Logins do GitHub separados por vírgula. A V2 não tem um campo separado de responsável — a CLI inclui o responsável na lista de revisores, então ambos são o mesmo canal.",
+      "loadError": "Não foi possível carregar os revisores do GitHub: {{error}}"
     },
     "comment": {
       "label": "Comentário",
       "placeholder": "Algo que o revisor deva saber antes de ler o diff…"
+    },
+    "targetBranch": {
+      "label": "Branch de destino",
+      "defaultOption": "{{branch}} (padrão)",
+      "repoDefault": "A branch base de cada repositório",
+      "custom": "+ Branch personalizada...",
+      "chooseFromList": "Escolher da lista",
+      "customPlaceholder": "Digite o nome da branch...",
+      "customHint": "O pull request terá como destino esta branch personalizada em vez de {{branch}}.",
+      "customHintRepoDefault": "O pull request terá como destino esta branch personalizada em vez da branch base de cada repositório."
     }
   },
   "deleteProject": {
@@ -130,7 +144,15 @@
     "changeCount_other": "{{count}} alterações não commitadas",
     "moreChanges_one": "+{{count}} mais",
     "moreChanges_many": "+{{count}} mais",
-    "moreChanges_other": "+{{count}} mais"
+    "moreChanges_other": "+{{count}} mais",
+    "syncRepos": "Sincronizar repositórios",
+    "createPlan": {
+      "description_one": "⚠ {{count}} repositório tem alterações não commitadas. O plano será escrito com base nelas.",
+      "description_many": "⚠ {{count}} repositórios têm alterações não commitadas. O plano será escrito com base nelas.",
+      "description_other": "⚠ {{count}} repositórios têm alterações não commitadas. O plano será escrito com base nelas.",
+      "proceed": "Criar sem sincronizar",
+      "context": "O plano será baseado neste estado, mas o ExecutePlan criará a branch a partir de <code>{{branch}}</code>. Faça commit e push primeiro se essas alterações devem entrar no plano."
+    }
   },
   "jobDebug": {
     "title": "Depuração da Tarefa",
@@ -226,7 +248,8 @@
     "confirm": "Excluir",
     "body": "Tem certeza de que deseja excluir permanentemente o plano #{{planId}}? Isso remove a pasta do plano, todas as revisões e todos os relatórios de verificação, e não pode ser desfeito. Para manter a pasta, mova o plano para Ignorados ou para o Icebox.",
     "skip": "Mover para Ignorados",
-    "archive": "Mover para o Icebox"
+    "archive": "Mover para o Icebox",
+    "bodyIcebox": "Tem certeza de que deseja excluir permanentemente o plano #{{planId}}? Isso remove a pasta do plano, todas as revisões e todos os relatórios de verificação, e não pode ser desfeito."
   },
   "planSearch": {
     "title": "Buscar Planos",
@@ -320,5 +343,51 @@
     "instructionsLabel": "Instruções",
     "instructionsAriaLabel": "Instruções de atualização",
     "instructionsPlaceholder": "Incorpore as perguntas respondidas e depois restrinja o escopo apenas à cadeia de guardas…"
+  },
+  "createPlan": {
+    "title": "Criar Novo Plano",
+    "projectPickerLabel": "Projeto de Destino",
+    "autoProject": "Automático",
+    "addProject": "+ Adicionar Novo Projeto",
+    "submit": "Criar",
+    "placeholder": "Descreva o que deve ser feito...",
+    "emptyDescription": "Insira uma descrição para o novo plano.",
+    "continueInChat": "Conversar com {{agent}}"
+  },
+  "recommendationNote": {
+    "submit": "Enviar",
+    "accept": {
+      "title": "Aceitar Recomendação",
+      "ariaLabel": "Aceitar Recomendação",
+      "noteLabel": "Nota do Operador (opcional):",
+      "noteAriaLabel": "Nota opcional",
+      "placeholder": "Insira notas opcionais..."
+    },
+    "decline": {
+      "title": "Recusar Recomendação",
+      "ariaLabel": "Recusar Recomendação",
+      "noteLabel": "Motivo da Recusa:",
+      "noteAriaLabel": "Motivo da recusa",
+      "placeholder": "Informe o motivo da recusa..."
+    }
+  },
+  "syncRepo": {
+    "title": "SyncRepo",
+    "body": "Como o SyncRepo deve tratar suas alterações não commitadas? Os commits serão enviados para <code>{{branch}}</code> e os problemas de merge serão resolvidos.",
+    "body_untracked": "Como o SyncRepo deve tratar seus arquivos não rastreados? Os commits serão enviados para <code>{{branch}}</code> e os problemas de merge serão resolvidos.",
+    "body_both": "Como o SyncRepo deve tratar suas alterações não commitadas e seus arquivos não rastreados? Os commits serão enviados para <code>{{branch}}</code> e os problemas de merge serão resolvidos.",
+    "bodyEachBranch": "Como o SyncRepo deve tratar suas alterações não commitadas? Os commits serão enviados para a branch base de cada repositório e os problemas de merge serão resolvidos.",
+    "bodyEachBranch_untracked": "Como o SyncRepo deve tratar seus arquivos não rastreados? Os commits serão enviados para a branch base de cada repositório e os problemas de merge serão resolvidos.",
+    "bodyEachBranch_both": "Como o SyncRepo deve tratar suas alterações não commitadas e seus arquivos não rastreados? Os commits serão enviados para a branch base de cada repositório e os problemas de merge serão resolvidos.",
+    "stash": "Guardar alterações no stash",
+    "commit": "Fazer commit e push",
+    "pullRequest": "Criar PR"
+  },
+  "attachments": {
+    "label": "Anexos",
+    "attach": "Anexar arquivos",
+    "attaching": "Anexando…",
+    "remove": "Remover {{name}}",
+    "failed": "Não foi possível anexar {{name}}: {{error}}"
   }
 }

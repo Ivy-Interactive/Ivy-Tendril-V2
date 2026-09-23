@@ -80,21 +80,7 @@
     "failed": "保存に失敗しました：{{error}}"
   },
   "test": {
-    "title": "コーディングエージェントのテスト",
     "defaultModel": "デフォルト",
-    "columns": {
-      "test": "テスト",
-      "result": "結果"
-    },
-    "status": {
-      "passed": "合格",
-      "failed": "不合格",
-      "warning": "警告",
-      "running": "実行中",
-      "pending": "保留中"
-    },
-    "showRawOutput": "生の出力を表示",
-    "rawOutputTitle": "生の出力",
     "rows": {
       "install": "インストール",
       "auth": "認証",

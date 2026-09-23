@@ -1,34 +1,34 @@
 import React from "react";
-import { formatTokens, NO_VALUE } from "@ivy-interactive/components";
-import { useFormatters, type Formatters } from "@ivy-interactive/components/i18n";
-import { Callout } from "@ivy-interactive/components/ui";
-import { useTranslation, type TFunction } from "../i18n";
-import { useEnumLabels } from "../i18n/enumLabels";
-import type { Job, JobDetail } from "../types/api";
+import { formatTokens, NO_VALUE } from "../../lib/formatters";
+import { Callout } from "../ui/callout";
+import { SheetPanel } from "../ui/sheet-panel";
+import { useFormatters, useTranslation, type TFunction } from "@/i18n/uiJobs";
+
+type Formatters = ReturnType<typeof useFormatters>;
 
 /**
- * V1's Cost & Tokens sheet (`Apps/Views/Sheets/JobCostSheet.cs`), which the Jobs table's **Cost** and
- * **Tokens** cells both open (`JobsApp.DataTable.cs:149-162`).
+ * A job's cost and token counts, as this sheet renders them.
  *
- * What it is for: the two cells each show one number, and neither says where it came from. This breaks
- * the run into the buckets behind it — how many tokens of each kind, and whether the charge is one the
- * agent reported or one Tendril computed. That last distinction is the reason V1 built the sheet, and
- * it is the one thing the cells cannot express: a `~$4.21` and a `$4.31` look like the same kind of
- * fact and are not.
- *
- * What is *not* here, and why: V1 renders a per-million rate beside each bucket and multiplies it out.
- * Those rates come from `IModelPricingProvider`, which V2 has no equivalent of — the daemon sends the
- * finished figures and not the price list it used. Inventing rates to fill the column would be the one
- * way this sheet could lie, so the columns that need them are omitted rather than guessed, and the
- * sheet reports the totals it actually has. The rate columns arrive with the pricing endpoint.
+ * Declared here rather than imported from the app, on the rule `PlanGitView` states: the component
+ * that renders a shape owns its declaration and cannot import from the app. The app's `Job` and
+ * `JobDetail` are structurally compatible and pass straight through.
  */
-
-/** V1's `Dash`: a details value, or the em-dash the table already uses for "nothing here". */
-function dash(value: string | undefined | null): string {
-  return value === undefined || value === null || value.trim() === "" ? NO_VALUE : value;
+export interface JobCostFacts {
+  type: string;
+  tokens?: number;
+  cost?: number;
+  costSource?: string;
+  model?: string;
+  inputTokens?: number;
+  outputTokens?: number;
+  reasoningTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
+  executionProfile?: string;
+  provider?: string;
 }
 
-/** A token bucket's id, and its label's key under `jobs:tokens.buckets`. */
+/** A token bucket's id, and its label's key under `uiJobs:costSheet.buckets`. */
 export type JobCostBucketKind = "input" | "output" | "cacheRead" | "cacheWrite" | "reasoning";
 
 /** One token bucket: V1's `UsageRow`, minus the two rate-derived columns V2 cannot compute. */
@@ -38,6 +38,11 @@ export interface JobCostBucket {
   tokens: number;
 }
 
+/** V1's `Dash`: a details value, or the em-dash the table already uses for "nothing here". */
+function dash(value: string | undefined | null): string {
+  return value === undefined || value === null || value.trim() === "" ? NO_VALUE : value;
+}
+
 /**
  * The buckets, in V1's order. A bucket the daemon did not report is left out rather than shown as
  * zero: "no cache writes" and "cache writes not recorded" are different facts, and only one of them
@@ -45,7 +50,7 @@ export interface JobCostBucket {
  */
 export function buildJobCostBuckets(
   job: Pick<
-    Job,
+    JobCostFacts,
     "inputTokens" | "outputTokens" | "cacheReadTokens" | "cacheWriteTokens" | "reasoningTokens"
   >,
 ): JobCostBucket[] {
@@ -78,8 +83,7 @@ const COST_DIGITS: Intl.NumberFormatOptions = {
  *
  * Rounded by `toFixed` first, so English stays V1's figure exactly: `Intl` rounds a halfway value on
  * its decimal form (0.00015 → "0.0002") where `toFixed` rounds the binary one (→ "0.0001"). Once
- * rounded, the value has exactly four places for `Intl` to print. (A negative cost, which the daemon
- * never reports, would read "-$0.5000" rather than V1's "$-0.5000".)
+ * rounded, the value has exactly four places for `Intl` to print.
  */
 function formatSheetCost(cost: number, format: Formatters): string {
   return format.currency(Number(cost.toFixed(4)), "USD", COST_DIGITS);
@@ -91,8 +95,8 @@ function formatSheetCost(cost: number, format: Formatters): string {
  * agent gave no figure.
  */
 function agentReportedCost(
-  job: Pick<Job, "cost" | "costSource">,
-  t: TFunction<"jobs">,
+  job: Pick<JobCostFacts, "cost" | "costSource">,
+  t: TFunction,
   format: Formatters,
 ): string {
   if (job.costSource?.toLowerCase() === "agent" && typeof job.cost === "number") {
@@ -106,33 +110,85 @@ function agentReportedCost(
  * quoted — the same tilde the Cost cell carries, for the same reason.
  */
 function totalCost(
-  job: Pick<Job, "cost" | "costSource">,
-  t: TFunction<"jobs">,
+  job: Pick<JobCostFacts, "cost" | "costSource">,
+  t: TFunction,
   format: Formatters,
 ): string {
   if (typeof job.cost !== "number" || !Number.isFinite(job.cost)) return NO_VALUE;
   const formatted = formatSheetCost(job.cost, format);
   return job.costSource?.toLowerCase() === "estimated"
-    ? t("cost.estimated", { cost: formatted })
+    ? t("costSheet.estimated", { cost: formatted })
     : formatted;
 }
 
 export interface JobCostSheetProps {
-  job: Job | JobDetail;
+  isOpen: boolean;
+  onClose: () => void;
+  /** The sheet's title. V1 names the sheet "Cost & Tokens"; the Jobs table adds the plan id. */
+  title: string;
+  /** The job's figures. Absent while the detail read is still out. */
+  job?: JobCostFacts;
+  /**
+   * The Type row's label for a job type. The app passes its enum labels (`useEnumLabels().jobType`);
+   * without one the raw value is shown, which is also what English shows.
+   */
+  formatType?: (type: string) => string;
 }
 
 /**
- * The sheet's body: V1's details list, then its breakdown table.
+ * V1's Cost & Tokens sheet (`Apps/Views/Sheets/JobCostSheet.cs`), which the Jobs table's **Cost** and
+ * **Tokens** cells both open (`JobsApp.DataTable.cs:149-162`, `JobsApp.cs:51`).
+ *
+ * What it is for: the two cells each show one number, and neither says where it came from. This breaks
+ * the run into the buckets behind it — how many tokens of each kind, and whether the charge is one the
+ * agent reported or one Tendril computed. That last distinction is the reason V1 built the sheet, and
+ * it is the one thing the cells cannot express: a `~$4.21` and a `$4.31` look like the same kind of
+ * fact and are not.
+ *
+ * What is *not* here, and why: V1 renders a per-million rate beside each bucket and multiplies it out.
+ * Those rates come from `IModelPricingProvider`, which V2 has no equivalent of — the daemon sends the
+ * finished figures and not the price list it used. Inventing rates to fill the column would be the one
+ * way this sheet could lie, so the columns that need them are omitted rather than guessed, and the
+ * sheet reports the totals it actually has. The rate columns arrive with the pricing endpoint.
+ *
+ * **It owns its panel**, the shared `SheetPanel` at V1's `UxHelper.SheetWidth`, so every caller — the
+ * Jobs table, and the plan pages that show a job's cost — opens the same sheet.
+ */
+export const JobCostSheet: React.FC<JobCostSheetProps> = ({
+  isOpen,
+  onClose,
+  title,
+  job,
+  formatType,
+}) => {
+  const { t } = useTranslation("uiJobs");
+  return (
+    <SheetPanel open={isOpen} onClose={onClose} title={title} data-testid="job-cost-sheet-panel">
+      {job ? (
+        <JobCostBody job={job} formatType={formatType} />
+      ) : (
+        /* The figures are the sheet, so there is nothing to render until they land. */
+        <span className="text-xs text-muted-foreground" data-testid="job-cost-pending">
+          {t("costSheet.loading")}
+        </span>
+      )}
+    </SheetPanel>
+  );
+};
+
+/**
+ * The details list and breakdown table.
  *
  * Every details row is kept and dashed when empty, as V1 does, so which facts the sheet reports is
  * the same for every job and a blank Profile reads as "none recorded" rather than as a row the
  * reader has to notice is missing.
  */
-export const JobCostSheet: React.FC<JobCostSheetProps> = ({ job }) => {
-  const { t } = useTranslation("jobs");
-  const labels = useEnumLabels();
+const JobCostBody: React.FC<{ job: JobCostFacts; formatType?: (type: string) => string }> = ({
+  job,
+  formatType,
+}) => {
+  const { t } = useTranslation("uiJobs");
   const format = useFormatters();
-  const detail = job as JobDetail;
   const buckets = buildJobCostBuckets(job);
   const bucketTotal = buckets.reduce((sum, bucket) => sum + bucket.tokens, 0);
   // The breakdown is the sum of what was reported; `tokens` is the daemon's own total. They agree on
@@ -142,9 +198,13 @@ export const JobCostSheet: React.FC<JobCostSheetProps> = ({ job }) => {
   // `[id, label, value]`: the id is the row's React key, so it stays put when the label is translated.
   const details: Array<[string, string, string]> = [
     ["model", t("costSheet.details.model"), dash(job.model)],
-    ["provider", t("costSheet.details.provider"), dash(detail.provider)],
-    ["type", t("costSheet.details.type"), dash(job.type && labels.jobType(job.type))],
-    ["profile", t("costSheet.details.profile"), dash(detail.executionProfile)],
+    ["provider", t("costSheet.details.provider"), dash(job.provider)],
+    [
+      "type",
+      t("costSheet.details.type"),
+      dash(job.type && (formatType ? formatType(job.type) : job.type)),
+    ],
+    ["profile", t("costSheet.details.profile"), dash(job.executionProfile)],
     ["agentCost", t("costSheet.details.agentCost"), agentReportedCost(job, t, format)],
   ];
 
@@ -183,7 +243,7 @@ export const JobCostSheet: React.FC<JobCostSheetProps> = ({ job }) => {
               {buckets.map((bucket) => (
                 <tr key={bucket.kind} className="border-b border-border/50">
                   <td className="py-1 text-left text-foreground">
-                    {t(`tokens.buckets.${bucket.kind}`)}
+                    {t(`costSheet.buckets.${bucket.kind}`)}
                   </td>
                   <td className="py-1 text-right font-mono text-foreground">
                     {formatTokens(bucket.tokens)}

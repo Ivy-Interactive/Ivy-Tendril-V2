@@ -58,7 +58,8 @@
       "hint": "Issue の作成先となるローカルリポジトリのパスです。owner/name 形式のスラッグではありません。"
     },
     "assignee": {
-      "label": "担当者"
+      "label": "担当者",
+      "none": "担当者なし"
     },
     "labels": {
       "label": "ラベル",
@@ -67,7 +68,9 @@
     "comment": {
       "label": "コメント",
       "placeholder": "Issue 本文に追記する補足情報…"
-    }
+    },
+    "metadataLoading": "GitHub から担当者とラベルを読み込んでいます…",
+    "metadataError": "GitHub から担当者とラベルを読み込めませんでした: {{error}}"
   },
   "createPr": {
     "title": "#{{planId}} の PR を作成",
@@ -97,11 +100,22 @@
     },
     "reviewers": {
       "label": "レビュアー",
-      "hint": "GitHub のログイン名をカンマ区切りで入力します。V2 には担当者フィールドがありません。CLI が担当者をレビュアー一覧にまとめるため、両者は同じ経路になります。"
+      "hint": "GitHub のログイン名をカンマ区切りで入力します。V2 には担当者フィールドがありません。CLI が担当者をレビュアー一覧にまとめるため、両者は同じ経路になります。",
+      "loadError": "GitHub からレビュアーを読み込めませんでした: {{error}}"
     },
     "comment": {
       "label": "コメント",
       "placeholder": "差分を読む前にレビュアーが知っておくべきこと…"
+    },
+    "targetBranch": {
+      "label": "ターゲットブランチ",
+      "defaultOption": "{{branch}}（既定）",
+      "repoDefault": "各リポジトリのベースブランチ",
+      "custom": "+ カスタムブランチ...",
+      "chooseFromList": "一覧から選択",
+      "customPlaceholder": "カスタムブランチ名を入力...",
+      "customHint": "プルリクエストは {{branch}} ではなく、このカスタムブランチを対象にします。",
+      "customHintRepoDefault": "プルリクエストは各リポジトリのベースブランチではなく、このカスタムブランチを対象にします。"
     }
   },
   "deleteProject": {
@@ -122,7 +136,13 @@
     "description_other": "⚠ {{count}} 個のリポジトリに未コミットの変更があります。これらの変更は、エージェントが作業するワークツリーには含まれません。",
     "proceed": "このまま実行",
     "changeCount_other": "{{count}} 件の未コミットの変更",
-    "moreChanges_other": "他 {{count}} 件"
+    "moreChanges_other": "他 {{count}} 件",
+    "syncRepos": "リポジトリを同期",
+    "createPlan": {
+      "description_other": "⚠ {{count}} 個のリポジトリに未コミットの変更があります。プランはこの状態をもとに作成されます。",
+      "proceed": "同期せずに作成",
+      "context": "プランはこの状態をもとに作成されますが、ExecutePlan は <code>{{branch}}</code> からブランチを作成します。これらの変更をプランに含める場合は、先にコミットしてプッシュしてください。"
+    }
   },
   "jobDebug": {
     "title": "ジョブのデバッグ",
@@ -208,7 +228,8 @@
     "confirm": "削除",
     "body": "計画 #{{planId}} を完全に削除しますか？計画フォルダー、すべてのリビジョン、すべての検証レポートが削除され、元に戻すことはできません。フォルダーを残す場合は、代わりに計画をスキップまたはアイスボックスに移動してください。",
     "skip": "スキップに移動",
-    "archive": "アイスボックスに移動"
+    "archive": "アイスボックスに移動",
+    "bodyIcebox": "プラン #{{planId}} を完全に削除してもよろしいですか？プランフォルダー、すべてのリビジョン、すべての検証レポートが削除され、元に戻せません。"
   },
   "planSearch": {
     "title": "計画を検索",
@@ -290,5 +311,51 @@
     "instructionsLabel": "指示",
     "instructionsAriaLabel": "更新の指示",
     "instructionsPlaceholder": "回答済みの質問を取り込み、そのうえでスコープをガードチェーンのみに絞り込む…"
+  },
+  "createPlan": {
+    "title": "新規計画を作成",
+    "projectPickerLabel": "対象プロジェクト",
+    "autoProject": "自動",
+    "addProject": "+ 新しいプロジェクトを追加",
+    "submit": "作成",
+    "placeholder": "タスクの説明を入力…",
+    "emptyDescription": "新規計画の説明を入力してください。",
+    "continueInChat": "{{agent}} とチャット"
+  },
+  "recommendationNote": {
+    "submit": "送信",
+    "accept": {
+      "title": "レコメンデーションを承認",
+      "ariaLabel": "レコメンデーションを承認",
+      "noteLabel": "操作者メモ（任意）",
+      "noteAriaLabel": "メモ（任意）",
+      "placeholder": "メモを入力（任意）…"
+    },
+    "decline": {
+      "title": "レコメンデーションを却下",
+      "ariaLabel": "レコメンデーションを却下",
+      "noteLabel": "却下の理由",
+      "noteAriaLabel": "却下の理由",
+      "placeholder": "却下の理由を入力…"
+    }
+  },
+  "syncRepo": {
+    "title": "SyncRepo",
+    "body": "SyncRepo で未コミットの変更をどのように扱いますか？コミットは <code>{{branch}}</code> にプッシュされ、マージの問題は解決されます。",
+    "body_untracked": "SyncRepo で追跡されていないファイルをどのように扱いますか？コミットは <code>{{branch}}</code> にプッシュされ、マージの問題は解決されます。",
+    "body_both": "SyncRepo で未コミットの変更と追跡されていないファイルをどのように扱いますか？コミットは <code>{{branch}}</code> にプッシュされ、マージの問題は解決されます。",
+    "bodyEachBranch": "SyncRepo で未コミットの変更をどのように扱いますか？コミットは各リポジトリのベースブランチにプッシュされ、マージの問題は解決されます。",
+    "bodyEachBranch_untracked": "SyncRepo で追跡されていないファイルをどのように扱いますか？コミットは各リポジトリのベースブランチにプッシュされ、マージの問題は解決されます。",
+    "bodyEachBranch_both": "SyncRepo で未コミットの変更と追跡されていないファイルをどのように扱いますか？コミットは各リポジトリのベースブランチにプッシュされ、マージの問題は解決されます。",
+    "stash": "変更をスタッシュ",
+    "commit": "コミットしてプッシュ",
+    "pullRequest": "PR を作成"
+  },
+  "attachments": {
+    "label": "添付ファイル",
+    "attach": "ファイルを添付",
+    "attaching": "添付しています…",
+    "remove": "{{name}} を削除",
+    "failed": "{{name}} を添付できませんでした: {{error}}"
   }
 }

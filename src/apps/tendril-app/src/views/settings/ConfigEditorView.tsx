@@ -8,7 +8,7 @@ import { notificationsStore } from "../../state/notificationsStore";
 import { bridgeErrorCode, describeBridgeError } from "../../types/api";
 import { ChatView, type SamplePrompt } from "../ChatView";
 import { PLAN_CHAT_HEADLINE } from "../../components/chat/PlanChatPanel";
-import { ConfirmDialog } from "@ivy-interactive/components/dialogs";
+import { DiscardConfigChangesDialog } from "@ivy-interactive/components/dialogs";
 
 /**
  * The in-app `config.yaml` editor, which is V1's `ConfigEditorApp` -> `RawConfigEditorView.cs`.
@@ -304,18 +304,13 @@ export const ConfigEditorView: React.FC<ConfigEditorViewProps> = ({ tendrilHome,
         </Button>
       </div>
 
-      <ConfirmDialog
+      <DiscardConfigChangesDialog
         isOpen={confirmingReload}
         onClose={() => setConfirmingReload(false)}
-        title={t("configEditor.discard.title")}
-        testId="config-editor-reload-dialog"
-        confirmLabel={t("configEditor.discard.confirm")}
-        confirmVariant="destructive"
         onConfirm={() => {
           setConfirmingReload(false);
           void load();
         }}
-        body={<p>{t("configEditor.discard.body")}</p>}
       />
     </div>
   );

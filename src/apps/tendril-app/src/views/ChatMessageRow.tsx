@@ -21,7 +21,7 @@ import { patchQuestionsMarkdown } from "../utils/questionMarkdown";
 import { formatSystemEvent, systemEventContext } from "../utils/systemEvents";
 import { Trans, useTranslation } from "../i18n";
 import { resolveJobState, type JobDisplayState } from "../utils/jobStatus";
-import type { LightboxImage } from "../components/chat/ImageLightbox";
+import type { LightboxImage } from "@ivy-interactive/components/dialogs";
 import { TurnActivity, buildTurnSegments, parseTurnStream } from "../components/chat/TurnActivity";
 import { TurnMetrics } from "../components/chat/TurnMetrics";
 

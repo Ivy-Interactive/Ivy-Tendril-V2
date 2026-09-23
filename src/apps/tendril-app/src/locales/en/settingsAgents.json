@@ -81,21 +81,7 @@
     "failed": "Failed to save: {{error}}"
   },
   "test": {
-    "title": "Coding Agent Test",
     "defaultModel": "Default",
-    "columns": {
-      "test": "Test",
-      "result": "Result"
-    },
-    "status": {
-      "passed": "Passed",
-      "failed": "Failed",
-      "warning": "Warning",
-      "running": "Running",
-      "pending": "Pending"
-    },
-    "showRawOutput": "Show raw output",
-    "rawOutputTitle": "Raw Output",
     "rows": {
       "install": "Installation",
       "auth": "Authentication",

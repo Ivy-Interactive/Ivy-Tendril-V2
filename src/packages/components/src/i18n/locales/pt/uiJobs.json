@@ -1,1 +1,145 @@
-{}
+{
+  "actions": {
+    "cancel": "Cancelar"
+  },
+  "costSheet": {
+    "loading": "Carregando detalhes da tarefa…",
+    "details": {
+      "model": "Modelo",
+      "provider": "Provedor",
+      "type": "Tipo",
+      "profile": "Perfil",
+      "agentCost": "Custo Informado pelo Agente"
+    },
+    "notProvided": "Não Informado",
+    "estimated": "~{{cost}}",
+    "noUsage": "Nenhum detalhamento por token foi registrado para esta tarefa.",
+    "noUsage_total": "Nenhum detalhamento por token foi registrado para esta tarefa, apenas um total de {{total}} tokens.",
+    "breakdown": {
+      "title": "Detalhamento",
+      "tokenType": "Tipo de token",
+      "tokens": "Tokens",
+      "total": "Total"
+    },
+    "buckets": {
+      "input": "Entrada",
+      "output": "Saída",
+      "cacheRead": "Leitura de cache",
+      "cacheWrite": "Gravação em cache",
+      "reasoning": "Raciocínio"
+    },
+    "totalCost": "Custo total"
+  },
+  "promptSheet": {
+    "title": "Prompt Completo",
+    "empty": "Esta tarefa não registrou nenhum texto de prompt."
+  },
+  "outputSheet": {
+    "noOutput": "Nenhuma saída disponível.",
+    "statusCallout": {
+      "title": "Tarefa: {{status}}",
+      "title_pending": "Tarefa Pendente",
+      "title_queued": "Tarefa na Fila",
+      "title_blocked": "Tarefa Bloqueada",
+      "title_failed": "Falha na Tarefa",
+      "title_timeout": "Tempo Esgotado da Tarefa",
+      "title_stopped": "Tarefa Interrompida",
+      "blocked": "Aguardando a conclusão das dependências ou das tarefas anteriores.",
+      "pending": "A tarefa está na fila, aguardando para iniciar."
+    }
+  },
+  "deleteJob": {
+    "title": "Excluir Tarefa",
+    "body": "Tem certeza de que deseja excluir esta tarefa? Esta ação não pode ser desfeita.",
+    "confirm": "Excluir"
+  },
+  "stopQueued": {
+    "title": "Parar Tarefas na Fila",
+    "body_one": "Parar {{count}} tarefa na fila? As tarefas em execução não são afetadas.",
+    "body_many": "Parar todas as {{count}} tarefas na fila? As tarefas em execução não são afetadas.",
+    "body_other": "Parar todas as {{count}} tarefas na fila? As tarefas em execução não são afetadas.",
+    "confirm": "Parar Todas"
+  },
+  "stopAll": {
+    "title": "Parar Todas as Tarefas",
+    "body_one": "Parar {{count}} tarefa ativa? Os agentes em execução são encerrados e os planos deles voltam ao estado anterior. Esta ação não pode ser desfeita.",
+    "body_many": "Parar todas as {{count}} tarefas ativas? Os agentes em execução são encerrados e os planos deles voltam ao estado anterior. Esta ação não pode ser desfeita.",
+    "body_other": "Parar todas as {{count}} tarefas ativas? Os agentes em execução são encerrados e os planos deles voltam ao estado anterior. Esta ação não pode ser desfeita.",
+    "confirm": "Parar Todas"
+  },
+  "clearJobs": {
+    "confirm": "Limpar",
+    "confirmCount": "Limpar {{count}}",
+    "scopes": {
+      "completed": {
+        "title": "Limpar Concluídas",
+        "counting": "Contando tarefas concluídas…",
+        "empty": "Não há tarefas concluídas para limpar.",
+        "confirm_one": "Excluir {{count}} tarefa concluída? Os logs e a saída dela serão removidos junto, e isso não pode ser desfeito.",
+        "confirm_many": "Excluir {{count}} tarefas concluídas? Os logs e a saída delas serão removidos junto, e isso não pode ser desfeito.",
+        "confirm_other": "Excluir {{count}} tarefas concluídas? Os logs e a saída delas serão removidos junto, e isso não pode ser desfeito."
+      },
+      "failed": {
+        "title": "Limpar com Falha",
+        "counting": "Contando tarefas com falha…",
+        "empty": "Não há tarefas com falha para limpar.",
+        "confirm_one": "Excluir {{count}} tarefa com falha? Os logs e a saída dela serão removidos junto, e isso não pode ser desfeito.",
+        "confirm_many": "Excluir {{count}} tarefas com falha? Os logs e a saída delas serão removidos junto, e isso não pode ser desfeito.",
+        "confirm_other": "Excluir {{count}} tarefas com falha? Os logs e a saída delas serão removidos junto, e isso não pode ser desfeito."
+      },
+      "timeout": {
+        "title": "Limpar Tempo Esgotado",
+        "counting": "Contando tarefas com tempo esgotado…",
+        "empty": "Não há tarefas com tempo esgotado para limpar.",
+        "confirm_one": "Excluir {{count}} tarefa com tempo esgotado? Os logs e a saída dela serão removidos junto, e isso não pode ser desfeito.",
+        "confirm_many": "Excluir {{count}} tarefas com tempo esgotado? Os logs e a saída delas serão removidos junto, e isso não pode ser desfeito.",
+        "confirm_other": "Excluir {{count}} tarefas com tempo esgotado? Os logs e a saída delas serão removidos junto, e isso não pode ser desfeito."
+      },
+      "stopped": {
+        "title": "Limpar Interrompidas",
+        "counting": "Contando tarefas interrompidas…",
+        "empty": "Não há tarefas interrompidas para limpar.",
+        "confirm_one": "Excluir {{count}} tarefa interrompida? Os logs e a saída dela serão removidos junto, e isso não pode ser desfeito.",
+        "confirm_many": "Excluir {{count}} tarefas interrompidas? Os logs e a saída delas serão removidos junto, e isso não pode ser desfeito.",
+        "confirm_other": "Excluir {{count}} tarefas interrompidas? Os logs e a saída delas serão removidos junto, e isso não pode ser desfeito."
+      },
+      "all": {
+        "title": "Limpar Todas as Finalizadas",
+        "counting": "Contando tarefas finalizadas…",
+        "empty": "Não há tarefas finalizadas para limpar.",
+        "confirm_one": "Excluir {{count}} tarefa finalizada? Os logs e a saída dela serão removidos junto, e isso não pode ser desfeito.",
+        "confirm_many": "Excluir {{count}} tarefas finalizadas? Os logs e a saída delas serão removidos junto, e isso não pode ser desfeito.",
+        "confirm_other": "Excluir {{count}} tarefas finalizadas? Os logs e a saída delas serão removidos junto, e isso não pode ser desfeito."
+      }
+    }
+  },
+  "rerun": {
+    "title": "Reexecutar {{type}}",
+    "intro": "Opcionalmente, diga ao agente o que deu errado ou o que fazer de outra forma. Deixe em branco para reexecutar sem alterações.",
+    "feedbackPlaceholder": "Feedback para o agente (opcional)",
+    "feedbackAriaLabel": "Feedback para o agente",
+    "unchanged": "Reexecutar esta tarefa com os argumentos originais?",
+    "confirm": "Reexecutar",
+    "busy": "Iniciando…"
+  },
+  "reportBug": {
+    "title": "Relatar bug",
+    "intro": "Descreva o problema. Os logs da tarefa e uma cópia sanitizada da sua configuração (sem segredos) serão anexados a uma issue pública no GitHub.",
+    "descriptionPlaceholder": "O que deu errado? Como podemos reproduzir isso?",
+    "descriptionAriaLabel": "Descrição do bug",
+    "githubUserPlaceholder": "Seu nome de usuário do GitHub (opcional)",
+    "githubUserAriaLabel": "Nome de usuário do GitHub",
+    "submit": "Enviar relatório",
+    "busy": "Enviando…"
+  },
+  "debugWithAgent": {
+    "title": "Depurar com {{agent}}",
+    "focusPlaceholder": "Algo em particular que você queira investigar? (opcional)",
+    "focusAriaLabel": "No que focar",
+    "confirm": "Depurar com {{agent}}"
+  },
+  "jobDebug": {
+    "reportBug": "Relatar bug",
+    "debugWithAgent": "Depurar com {{agent}}"
+  }
+}

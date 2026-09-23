@@ -335,18 +335,15 @@ export const IceboxView: React.FC<IceboxViewProps> = ({ plans, onSelectPlan, onP
         </div>
       )}
 
-      {/* V1's own `Icebox/Dialogs/DeletePlanDialog` is a bare confirm; V2's shared dialog is the
-          stronger typed-id gate and is already the one every other delete goes through. */}
+      {/* V1's own `Icebox/Dialogs/DeletePlanDialog`: a bare permanent-delete confirm. The Plans
+          page's Skip/Icebox alternatives are left out - the plan is already on ice. */}
       {deleting && (
         <DeletePlanDialog
           isOpen
+          variant="icebox"
           plan={deleting}
           onClose={() => setDeleting(null)}
           onDeleted={forget}
-          // Already on ice, so "Move to Icebox" is a no-op the dialog still offers; treating it as a
-          // change keeps the card from lingering if it is used.
-          onArchived={() => setDeleting(null)}
-          onSkipped={forget}
         />
       )}
     </div>

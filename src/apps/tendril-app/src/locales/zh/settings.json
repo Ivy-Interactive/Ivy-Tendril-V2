@@ -169,7 +169,11 @@
       "saved_chat": "聊天将以聊天视图打开",
       "saved_terminal": "聊天将以终端打开"
     },
-    "vaultThemesNote": "团队保管库发布的主题不会在此列出：此构建不包含保管库主题子系统，因此仅提供内置预设。"
+    "vaultThemesNote": "团队保管库发布的主题不会在此列出：此构建不包含保管库主题子系统，因此仅提供内置预设。",
+    "vaultThemes": {
+      "openGenerator": "打开主题生成器",
+      "uploadUnavailable": "此版本尚不支持将主题发布到团队 Vault。可以使用“复制配置”以 JSON 形式分享主题。"
+    }
   },
   "levels": {
     "title": "优先级级别",
@@ -198,23 +202,6 @@
     "removeConsequence": "已归入此级别的计划会在其 plan.yaml 中保留该名称；它只是不再作为可选级别之一。",
     "noEffect": "级别存储在 config.yaml 中并通过 MCP 公开，但此应用目前尚未读取它们，因此在此处编辑不会产生任何可见的行为变化。"
   },
-  "removal": {
-    "title": "移除 {{kind}}",
-    "title_level": "移除级别",
-    "title_repository": "移除仓库",
-    "title_reviewAction": "移除审查操作",
-    "title_environmentFile": "移除环境文件",
-    "title_mcpServer": "移除 MCP 服务器",
-    "title_customSkill": "移除自定义技能",
-    "body": "要从此配置中移除 {{kind}} <name>{{name}}</name> 吗？",
-    "body_level": "要从此配置中移除级别 <name>{{name}}</name> 吗？",
-    "body_repository": "要从此配置中移除仓库 <name>{{name}}</name> 吗？",
-    "body_reviewAction": "要从此配置中移除审查操作 <name>{{name}}</name> 吗？",
-    "body_environmentFile": "要从此配置中移除环境文件 <name>{{name}}</name> 吗？",
-    "body_mcpServer": "要从此配置中移除 MCP 服务器 <name>{{name}}</name> 吗？",
-    "body_customSkill": "要从此配置中移除自定义技能 <name>{{name}}</name> 吗？",
-    "confirm": "移除"
-  },
   "fields": {
     "colorsLabel": "颜色",
     "chooseColor": "选择颜色",
@@ -238,12 +225,7 @@
     "saved": "config.yaml 已保存并重新加载",
     "maskedNote_other": "{{count}} 个密钥值显示为 {{mask}}。保留占位符不变即可保留已存储的值；覆盖输入即可设置新值。",
     "conflictReload": "从磁盘重新加载",
-    "reload": "从磁盘重新加载",
-    "discard": {
-      "title": "放弃未保存的更改",
-      "confirm": "放弃并重新加载",
-      "body": "重新加载会用磁盘上的文件替换编辑器中的内容。您未保存的编辑将会丢失。"
-    }
+    "reload": "从磁盘重新加载"
   },
   "security": {
     "title": "安全与穿透",

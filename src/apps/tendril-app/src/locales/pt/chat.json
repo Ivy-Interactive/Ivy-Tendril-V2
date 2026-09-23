@@ -22,11 +22,6 @@
   "composerAttachment": {
     "remove": "Remover {{name}}"
   },
-  "lightbox": {
-    "fallbackTitle": "Pré-visualização da imagem",
-    "fallbackAlt": "Pré-visualização do anexo",
-    "closeLabel": "Fechar pré-visualização"
-  },
   "newChatButtons": {
     "label": "Novo chat",
     "tooltip": "Novo chat",
@@ -156,19 +151,8 @@
     "afternoon": "Boa Tarde!",
     "evening": "Boa Noite!"
   },
-  "deleteSession": {
-    "title": "Excluir Sessão",
-    "body": "Tem certeza de que deseja excluir \"{{title}}\"? Esta ação não pode ser desfeita.",
-    "bodyUntitled": "Tem certeza de que deseja excluir esta sessão de chat? Esta ação não pode ser desfeita."
-  },
   "jobsReview": {
     "prompt": "Revise os resultados das tarefas que esta conversa iniciou e diga-me o que mudou:\n{{jobs}}"
-  },
-  "search": {
-    "title": "Buscar Chats",
-    "inputLabel": "Buscar chats",
-    "placeholder": "Buscar chats",
-    "empty": "Nenhum chat encontrado."
   },
   "queue": {
     "title": "Mensagens em Fila",

@@ -1,12 +1,19 @@
-import React, { useState, useEffect } from "react";
-import { ContentInput } from "@ivy-interactive/components/tendril";
-import { IconButton, NativeSelect } from "@ivy-interactive/components/ui";
-import { X } from "lucide-react";
-import type { ProjectSummary, StartJobResponse } from "../types/api";
+import React, { useEffect, useRef, useState } from "react";
+import {
+  CreatePlanDialog,
+  DirtyRepoDialog,
+  AUTO_PROJECT,
+  type CreatePlanUpload,
+  type SyncRepoPolicy,
+} from "@ivy-interactive/components/dialogs";
+import type { ProjectSummary, RepoStatus, StartJobArgs, StartJobResponse } from "../types/api";
+import { describeBridgeError } from "../types/api";
+import { bridge } from "../api/bridge";
 import { jobsStore } from "../state/jobsStore";
-import { firstStringArg, submitValueArg } from "../utils/eventArgs";
-import { ErrorBanner } from "../components/ErrorBanner";
-import { useTranslation, type TFunction } from "../i18n";
+import { uiStore } from "../state/uiStore";
+import { NEW_CHAT_TITLE } from "../state/chatLauncher";
+import { CODING_AGENTS } from "./settings/codingAgents";
+import { newUploadSessionId } from "./dialogs/useDialogAttachments";
 
 interface NewPlanModalProps {
   isOpen: boolean;
@@ -22,55 +29,44 @@ interface NewPlanModalProps {
 }
 
 /**
- * `CreatePlanDialog.AddProjectActionValue`. Picking it is a navigation, not a project.
+ * V1 `CreatePlanDialog.BuildAgentPrompt`: the seed for "Chat with <agent>". Sent to the agent as the
+ * conversation's first message without the operator editing it, so it stays English - it is text
+ * Tendril sends on the operator's behalf, not copy on screen.
  */
-const ADD_PROJECT_VALUE = "__tendril_add_project__";
+export function buildCreatePlanAgentPrompt(project: string, description: string): string {
+  const trimmed = description.trim();
+  if (!project || project === AUTO_PROJECT) {
+    return `I want to discuss creating a Tendril plan from this description: "${trimmed}". Determine the most appropriate project for it yourself.`;
+  }
+  return `I want to discuss creating a Tendril plan for the project ${project} from this description: "${trimmed}"`;
+}
+
+/** V1 `AgentBranding.For(settings.CodingAgent).Label`, for "Chat with <agent>". */
+function agentLabelFor(agentId: string | undefined): string {
+  const id = (agentId ?? "").trim() || "claude";
+  return CODING_AGENTS.find((agent) => agent.id === id)?.label ?? id;
+}
+
+const combine = (title: string, description: string): string =>
+  title ? (description ? `${title}\n\n${description}` : title) : description;
 
 /**
- * `CreatePlanDialog.MaxProjectsForToggleVariant`: up to this many projects the picker is a
- * segmented toggle, above it a plain select.
- */
-const MAX_PROJECTS_FOR_TOGGLE = 6;
-
-/**
- * `CreatePlanDialog.BuildProjectSelectOptions`: "Auto" leads whenever there is more than one
- * project to choose between (or none configured yet), then the projects, then the escape hatch to
- * settings. With exactly one project there is nothing to decide, so no "Auto".
+ * The connected half of `CreatePlanDialog`, and V1's `CreatePlanDialogLauncher` around it.
  *
- * `"Auto"` the *value* is what the CreatePlan job is sent and what {@link defaultProject} compares,
- * so only its label is translated.
- */
-export function buildProjectOptions(
-  projectNames: string[],
-  includeAddProject: boolean,
-  t: TFunction<"plans">,
-): { value: string; label: string }[] {
-  const options: { value: string; label: string }[] = [];
-  if (projectNames.length > 1 || projectNames.length === 0) {
-    options.push({ value: "Auto", label: t("newPlan.autoProject") });
-  }
-  options.push(...projectNames.map((p) => ({ value: p, label: p })));
-  if (includeAddProject) {
-    options.push({ value: ADD_PROJECT_VALUE, label: t("newPlan.addProject") });
-  }
-  return options;
-}
-
-/**
- * `CreatePlanDialog._defaultProject`: one project means that project; otherwise the remembered
- * or caller-supplied one if it is still real, and "Auto" when it is not.
- */
-export function defaultProject(projectNames: string[], preferred?: string): string {
-  if (projectNames.length === 1) return projectNames[0];
-  if (preferred === "Auto" || (preferred && projectNames.includes(preferred))) return preferred;
-  return "Auto";
-}
-
-/**
- * Create New Plan, as V1's `CreatePlanDialog` composes it: a project picker over a single
- * content input that owns its own Create button. There is no priority field — V1 passes
- * `priority: 0` for every plan created here (`onCreatePlan(text, project, 0, uploadSessionId)`),
- * and its `PriorityOptions` never reach the dialog body.
+ * The dialog owns the picker, the text and `ContentInput`'s events. What lives here is everything
+ * that reaches the daemon:
+ *
+ * - **The dispatch.** CreatePlan with `priority: 0` (V1's dialog has no priority field), the
+ *   caller's `sourceUrl`, and the upload session when anything was attached.
+ * - **The dirty-repo preflight** (V1 `UsePreflightCheck`): for a named project, each repo's
+ *   uncommitted work is read before the job starts, and a dirty one swaps the dialog for
+ *   `DirtyRepoDialog` - "Create Without Syncing", or *Sync Repos*, which chains one SyncRepo job per
+ *   dirty repo and has CreatePlan wait for them (`waitForJobs`), as V1's `LaunchWithSync` does.
+ *   "Auto" has no repos to check until the agent has picked a project, which is V1's behaviour too
+ *   (`GetProject("Auto")` is null). A preflight that fails to answer never blocks the plan.
+ * - **Attachments.** `ContentInput` hands over bytes; they are staged under this opening's upload
+ *   session (`Attachments/<id>/`), which CreatePlan's `uploadSessionId` promotes into the plan folder.
+ * - **Continue in chat.** V1's split-button entry: a new chat seeded with `BuildAgentPrompt`.
  */
 export const NewPlanModal: React.FC<NewPlanModalProps> = ({
   isOpen,
@@ -83,190 +79,184 @@ export const NewPlanModal: React.FC<NewPlanModalProps> = ({
   initialProject = "",
   initialSourceUrl = "",
 }) => {
-  const { t } = useTranslation("plans");
-  const projectNames = projects.map((p) => p.name);
-
-  const [description, setDescription] = useState(
-    initialTitle
-      ? initialDescription
-        ? `${initialTitle}\n\n${initialDescription}`
-        : initialTitle
-      : initialDescription,
-  );
-  const [selectedProject, setSelectedProject] = useState(
-    defaultProject(projectNames, initialProject),
-  );
-  const [sourceUrl, setSourceUrl] = useState(initialSourceUrl);
-  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isBusy, setIsBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [dirtyRepos, setDirtyRepos] = useState<RepoStatus[] | null>(null);
+  const [pending, setPending] = useState<StartJobArgs | null>(null);
+  const [agentLabel, setAgentLabel] = useState<string | undefined>(undefined);
+  /**
+   * What was submitted, so the dialog comes back with it when the dirty-repo step hands control back
+   * after a failed dispatch: the dialog is unmounted while `DirtyRepoDialog` shows, and would
+   * otherwise re-seed from the caller's prefill.
+   */
+  const [draft, setDraft] = useState<{ description: string; project: string } | null>(null);
+  const uploadSessionId = useRef(newUploadSessionId());
+  const uploaded = useRef(false);
 
   useEffect(() => {
-    if (isOpen) {
-      const combinedDesc = initialTitle
-        ? initialDescription
-          ? `${initialTitle}\n\n${initialDescription}`
-          : initialTitle
-        : initialDescription;
-      setDescription(combinedDesc);
-      setSelectedProject(
-        defaultProject(
-          projects.map((p) => p.name),
-          initialProject,
-        ),
-      );
-      setSourceUrl(initialSourceUrl);
-      setError(null);
-    }
-  }, [isOpen, initialTitle, initialDescription, initialProject, initialSourceUrl, projects]);
+    if (!isOpen) return;
+    uploadSessionId.current = newUploadSessionId();
+    uploaded.current = false;
+    setIsBusy(false);
+    setError(null);
+    setDirtyRepos(null);
+    setPending(null);
+    setDraft(null);
+    let cancelled = false;
+    void Promise.resolve()
+      .then(() => bridge.getConfig())
+      .then((config) => {
+        if (!cancelled) setAgentLabel(agentLabelFor(config?.codingAgent));
+      })
+      .catch(() => {
+        if (!cancelled) setAgentLabel(agentLabelFor(undefined));
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isOpen]);
 
-  if (!isOpen) return null;
-
-  const options = buildProjectOptions(projectNames, onAddProject !== undefined, t);
-  const useToggleVariant = projectNames.length <= MAX_PROJECTS_FOR_TOGGLE;
-
-  const handleProjectChange = (value: string) => {
-    // `UseEffect` on `selectedProject` in V1: the action value is never a selection, it closes
-    // the dialog and takes you to Settings → Projects.
-    if (value === ADD_PROJECT_VALUE) {
-      onClose();
-      onAddProject?.();
-      return;
-    }
-    setSelectedProject(value);
+  const finish = () => {
+    setIsBusy(false);
+    setDirtyRepos(null);
+    setPending(null);
+    onClose();
   };
 
-  const handleSubmit = async (submittedText?: string) => {
-    if (isSubmitting) return;
-    const text = (submittedText ?? description).trim();
-    if (!text) {
-      setError(t("newPlan.emptyDescription"));
-      return;
-    }
-
-    setIsSubmitting(true);
+  /** V1 `LaunchCreatePlan` / the tail of `LaunchWithSync`. */
+  const launch = async (args: StartJobArgs, waitForJobs: string[] = []) => {
+    setIsBusy(true);
     setError(null);
-
     try {
-      // Safe new plan intake: dispatches CreatePlan promptware job. Priority is always Normal
-      // here, matching V1's dialog.
       const res = await jobsStore.startJob({
-        type: "CreatePlan",
-        project: selectedProject,
-        description: text,
-        priority: 0,
-        sourceUrl: sourceUrl.trim() || undefined,
+        ...args,
+        ...(waitForJobs.length > 0 ? { waitForJobs } : {}),
       });
-
-      setIsSubmitting(false);
-      setDescription("");
-      setSourceUrl("");
-      if (onJobStarted) {
-        onJobStarted(res);
-      }
-      onClose();
+      onJobStarted?.(res);
+      finish();
     } catch (err) {
-      setIsSubmitting(false);
+      // Back to the dialog, carrying the failure, with the operator's text still in it.
+      setIsBusy(false);
+      setDirtyRepos(null);
       setError(err instanceof Error ? err.message : String(err));
     }
   };
 
+  const handleSubmit = async (description: string, project: string) => {
+    if (isBusy) return;
+    setDraft({ description, project });
+    const args: StartJobArgs = {
+      type: "CreatePlan",
+      project,
+      description,
+      priority: 0,
+      sourceUrl: initialSourceUrl.trim() || undefined,
+      ...(uploaded.current ? { uploadSessionId: uploadSessionId.current } : {}),
+    };
+
+    if (project && project !== AUTO_PROJECT) {
+      setIsBusy(true);
+      setError(null);
+      let dirty: RepoStatus[] = [];
+      try {
+        const status = await bridge.getProjectRepoStatus(project);
+        dirty = Array.isArray(status) ? status.filter((repo) => repo.isDirty) : [];
+      } catch {
+        // Unknown is not dirty: the guard never blocks plan creation on an unreadable repo.
+      }
+      if (dirty.length > 0) {
+        setIsBusy(false);
+        setPending(args);
+        setDirtyRepos(dirty);
+        return;
+      }
+    }
+    await launch(args);
+  };
+
+  /** V1 `LaunchWithSync`: a SyncRepo per dirty repo, and CreatePlan waiting behind all of them. */
+  const handleSyncRepos = async (policy: SyncRepoPolicy) => {
+    if (!pending || !dirtyRepos) return;
+    setIsBusy(true);
+    const syncJobIds: string[] = [];
+    try {
+      for (const repo of dirtyRepos) {
+        const res = await jobsStore.startJob({
+          type: "SyncRepo",
+          repoPath: repo.path,
+          baseBranch: repo.baseBranch ?? "main",
+          untrackedChangesPolicy: policy,
+        });
+        syncJobIds.push(res.jobId);
+      }
+    } catch (err) {
+      setIsBusy(false);
+      setDirtyRepos(null);
+      setError(describeBridgeError(err));
+      return;
+    }
+    await launch(pending, syncJobIds);
+  };
+
+  const handleUploadFile = async (file: CreatePlanUpload): Promise<string> => {
+    const staged = await bridge.uploadAttachmentBytes(
+      file.name,
+      file.base64Data,
+      uploadSessionId.current,
+    );
+    uploaded.current = true;
+    return staged.path;
+  };
+
+  /** V1 `OnMenuAction` → `ChatLauncher.Open(nav, config, BuildAgentPrompt(...))`. */
+  const handleContinueInChat = (description: string, project: string) => {
+    const prompt = buildCreatePlanAgentPrompt(project, description);
+    onClose();
+    uiStore.navigate({ appId: "chat" });
+    void import("../state/chatStore").then(async ({ chatStore }) => {
+      try {
+        await chatStore.createSession(NEW_CHAT_TITLE);
+        await chatStore.sendMessage(prompt);
+      } catch {
+        // The chat view reports its own failures through the store's `error`.
+      }
+    });
+  };
+
+  if (!isOpen) return null;
+
+  if (dirtyRepos && pending) {
+    return (
+      <DirtyRepoDialog
+        isOpen
+        purpose="createPlan"
+        dirtyRepos={dirtyRepos}
+        onClose={() => {
+          // V1 drops the pending job with the dialog: Cancel means "do not create it".
+          setDirtyRepos(null);
+          setPending(null);
+          onClose();
+        }}
+        onProceed={() => void launch(pending)}
+        onSyncRepos={(policy) => void handleSyncRepos(policy)}
+      />
+    );
+  }
+
   return (
-    <div
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="new-plan-title"
-      data-testid="new-plan-modal"
-      /* Bottom-anchored below `sm`, centred above it: V1 swaps the whole surface at
-         `Breakpoint.Mobile` for `new Sheet(...).Side(SheetSide.Bottom).Height(Size.Fit())` and keeps
-         the `Dialog` elsewhere (`CreatePlanDialog.Build`). Both surfaces dismiss the same three ways
-         and carry the same title, so the swap is a placement change and is expressed as one here
-         rather than as a second component. */
-      className="fixed inset-0 z-50 flex items-end justify-center bg-background/80 backdrop-blur-sm sm:items-center sm:p-4"
-      onClick={onClose}
-    >
-      {/* `.Width(Size.Rem(30))` on V1's dialog; `Size.Fit()` height on the mobile sheet, which is
-          what `h-auto` with a capped max height amounts to. */}
-      <div
-        data-testid="new-plan-surface"
-        className="max-h-[90vh] w-full overflow-y-auto rounded-t-box border border-border bg-card p-6 shadow-2xl sm:max-h-none sm:max-w-[30rem] sm:rounded-box"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* No `border-b` here: the rule the header used to carry was the only divider in the dialog
-            and was asked for removal. The `pb-4` stays -- it is the gap to the body, not the line. */}
-        <div className="flex items-center justify-between pb-4">
-          <h2 id="new-plan-title" className="text-lg font-bold text-foreground">
-            {t("newPlan.title")}
-          </h2>
-          {/* See the note on `JobSessionView`'s tab close: an icon, not the "✕" glyph. */}
-          <IconButton label={t("newPlan.closeLabel")} size="md" tone="muted" onClick={onClose}>
-            <X className="size-4" />
-          </IconButton>
-        </div>
-
-        {error && <ErrorBanner className="mt-4">{error}</ErrorBanner>}
-
-        {/* `Layout.Vertical().Gap(2) | projectPickerWidget | contentInputWidget` */}
-        <div className="mt-4 space-y-2">
-          {useToggleVariant ? (
-            <div
-              role="radiogroup"
-              aria-label={t("newPlan.projectPickerLabel")}
-              className="flex flex-wrap gap-1 rounded-field border border-border p-1"
-            >
-              {options.map((o) => (
-                <button
-                  key={o.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={selectedProject === o.value}
-                  onClick={() => handleProjectChange(o.value)}
-                  className={`rounded-selector px-3 py-1.5 text-sm font-medium transition ${
-                    selectedProject === o.value
-                      ? "bg-primary text-primary-foreground"
-                      : "text-muted-foreground hover:bg-secondary/60 hover:text-foreground"
-                  }`}
-                >
-                  {o.label}
-                </button>
-              ))}
-            </div>
-          ) : (
-            <NativeSelect
-              id="project-select"
-              aria-label={t("newPlan.projectPickerLabel")}
-              value={selectedProject}
-              onChange={(e) => handleProjectChange(e.target.value)}
-            >
-              {options.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </NativeSelect>
-          )}
-
-          <ContentInput
-            id="content-input"
-            value={description}
-            autoFocus
-            submitLabel={t("newPlan.submit")}
-            placeholder={t("newPlan.placeholder")}
-            eventHandler={(evt: string, _id: string, args?: unknown[]) => {
-              if (evt === "OnChange") {
-                const text = firstStringArg(args);
-                if (text !== undefined) setDescription(text);
-                return;
-              }
-              if (evt === "OnSubmit") {
-                const text = submitValueArg(args);
-                if (text === undefined) return;
-                setDescription(text);
-                void handleSubmit(text);
-              }
-            }}
-          />
-        </div>
-      </div>
-    </div>
+    <CreatePlanDialog
+      isOpen={isOpen}
+      onClose={onClose}
+      projects={projects.map((p) => p.name)}
+      initialProject={draft?.project ?? initialProject}
+      initialDescription={draft?.description ?? combine(initialTitle, initialDescription)}
+      onSubmit={handleSubmit}
+      onAddProject={onAddProject}
+      agentLabel={agentLabel}
+      onContinueInChat={handleContinueInChat}
+      onUploadFile={handleUploadFile}
+      isBusy={isBusy}
+      error={error}
+    />
   );
 };

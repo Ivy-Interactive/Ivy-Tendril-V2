@@ -232,8 +232,7 @@
       "consequence": "处理此项目的智能体将不再获得该技能。此操作只会移除项目对它的引用，不会删除技能自身的文件。"
     },
     "saved": "技能“{{name}}”已保存",
-    "deleted": "技能“{{name}}”已删除",
-    "memoryNote": "项目记忆以 Markdown 文件形式存放在 {{path}} 下。守护进程未提供访问它们的路由，因此暂时无法在此处编辑。"
+    "deleted": "技能“{{name}}”已删除"
   },
   "dangerZone": {
     "title": "危险区域",
@@ -355,5 +354,25 @@
     "environmentFile": "环境文件",
     "mcpServer": "MCP 服务器",
     "customSkill": "自定义技能"
+  },
+  "importFromRepo": "从仓库导入",
+  "importedFromRepo_other": "已导入 {{count}} 项",
+  "importedFromRepo_skills_other": "已导入 {{count}} 个自定义技能",
+  "importedFromRepo_mcpServers_other": "已导入 {{count}} 个 MCP 服务器",
+  "memory": {
+    "title": "项目记忆",
+    "hint": "关于此项目的 Markdown 笔记（技术栈、规则、约定），存储在 {{path}} 下。",
+    "addButton": "添加项目记忆",
+    "columns": {
+      "file": "文件",
+      "snippet": "摘要"
+    },
+    "empty": "此项目还没有记忆文件。",
+    "loadError": "无法读取项目的记忆：{{error}}",
+    "saved": "已保存记忆文件“{{name}}”",
+    "deleted": "已删除记忆文件“{{name}}”",
+    "removal": {
+      "consequence": "该文件将从项目的 Memory 文件夹中删除。"
+    }
   }
 }

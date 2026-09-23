@@ -130,10 +130,17 @@ export function PartialDeliveryDialog({
 }
 
 export interface DeletePlanDialogProps extends PlanConfirmBase {
+  /**
+   * Where the delete is asked from. `plans` (the default) offers the two reversible answers beside
+   * it; `icebox` is V1's own `Icebox/Dialogs/DeletePlanDialog`, a bare permanent-delete confirm -
+   * the plan is already on ice, so "Move to Icebox" would be a no-op and "Move to Skipped" a
+   * sideways step nobody asked for from that page.
+   */
+  variant?: "plans" | "icebox";
   /** Moves the plan to Skipped instead. Reversible, which is why it sits beside Cancel. */
-  onSkip: () => void | Promise<void>;
+  onSkip?: () => void | Promise<void>;
   /** Moves the plan to Icebox instead. */
-  onArchive: () => void | Promise<void>;
+  onArchive?: () => void | Promise<void>;
 }
 
 /**
@@ -153,8 +160,26 @@ export function DeletePlanDialog({
   onArchive,
   isBusy,
   error,
+  variant = "plans",
 }: DeletePlanDialogProps) {
   const { t } = useTranslation("uiDialogs");
+  if (variant === "icebox") {
+    // V1's copy, with the consequence spelled out; no reversible answers to name.
+    return (
+      <ConfirmDialog
+        isOpen={isOpen}
+        onClose={onClose}
+        title={t("deletePlan.title")}
+        testId="delete-plan-dialog"
+        confirmLabel={t("deletePlan.confirm")}
+        confirmVariant="destructive"
+        onConfirm={onConfirm}
+        isBusy={isBusy}
+        error={error}
+        body={<p>{t("deletePlan.bodyIcebox", { planId })}</p>}
+      />
+    );
+  }
   return (
     <ConfirmDialog
       isOpen={isOpen}
@@ -172,7 +197,7 @@ export function DeletePlanDialog({
         <>
           <Button
             variant="outline"
-            onClick={() => void onSkip()}
+            onClick={() => void onSkip?.()}
             data-testid="dialog-skip"
             disabled={isBusy}
           >
@@ -180,7 +205,7 @@ export function DeletePlanDialog({
           </Button>
           <Button
             variant="outline"
-            onClick={() => void onArchive()}
+            onClick={() => void onArchive?.()}
             data-testid="dialog-archive"
             disabled={isBusy}
           >

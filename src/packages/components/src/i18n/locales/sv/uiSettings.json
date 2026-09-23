@@ -1,1 +1,194 @@
-{}
+{
+  "removal": {
+    "title": "Ta bort {{kind}}",
+    "title_level": "Ta bort nivå",
+    "title_repository": "Ta bort arkiv",
+    "title_reviewAction": "Ta bort granskningsåtgärd",
+    "title_environmentFile": "Ta bort miljöfil",
+    "title_mcpServer": "Ta bort MCP-server",
+    "title_customSkill": "Ta bort anpassad färdighet",
+    "body": "Vill du ta bort {{kind}} <name>{{name}}</name> från den här konfigurationen?",
+    "body_level": "Vill du ta bort nivån <name>{{name}}</name> från den här konfigurationen?",
+    "body_repository": "Vill du ta bort arkivet <name>{{name}}</name> från den här konfigurationen?",
+    "body_reviewAction": "Vill du ta bort granskningsåtgärden <name>{{name}}</name> från den här konfigurationen?",
+    "body_environmentFile": "Vill du ta bort miljöfilen <name>{{name}}</name> från den här konfigurationen?",
+    "body_mcpServer": "Vill du ta bort MCP-servern <name>{{name}}</name> från den här konfigurationen?",
+    "body_customSkill": "Vill du ta bort den anpassade färdigheten <name>{{name}}</name> från den här konfigurationen?",
+    "title_memoryFile": "Ta bort minnesfil",
+    "body_memoryFile": "Ta bort minnesfilen <name>{{name}}</name> från det här projektet?",
+    "confirm": "Ta bort"
+  },
+  "configEditor": {
+    "discard": {
+      "title": "Kassera osparade ändringar",
+      "confirm": "Kassera och läs in igen",
+      "body": "När du läser in igen ersätts innehållet i redigeraren med filen på disken. De ändringar du inte har sparat går förlorade."
+    }
+  },
+  "agentTest": {
+    "title": "Test av kodningsagent",
+    "columns": {
+      "test": "Test",
+      "result": "Resultat"
+    },
+    "status": {
+      "passed": "Godkänd",
+      "failed": "Underkänd",
+      "warning": "Varning",
+      "running": "Körs",
+      "pending": "Väntar"
+    },
+    "showRawOutput": "Visa rå utdata",
+    "rawOutputTitle": "Rå utdata",
+    "close": "Stäng",
+    "cancel": "Avbryt"
+  },
+  "projectMemory": {
+    "addTitle": "Lägg till projektminne",
+    "editTitle": "Redigera minne: {{fileName}}",
+    "description": "En Markdown-fil i mappen Memory för {{project}}.",
+    "loading": "Läser in minnesfilen...",
+    "fileName": {
+      "label": "Filnamn",
+      "placeholder": "Minnesfilens namn (t.ex. stack.md, conventions.md)..."
+    },
+    "content": {
+      "label": "Innehåll (Markdown)",
+      "placeholder": "Minnesinnehåll i Markdown (t.ex. teknikstack, regler, arkitekturkonventioner)..."
+    },
+    "cancel": "Avbryt",
+    "add": "Lägg till",
+    "save": "Spara"
+  },
+  "importRepoAssets": {
+    "title": "Importera från repository",
+    "title_skills": "Importera anpassade skills från repository",
+    "title_mcpServers": "Importera MCP-verktyg och -servrar från repository",
+    "cancel": "Avbryt",
+    "submit_one": "Importera valda ({{count}})",
+    "submit_other": "Importera valda ({{count}})",
+    "source": {
+      "heading": "Källa",
+      "modes": {
+        "repo": "Projektets repo",
+        "gitUrl": "Git-URL",
+        "localPath": "Lokal sökväg"
+      },
+      "repo": "Projektets repository",
+      "gitUrl": "URL till Git-repository",
+      "localPath": "Sökväg till lokal mapp",
+      "localPathPlaceholder": "~/sokvag/till/repository eller /Users/..."
+    },
+    "fetchAndScan": "Hämta och skanna",
+    "scan": "Skanna",
+    "scanning": "Skannar repository...",
+    "notScanned": "Välj en källa och skanna den för att se vad den innehåller.",
+    "empty": "Inget att importera hittades i det här repositoryt.",
+    "empty_skills": "Inga SKILL.md-filer hittades i det här repositoryt (.agents/skills, .gemini/skills, skills/ osv.).",
+    "empty_mcpServers": "Inga MCP-konfigurationsfiler (.mcp.json, mcp_config.json, .vscode/mcp.json) hittades.",
+    "discovered": "Hittade",
+    "discovered_skills": "Hittade anpassade skills",
+    "discovered_mcpServers": "Hittade MCP-servrar"
+  },
+  "vaultThemes": {
+    "title": "Team Vault-teman",
+    "createTitle": "Skapa anpassat tema",
+    "editTitle": "Redigera anpassat tema",
+    "close": "Stäng",
+    "cancel": "Avbryt",
+    "upload": "Ladda upp till Team Vault",
+    "newTheme": "Nytt anpassat tema",
+    "copyConfiguration": "Kopiera konfiguration",
+    "importConfiguration": "Importera konfiguration",
+    "defaults": {
+      "name": "Teamets varumärke",
+      "description": "Anpassat tema för teamets vault"
+    },
+    "tabs": {
+      "generator": "Temagenerator",
+      "themes_one": "Vault-teman ({{count}})",
+      "themes_other": "Vault-teman ({{count}})"
+    },
+    "fields": {
+      "name": "Temanamn",
+      "description": "Beskrivning",
+      "preset": "Förinställt tema",
+      "presetCustom": "Anpassat",
+      "mode": "Temaläge",
+      "fontFamily": "Typsnittsfamilj",
+      "fontSize": "Teckenstorlek",
+      "radius": "Hörnradie"
+    },
+    "mode": {
+      "light": "Ljust",
+      "dark": "Mörkt",
+      "lightBadge": "Ljust läge",
+      "darkBadge": "Mörkt läge"
+    },
+    "sections": {
+      "preview": "Förhandsvisning av komponenter",
+      "colors": "Färger",
+      "typography": "Typografi och layout"
+    },
+    "colorGroups": {
+      "main": "Huvudfärger",
+      "semantic": "Semantiska färger",
+      "ui": "Färger för gränssnittselement"
+    },
+    "radius": {
+      "none": "Ingen",
+      "small": "Liten",
+      "medium": "Mellan",
+      "large": "Stor",
+      "full": "Full"
+    },
+    "preview": {
+      "heading": "Interaktiv förhandsvisning",
+      "hint": "Direktförhandsvisning som följer färger, typografi och hörnradie",
+      "primary": "Primär",
+      "secondary": "Sekundär",
+      "outline": "Kontur",
+      "destructive": "Destruktiv",
+      "ghost": "Spöke",
+      "textField": "Textfält",
+      "switch": "Växlingsknapp",
+      "callout": "Rutor, fält och väljare ärver din hörnradie och dina färgvariabler.",
+      "metric": "Exempelmått",
+      "healthy": "Frisk"
+    },
+    "list": {
+      "loading": "Läser in vault-teman...",
+      "noDescription": "Anpassat tema",
+      "active": "Aktivt",
+      "apply": "Använd",
+      "edit": "Redigera",
+      "delete": "Ta bort {{name}}",
+      "count_one": "{{count}} anpassat tema i vaulten",
+      "count_other": "{{count}} anpassade teman i vaulten"
+    },
+    "empty": {
+      "title": "Inga anpassade teman i vaulten",
+      "body": "Teamets vault har inga anpassade teman än. Skapa ett med temageneratorn och ladda upp det."
+    },
+    "export": {
+      "title": "Exportera temakonfiguration",
+      "format": "Format",
+      "jsonHint": "Använd den här JSON-koden för att spara eller dela temat.",
+      "cssHint": "Klistra in den här CSS-koden i en värd för att använda temats färger.",
+      "copy": "Kopiera {{format}}"
+    },
+    "import": {
+      "title": "Importera temakonfiguration",
+      "description": "Klistra in en temakonfiguration i JSON för att importera dess färger, typografi och hörnradie.",
+      "fieldLabel": "Temakonfiguration",
+      "submit": "Importera tema",
+      "invalidJson": "Det är inte giltig JSON.",
+      "invalidShape": "Inga temafärger hittades: ett \"colors\"-objekt med \"light\" och/eller \"dark\" förväntades."
+    },
+    "deleteConfirm": {
+      "title": "Ta bort {{name}} från vaulten?",
+      "body": "Temat tas bort från vaultens repository för alla som använder det. Den som har det aktivt går tillbaka till standardtemat.",
+      "confirm": "Ta bort tema"
+    }
+  }
+}

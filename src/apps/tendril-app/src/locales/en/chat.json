@@ -22,11 +22,6 @@
   "composerAttachment": {
     "remove": "Remove {{name}}"
   },
-  "lightbox": {
-    "fallbackTitle": "Image preview",
-    "fallbackAlt": "Attachment preview",
-    "closeLabel": "Close preview"
-  },
   "newChatButtons": {
     "label": "New chat",
     "tooltip": "New chat",
@@ -149,19 +144,8 @@
     "afternoon": "Good Afternoon!",
     "evening": "Good Evening!"
   },
-  "deleteSession": {
-    "title": "Delete Session",
-    "body": "Are you sure you want to delete \"{{title}}\"? This action cannot be undone.",
-    "bodyUntitled": "Are you sure you want to delete this chat session? This action cannot be undone."
-  },
   "jobsReview": {
     "prompt": "Review the outcomes of the jobs this conversation started and tell me what changed:\n{{jobs}}"
-  },
-  "search": {
-    "title": "Search Chats",
-    "inputLabel": "Search chats",
-    "placeholder": "Search chats",
-    "empty": "No chats found."
   },
   "queue": {
     "title": "Queued Messages",

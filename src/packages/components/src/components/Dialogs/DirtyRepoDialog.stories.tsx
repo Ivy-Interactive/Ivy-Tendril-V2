@@ -111,3 +111,33 @@ export const CustomProceedLabel: Story = {
     proceedLabel: "Create Without Syncing",
   },
 };
+
+/**
+ * V1's `CreatePlanDialogLauncher` use: "Create Without Syncing", and a line per repo saying the plan
+ * is written against this state while ExecutePlan branches from `origin/<baseBranch>`.
+ */
+export const CreatePlanPurpose: Story = {
+  args: {
+    purpose: "createPlan",
+    dirtyRepos: [
+      repo("/repos/Ivy-Tendril-V2", ["M src/main.rs", "?? notes.txt"], {
+        baseBranch: "development",
+      }),
+    ],
+  },
+};
+
+/**
+ * With *Sync Repos* offered. Clicking it with local work present swaps in the SyncRepo policy
+ * dialog (see `Dialogs/SyncRepoDialog`).
+ */
+export const WithSyncRepos: Story = {
+  args: {
+    purpose: "createPlan",
+    onSyncRepos: () => {},
+    dirtyRepos: [
+      repo("/repos/Ivy-Tendril-V2", ["M src/main.rs"], { baseBranch: "development" }),
+      repo("/repos/Ivy-Framework", ["?? scratch.log"], { baseBranch: "main" }),
+    ],
+  },
+};

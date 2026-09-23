@@ -20,6 +20,15 @@ export interface AssetChecklistProps {
   scope?: string;
   /** The per-row kind badge (`Skill`, `MCP`, …) the original puts after every asset name. */
   itemBadge?: string;
+  /**
+   * Per-item badge and muted detail line, for a checklist whose rows differ — the repo-asset import
+   * shows where each item was found and what it is (`ImportRepoAssetsDialog.cs`'s
+   * `DiscoveredItemRowView(name, badgeText, description)`). A returned `badge` replaces
+   * {@link itemBadge} for that row.
+   */
+  describeItem?: (name: string) => { badge?: string; detail?: string };
+  /** Starts collapsed or open regardless of the item count; the default is open when non-empty. */
+  defaultOpen?: boolean;
 }
 
 /**
@@ -40,6 +49,8 @@ export const AssetChecklist: React.FC<AssetChecklistProps> = ({
   emptyText,
   scope,
   itemBadge,
+  describeItem,
+  defaultOpen,
 }) => {
   const { t } = useTranslation("uiVault");
   /* A scoped checklist names its scope in its labels, so two projects' controls stay apart. */
@@ -56,7 +67,7 @@ export const AssetChecklist: React.FC<AssetChecklistProps> = ({
   };
 
   return (
-    <Collapsible defaultOpen={items.length > 0} data-testid={`asset-group-${slug}`}>
+    <Collapsible defaultOpen={defaultOpen ?? items.length > 0} data-testid={`asset-group-${slug}`}>
       <CollapsibleTrigger className="group flex w-full items-center gap-2 rounded-box px-2 py-1 text-left text-xs text-foreground transition-colors hover:bg-secondary/60">
         {label}
         <Badge variant="secondary">{items.length}</Badge>
@@ -94,21 +105,30 @@ export const AssetChecklist: React.FC<AssetChecklistProps> = ({
             <ul className="space-y-1">
               {items.map((name) => {
                 const id = `asset-${slug}-${name}`;
+                const described = describeItem?.(name);
+                const badge = described?.badge ?? itemBadge;
                 return (
-                  <li key={name} className="flex items-center gap-2">
-                    <label
-                      className="flex items-center gap-2 text-xs text-foreground"
-                      htmlFor={id}
-                      data-testid={id}
-                    >
-                      <Checkbox
-                        id={id}
-                        checked={selectedSet.has(name)}
-                        onCheckedChange={(checked) => toggle(name, checked === true)}
-                      />
-                      {name}
-                    </label>
-                    {itemBadge && <Badge variant="outline">{itemBadge}</Badge>}
+                  <li key={name} className="space-y-0.5">
+                    <div className="flex items-center gap-2">
+                      <label
+                        className="flex items-center gap-2 text-xs text-foreground"
+                        htmlFor={id}
+                        data-testid={id}
+                      >
+                        <Checkbox
+                          id={id}
+                          checked={selectedSet.has(name)}
+                          onCheckedChange={(checked) => toggle(name, checked === true)}
+                        />
+                        {name}
+                      </label>
+                      {badge && <Badge variant="outline">{badge}</Badge>}
+                    </div>
+                    {described?.detail && (
+                      <p className="break-words pl-6 text-xs text-muted-foreground">
+                        {described.detail}
+                      </p>
+                    )}
                   </li>
                 );
               })}

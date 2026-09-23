@@ -102,10 +102,6 @@
     "planSearch": "Search plans",
     "showShortcuts": "Show keyboard shortcuts"
   },
-  "shortcutsHelp": {
-    "title": "Keyboard Shortcuts",
-    "empty": "No keyboard shortcuts are active."
-  },
   "updateCheck": {
     "available": {
       "title": "Update Available",
@@ -122,7 +118,8 @@
   "updateNotice": {
     "available": "v{{latest}} is available (you have v{{current}})",
     "copyCommand": "Copy Command",
-    "dismiss": "Dismiss"
+    "dismiss": "Dismiss",
+    "showDetails": "Show Details"
   },
   "offlineBanner": {
     "reconnecting": "Tendril-Service disconnected. Auto-reconnecting in {{seconds}}s...",
@@ -143,10 +140,6 @@
     "dismissNavError": "Dismiss navigation error"
   },
   "stopQueued": {
-    "title": "Stop Queued Jobs",
-    "body_one": "Stop {{count}} queued job? Running jobs are not affected.",
-    "body_other": "Stop all {{count}} queued jobs? Running jobs are not affected.",
-    "confirm": "Stop All",
     "toast": {
       "title": "Jobs",
       "description_one": "Stopped {{count}} queued job.",
@@ -154,10 +147,6 @@
     }
   },
   "stopAll": {
-    "title": "Stop All Jobs",
-    "body_one": "Stop {{count}} active job? Running agents are killed and their plans revert to their previous state. This cannot be undone.",
-    "body_other": "Stop all {{count}} active jobs? Running agents are killed and their plans revert to their previous state. This cannot be undone.",
-    "confirm": "Stop All",
     "toast": {
       "title": "Jobs Stopped",
       "description_one": "Stopped {{count}} job",

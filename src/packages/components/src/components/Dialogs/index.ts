@@ -15,7 +15,33 @@ export { DialogShell, DialogShortcutHint, type DialogShellProps } from "./Dialog
 export { ConfirmDialog, type ConfirmDialogProps, type ConfirmVariant } from "./ConfirmDialog";
 export { DIALOG_WIDTH, type DialogWidth } from "./fieldStyles";
 
-export { DirtyRepoDialog, type DirtyRepoDialogProps, type DirtyRepo } from "./DirtyRepoDialog";
+export {
+  DirtyRepoDialog,
+  type DirtyRepoDialogProps,
+  type DirtyRepo,
+  type DirtyRepoPurpose,
+} from "./DirtyRepoDialog";
+export { SyncRepoDialog, type SyncRepoDialogProps, type SyncRepoPolicy } from "./SyncRepoDialog";
+export {
+  CreatePlanDialog,
+  buildProjectOptions,
+  defaultProject,
+  ADD_PROJECT_VALUE,
+  AUTO_PROJECT,
+  MAX_PROJECTS_FOR_TOGGLE,
+  type CreatePlanDialogProps,
+  type CreatePlanUpload,
+  type ProjectOption,
+} from "./CreatePlanDialog";
+export {
+  RecommendationNoteDialog,
+  type RecommendationNoteDialogProps,
+} from "./RecommendationNoteDialog";
+export {
+  DialogAttachments,
+  type DialogAttachment,
+  type DialogAttachmentProps,
+} from "./DialogAttachments";
 export { NoProjectsDialog, type NoProjectsDialogProps } from "./NoProjectsDialog";
 export {
   PendingAnnotationsDialog,
@@ -76,3 +102,88 @@ export {
   type ViewerEvent,
   type SourceInfo,
 } from "./appComments";
+export {
+  ChatSearchDialog,
+  filterChatSessions,
+  MAX_CHAT_SEARCH_RESULTS,
+  type ChatSearchDialogProps,
+  type ChatSearchSession,
+} from "./ChatSearchDialog";
+export {
+  DeleteChatSessionDialog,
+  type DeleteChatSessionDialogProps,
+} from "./DeleteChatSessionDialog";
+export {
+  KeyboardShortcutsDialog,
+  type KeyboardShortcutsDialogProps,
+  type KeyboardShortcutEntry,
+} from "./KeyboardShortcutsDialog";
+export { ImageLightbox, type ImageLightboxProps, type LightboxImage } from "./ImageLightbox";
+export { UpdateTendrilDialog, type UpdateTendrilDialogProps } from "./UpdateTendrilDialog";
+export {
+  DeleteJobDialog,
+  StopQueuedJobsDialog,
+  StopAllJobsDialog,
+  ClearJobsDialog,
+  describeJobClearPrompt,
+  type DeleteJobDialogProps,
+  type StopJobsDialogProps,
+  type ClearJobsDialogProps,
+  type JobClearScopeKey,
+  type JobClearPrompt,
+} from "./JobConfirmDialogs";
+export { RerunJobDialog, rerunSupportsFeedback, type RerunJobDialogProps } from "./RerunJobDialog";
+export { ReportBugDialog, type ReportBugDialogProps } from "./ReportBugDialog";
+export { DebugWithAgentDialog, type DebugWithAgentDialogProps } from "./DebugWithAgentDialog";
+// Settings dialogs (V1 `Apps/Settings/Dialogs/`), and the named confirms Settings uses.
+export {
+  AgentTestDialog,
+  AgentTestDebugDialog,
+  type AgentTestDialogProps,
+  type AgentTestDebugDialogProps,
+  type AgentTestRow,
+  type AgentTestStatus,
+} from "./AgentTestDialog";
+export {
+  RemoveSettingsEntryDialog,
+  type RemoveSettingsEntryDialogProps,
+  type SettingsRemovalKind,
+  type SettingsRemovalSubject,
+} from "./RemoveSettingsEntryDialog";
+export {
+  DiscardConfigChangesDialog,
+  type DiscardConfigChangesDialogProps,
+} from "./DiscardConfigChangesDialog";
+export {
+  ImportRepoAssetsDialog,
+  type ImportRepoAssetsDialogProps,
+  type DiscoveredRepoAsset,
+  type RepoAssetKind,
+  type RepoAssetSourceMode,
+} from "./ImportRepoAssetsDialog";
+export {
+  VaultThemesDialog,
+  VaultThemeExportDialog,
+  VaultThemeImportDialog,
+  type VaultThemesDialogProps,
+  type VaultThemeExportDialogProps,
+  type VaultThemeImportDialogProps,
+  type VaultThemesTab,
+} from "./VaultThemesDialog";
+export {
+  VAULT_THEME_COLOR_GROUPS,
+  VAULT_THEME_RADII,
+  VAULT_THEME_TOKENS,
+  FALLBACK_THEME_COLORS,
+  completeColors,
+  exportThemeCss,
+  exportThemeJson,
+  parseThemeJson,
+  previewColorsFor,
+  themeFromPreset,
+  vaultThemeId,
+  type VaultTheme,
+  type VaultThemeDraft,
+  type VaultThemeRadius,
+  type ParsedTheme,
+} from "./vaultThemes";

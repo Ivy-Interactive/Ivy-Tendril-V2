@@ -59,7 +59,8 @@
       "hint": "The local repository path the issue is opened against, not an owner/name slug."
     },
     "assignee": {
-      "label": "Assignee"
+      "label": "Assignee",
+      "none": "No assignee"
     },
     "labels": {
       "label": "Labels",
@@ -68,7 +69,9 @@
     "comment": {
       "label": "Comment",
       "placeholder": "Extra context to append to the issue body…"
-    }
+    },
+    "metadataLoading": "Loading assignees and labels from GitHub…",
+    "metadataError": "Could not load assignees and labels from GitHub: {{error}}"
   },
   "createPr": {
     "title": "Create PR for #{{planId}}",
@@ -98,11 +101,22 @@
     },
     "reviewers": {
       "label": "Reviewers",
-      "hint": "Comma-separated GitHub logins. V2 has no separate assignee field — the CLI folds an assignee into the reviewer list, so these are the same channel."
+      "hint": "Comma-separated GitHub logins. V2 has no separate assignee field — the CLI folds an assignee into the reviewer list, so these are the same channel.",
+      "loadError": "Could not load reviewers from GitHub: {{error}}"
     },
     "comment": {
       "label": "Comment",
       "placeholder": "Anything the reviewer should know before reading the diff…"
+    },
+    "targetBranch": {
+      "label": "Target Branch",
+      "defaultOption": "{{branch}} (default)",
+      "repoDefault": "Each repository's base branch",
+      "custom": "+ Custom branch...",
+      "chooseFromList": "Choose from list",
+      "customPlaceholder": "Enter custom branch name...",
+      "customHint": "Pull request will target this custom branch instead of {{branch}}.",
+      "customHintRepoDefault": "Pull request will target this custom branch instead of each repository's base branch."
     }
   },
   "deleteProject": {
@@ -126,7 +140,14 @@
     "changeCount_one": "{{count}} uncommitted change",
     "changeCount_other": "{{count}} uncommitted changes",
     "moreChanges_one": "+{{count}} more",
-    "moreChanges_other": "+{{count}} more"
+    "moreChanges_other": "+{{count}} more",
+    "syncRepos": "Sync Repos",
+    "createPlan": {
+      "description_one": "⚠ {{count}} repository has uncommitted changes. The plan will be written against them.",
+      "description_other": "⚠ {{count}} repositories have uncommitted changes. The plan will be written against them.",
+      "proceed": "Create Without Syncing",
+      "context": "The plan will be based on this state, but ExecutePlan will branch from <code>{{branch}}</code>. Commit and push first if these changes should be included in the plan."
+    }
   },
   "jobDebug": {
     "title": "Job Debug",
@@ -217,7 +238,8 @@
     "confirm": "Delete",
     "body": "Are you sure you want to permanently delete plan #{{planId}}? This removes the plan folder, all revisions and all verification reports, and cannot be undone. To keep the folder, move the plan to Skipped or Icebox instead.",
     "skip": "Move to Skipped",
-    "archive": "Move to Icebox"
+    "archive": "Move to Icebox",
+    "bodyIcebox": "Are you sure you want to permanently delete plan #{{planId}}? This removes the plan folder, all revisions and all verification reports, and cannot be undone."
   },
   "planSearch": {
     "title": "Search Plans",
@@ -305,5 +327,51 @@
     "instructionsLabel": "Instructions",
     "instructionsAriaLabel": "Update instructions",
     "instructionsPlaceholder": "Fold in the answered questions, then narrow the scope to the guard chain only…"
+  },
+  "createPlan": {
+    "title": "Create New Plan",
+    "projectPickerLabel": "Target Project",
+    "autoProject": "Auto",
+    "addProject": "+ Add New Project",
+    "submit": "Create",
+    "placeholder": "Enter task description...",
+    "emptyDescription": "Please enter a description for the new plan.",
+    "continueInChat": "Chat with {{agent}}"
+  },
+  "recommendationNote": {
+    "submit": "Submit",
+    "accept": {
+      "title": "Accept Recommendation",
+      "ariaLabel": "Accept Recommendation",
+      "noteLabel": "Optional Operator Note:",
+      "noteAriaLabel": "Optional note",
+      "placeholder": "Enter optional notes..."
+    },
+    "decline": {
+      "title": "Decline Recommendation",
+      "ariaLabel": "Decline Recommendation",
+      "noteLabel": "Decline Reason:",
+      "noteAriaLabel": "Decline reason",
+      "placeholder": "Enter reason for declining..."
+    }
+  },
+  "syncRepo": {
+    "title": "SyncRepo",
+    "body": "How should SyncRepo handle your uncommitted changes? Commits will be pushed to <code>{{branch}}</code> and merge issues will be resolved.",
+    "body_untracked": "How should SyncRepo handle your untracked files? Commits will be pushed to <code>{{branch}}</code> and merge issues will be resolved.",
+    "body_both": "How should SyncRepo handle your uncommitted changes and untracked files? Commits will be pushed to <code>{{branch}}</code> and merge issues will be resolved.",
+    "bodyEachBranch": "How should SyncRepo handle your uncommitted changes? Commits will be pushed to each repo's base branch and merge issues will be resolved.",
+    "bodyEachBranch_untracked": "How should SyncRepo handle your untracked files? Commits will be pushed to each repo's base branch and merge issues will be resolved.",
+    "bodyEachBranch_both": "How should SyncRepo handle your uncommitted changes and untracked files? Commits will be pushed to each repo's base branch and merge issues will be resolved.",
+    "stash": "Stash Changes",
+    "commit": "Commit and Push",
+    "pullRequest": "Create PR"
+  },
+  "attachments": {
+    "label": "Attachments",
+    "attach": "Attach files",
+    "attaching": "Attaching…",
+    "remove": "Remove {{name}}",
+    "failed": "Could not attach {{name}}: {{error}}"
   }
 }

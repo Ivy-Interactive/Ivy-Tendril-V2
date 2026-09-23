@@ -2,14 +2,7 @@ import React from "react";
 import { useTranslation } from "@/i18n/uiVault";
 import { Button, type ButtonProps } from "../ui/button/button";
 import { Callout } from "../ui/callout";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "../ui/dialog";
+import { DialogShell } from "../Dialogs/DialogShell";
 
 export interface VaultDialogShellProps {
   open: boolean;
@@ -33,13 +26,15 @@ export interface VaultDialogShellProps {
  * action. Escape and the header close button cancel; submitting is always an explicit click, and a
  * server error never discards what was typed.
  *
- * Focus is moved onto the dialog itself rather than its first tabbable node, so opening a dialog
- * never lands on a destructive confirm.
- *
- * A click on the overlay does not dismiss, which is Framework's rule for every dialog it renders
+ * It composes `DialogShell`, the wrapper every lifecycle dialog in `Dialogs/` uses, so the vault
+ * dialogs get the same accessibility contract rather than a second copy of it: focus moves onto the
+ * dialog itself on open (no `initialFocusRef`, so opening a dialog never lands on a destructive
+ * confirm), focus returns to whatever opened it on close, Escape cancels, and a click on the overlay
+ * does not dismiss — Framework's rule for every dialog it renders
  * (`Ivy-Framework/src/frontend/src/widgets/dialogs/DialogWidget.tsx`: `onInteractOutside={(e) =>
- * e.preventDefault()}`). It matters most for `ConfirmVaultDeleteDialog`, where a stray click would
- * otherwise read as having declined, and for the form dialogs, where it would throw away input.
+ * e.preventDefault()}`). That last one matters most for `ConfirmVaultDeleteDialog`, where a stray
+ * click would otherwise read as having declined, and for the form dialogs, where it would throw away
+ * input.
  */
 export const VaultDialogShell: React.FC<VaultDialogShellProps> = ({
   open,
@@ -57,35 +52,14 @@ export const VaultDialogShell: React.FC<VaultDialogShellProps> = ({
 }) => {
   const { t } = useTranslation("uiVault");
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) onClose();
-      }}
-    >
-      <DialogContent
-        data-testid={testId}
-        aria-modal="true"
-        {...(description === undefined ? { "aria-describedby": undefined } : {})}
-        onInteractOutside={(event) => event.preventDefault()}
-        onOpenAutoFocus={(event) => {
-          event.preventDefault();
-          (event.currentTarget as HTMLElement | null)?.focus();
-        }}
-      >
-        <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
-          {description !== undefined && (
-            <DialogDescription className="mt-1">{description}</DialogDescription>
-          )}
-        </DialogHeader>
-
-        <div className="flex-1 space-y-4 overflow-y-auto px-6 pb-2 text-sm text-foreground">
-          {children}
-          {error && <Callout.Error data-testid={`${testId}-error`}>{error}</Callout.Error>}
-        </div>
-
-        <DialogFooter>
+    <DialogShell
+      isOpen={open}
+      onClose={onClose}
+      title={title}
+      description={description}
+      testId={testId}
+      footer={
+        <>
           <Button variant="outline" size="sm" onClick={onClose}>
             {t("dialogShell.cancel")}
           </Button>
@@ -99,8 +73,13 @@ export const VaultDialogShell: React.FC<VaultDialogShellProps> = ({
             {submitIcon}
             {submitLabel}
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        </>
+      }
+    >
+      <div className="space-y-4">
+        {children}
+        {error && <Callout.Error data-testid={`${testId}-error`}>{error}</Callout.Error>}
+      </div>
+    </DialogShell>
   );
 };

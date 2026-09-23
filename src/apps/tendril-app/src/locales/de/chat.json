@@ -22,11 +22,6 @@
   "composerAttachment": {
     "remove": "{{name}} entfernen"
   },
-  "lightbox": {
-    "fallbackTitle": "Bildvorschau",
-    "fallbackAlt": "Anhangsvorschau",
-    "closeLabel": "Vorschau schließen"
-  },
   "newChatButtons": {
     "label": "Neuer Chat",
     "tooltip": "Neuer Chat",
@@ -149,19 +144,8 @@
     "afternoon": "Guten Tag!",
     "evening": "Guten Abend!"
   },
-  "deleteSession": {
-    "title": "Sitzung löschen",
-    "body": "Möchten Sie „{{title}}“ wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
-    "bodyUntitled": "Möchten Sie diese Chat-Sitzung wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden."
-  },
   "jobsReview": {
     "prompt": "Prüfen Sie die Ergebnisse der Jobs, die diese Unterhaltung gestartet hat, und sagen Sie mir, was sich geändert hat:\n{{jobs}}"
-  },
-  "search": {
-    "title": "Chats durchsuchen",
-    "inputLabel": "Chats durchsuchen",
-    "placeholder": "Chats durchsuchen",
-    "empty": "Keine Chats gefunden."
   },
   "queue": {
     "title": "Nachrichten in Warteschlange",

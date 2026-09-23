@@ -1,1 +1,138 @@
-{}
+{
+  "actions": {
+    "cancel": "Cancel"
+  },
+  "costSheet": {
+    "loading": "Loading job details…",
+    "details": {
+      "model": "Model",
+      "provider": "Provider",
+      "type": "Type",
+      "profile": "Profile",
+      "agentCost": "Cost Reported by Agent"
+    },
+    "notProvided": "Not Provided",
+    "estimated": "~{{cost}}",
+    "noUsage": "No per-token breakdown was recorded for this job.",
+    "noUsage_total": "No per-token breakdown was recorded for this job, only a total of {{total}} tokens.",
+    "breakdown": {
+      "title": "Breakdown",
+      "tokenType": "Token type",
+      "tokens": "Tokens",
+      "total": "Total"
+    },
+    "buckets": {
+      "input": "Input",
+      "output": "Output",
+      "cacheRead": "Cache read",
+      "cacheWrite": "Cache write",
+      "reasoning": "Reasoning"
+    },
+    "totalCost": "Total cost"
+  },
+  "promptSheet": {
+    "title": "Full Prompt",
+    "empty": "This job recorded no prompt text."
+  },
+  "outputSheet": {
+    "noOutput": "No output available.",
+    "statusCallout": {
+      "title": "Job {{status}}",
+      "title_pending": "Job Pending",
+      "title_queued": "Job Queued",
+      "title_blocked": "Job Blocked",
+      "title_failed": "Job Failed",
+      "title_timeout": "Job Timeout",
+      "title_stopped": "Job Stopped",
+      "blocked": "Waiting for dependencies or preceding jobs to complete.",
+      "pending": "Job is queued and waiting to start."
+    }
+  },
+  "deleteJob": {
+    "title": "Delete Job",
+    "body": "Are you sure you want to delete this job? This cannot be undone.",
+    "confirm": "Delete"
+  },
+  "stopQueued": {
+    "title": "Stop Queued Jobs",
+    "body_one": "Stop {{count}} queued job? Running jobs are not affected.",
+    "body_other": "Stop all {{count}} queued jobs? Running jobs are not affected.",
+    "confirm": "Stop All"
+  },
+  "stopAll": {
+    "title": "Stop All Jobs",
+    "body_one": "Stop {{count}} active job? Running agents are killed and their plans revert to their previous state. This cannot be undone.",
+    "body_other": "Stop all {{count}} active jobs? Running agents are killed and their plans revert to their previous state. This cannot be undone.",
+    "confirm": "Stop All"
+  },
+  "clearJobs": {
+    "confirm": "Clear",
+    "confirmCount": "Clear {{count}}",
+    "scopes": {
+      "completed": {
+        "title": "Clear Completed",
+        "counting": "Counting completed jobs…",
+        "empty": "There are no completed jobs to clear.",
+        "confirm_one": "Delete {{count}} completed job? Their logs and output are removed with them, and this cannot be undone.",
+        "confirm_other": "Delete {{count}} completed jobs? Their logs and output are removed with them, and this cannot be undone."
+      },
+      "failed": {
+        "title": "Clear Failed",
+        "counting": "Counting failed jobs…",
+        "empty": "There are no failed jobs to clear.",
+        "confirm_one": "Delete {{count}} failed job? Their logs and output are removed with them, and this cannot be undone.",
+        "confirm_other": "Delete {{count}} failed jobs? Their logs and output are removed with them, and this cannot be undone."
+      },
+      "timeout": {
+        "title": "Clear Timeout",
+        "counting": "Counting timed-out jobs…",
+        "empty": "There are no timed-out jobs to clear.",
+        "confirm_one": "Delete {{count}} timed-out job? Their logs and output are removed with them, and this cannot be undone.",
+        "confirm_other": "Delete {{count}} timed-out jobs? Their logs and output are removed with them, and this cannot be undone."
+      },
+      "stopped": {
+        "title": "Clear Stopped",
+        "counting": "Counting stopped jobs…",
+        "empty": "There are no stopped jobs to clear.",
+        "confirm_one": "Delete {{count}} stopped job? Their logs and output are removed with them, and this cannot be undone.",
+        "confirm_other": "Delete {{count}} stopped jobs? Their logs and output are removed with them, and this cannot be undone."
+      },
+      "all": {
+        "title": "Clear All Finished",
+        "counting": "Counting finished jobs…",
+        "empty": "There are no finished jobs to clear.",
+        "confirm_one": "Delete {{count}} finished job? Their logs and output are removed with them, and this cannot be undone.",
+        "confirm_other": "Delete {{count}} finished jobs? Their logs and output are removed with them, and this cannot be undone."
+      }
+    }
+  },
+  "rerun": {
+    "title": "Rerun {{type}}",
+    "intro": "Optionally tell the agent what went wrong or what to do differently. Leave empty to rerun unchanged.",
+    "feedbackPlaceholder": "Feedback for the agent (Optional)",
+    "feedbackAriaLabel": "Feedback for the agent",
+    "unchanged": "Rerun this job with its original arguments?",
+    "confirm": "Rerun",
+    "busy": "Starting…"
+  },
+  "reportBug": {
+    "title": "Report Bug",
+    "intro": "Describe the issue. Job logs and a sanitized copy of your config (secrets removed) will be attached to a public GitHub issue.",
+    "descriptionPlaceholder": "What went wrong? How can we reproduce this?",
+    "descriptionAriaLabel": "Bug description",
+    "githubUserPlaceholder": "Your GitHub Username (Optional)",
+    "githubUserAriaLabel": "GitHub username",
+    "submit": "Send Report",
+    "busy": "Sending…"
+  },
+  "debugWithAgent": {
+    "title": "Debug with {{agent}}",
+    "focusPlaceholder": "Anything particular you want to look for? (Optional)",
+    "focusAriaLabel": "What to focus on",
+    "confirm": "Debug with {{agent}}"
+  },
+  "jobDebug": {
+    "reportBug": "Report Bug",
+    "debugWithAgent": "Debug with {{agent}}"
+  }
+}

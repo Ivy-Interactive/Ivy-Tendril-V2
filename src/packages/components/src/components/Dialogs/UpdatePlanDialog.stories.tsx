@@ -31,3 +31,29 @@ export const Busy: Story = { args: { isBusy: true } };
 export const Rejected: Story = {
   args: { error: "UpdatePlan is already running for plan 00412." },
 };
+
+/**
+ * V1's uploads: files staged for this update, referenced from the instructions and moved into the
+ * plan folder when UpdatePlan succeeds.
+ */
+export const WithAttachments: Story = {
+  args: {
+    onAttachFiles: () => {},
+    onRemoveAttachment: () => {},
+    attachments: [
+      { name: "login-flow.png", path: "C:/Users/dev/.tendril/Attachments/3f2a/login-flow.png" },
+      { name: "error.log", path: "C:/Users/dev/.tendril/Attachments/3f2a/error.log" },
+    ],
+  },
+};
+
+/** A pick is being staged. */
+export const Attaching: Story = { args: { onAttachFiles: () => {}, isAttaching: true } };
+
+/** A pick could not be staged. */
+export const AttachFailed: Story = {
+  args: {
+    onAttachFiles: () => {},
+    attachError: "'recording.mov' is larger than 16 MiB and cannot be attached",
+  },
+};

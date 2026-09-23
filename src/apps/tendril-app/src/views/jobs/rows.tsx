@@ -23,10 +23,10 @@ import {
 
 /**
  * The reason V1 gives when Rerun is invoked on a job whose original arguments were not preserved
- * (`JobsApp.DataTable.cs:235`). V1 raises it as a toast after the click because `TypedArgs` is null
- * only occasionally; here it is the permanent state of every job, because `JobDto`/`JobDetailDto`
- * (`src-tauri/src/models.rs`) do not carry `typedArgs` at all, so the entry is disabled and carries
- * the reason instead of pretending to work.
+ * (`JobsApp.DataTable.cs:235`). V1 raises it as a toast after the click. Here the daemon owns the
+ * rerun (`POST /api/jobs/:id/rerun`, which reads the args it stored) and answers a 409 with the same
+ * sentence for a job whose args it lost; the entry carries it only while the bridge cannot rerun at
+ * all (`canRerun` false), disabled rather than pretending to work.
  *
  * The English text, which is what the tests hold the entry to. The menu shows
  * `jobs:actions.rerun.unavailable`, in the current language; this constant is never rendered.
@@ -214,7 +214,15 @@ export function buildJobRows(jobs: readonly Job[], options: BuildJobRowsOptions 
 export interface JobRowActionCapabilities {
   canDelete: boolean;
   canForceStart: boolean;
+  /** `bridge.rerunJob` exists. Absent means it does not, and Rerun is offered disabled. */
+  canRerun?: boolean;
 }
+
+/**
+ * `RerunJobDialog.SupportsFeedback(TypedArgs)` for a Completed row, by job type: the three arg types
+ * feedback folds into. The daemon decides the same from the args themselves.
+ */
+const FEEDBACK_JOB_TYPES: ReadonlySet<string> = new Set(["ExecutePlan", "RetryPlan", "UpdatePlan"]);
 
 /**
  * `JobsApp.DataTable.cs` `RowActions`, in V1's order and with V1's labels, icons and tooltips:
@@ -223,10 +231,9 @@ export interface JobRowActionCapabilities {
  * - **Stop** covers every state a job can still be taken out of, not just the two already moving
  *   (`:183`, and `isActiveStatus` is the same set).
  * - **Rerun** is `CanRerun` (`JobsApp.Helpers.cs:235`): Failed, Timeout and Stopped unconditionally,
- *   and Completed only when the job's args support corrective feedback. `SupportsFeedback` returns
- *   false for a null `TypedArgs`, so with the DTO carrying none a Completed job is offered nothing -
- *   which is exactly what V1 would do with the same data - and the three failure states get the
- *   entry **disabled**, carrying {@link RERUN_UNAVAILABLE_REASON}.
+ *   and Completed only when the job's args support corrective feedback - by type, `ExecutePlan`,
+ *   `RetryPlan` or `UpdatePlan`. It opens `RerunJobDialog`. Without `bridge.rerunJob` the entry is
+ *   **disabled**, carrying {@link RERUN_UNAVAILABLE_REASON}.
  * - **Force Start** is Blocked-only (`:195`): its whole point is skipping the dependency gate.
  * - **Debug** (`:201`) is unconditional. V1 gates it on being passed a `showDebug`, and `JobsApp.cs:113`
  *   always passes one, so the gate has no false case in practice and there is none here. It opens
@@ -235,7 +242,7 @@ export interface JobRowActionCapabilities {
  *   needs the bridge to be able to perform it.
  */
 export function buildJobRowActions(
-  row: Pick<JobRow, "status">,
+  row: Pick<JobRow, "status"> & Partial<Pick<JobRow, "type">>,
   capabilities: JobRowActionCapabilities,
   t: TFunction<"jobs"> = jobsT,
 ): DataTableRowAction<JobRow>[] {
@@ -250,14 +257,28 @@ export function buildJobRowActions(
     });
   }
 
-  if (row.status === "Failed" || row.status === "Timeout" || row.status === "Stopped") {
-    items.push({
-      tag: "rerun-job",
-      label: t("actions.rerun.label"),
-      icon: <RotateCw aria-hidden="true" />,
-      tooltip: t("actions.rerun.unavailable"),
-      disabled: true,
-    });
+  const rerunnable =
+    row.status === "Failed" ||
+    row.status === "Timeout" ||
+    row.status === "Stopped" ||
+    (row.status === "Completed" && row.type !== undefined && FEEDBACK_JOB_TYPES.has(row.type));
+  if (rerunnable) {
+    items.push(
+      capabilities.canRerun
+        ? {
+            tag: "rerun-job",
+            label: t("actions.rerun.label"),
+            icon: <RotateCw aria-hidden="true" />,
+            tooltip: t("actions.rerun.tooltip"),
+          }
+        : {
+            tag: "rerun-job",
+            label: t("actions.rerun.label"),
+            icon: <RotateCw aria-hidden="true" />,
+            tooltip: t("actions.rerun.unavailable"),
+            disabled: true,
+          },
+    );
   }
 
   if (row.status === "Blocked" && capabilities.canForceStart) {

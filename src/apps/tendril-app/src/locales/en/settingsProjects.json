@@ -232,8 +232,7 @@
       "consequence": "Agents working on this project stop being given it. This removes the project's reference to it, not the skill's own files."
     },
     "saved": "Skill '{{name}}' saved",
-    "deleted": "Skill '{{name}}' deleted",
-    "memoryNote": "Project memories live as markdown files under {{path}}. The daemon exposes no route for them, so they cannot be edited here yet."
+    "deleted": "Skill '{{name}}' deleted"
   },
   "dangerZone": {
     "title": "Danger Zone",
@@ -355,5 +354,28 @@
     "environmentFile": "environment file",
     "mcpServer": "MCP server",
     "customSkill": "custom skill"
+  },
+  "importFromRepo": "Import from Repository",
+  "importedFromRepo_one": "Imported {{count}} item",
+  "importedFromRepo_other": "Imported {{count}} items",
+  "importedFromRepo_skills_one": "Imported {{count}} custom skill",
+  "importedFromRepo_skills_other": "Imported {{count}} custom skills",
+  "importedFromRepo_mcpServers_one": "Imported {{count}} MCP server",
+  "importedFromRepo_mcpServers_other": "Imported {{count}} MCP servers",
+  "memory": {
+    "title": "Project Memories",
+    "hint": "Markdown notes about this project (stack, rules, conventions), stored under {{path}}.",
+    "addButton": "Add Project Memory",
+    "columns": {
+      "file": "File",
+      "snippet": "Summary"
+    },
+    "empty": "No project memory files yet.",
+    "loadError": "Could not read the project's memories: {{error}}",
+    "saved": "Memory file '{{name}}' saved",
+    "deleted": "Memory file '{{name}}' deleted",
+    "removal": {
+      "consequence": "The file is deleted from the project's Memory folder."
+    }
   }
 }

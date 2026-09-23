@@ -88,10 +88,30 @@ export const planSearchRow = (
 
 export { MAX_PLAN_SEARCH_RESULTS, PLAN_SEARCH_DEBOUNCE_MS };
 
+/**
+ * Where a picked result opens - V1 `PlanSearchDialog.ResolveTarget`, "the app that owns the plan's
+ * current status": Draft and Blocked belong to Plans, Review and Failed to Review, Icebox to the
+ * Icebox. Every other status (Completed, Skipped, in flight) has no owning list; V1 then does
+ * nothing, and V2 opens the plan's own tab, which is the one place those plans can be read.
+ */
+export type PlanSearchDestination = "plan" | "review" | "icebox";
+
+export function planSearchDestination(state: string): PlanSearchDestination {
+  const normalized = normalizePlanState(state);
+  if (normalized === "Review" || normalized === "Failed") return "review";
+  if (normalized === "Icebox") return "icebox";
+  return "plan";
+}
+
 export interface PlanSearchDialogProps {
   isOpen: boolean;
   onClose: () => void;
+  /** Opens the plan's own tab: Draft and Blocked plans, and every status no list owns. */
   onSelectPlan: (planId: string) => void;
+  /** Opens a Review or Failed plan in Review. Omitted, those open in their tab too. */
+  onOpenReview?: (planId: string) => void;
+  /** Opens the Icebox for an iced plan. Omitted, it opens in its tab too. */
+  onOpenIcebox?: (planId: string) => void;
   /** The search. Defaults to `bridge.listPlans({ q })` over the daemon's `PlanSearch` FTS5 index. */
   search?: (query: string) => Promise<PlanSummary[]>;
 }
@@ -107,11 +127,31 @@ export interface PlanSearchDialogProps {
  * No `status` filter is sent, deliberately: inheriting one would leave exactly the plans this
  * dialog exists for unreachable.
  */
-export function PlanSearchDialog({ isOpen, onClose, onSelectPlan, search }: PlanSearchDialogProps) {
+export function PlanSearchDialog({
+  isOpen,
+  onClose,
+  onSelectPlan,
+  onOpenReview,
+  onOpenIcebox,
+  search,
+}: PlanSearchDialogProps) {
   const levelColors = useLevelColors();
   // The rows' badge labels are translated as they are built, so the search re-runs its rows when the
   // language - and with it `t` - changes.
   const { t } = useTranslation("plans");
+
+  /** The state of every result shown, so a pick can be routed by it (rows carry only the id). */
+  const statesById = React.useRef(new Map<string, string>());
+
+  const handleSelect = React.useCallback(
+    (planId: string) => {
+      const destination = planSearchDestination(statesById.current.get(planId) ?? "");
+      if (destination === "review" && onOpenReview) onOpenReview(planId);
+      else if (destination === "icebox" && onOpenIcebox) onOpenIcebox(planId);
+      else onSelectPlan(planId);
+    },
+    [onSelectPlan, onOpenReview, onOpenIcebox],
+  );
 
   const fetchPlans = React.useMemo(
     () => search ?? ((text: string) => bridge.listPlans({ q: text })),
@@ -121,6 +161,7 @@ export function PlanSearchDialog({ isOpen, onClose, onSelectPlan, search }: Plan
   const searchRows = React.useCallback(
     async (query: string): Promise<ShellSectionItemDto[]> => {
       const plans = await fetchPlans(query);
+      for (const plan of plans) statesById.current.set(plan.id, plan.state);
       return plans.map((plan) => planSearchRow(plan, levelColors));
     },
     [fetchPlans, levelColors, t],
@@ -130,7 +171,7 @@ export function PlanSearchDialog({ isOpen, onClose, onSelectPlan, search }: Plan
     <PlanSearchDialogView
       isOpen={isOpen}
       onClose={onClose}
-      onSelectPlan={onSelectPlan}
+      onSelectPlan={handleSelect}
       search={searchRows}
       describeError={describeBridgeError}
     />

@@ -81,6 +81,7 @@ beforeEach(() => {
     cachePath: "/home/user/.tendril/models.json",
   });
   vi.spyOn(bridge, "getServiceLogs").mockResolvedValue([]);
+  vi.spyOn(bridge, "listProjectMemory").mockResolvedValue([]);
 });
 
 afterEach(() => {

@@ -325,6 +325,7 @@ fn create_pr_emits_lowercase_flags_and_joined_reviewers() {
             reviewers: Some(vec!["alice".to_string(), "bob".to_string()]),
             comment: Some("Ready for review".to_string()),
             draft: false,
+            base_branch: None,
         }),
         &path,
     );
@@ -357,6 +358,7 @@ fn create_pr_omits_reviewers_when_the_list_is_empty() {
                 reviewers: reviewers.clone(),
                 comment: None,
                 draft: true,
+                base_branch: None,
             }),
             &path,
         );
@@ -827,4 +829,56 @@ fn plan_ids_come_from_the_folder_name_prefix() {
         extract_plan_id_from_folder(Path::new("/plans/007-Short")),
         None
     );
+}
+
+/// V1 `JobLauncher`: a Create PR dialog's Target Branch reaches the promptware twice - as
+/// `PrBaseBranch`, and as the `baseBranch` of every plan repo in `RepoConfigs`, which is the value the
+/// promptware opens and merges the PR against.
+#[test]
+fn create_pr_target_branch_overrides_every_plan_repo_base() {
+    let home = HomeFixture::new("fw-createpr-basebranch");
+    let mut plan = plan_with(PlanStatus::Review, &[]);
+    plan.repos = vec!["/repos/widgets".to_string()];
+    let folder = home.write_plan("00058-Thing", &plan);
+    let path = folder.to_string_lossy().to_string();
+
+    let job = job_for(
+        JobArgs::CreatePr(CreatePrArgs {
+            folder_path: path.clone(),
+            solve_merge_conflicts: true,
+            merge: true,
+            delete_branch: true,
+            include_artifacts: false,
+            reviewers: None,
+            comment: None,
+            draft: false,
+            base_branch: Some("  release/2.0 ".to_string()),
+        }),
+        &path,
+    );
+    let v = values(&job, &home);
+    assert_eq!(v.get("PrBaseBranch").unwrap(), "release/2.0");
+    assert!(v
+        .get("RepoConfigs")
+        .unwrap()
+        .contains("- path: /repos/widgets\n  baseBranch: release/2.0"));
+
+    // Blank is "no override": neither value changes.
+    let job = job_for(
+        JobArgs::CreatePr(CreatePrArgs {
+            folder_path: path.clone(),
+            solve_merge_conflicts: true,
+            merge: true,
+            delete_branch: true,
+            include_artifacts: false,
+            reviewers: None,
+            comment: None,
+            draft: false,
+            base_branch: Some("   ".to_string()),
+        }),
+        &path,
+    );
+    let v = values(&job, &home);
+    assert!(!v.contains_key("PrBaseBranch"));
+    assert!(v.get("RepoConfigs").unwrap().contains("baseBranch: main"));
 }

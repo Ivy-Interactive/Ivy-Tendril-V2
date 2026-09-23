@@ -1,16 +1,9 @@
 import React from "react";
 import {
-  Button,
-  IconButton,
-  Spinner,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@ivy-interactive/components/ui";
-import { Bug, CircleCheck, CircleDashed, CircleX, Info } from "lucide-react";
+  AgentTestDialog as AgentTestDialogView,
+  type AgentTestRow,
+  type AgentTestStatus,
+} from "@ivy-interactive/components/dialogs";
 
 import { agentsApi } from "../../api/agentsApi";
 import { i18n, useTranslation, type TFunction } from "../../i18n";
@@ -21,7 +14,6 @@ import type {
   ModelValidation,
   TestAgentResult,
 } from "../../types/agents";
-import { DialogShell } from "@ivy-interactive/components/dialogs";
 
 /**
  * `Apps/Settings/Dialogs/AgentTestDialog.cs`.
@@ -38,24 +30,15 @@ import { DialogShell } from "@ivy-interactive/components/dialogs";
  * mean an SSE channel for a dialog that is open for a few seconds, and the daemon has to run the
  * checks sequentially anyway - three real prompts fired at once at an account near its rate limit is
  * the thing that exhausts the quota.
- */
-
-/**
- * `enum TestStatus`.
  *
- * Its own union rather than a widened `DoctorCheckStatus`: that one is the three values a daemon
- * doctor check can return, several `Record<DoctorCheckStatus, ...>` maps are exhaustive over it, and
- * "pending" and "running" are states of *this dialog* rather than results a check can have.
+ * This file is the connected half. The table and the raw-output dialog behind each row's Bug button
+ * (`AgentTestDebugDialog.cs`) are `AgentTestDialog` in the component library, which renders the rows
+ * it is handed; running the checks, wording every verdict and abandoning a cancelled run stay here.
  */
-export type TestStatus = "pending" | "running" | "passed" | "failed" | "warning";
 
-export interface AgentTestRow {
-  label: string;
-  status: TestStatus;
-  message?: string;
-  /** The provider's own text, behind the row's Bug button. Absent when the check said nothing. */
-  rawOutput?: string;
-}
+/** `enum TestStatus`; the union is the library dialog's, so the rows built here are its rows. */
+export type TestStatus = AgentTestStatus;
+export type { AgentTestRow };
 
 /** `record TestModelEntry(string? Id, string DisplayName)`. */
 export interface TestModelEntry {
@@ -73,16 +56,6 @@ export interface TestModelEntry {
 function modelName(entry: TestModelEntry, t: TFunction<"settingsAgents">): string {
   return entry.id === "" ? t("test.defaultModel") : entry.displayName;
 }
-
-const STATUS_ICON: Record<TestStatus, React.ReactNode> = {
-  passed: <CircleCheck className="size-4 text-success" aria-hidden />,
-  failed: <CircleX className="size-4 text-destructive" aria-hidden />,
-  warning: <Info className="size-4 text-warning" aria-hidden />,
-  // `Icons.LoaderCircle.WithAnimation(AnimationType.Rotate)` is the bundle's one spinner here, so a
-  // running row and every other in-flight control in the app rotate identically.
-  running: <Spinner size="sm" className="text-muted-foreground" />,
-  pending: <CircleDashed className="size-4 text-muted-foreground" aria-hidden />,
-};
 
 /**
  * The row builders' `t` when the caller passes none - the unit tests, which call them directly.
@@ -348,7 +321,6 @@ export const AgentTestDialog: React.FC<AgentTestDialogProps> = ({
   const [run, setRun] = React.useState<TestRun | null>(null);
   const rows = React.useMemo(() => runRows(run, t), [run, t]);
   const [isTesting, setIsTesting] = React.useState(false);
-  const [rawOutput, setRawOutput] = React.useState<string | null>(null);
   /**
    * Bumped by close and by an agent change, and captured by each run. There is no cancel token to
    * hand the daemon - the request is already in flight and the probes it started are running on the
@@ -365,7 +337,6 @@ export const AgentTestDialog: React.FC<AgentTestDialogProps> = ({
     const thisRun = ++runId.current;
     const entries = modelsRef.current;
 
-    setRawOutput(null);
     setRun({ phase: "pending", entries });
     setIsTesting(true);
 
@@ -395,90 +366,8 @@ export const AgentTestDialog: React.FC<AgentTestDialogProps> = ({
     runId.current += 1;
     setIsTesting(false);
     setRun(null);
-    setRawOutput(null);
     onClose();
   };
 
-  return (
-    <>
-      <DialogShell
-        isOpen={isOpen}
-        onClose={close}
-        title={t("test.title")}
-        testId="agent-test-dialog"
-        width="rem40"
-        footer={
-          <Button type="button" variant="outline" data-testid="agent-test-close" onClick={close}>
-            {isTesting ? t("common:actions.cancel") : t("common:actions.close")}
-          </Button>
-        }
-      >
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-16" />
-              <TableHead>{t("test.columns.test")}</TableHead>
-              {/* `.ColumnWidth(r => r.Result, Size.Percent(60))`. */}
-              <TableHead className="w-[60%]">{t("test.columns.result")}</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {rows.map((row) => (
-              <TableRow key={row.label} data-testid={`agent-test-row-${row.status}`}>
-                <TableCell>
-                  <div className="flex items-center gap-1">
-                    {/* Screen readers get the status as a word; sighted users get the icon. */}
-                    <span title={t(`test.status.${row.status}`)}>
-                      <span className="sr-only">{t(`test.status.${row.status}`)}</span>
-                      {STATUS_ICON[row.status]}
-                    </span>
-                    {row.rawOutput !== undefined && (
-                      <IconButton
-                        label={t("test.showRawOutput")}
-                        size="xs"
-                        variant="outline"
-                        data-testid="agent-test-raw-output"
-                        onClick={() =>
-                          setRawOutput((current) =>
-                            current === row.rawOutput ? null : (row.rawOutput ?? null),
-                          )
-                        }
-                      >
-                        <Bug className="size-3" aria-hidden />
-                      </IconButton>
-                    )}
-                  </div>
-                </TableCell>
-                <TableCell>{row.label}</TableCell>
-                <TableCell className="text-muted-foreground">{row.message}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </DialogShell>
-
-      {/* `AgentTestDebugDialog`, a second dialog rather than an expanded row: the raw output is a
-          provider's stderr, which is routinely longer than the table it came from. */}
-      <DialogShell
-        isOpen={rawOutput !== null}
-        onClose={() => setRawOutput(null)}
-        title={t("test.rawOutputTitle")}
-        testId="agent-test-raw-dialog"
-        footer={
-          <Button
-            type="button"
-            variant="outline"
-            data-testid="agent-test-raw-close"
-            onClick={() => setRawOutput(null)}
-          >
-            {t("common:actions.close")}
-          </Button>
-        }
-      >
-        <pre className="whitespace-pre-wrap break-words rounded-field bg-muted p-3 font-mono text-xs">
-          {rawOutput}
-        </pre>
-      </DialogShell>
-    </>
-  );
+  return <AgentTestDialogView isOpen={isOpen} onClose={close} rows={rows} isTesting={isTesting} />;
 };

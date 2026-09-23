@@ -141,23 +141,6 @@
     "implementHint": "Nimmt die ausgewählten Empfehlungen an und versucht den Plan mit ihnen als Änderungsanfrage erneut.",
     "select": "{{title}} auswählen"
   },
-  "noteDialog": {
-    "submit": "Absenden",
-    "accept": {
-      "title": "Empfehlung annehmen",
-      "ariaLabel": "Empfehlung annehmen",
-      "noteLabel": "Optionale Notiz:",
-      "noteAriaLabel": "Optionale Notiz",
-      "placeholder": "Optionale Notizen eingeben…"
-    },
-    "decline": {
-      "title": "Empfehlung ablehnen",
-      "ariaLabel": "Empfehlung ablehnen",
-      "noteLabel": "Grund für die Ablehnung:",
-      "noteAriaLabel": "Grund für die Ablehnung",
-      "placeholder": "Grund für die Ablehnung eingeben…"
-    }
-  },
   "actionsBar": {
     "tooltip": {
       "barDisabled": "Deaktiviert: {{reason}}",

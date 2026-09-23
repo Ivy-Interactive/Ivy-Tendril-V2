@@ -141,23 +141,6 @@
     "implementHint": "Accepts the ticked recommendations and retries the plan with them as the change request.",
     "select": "Select {{title}}"
   },
-  "noteDialog": {
-    "submit": "Submit",
-    "accept": {
-      "title": "Accept Recommendation",
-      "ariaLabel": "Accept Recommendation",
-      "noteLabel": "Optional Operator Note:",
-      "noteAriaLabel": "Optional note",
-      "placeholder": "Enter optional notes..."
-    },
-    "decline": {
-      "title": "Decline Recommendation",
-      "ariaLabel": "Decline Recommendation",
-      "noteLabel": "Decline Reason:",
-      "noteAriaLabel": "Decline reason",
-      "placeholder": "Enter reason for declining..."
-    }
-  },
   "actionsBar": {
     "tooltip": {
       "barDisabled": "Disabled: {{reason}}",

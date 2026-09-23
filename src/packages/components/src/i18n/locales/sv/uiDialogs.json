@@ -59,7 +59,8 @@
       "hint": "Den lokala arkivsökväg som ärendet öppnas mot, inte en slug i formen ägare/namn."
     },
     "assignee": {
-      "label": "Tilldelad"
+      "label": "Tilldelad",
+      "none": "Ingen tilldelad"
     },
     "labels": {
       "label": "Etiketter",
@@ -68,7 +69,9 @@
     "comment": {
       "label": "Kommentar",
       "placeholder": "Ytterligare kontext att lägga till i ärendetexten…"
-    }
+    },
+    "metadataLoading": "Hämtar tilldelade och etiketter från GitHub…",
+    "metadataError": "Det gick inte att hämta tilldelade och etiketter från GitHub: {{error}}"
   },
   "createPr": {
     "title": "Skapa PR för #{{planId}}",
@@ -98,11 +101,22 @@
     },
     "reviewers": {
       "label": "Granskare",
-      "hint": "Kommaseparerade GitHub-användarnamn. V2 har inget separat fält för tilldelad — CLI:et lägger in den tilldelade i granskarlistan, så de går via samma kanal."
+      "hint": "Kommaseparerade GitHub-användarnamn. V2 har inget separat fält för tilldelad — CLI:et lägger in den tilldelade i granskarlistan, så de går via samma kanal.",
+      "loadError": "Det gick inte att hämta granskare från GitHub: {{error}}"
     },
     "comment": {
       "label": "Kommentar",
       "placeholder": "Sådant som granskaren bör känna till innan diffen läses…"
+    },
+    "targetBranch": {
+      "label": "Målgren",
+      "defaultOption": "{{branch}} (standard)",
+      "repoDefault": "Varje repos basgren",
+      "custom": "+ Egen gren...",
+      "chooseFromList": "Välj från listan",
+      "customPlaceholder": "Ange namn på egen gren...",
+      "customHint": "Pull requesten riktas mot den här egna grenen i stället för {{branch}}.",
+      "customHintRepoDefault": "Pull requesten riktas mot den här egna grenen i stället för varje repos basgren."
     }
   },
   "deleteProject": {
@@ -126,7 +140,14 @@
     "changeCount_one": "{{count}} ocommittad ändring",
     "changeCount_other": "{{count}} ocommittade ändringar",
     "moreChanges_one": "+{{count}} till",
-    "moreChanges_other": "+{{count}} till"
+    "moreChanges_other": "+{{count}} till",
+    "syncRepos": "Synka repon",
+    "createPlan": {
+      "description_one": "⚠ {{count}} repo har ändringar som inte är committade. Planen skrivs utifrån dem.",
+      "description_other": "⚠ {{count}} repon har ändringar som inte är committade. Planen skrivs utifrån dem.",
+      "proceed": "Skapa utan att synka",
+      "context": "Planen baseras på det här läget, men ExecutePlan skapar sin gren från <code>{{branch}}</code>. Committa och pusha först om ändringarna ska ingå i planen."
+    }
   },
   "jobDebug": {
     "title": "Jobbfelsökning",
@@ -217,7 +238,8 @@
     "confirm": "Ta bort",
     "body": "Vill du ta bort plan #{{planId}} permanent? Planmappen, alla revisioner och alla verifieringsrapporter tas bort, och det går inte att ångra. Om du vill behålla mappen kan du i stället markera planen som överhoppad eller lägga den på is.",
     "skip": "Markera som överhoppad",
-    "archive": "Lägg på is"
+    "archive": "Lägg på is",
+    "bodyIcebox": "Vill du verkligen ta bort plan #{{planId}} permanent? Planmappen, alla revisioner och alla verifieringsrapporter tas bort, och det går inte att ångra."
   },
   "planSearch": {
     "title": "Sök planer",
@@ -305,5 +327,51 @@
     "instructionsLabel": "Instruktioner",
     "instructionsAriaLabel": "Instruktioner för uppdateringen",
     "instructionsPlaceholder": "Arbeta in de besvarade frågorna och begränsa sedan omfattningen till enbart vaktkedjan…"
+  },
+  "createPlan": {
+    "title": "Skapa ny plan",
+    "projectPickerLabel": "Målprojekt",
+    "autoProject": "Automatiskt",
+    "addProject": "+ Lägg till nytt projekt",
+    "submit": "Skapa",
+    "placeholder": "Ange en uppgiftsbeskrivning…",
+    "emptyDescription": "Ange en beskrivning för den nya planen.",
+    "continueInChat": "Chatta med {{agent}}"
+  },
+  "recommendationNote": {
+    "submit": "Skicka",
+    "accept": {
+      "title": "Acceptera rekommendation",
+      "ariaLabel": "Acceptera rekommendation",
+      "noteLabel": "Valfri operatörsanteckning:",
+      "noteAriaLabel": "Valfri anteckning",
+      "placeholder": "Ange valfria anteckningar…"
+    },
+    "decline": {
+      "title": "Avvisa rekommendation",
+      "ariaLabel": "Avvisa rekommendation",
+      "noteLabel": "Anledning till avvisning:",
+      "noteAriaLabel": "Anledning till avvisning",
+      "placeholder": "Ange anledning till avvisningen…"
+    }
+  },
+  "syncRepo": {
+    "title": "SyncRepo",
+    "body": "Hur ska SyncRepo hantera dina ändringar som inte är committade? Commits pushas till <code>{{branch}}</code> och sammanslagningsproblem löses.",
+    "body_untracked": "Hur ska SyncRepo hantera dina ospårade filer? Commits pushas till <code>{{branch}}</code> och sammanslagningsproblem löses.",
+    "body_both": "Hur ska SyncRepo hantera dina ändringar som inte är committade och dina ospårade filer? Commits pushas till <code>{{branch}}</code> och sammanslagningsproblem löses.",
+    "bodyEachBranch": "Hur ska SyncRepo hantera dina ändringar som inte är committade? Commits pushas till varje repos basgren och sammanslagningsproblem löses.",
+    "bodyEachBranch_untracked": "Hur ska SyncRepo hantera dina ospårade filer? Commits pushas till varje repos basgren och sammanslagningsproblem löses.",
+    "bodyEachBranch_both": "Hur ska SyncRepo hantera dina ändringar som inte är committade och dina ospårade filer? Commits pushas till varje repos basgren och sammanslagningsproblem löses.",
+    "stash": "Stasha ändringar",
+    "commit": "Committa och pusha",
+    "pullRequest": "Skapa PR"
+  },
+  "attachments": {
+    "label": "Bilagor",
+    "attach": "Bifoga filer",
+    "attaching": "Bifogar…",
+    "remove": "Ta bort {{name}}",
+    "failed": "Det gick inte att bifoga {{name}}: {{error}}"
   }
 }

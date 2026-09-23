@@ -141,23 +141,6 @@
     "implementHint": "Accepterar de markerade rekommendationerna och gör ett nytt försök med planen med dem som ändringsförfrågan.",
     "select": "Välj {{title}}"
   },
-  "noteDialog": {
-    "submit": "Skicka",
-    "accept": {
-      "title": "Acceptera rekommendation",
-      "ariaLabel": "Acceptera rekommendation",
-      "noteLabel": "Valfri operatörsanteckning:",
-      "noteAriaLabel": "Valfri anteckning",
-      "placeholder": "Ange valfria anteckningar…"
-    },
-    "decline": {
-      "title": "Avvisa rekommendation",
-      "ariaLabel": "Avvisa rekommendation",
-      "noteLabel": "Anledning till avvisning:",
-      "noteAriaLabel": "Anledning till avvisning",
-      "placeholder": "Ange anledning till avvisningen…"
-    }
-  },
   "actionsBar": {
     "tooltip": {
       "barDisabled": "Inaktiverad: {{reason}}",

@@ -244,3 +244,24 @@ pub async fn cmd_resize_review_action(
 pub async fn cmd_close_review_action(session_id: String) -> Result<bool, BridgeError> {
     Ok(review_action_bridge::close(&session_id))
 }
+
+/// Uncommitted-change status of each of a project's repos, with its base branch — the create-plan
+/// dirty-repo preflight (V1 `CreatePlanDialogLauncher` / `UsePreflightCheck`).
+#[tauri::command]
+pub async fn cmd_get_project_repo_status(
+    project_name: String,
+) -> Result<Vec<crate::models::RepoStatusDto>, BridgeError> {
+    get_client_from_master()?
+        .get_project_repo_status(&project_name)
+        .await
+}
+
+/// `{ labels, assignees }` across a project's GitHub repos, for the Create Issue dialog's pickers.
+#[tauri::command]
+pub async fn cmd_get_project_issue_metadata(
+    project_name: String,
+) -> Result<serde_json::Value, BridgeError> {
+    get_client_from_master()?
+        .get_project_issue_metadata(&project_name)
+        .await
+}

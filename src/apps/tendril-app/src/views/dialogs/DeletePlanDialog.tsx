@@ -13,6 +13,11 @@ export interface DeletePlanDialogProps {
   onArchived?: (planId: string) => void;
   /** Called after the plan is moved to Skipped instead. */
   onSkipped?: (planId: string) => void;
+  /**
+   * `icebox` is V1's `Icebox/Dialogs/DeletePlanDialog`: a bare permanent-delete confirm, without the
+   * Skip/Icebox alternatives the Plans page offers.
+   */
+  variant?: "plans" | "icebox";
 }
 
 /**
@@ -29,6 +34,7 @@ export function DeletePlanDialog({
   onDeleted,
   onArchived,
   onSkipped,
+  variant = "plans",
 }: DeletePlanDialogProps) {
   const [isBusy, setIsBusy] = React.useState(false);
   const [error, setError] = React.useState<string | null>(null);
@@ -75,6 +81,7 @@ export function DeletePlanDialog({
       isOpen={isOpen}
       onClose={onClose}
       planId={plan.id}
+      variant={variant}
       onConfirm={handleDelete}
       onSkip={() => moveTo("Skipped")}
       onArchive={() => moveTo("Icebox")}

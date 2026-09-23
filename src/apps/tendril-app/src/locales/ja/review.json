@@ -140,23 +140,6 @@
     "implementHint": "チェックしたレコメンデーションを承認し、それらを変更リクエストとして計画を再試行します。",
     "select": "{{title}} を選択"
   },
-  "noteDialog": {
-    "submit": "送信",
-    "accept": {
-      "title": "レコメンデーションを承認",
-      "ariaLabel": "レコメンデーションを承認",
-      "noteLabel": "操作者メモ（任意）",
-      "noteAriaLabel": "メモ（任意）",
-      "placeholder": "メモを入力（任意）…"
-    },
-    "decline": {
-      "title": "レコメンデーションを却下",
-      "ariaLabel": "レコメンデーションを却下",
-      "noteLabel": "却下の理由",
-      "noteAriaLabel": "却下の理由",
-      "placeholder": "却下の理由を入力…"
-    }
-  },
   "actionsBar": {
     "tooltip": {
       "barDisabled": "無効：{{reason}}",

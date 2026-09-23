@@ -1,19 +1,16 @@
 import React from "react";
-import { ConfirmDialog } from "@ivy-interactive/components/dialogs";
-import { Trans, useTranslation } from "../../i18n";
+import {
+  RemoveSettingsEntryDialog,
+  type SettingsRemovalKind,
+} from "@ivy-interactive/components/dialogs";
 
 /**
- * The kinds of entry that have removal copy of their own, `settings:removal.title_<kind>` and
- * `settings:removal.body_<kind>`. They are ids, never shown: each language words a whole title and
- * question for each, because one that inflects cannot drop a noun into a fixed sentence.
+ * The kinds of entry that have removal copy of their own, `uiSettings:removal.title_<kind>` and
+ * `uiSettings:removal.body_<kind>` in the component library, where the dialog lives. They are ids,
+ * never shown: each language words a whole title and question for each, because one that inflects
+ * cannot drop a noun into a fixed sentence.
  */
-export type RemovalKind =
-  | "level"
-  | "repository"
-  | "reviewAction"
-  | "environmentFile"
-  | "mcpServer"
-  | "customSkill";
+export type RemovalKind = SettingsRemovalKind;
 
 /**
  * The English nouns callers have always passed as `kind`, each routed to its own copy. A caller that
@@ -70,20 +67,11 @@ function removalKindOf(
 /**
  * The confirm every destructive row action in Settings goes through.
  *
- * Framework's rule, from `Ivy-Framework/src/claude-plugin/skills/ivy-create-app/references/
- * DesignGuidelines.md:147`: "Confirm destructive actions: Use `.WithConfirm()` — **never delete on
- * single click**." Every `Delete` row action here used to write `config.yaml` on the click itself,
- * with no way back and no undo.
- *
- * It composes the same `ConfirmDialog` as the plan and job deletes, so the contract is identical:
- * Cancel first and focused, the destructive confirm last, nothing to type, Escape cancels, a click
- * outside does not dismiss.
- *
- * The copy is deliberately lighter than a plan deletion's. These are configuration entries — a level
- * or a skill reference can be added straight back from the same screen — so the body says what is
- * removed and where from, and does not borrow the language of something irreversible. Where removal
- * *does* reach further than the row (a review action's run order, an env file's variables), the
- * caller says so in `consequence`.
+ * The dialog itself is `RemoveSettingsEntryDialog` in the component library (and in Storybook); this
+ * hook is only the state that opens it and the callback it runs. Framework's rule, from
+ * `Ivy-Framework/src/claude-plugin/skills/ivy-create-app/references/DesignGuidelines.md:147`:
+ * "Confirm destructive actions: Use `.WithConfirm()` — **never delete on single click**." Every
+ * `Delete` row action here used to write `config.yaml` on the click itself, with no way back.
  *
  * Deliberately not a dialog *file* per section: `LevelsSection` notes that this area owns no dialog
  * files, and six near-identical ones would be six chances to drift apart.
@@ -94,7 +82,6 @@ export function useRemovalConfirm(): {
   /** Render once, anywhere in the section. */
   removalDialog: React.ReactNode;
 } {
-  const { t } = useTranslation("settings");
   const [request, setRequest] = React.useState<RemovalRequest | null>(null);
 
   const close = () => setRequest(null);
@@ -102,44 +89,17 @@ export function useRemovalConfirm(): {
 
   const removalDialog =
     request && kind ? (
-      <ConfirmDialog
+      <RemoveSettingsEntryDialog
         isOpen
         onClose={close}
-        // Framework's own titles are `Delete {Entity}` (`ProductsApp.cs:176`), capitalised. A known
-        // kind's title carries its own casing; only a caller's free-form noun is capitalised here.
-        title={
-          kind.kindId !== undefined
-            ? t("removal.title", { context: kind.kindId })
-            : t("removal.title", { kind: kind.noun.replace(/^./, (c) => c.toUpperCase()) })
-        }
-        testId="settings-remove-dialog"
-        confirmLabel={t("removal.confirm")}
-        confirmVariant="destructive"
+        subject={kind.kindId !== undefined ? { kindId: kind.kindId } : { noun: kind.noun }}
+        name={request.name}
+        consequence={request.consequence}
         onConfirm={() => {
           // Closed first: the write is synchronous from here and the dialog has nothing left to report.
           close();
           request.onConfirm();
         }}
-        body={
-          <>
-            <p>
-              <Trans
-                ns="settings"
-                i18nKey="removal.body"
-                context={kind.kindId}
-                values={
-                  kind.kindId !== undefined
-                    ? { name: request.name }
-                    : { kind: kind.noun, name: request.name }
-                }
-                components={{ name: <span className="text-foreground" /> }}
-              />
-            </p>
-            {request.consequence !== undefined && (
-              <p className="text-muted-foreground">{request.consequence}</p>
-            )}
-          </>
-        }
       />
     ) : null;
 

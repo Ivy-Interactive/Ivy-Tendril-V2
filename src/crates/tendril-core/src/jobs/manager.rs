@@ -21,6 +21,7 @@ mod internals;
 mod maintenance;
 mod plan_state;
 mod progress;
+mod rerun;
 mod runner;
 mod supervision;
 mod termination;
@@ -38,6 +39,7 @@ pub use plan_state::{
     apply_plan_state, fallback_previous_state, in_flight_plan_state, plan_state_on_success,
     revert_plan_state, revert_target, sync_plan_state_to_db,
 };
+pub use rerun::{build_rerun_args, can_rerun, supports_feedback};
 pub use supervision::{stuck_job_reason, STUCK_JOB_HARD_CAP_MARGIN, STUCK_JOB_REAP_GRACE};
 pub use termination::CLEARABLE_STATUSES;
 pub use usage::extract_and_record_usage;

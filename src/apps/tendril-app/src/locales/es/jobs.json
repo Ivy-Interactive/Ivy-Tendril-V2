@@ -75,6 +75,7 @@
     },
     "rerun": {
       "label": "Volver a ejecutar",
+      "tooltip": "Volver a ejecutar este trabajo",
       "unavailable": "No se puede volver a ejecutar: no se conservaron los argumentos originales."
     },
     "forceStart": {
@@ -94,11 +95,8 @@
   "errors": {
     "stopFailed": "Error al detener: {{error}}",
     "forceStartFailed": "Error al forzar el inicio: {{error}}",
+    "rerunFailed": "No se pudo volver a ejecutar: {{error}}",
     "deleteFailed": "Error al eliminar: {{error}}"
-  },
-  "deleteDialog": {
-    "title": "Eliminar trabajo",
-    "body": "¿Seguro que quieres eliminar este trabajo? Esta acción no se puede deshacer."
   },
   "statusMessage": {
     "blocked": "Esperando a que se completen los planes de los que depende.",
@@ -135,88 +133,30 @@
     "tokens": "Tokens {{tokens}}",
     "cost": "Coste {{cost}}",
     "closeTab": "Cerrar pestaña de la sesión",
-    "noOutput": "No hay salida disponible.",
-    "statusCallout": {
-      "title": "Trabajo: {{status}}",
-      "title_pending": "Trabajo pendiente",
-      "title_queued": "Trabajo en cola",
-      "title_blocked": "Trabajo bloqueado",
-      "title_failed": "Trabajo fallido",
-      "title_timeout": "Trabajo con tiempo agotado",
-      "title_stopped": "Trabajo detenido"
-    }
+    "noOutput": "No hay salida disponible."
   },
   "costSheet": {
     "title": "Costes y tokens",
-    "titleWithPlan": "Costes y tokens — {{planId}}",
-    "details": {
-      "model": "Modelo",
-      "provider": "Proveedor",
-      "type": "Tipo",
-      "profile": "Perfil",
-      "agentCost": "Coste informado por el agente"
-    },
-    "notProvided": "No proporcionado",
-    "noUsage": "No se registró ningún desglose por token para este trabajo.",
-    "noUsage_total": "No se registró ningún desglose por token para este trabajo, solo un total de {{total}} tokens.",
-    "breakdown": {
-      "title": "Desglose",
-      "tokenType": "Tipo de token",
-      "tokens": "Tokens",
-      "total": "Total"
-    },
-    "totalCost": "Coste total"
-  },
-  "promptSheet": {
-    "title": "Prompt completo",
-    "empty": "Este trabajo no registró ningún texto de prompt."
+    "titleWithPlan": "Costes y tokens — {{planId}}"
   },
   "clear": {
-    "dialogTitle": "Limpiar trabajos",
-    "confirm": "Limpiar",
-    "confirmCount": "Limpiar {{count}}",
     "countFailed": "No se pudieron contar los trabajos: {{error}}",
     "failed": "Error al limpiar: {{error}}",
     "scopes": {
       "completed": {
-        "label": "Limpiar completados",
-        "counting": "Contando trabajos completados…",
-        "empty": "No hay trabajos completados que limpiar.",
-        "confirm_one": "¿Eliminar {{count}} trabajo completado? Sus registros y su salida se eliminan con él, y esta acción no se puede deshacer.",
-        "confirm_other": "¿Eliminar {{count}} trabajos completados? Sus registros y su salida se eliminan con ellos, y esta acción no se puede deshacer.",
-        "confirm_many": "¿Eliminar {{count}} trabajos completados? Sus registros y su salida se eliminan con ellos, y esta acción no se puede deshacer."
+        "label": "Limpiar completados"
       },
       "failed": {
-        "label": "Limpiar fallidos",
-        "counting": "Contando trabajos fallidos…",
-        "empty": "No hay trabajos fallidos que limpiar.",
-        "confirm_one": "¿Eliminar {{count}} trabajo fallido? Sus registros y su salida se eliminan con él, y esta acción no se puede deshacer.",
-        "confirm_other": "¿Eliminar {{count}} trabajos fallidos? Sus registros y su salida se eliminan con ellos, y esta acción no se puede deshacer.",
-        "confirm_many": "¿Eliminar {{count}} trabajos fallidos? Sus registros y su salida se eliminan con ellos, y esta acción no se puede deshacer."
+        "label": "Limpiar fallidos"
       },
       "timeout": {
-        "label": "Limpiar con tiempo agotado",
-        "counting": "Contando trabajos con tiempo agotado…",
-        "empty": "No hay trabajos con tiempo agotado que limpiar.",
-        "confirm_one": "¿Eliminar {{count}} trabajo con tiempo agotado? Sus registros y su salida se eliminan con él, y esta acción no se puede deshacer.",
-        "confirm_other": "¿Eliminar {{count}} trabajos con tiempo agotado? Sus registros y su salida se eliminan con ellos, y esta acción no se puede deshacer.",
-        "confirm_many": "¿Eliminar {{count}} trabajos con tiempo agotado? Sus registros y su salida se eliminan con ellos, y esta acción no se puede deshacer."
+        "label": "Limpiar con tiempo agotado"
       },
       "stopped": {
-        "label": "Limpiar detenidos",
-        "counting": "Contando trabajos detenidos…",
-        "empty": "No hay trabajos detenidos que limpiar.",
-        "confirm_one": "¿Eliminar {{count}} trabajo detenido? Sus registros y su salida se eliminan con él, y esta acción no se puede deshacer.",
-        "confirm_other": "¿Eliminar {{count}} trabajos detenidos? Sus registros y su salida se eliminan con ellos, y esta acción no se puede deshacer.",
-        "confirm_many": "¿Eliminar {{count}} trabajos detenidos? Sus registros y su salida se eliminan con ellos, y esta acción no se puede deshacer."
+        "label": "Limpiar detenidos"
       },
       "all": {
-        "label": "Limpiar todos los finalizados",
-        "counting": "Contando trabajos finalizados…",
-        "empty": "No hay trabajos finalizados que limpiar.",
-        "confirm_one": "¿Eliminar {{count}} trabajo finalizado? Sus registros y su salida se eliminan con él, y esta acción no se puede deshacer.",
-        "confirm_other": "¿Eliminar {{count}} trabajos finalizados? Sus registros y su salida se eliminan con ellos, y esta acción no se puede deshacer.",
-        "confirm_many": "¿Eliminar {{count}} trabajos finalizados? Sus registros y su salida se eliminan con ellos, y esta acción no se puede deshacer."
+        "label": "Limpiar todos los finalizados"
       }
     }
   },

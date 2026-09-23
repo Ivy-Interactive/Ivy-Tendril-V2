@@ -193,6 +193,7 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route("/api/jobs/maintenance", post(jobs::run_maintenance))
         .route("/api/jobs/:id", get(jobs::get_job).delete(jobs::delete_job))
         .route("/api/jobs/:id/force-start", post(jobs::force_start_job))
+        .route("/api/jobs/:id/rerun", post(jobs::rerun_job))
         .route("/api/jobs/:id/status", put(jobs::update_job_status))
         .route("/api/jobs/:id/fail", put(jobs::report_job_failure))
         .route("/api/jobs/:id/cancel", post(jobs::cancel_job))
@@ -252,6 +253,12 @@ pub fn create_router(state: Arc<AppState>) -> Router {
             "/api/projects/:name/sync",
             post(projects::sync_project_repos),
         )
+        // The create-plan preflight's dirty-repo read (V1 `UsePreflightCheck`), with each repo's base
+        // branch so a SyncRepo job can be chained from it.
+        .route(
+            "/api/projects/:name/repo-status",
+            get(projects::project_repo_status),
+        )
         .route(
             "/api/projects/:name/verifications",
             post(projects::add_project_verification).put(projects::move_project_verification_route),
@@ -291,6 +298,27 @@ pub fn create_router(state: Arc<AppState>) -> Router {
         .route(
             "/api/projects/:name/hooks/:hook",
             delete(projects::remove_project_hook),
+        )
+        // A project's memory files (`<TENDRIL_HOME>/Projects/<Project>/Memory/*.md`), V1's
+        // `ProjectMemoryTableView` + `EditProjectMemorySheet`; see `projects::memory`.
+        .route(
+            "/api/projects/:name/memory",
+            get(projects::list_project_memory),
+        )
+        .route(
+            "/api/projects/:name/memory/:file",
+            get(projects::get_project_memory)
+                .put(projects::put_project_memory)
+                .delete(projects::delete_project_memory),
+        )
+        // V1's `ImportRepoAssetsDialog`: scan a repo for skills or MCP servers, then import a subset.
+        .route(
+            "/api/projects/:name/repo-assets/scan",
+            post(projects::scan_project_repo_assets),
+        )
+        .route(
+            "/api/projects/:name/repo-assets/import",
+            post(projects::import_project_repo_assets),
         )
         // Vaults. `:id` accepts the literal `default` for the primary vault, so the static
         // `discover` and `accounts` segments are declared alongside it rather than under it.

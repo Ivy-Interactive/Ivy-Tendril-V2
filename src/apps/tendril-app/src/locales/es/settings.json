@@ -169,7 +169,11 @@
       "saved_chat": "Chat se abre como chat",
       "saved_terminal": "Chat se abre como terminal"
     },
-    "vaultThemesNote": "Los temas publicados por un Team Vault no aparecen: el subsistema de temas de vault no forma parte de esta compilación, así que solo se ofrecen los preajustes incluidos."
+    "vaultThemesNote": "Los temas publicados por un Team Vault no aparecen: el subsistema de temas de vault no forma parte de esta compilación, así que solo se ofrecen los preajustes incluidos.",
+    "vaultThemes": {
+      "openGenerator": "Abrir el generador de temas",
+      "uploadUnavailable": "Publicar temas en un Team Vault aún no está disponible en esta versión. Usa Copiar configuración para compartir un tema como JSON."
+    }
   },
   "levels": {
     "title": "Niveles de prioridad",
@@ -198,23 +202,6 @@
     "removeConsequence": "Los planes ya clasificados con este nivel conservan el nombre en su plan.yaml; simplemente deja de ser uno de los niveles disponibles.",
     "noEffect": "Los niveles se guardan en config.yaml y se anuncian por MCP, pero nada en esta aplicación los lee todavía, así que editarlos aquí no cambia ningún comportamiento visible."
   },
-  "removal": {
-    "title": "Quitar {{kind}}",
-    "title_level": "Quitar nivel",
-    "title_repository": "Quitar repositorio",
-    "title_reviewAction": "Quitar acción de revisión",
-    "title_environmentFile": "Quitar archivo de entorno",
-    "title_mcpServer": "Quitar servidor MCP",
-    "title_customSkill": "Quitar skill personalizada",
-    "body": "¿Quitar {{kind}} <name>{{name}}</name> de esta configuración?",
-    "body_level": "¿Quitar el nivel <name>{{name}}</name> de esta configuración?",
-    "body_repository": "¿Quitar el repositorio <name>{{name}}</name> de esta configuración?",
-    "body_reviewAction": "¿Quitar la acción de revisión <name>{{name}}</name> de esta configuración?",
-    "body_environmentFile": "¿Quitar el archivo de entorno <name>{{name}}</name> de esta configuración?",
-    "body_mcpServer": "¿Quitar el servidor MCP <name>{{name}}</name> de esta configuración?",
-    "body_customSkill": "¿Quitar la skill personalizada <name>{{name}}</name> de esta configuración?",
-    "confirm": "Quitar"
-  },
   "fields": {
     "colorsLabel": "Colores",
     "chooseColor": "Elegir color",
@@ -240,12 +227,7 @@
     "maskedNote_many": "{{count}} valores secretos se muestran como {{mask}}. Deja un marcador tal cual para conservar el valor guardado; escribe encima para establecer uno nuevo.",
     "maskedNote_other": "{{count}} valores secretos se muestran como {{mask}}. Deja un marcador tal cual para conservar el valor guardado; escribe encima para establecer uno nuevo.",
     "conflictReload": "Recargar desde el disco",
-    "reload": "Recargar desde el disco",
-    "discard": {
-      "title": "Descartar cambios sin guardar",
-      "confirm": "Descartar y recargar",
-      "body": "Al recargar, el contenido del editor se sustituye por el archivo del disco. Se perderán las ediciones que no hayas guardado."
-    }
+    "reload": "Recargar desde el disco"
   },
   "security": {
     "title": "Seguridad y túneles",

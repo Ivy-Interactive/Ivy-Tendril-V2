@@ -232,8 +232,7 @@
       "consequence": "Agenter som arbetar med projektet får den inte längre. Det här tar bort projektets referens till färdigheten, inte färdighetens egna filer."
     },
     "saved": "Färdigheten ”{{name}}” har sparats",
-    "deleted": "Färdigheten ”{{name}}” har tagits bort",
-    "memoryNote": "Projektminnen sparas som Markdown-filer under {{path}}. Daemonen exponerar ingen API-väg för dem, så de kan inte redigeras här än."
+    "deleted": "Färdigheten ”{{name}}” har tagits bort"
   },
   "dangerZone": {
     "title": "Farozon",
@@ -355,5 +354,28 @@
     "environmentFile": "miljöfil",
     "mcpServer": "MCP-server",
     "customSkill": "anpassad färdighet"
+  },
+  "importFromRepo": "Importera från repository",
+  "importedFromRepo_one": "Importerade {{count}} objekt",
+  "importedFromRepo_other": "Importerade {{count}} objekt",
+  "importedFromRepo_skills_one": "Importerade {{count}} anpassad skill",
+  "importedFromRepo_skills_other": "Importerade {{count}} anpassade skills",
+  "importedFromRepo_mcpServers_one": "Importerade {{count}} MCP-server",
+  "importedFromRepo_mcpServers_other": "Importerade {{count}} MCP-servrar",
+  "memory": {
+    "title": "Projektminnen",
+    "hint": "Markdown-anteckningar om projektet (stack, regler, konventioner), sparade under {{path}}.",
+    "addButton": "Lägg till projektminne",
+    "columns": {
+      "file": "Fil",
+      "snippet": "Sammanfattning"
+    },
+    "empty": "Projektet har inga minnesfiler än.",
+    "loadError": "Det gick inte att läsa projektets minnen: {{error}}",
+    "saved": "Minnesfilen '{{name}}' sparades",
+    "deleted": "Minnesfilen '{{name}}' togs bort",
+    "removal": {
+      "consequence": "Filen tas bort från projektets Memory-mapp."
+    }
   }
 }

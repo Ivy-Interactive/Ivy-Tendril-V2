@@ -8,6 +8,11 @@ interface UpdateNoticeProps {
   dismissedVersion: string | null;
   onDismiss: (version: string) => void;
   onCopyCommand: () => void;
+  /**
+   * Opens `UpdateTendrilDialog` (V1 `UpdateNoticeView`'s "Show Details", which opens
+   * `AppShell/Dialogs/UpdateTendrilDialog.cs`). Absent, the banner has no such button.
+   */
+  onShowDetails?: () => void;
 }
 
 export const UpdateNotice: React.FC<UpdateNoticeProps> = ({
@@ -15,6 +20,7 @@ export const UpdateNotice: React.FC<UpdateNoticeProps> = ({
   dismissedVersion,
   onDismiss,
   onCopyCommand,
+  onShowDetails,
 }) => {
   const { t } = useTranslation("common");
   if (!info || !info.hasUpdate || !info.latestVersion) return null;
@@ -40,6 +46,18 @@ export const UpdateNotice: React.FC<UpdateNoticeProps> = ({
             `Button`'s own `info` variant, which would paint a solid fill inside an already tinted
             strip. What they take from `Button` is the shape, the height, the focus ring and the
             disabled behaviour — the parts that were being redrawn by hand at every call site. */}
+        {onShowDetails && (
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            onClick={onShowDetails}
+            data-testid="update-notice-details"
+            className="bg-info/60 text-xs text-info hover:bg-info/90 hover:text-info"
+          >
+            {t("updateNotice.showDetails")}
+          </Button>
+        )}
         <Button
           type="button"
           size="sm"

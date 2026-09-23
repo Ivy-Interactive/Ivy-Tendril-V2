@@ -56,6 +56,12 @@ export interface PlanGitViewProps {
   prs?: string[];
   planState?: string;
   onOpenUrl?: (url: string) => void;
+  /**
+   * Opens a commit's detail sheet - V1's `GitTabView` `hash => openCommit.Set(hash)`
+   * (`Plans/ContentView.cs:336`). With it the short hash in every commit table is a button; without
+   * it the hash is plain text, as before.
+   */
+  onOpenCommit?: (hash: string) => void;
 }
 
 /** The commands the at-risk banner quotes. Commands, so never translated. */
@@ -138,7 +144,8 @@ const Hashes: React.FC<{ rows: PlanCommitRow[] }> = ({ rows }) => {
 const CommitTable: React.FC<{
   rows: PlanCommitRow[];
   statusOf?: (hash: string) => CommitRefStatus | undefined;
-}> = ({ rows, statusOf }) => {
+  onOpenCommit?: (hash: string) => void;
+}> = ({ rows, statusOf, onOpenCommit }) => {
   const { t } = useTranslation("uiPlanWorkspace");
   return (
     <table className="mt-3 w-full text-left text-sm">
@@ -161,7 +168,19 @@ const CommitTable: React.FC<{
           return (
             <tr key={row.hash} className="border-t border-border/50">
               <td className="py-1 pr-3 align-top font-mono text-xs text-muted-foreground">
-                <span title={row.hash}>{row.shortHash}</span>
+                {onOpenCommit ? (
+                  <button
+                    type="button"
+                    title={row.hash}
+                    data-testid={`git-commit-${row.shortHash}`}
+                    onClick={() => onOpenCommit(row.hash)}
+                    className="font-mono text-primary hover:underline"
+                  >
+                    {row.shortHash}
+                  </button>
+                ) : (
+                  <span title={row.hash}>{row.shortHash}</span>
+                )}
               </td>
               <td className="py-1 pr-3 align-top text-foreground">
                 {row.title || (
@@ -210,6 +229,7 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
   prs = [],
   planState,
   onOpenUrl,
+  onOpenCommit,
 }) => {
   const { t } = useTranslation("uiPlanWorkspace");
   const statusOf = useCallback(
@@ -331,7 +351,7 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
                 )}
 
                 {worktree.commits.length > 0 ? (
-                  <CommitTable rows={worktree.commits} />
+                  <CommitTable rows={worktree.commits} onOpenCommit={onOpenCommit} />
                 ) : (
                   <Card className="mt-3 flex flex-col items-center gap-1 p-3 text-center">
                     <GitCommitHorizontal
@@ -357,7 +377,11 @@ export const PlanGitView: React.FC<PlanGitViewProps> = ({
           <p className="mt-1 text-xs text-muted-foreground/70">
             {t("gitView.commits.description")}
           </p>
-          <CommitTable rows={data.unassociatedCommits} statusOf={statusOf} />
+          <CommitTable
+            rows={data.unassociatedCommits}
+            statusOf={statusOf}
+            onOpenCommit={onOpenCommit}
+          />
         </section>
       )}
 

@@ -75,6 +75,7 @@
     },
     "rerun": {
       "label": "重新运行",
+      "tooltip": "重新运行此任务",
       "unavailable": "无法重新运行：未保留原始参数。"
     },
     "forceStart": {
@@ -94,11 +95,8 @@
   "errors": {
     "stopFailed": "停止失败：{{error}}",
     "forceStartFailed": "强制启动失败：{{error}}",
+    "rerunFailed": "重新运行失败：{{error}}",
     "deleteFailed": "删除失败：{{error}}"
-  },
-  "deleteDialog": {
-    "title": "删除任务",
-    "body": "确定要删除此任务吗？此操作无法撤销。"
   },
   "statusMessage": {
     "blocked": "正在等待依赖计划完成。",
@@ -135,78 +133,30 @@
     "tokens": "Token {{tokens}}",
     "cost": "成本 {{cost}}",
     "closeTab": "关闭会话标签页",
-    "noOutput": "没有可用的输出。",
-    "statusCallout": {
-      "title": "任务状态：{{status}}",
-      "title_pending": "任务待处理",
-      "title_queued": "任务排队中",
-      "title_blocked": "任务已阻塞",
-      "title_failed": "任务失败",
-      "title_timeout": "任务超时",
-      "title_stopped": "任务已停止"
-    }
+    "noOutput": "没有可用的输出。"
   },
   "costSheet": {
     "title": "成本与 Token",
-    "titleWithPlan": "成本与 Token：{{planId}}",
-    "details": {
-      "model": "模型",
-      "provider": "提供商",
-      "type": "类型",
-      "profile": "配置文件",
-      "agentCost": "智能体报告的成本"
-    },
-    "notProvided": "未提供",
-    "noUsage": "此任务未记录按 Token 划分的明细。",
-    "noUsage_total": "此任务未记录按 Token 划分的明细，仅记录了共 {{total}} 个 Token。",
-    "breakdown": {
-      "title": "明细",
-      "tokenType": "Token 类型",
-      "tokens": "Token",
-      "total": "合计"
-    },
-    "totalCost": "总成本"
-  },
-  "promptSheet": {
-    "title": "完整提示词",
-    "empty": "此任务未记录提示词文本。"
+    "titleWithPlan": "成本与 Token：{{planId}}"
   },
   "clear": {
-    "dialogTitle": "清理任务",
-    "confirm": "清理",
-    "confirmCount": "清理 {{count}} 个",
     "countFailed": "无法统计任务数量：{{error}}",
     "failed": "清理失败：{{error}}",
     "scopes": {
       "completed": {
-        "label": "清理已完成的任务",
-        "counting": "正在统计已完成的任务…",
-        "empty": "没有可清理的已完成任务。",
-        "confirm_other": "删除 {{count}} 个已完成的任务？其日志和输出将一并删除，此操作无法撤销。"
+        "label": "清理已完成的任务"
       },
       "failed": {
-        "label": "清理失败的任务",
-        "counting": "正在统计失败的任务…",
-        "empty": "没有可清理的失败任务。",
-        "confirm_other": "删除 {{count}} 个失败的任务？其日志和输出将一并删除，此操作无法撤销。"
+        "label": "清理失败的任务"
       },
       "timeout": {
-        "label": "清理超时的任务",
-        "counting": "正在统计超时的任务…",
-        "empty": "没有可清理的超时任务。",
-        "confirm_other": "删除 {{count}} 个超时的任务？其日志和输出将一并删除，此操作无法撤销。"
+        "label": "清理超时的任务"
       },
       "stopped": {
-        "label": "清理已停止的任务",
-        "counting": "正在统计已停止的任务…",
-        "empty": "没有可清理的已停止任务。",
-        "confirm_other": "删除 {{count}} 个已停止的任务？其日志和输出将一并删除，此操作无法撤销。"
+        "label": "清理已停止的任务"
       },
       "all": {
-        "label": "清理所有已结束的任务",
-        "counting": "正在统计已结束的任务…",
-        "empty": "没有可清理的已结束任务。",
-        "confirm_other": "删除 {{count}} 个已结束的任务？其日志和输出将一并删除，此操作无法撤销。"
+        "label": "清理所有已结束的任务"
       }
     }
   },

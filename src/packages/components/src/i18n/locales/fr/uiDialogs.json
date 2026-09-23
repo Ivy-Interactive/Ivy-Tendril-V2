@@ -60,7 +60,8 @@
       "hint": "Le chemin local du dépôt dans lequel l'issue est ouverte, et non un identifiant propriétaire/nom."
     },
     "assignee": {
-      "label": "Personne assignée"
+      "label": "Personne assignée",
+      "none": "Aucun responsable"
     },
     "labels": {
       "label": "Étiquettes",
@@ -69,7 +70,9 @@
     "comment": {
       "label": "Commentaire",
       "placeholder": "Contexte supplémentaire à ajouter au corps de l'issue…"
-    }
+    },
+    "metadataLoading": "Chargement des responsables et des labels depuis GitHub…",
+    "metadataError": "Impossible de charger les responsables et les labels depuis GitHub : {{error}}"
   },
   "createPr": {
     "title": "Créer la PR pour #{{planId}}",
@@ -99,11 +102,22 @@
     },
     "reviewers": {
       "label": "Relecteurs",
-      "hint": "Identifiants GitHub séparés par des virgules. La V2 n'a pas de champ distinct pour la personne assignée — la CLI l'ajoute à la liste des relecteurs, il s'agit donc du même canal."
+      "hint": "Identifiants GitHub séparés par des virgules. La V2 n'a pas de champ distinct pour la personne assignée — la CLI l'ajoute à la liste des relecteurs, il s'agit donc du même canal.",
+      "loadError": "Impossible de charger les relecteurs depuis GitHub : {{error}}"
     },
     "comment": {
       "label": "Commentaire",
       "placeholder": "Ce que le relecteur doit savoir avant de lire le diff…"
+    },
+    "targetBranch": {
+      "label": "Branche cible",
+      "defaultOption": "{{branch}} (par défaut)",
+      "repoDefault": "La branche de base de chaque dépôt",
+      "custom": "+ Branche personnalisée...",
+      "chooseFromList": "Choisir dans la liste",
+      "customPlaceholder": "Saisissez le nom de la branche...",
+      "customHint": "La pull request ciblera cette branche personnalisée au lieu de {{branch}}.",
+      "customHintRepoDefault": "La pull request ciblera cette branche personnalisée au lieu de la branche de base de chaque dépôt."
     }
   },
   "deleteProject": {
@@ -130,7 +144,15 @@
     "changeCount_other": "{{count}} modifications non commitées",
     "moreChanges_one": "+{{count}} autre",
     "moreChanges_many": "+{{count}} autres",
-    "moreChanges_other": "+{{count}} autres"
+    "moreChanges_other": "+{{count}} autres",
+    "syncRepos": "Synchroniser les dépôts",
+    "createPlan": {
+      "description_one": "⚠ {{count}} dépôt contient des modifications non validées. Le plan sera rédigé à partir de celles-ci.",
+      "description_many": "⚠ {{count}} dépôts contiennent des modifications non validées. Le plan sera rédigé à partir de celles-ci.",
+      "description_other": "⚠ {{count}} dépôts contiennent des modifications non validées. Le plan sera rédigé à partir de celles-ci.",
+      "proceed": "Créer sans synchroniser",
+      "context": "Le plan reposera sur cet état, mais ExecutePlan créera sa branche à partir de <code>{{branch}}</code>. Validez et poussez d'abord si ces modifications doivent être incluses dans le plan."
+    }
   },
   "jobDebug": {
     "title": "Débogage du job",
@@ -226,7 +248,8 @@
     "confirm": "Supprimer",
     "body": "Voulez-vous vraiment supprimer définitivement le plan #{{planId}} ? Cette action supprime le dossier du plan, toutes ses révisions et tous ses rapports de vérification, et elle est irréversible. Pour conserver le dossier, marquez plutôt le plan comme écarté ou déplacez-le vers l'Icebox.",
     "skip": "Marquer comme écarté",
-    "archive": "Déplacer vers l'Icebox"
+    "archive": "Déplacer vers l'Icebox",
+    "bodyIcebox": "Voulez-vous vraiment supprimer définitivement le plan #{{planId}} ? Le dossier du plan, toutes les révisions et tous les rapports de vérification seront supprimés, et cette action est irréversible."
   },
   "planSearch": {
     "title": "Rechercher des plans",
@@ -320,5 +343,51 @@
     "instructionsLabel": "Instructions",
     "instructionsAriaLabel": "Instructions de mise à jour",
     "instructionsPlaceholder": "Intégrez les réponses aux questions, puis limitez le périmètre à la seule chaîne de gardes…"
+  },
+  "createPlan": {
+    "title": "Créer un nouveau plan",
+    "projectPickerLabel": "Projet cible",
+    "autoProject": "Auto",
+    "addProject": "+ Ajouter un nouveau projet",
+    "submit": "Créer",
+    "placeholder": "Saisissez la description de la tâche…",
+    "emptyDescription": "Saisissez une description pour le nouveau plan.",
+    "continueInChat": "Discuter avec {{agent}}"
+  },
+  "recommendationNote": {
+    "submit": "Envoyer",
+    "accept": {
+      "title": "Accepter la recommandation",
+      "ariaLabel": "Accepter la recommandation",
+      "noteLabel": "Note de l'opérateur (facultatif) :",
+      "noteAriaLabel": "Note facultative",
+      "placeholder": "Saisissez des notes facultatives…"
+    },
+    "decline": {
+      "title": "Refuser la recommandation",
+      "ariaLabel": "Refuser la recommandation",
+      "noteLabel": "Motif du refus :",
+      "noteAriaLabel": "Motif du refus",
+      "placeholder": "Saisissez le motif du refus…"
+    }
+  },
+  "syncRepo": {
+    "title": "SyncRepo",
+    "body": "Comment SyncRepo doit-il traiter vos modifications non validées ? Les commits seront poussés vers <code>{{branch}}</code> et les problèmes de fusion seront résolus.",
+    "body_untracked": "Comment SyncRepo doit-il traiter vos fichiers non suivis ? Les commits seront poussés vers <code>{{branch}}</code> et les problèmes de fusion seront résolus.",
+    "body_both": "Comment SyncRepo doit-il traiter vos modifications non validées et vos fichiers non suivis ? Les commits seront poussés vers <code>{{branch}}</code> et les problèmes de fusion seront résolus.",
+    "bodyEachBranch": "Comment SyncRepo doit-il traiter vos modifications non validées ? Les commits seront poussés vers la branche de base de chaque dépôt et les problèmes de fusion seront résolus.",
+    "bodyEachBranch_untracked": "Comment SyncRepo doit-il traiter vos fichiers non suivis ? Les commits seront poussés vers la branche de base de chaque dépôt et les problèmes de fusion seront résolus.",
+    "bodyEachBranch_both": "Comment SyncRepo doit-il traiter vos modifications non validées et vos fichiers non suivis ? Les commits seront poussés vers la branche de base de chaque dépôt et les problèmes de fusion seront résolus.",
+    "stash": "Remiser les modifications",
+    "commit": "Valider et pousser",
+    "pullRequest": "Créer une PR"
+  },
+  "attachments": {
+    "label": "Pièces jointes",
+    "attach": "Joindre des fichiers",
+    "attaching": "Ajout en cours…",
+    "remove": "Retirer {{name}}",
+    "failed": "Impossible de joindre {{name}} : {{error}}"
   }
 }

@@ -102,10 +102,6 @@
     "planSearch": "Pläne durchsuchen",
     "showShortcuts": "Tastenkombinationen anzeigen"
   },
-  "shortcutsHelp": {
-    "title": "Tastenkombinationen",
-    "empty": "Keine Tastenkombinationen aktiv."
-  },
   "updateCheck": {
     "available": {
       "title": "Update verfügbar",
@@ -122,7 +118,8 @@
   "updateNotice": {
     "available": "v{{latest}} ist verfügbar (Sie haben v{{current}})",
     "copyCommand": "Befehl kopieren",
-    "dismiss": "Ausblenden"
+    "dismiss": "Ausblenden",
+    "showDetails": "Details anzeigen"
   },
   "offlineBanner": {
     "reconnecting": "Verbindung zum Tendril-Service getrennt. Automatische Neuverbindung in {{seconds}} s…",
@@ -143,10 +140,6 @@
     "dismissNavError": "Navigationsfehler ausblenden"
   },
   "stopQueued": {
-    "title": "Wartende Jobs stoppen",
-    "body_one": "{{count}} wartenden Job stoppen? Laufende Jobs sind nicht betroffen.",
-    "body_other": "Alle {{count}} wartenden Jobs stoppen? Laufende Jobs sind nicht betroffen.",
-    "confirm": "Alle stoppen",
     "toast": {
       "title": "Jobs",
       "description_one": "{{count}} wartender Job gestoppt.",
@@ -154,10 +147,6 @@
     }
   },
   "stopAll": {
-    "title": "Alle Jobs stoppen",
-    "body_one": "{{count}} aktiven Job stoppen? Laufende Agenten werden beendet, und ihre Pläne kehren in ihren vorherigen Status zurück. Dies kann nicht rückgängig gemacht werden.",
-    "body_other": "Alle {{count}} aktiven Jobs stoppen? Laufende Agenten werden beendet, und ihre Pläne kehren in ihren vorherigen Status zurück. Dies kann nicht rückgängig gemacht werden.",
-    "confirm": "Alle stoppen",
     "toast": {
       "title": "Jobs gestoppt",
       "description_one": "{{count}} Job gestoppt",

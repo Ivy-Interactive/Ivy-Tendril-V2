@@ -169,21 +169,6 @@
       }
     }
   },
-  "sheet": {
-    "titleFallback": "Задача",
-    "assigned": "Назначено: {{assignees}}",
-    "openOnGitHub": "Открыть на GitHub",
-    "dismiss": {
-      "label": "Отклонить",
-      "tooltip": "Отклонить окончательно: проверка назначенных задач больше не предложит эту задачу"
-    },
-    "accept": {
-      "label": "Принять",
-      "tooltip": "Запустить план для этой задачи в проекте {{project}}"
-    },
-    "fireOff": "Запустить в Tendril",
-    "noDescription": "Описание отсутствует."
-  },
   "pullRequests": {
     "title": "Пулл-реквесты",
     "status": {
@@ -234,11 +219,6 @@
     },
     "statusFilterPlaceholder": "Фильтр по статусу…",
     "resyncAll": "Синхронизировать все",
-    "resyncing": "Синхронизация…",
-    "sheet": {
-      "titleFallback": "План",
-      "loadingRevision": "Загрузка ревизии…",
-      "notFound": "План не найден или пуст."
-    }
+    "resyncing": "Синхронизация…"
   }
 }

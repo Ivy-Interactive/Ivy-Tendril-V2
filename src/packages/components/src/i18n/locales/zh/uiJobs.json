@@ -1,1 +1,131 @@
-{}
+{
+  "actions": {
+    "cancel": "取消"
+  },
+  "costSheet": {
+    "loading": "正在加载任务详情…",
+    "details": {
+      "model": "模型",
+      "provider": "提供商",
+      "type": "类型",
+      "profile": "配置文件",
+      "agentCost": "智能体报告的成本"
+    },
+    "notProvided": "未提供",
+    "estimated": "~{{cost}}",
+    "noUsage": "此任务未记录按 Token 划分的明细。",
+    "noUsage_total": "此任务未记录按 Token 划分的明细，仅记录了共 {{total}} 个 Token。",
+    "breakdown": {
+      "title": "明细",
+      "tokenType": "Token 类型",
+      "tokens": "Token",
+      "total": "合计"
+    },
+    "buckets": {
+      "input": "输入",
+      "output": "输出",
+      "cacheRead": "缓存读取",
+      "cacheWrite": "缓存写入",
+      "reasoning": "推理"
+    },
+    "totalCost": "总成本"
+  },
+  "promptSheet": {
+    "title": "完整提示词",
+    "empty": "此任务未记录提示词文本。"
+  },
+  "outputSheet": {
+    "noOutput": "没有可用的输出。",
+    "statusCallout": {
+      "title": "任务状态：{{status}}",
+      "title_pending": "任务待处理",
+      "title_queued": "任务排队中",
+      "title_blocked": "任务已阻塞",
+      "title_failed": "任务失败",
+      "title_timeout": "任务超时",
+      "title_stopped": "任务已停止",
+      "blocked": "正在等待依赖项或前序任务完成。",
+      "pending": "任务已排队，正在等待启动。"
+    }
+  },
+  "deleteJob": {
+    "title": "删除任务",
+    "body": "确定要删除此任务吗？此操作无法撤销。",
+    "confirm": "删除"
+  },
+  "stopQueued": {
+    "title": "停止排队任务",
+    "body_other": "停止全部 {{count}} 个排队中的任务？运行中的任务不受影响。",
+    "confirm": "全部停止"
+  },
+  "stopAll": {
+    "title": "停止所有任务",
+    "body_other": "停止全部 {{count}} 个活动任务？正在运行的智能体将被终止，其计划将恢复到之前的状态。此操作无法撤销。",
+    "confirm": "全部停止"
+  },
+  "clearJobs": {
+    "confirm": "清理",
+    "confirmCount": "清理 {{count}} 个",
+    "scopes": {
+      "completed": {
+        "title": "清理已完成的任务",
+        "counting": "正在统计已完成的任务…",
+        "empty": "没有可清理的已完成任务。",
+        "confirm_other": "删除 {{count}} 个已完成的任务？其日志和输出将一并删除，此操作无法撤销。"
+      },
+      "failed": {
+        "title": "清理失败的任务",
+        "counting": "正在统计失败的任务…",
+        "empty": "没有可清理的失败任务。",
+        "confirm_other": "删除 {{count}} 个失败的任务？其日志和输出将一并删除，此操作无法撤销。"
+      },
+      "timeout": {
+        "title": "清理超时的任务",
+        "counting": "正在统计超时的任务…",
+        "empty": "没有可清理的超时任务。",
+        "confirm_other": "删除 {{count}} 个超时的任务？其日志和输出将一并删除，此操作无法撤销。"
+      },
+      "stopped": {
+        "title": "清理已停止的任务",
+        "counting": "正在统计已停止的任务…",
+        "empty": "没有可清理的已停止任务。",
+        "confirm_other": "删除 {{count}} 个已停止的任务？其日志和输出将一并删除，此操作无法撤销。"
+      },
+      "all": {
+        "title": "清理所有已结束的任务",
+        "counting": "正在统计已结束的任务…",
+        "empty": "没有可清理的已结束任务。",
+        "confirm_other": "删除 {{count}} 个已结束的任务？其日志和输出将一并删除，此操作无法撤销。"
+      }
+    }
+  },
+  "rerun": {
+    "title": "重新运行 {{type}}",
+    "intro": "可选：告诉代理哪里出了问题或需要改变什么。留空则按原样重新运行。",
+    "feedbackPlaceholder": "给代理的反馈（可选）",
+    "feedbackAriaLabel": "给代理的反馈",
+    "unchanged": "使用原始参数重新运行此任务？",
+    "confirm": "重新运行",
+    "busy": "正在启动…"
+  },
+  "reportBug": {
+    "title": "报告错误",
+    "intro": "请描述问题。任务日志和已清理的配置副本（已移除机密）将附加到一个公开的 GitHub Issue。",
+    "descriptionPlaceholder": "出了什么问题？我们如何复现？",
+    "descriptionAriaLabel": "错误描述",
+    "githubUserPlaceholder": "你的 GitHub 用户名（可选）",
+    "githubUserAriaLabel": "GitHub 用户名",
+    "submit": "发送报告",
+    "busy": "正在发送…"
+  },
+  "debugWithAgent": {
+    "title": "使用 {{agent}} 调试",
+    "focusPlaceholder": "有什么需要特别关注的吗？（可选）",
+    "focusAriaLabel": "重点关注内容",
+    "confirm": "使用 {{agent}} 调试"
+  },
+  "jobDebug": {
+    "reportBug": "报告错误",
+    "debugWithAgent": "使用 {{agent}} 调试"
+  }
+}

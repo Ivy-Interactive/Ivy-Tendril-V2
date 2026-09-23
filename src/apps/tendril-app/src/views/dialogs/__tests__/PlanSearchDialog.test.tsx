@@ -297,3 +297,62 @@ describe("planSearchRowBadges level colours", () => {
     ]);
   });
 });
+
+/**
+ * V1 `PlanSearchDialog.ResolveTarget`: a pick opens in the page that owns the plan's status - Review
+ * and Failed in Review, Icebox in the Icebox - and everything else in the plan's own tab.
+ */
+describe("PlanSearchDialog routing", () => {
+  const plans = [
+    planSummary({ id: "00101", title: "Draft work", state: "Draft" }),
+    planSummary({ id: "00102", title: "Review work", state: "Review" }),
+    planSummary({ id: "00103", title: "Failed work", state: "Failed" }),
+    planSummary({ id: "00104", title: "Iced work", state: "Icebox" }),
+    planSummary({ id: "00105", title: "Done work", state: "Completed" }),
+  ];
+
+  const pick = async (title: RegExp) => {
+    const onSelectPlan = vi.fn();
+    const onOpenReview = vi.fn();
+    const onOpenIcebox = vi.fn();
+    render(
+      <PlanSearchDialog
+        isOpen
+        onClose={vi.fn()}
+        onSelectPlan={onSelectPlan}
+        onOpenReview={onOpenReview}
+        onOpenIcebox={onOpenIcebox}
+        search={async () => plans}
+      />,
+    );
+    type("work");
+    fireEvent.click(await screen.findByRole("button", { name: title }));
+    return { onSelectPlan, onOpenReview, onOpenIcebox };
+  };
+
+  it("opens Review and Failed plans in Review", async () => {
+    const review = await pick(/Review work/);
+    expect(review.onOpenReview).toHaveBeenCalledWith("00102");
+    expect(review.onSelectPlan).not.toHaveBeenCalled();
+    cleanup();
+
+    const failed = await pick(/Failed work/);
+    expect(failed.onOpenReview).toHaveBeenCalledWith("00103");
+  });
+
+  it("opens an iced plan in the Icebox", async () => {
+    const { onOpenIcebox, onSelectPlan } = await pick(/Iced work/);
+    expect(onOpenIcebox).toHaveBeenCalledWith("00104");
+    expect(onSelectPlan).not.toHaveBeenCalled();
+  });
+
+  it("opens Draft plans, and statuses no list owns, in the plan's tab", async () => {
+    const draft = await pick(/Draft work/);
+    expect(draft.onSelectPlan).toHaveBeenCalledWith("00101");
+    cleanup();
+
+    const done = await pick(/Done work/);
+    expect(done.onSelectPlan).toHaveBeenCalledWith("00105");
+    expect(done.onOpenReview).not.toHaveBeenCalled();
+  });
+});

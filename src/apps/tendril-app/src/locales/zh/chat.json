@@ -22,11 +22,6 @@
   "composerAttachment": {
     "remove": "移除 {{name}}"
   },
-  "lightbox": {
-    "fallbackTitle": "图像预览",
-    "fallbackAlt": "附件预览",
-    "closeLabel": "关闭预览"
-  },
   "newChatButtons": {
     "label": "新建聊天",
     "tooltip": "新建聊天",
@@ -142,19 +137,8 @@
     "afternoon": "下午好！",
     "evening": "晚上好！"
   },
-  "deleteSession": {
-    "title": "删除会话",
-    "body": "确定要删除“{{title}}”吗？此操作无法撤销。",
-    "bodyUntitled": "确定要删除此聊天会话吗？此操作无法撤销。"
-  },
   "jobsReview": {
     "prompt": "请审查此对话启动的任务的结果，并告诉我有哪些变化：\n{{jobs}}"
-  },
-  "search": {
-    "title": "搜索聊天",
-    "inputLabel": "搜索聊天",
-    "placeholder": "搜索聊天",
-    "empty": "未找到聊天。"
   },
   "queue": {
     "title": "排队消息",

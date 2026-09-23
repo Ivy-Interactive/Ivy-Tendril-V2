@@ -42,7 +42,7 @@ function job(id: string, status: JobStatus, extra: Partial<Job> = {}): Job {
   };
 }
 
-const ALL_CAPS: JobRowActionCapabilities = { canDelete: true, canForceStart: true };
+const ALL_CAPS: JobRowActionCapabilities = { canDelete: true, canForceStart: true, canRerun: true };
 
 /** The tags of the row menu's items, in order. */
 function menuTags(status: JobStatus, capabilities = ALL_CAPS): string[] {
@@ -241,24 +241,39 @@ describe("row menu gating", () => {
 
   /**
    * `CanRerun` (`JobsApp.Helpers.cs:235`): Failed, Timeout and Stopped unconditionally; Completed
-   * only when `RerunJobDialog.SupportsFeedback(job.TypedArgs)`, which returns false for null args.
-   * The DTO carries no `typedArgs` at all, so Completed is offered nothing and the three failure
-   * states get the entry disabled with V1's reason on it.
+   * only when `RerunJobDialog.SupportsFeedback(job.TypedArgs)` - by type, `ExecutePlan`, `RetryPlan`
+   * or `UpdatePlan`. The entry opens `RerunJobDialog`; the daemon does the rerun.
    */
-  it("offers Rerun disabled, with V1's reason, for the three rerunnable statuses", () => {
+  it("offers Rerun, enabled, for the three rerunnable statuses", () => {
     for (const status of ["Failed", "Timeout", "Stopped"] as JobStatus[]) {
       const rerun = (buildJobRowActions({ status }, ALL_CAPS)[0].children ?? []).find(
         (child) => child.tag === "rerun-job",
       );
       expect(rerun, `${status} should offer Rerun`).toBeDefined();
       expect(rerun?.label).toBe("Rerun");
-      expect(rerun?.disabled).toBe(true);
-      expect(rerun?.tooltip).toBe(RERUN_UNAVAILABLE_REASON);
+      expect(rerun?.disabled).toBeFalsy();
+      expect(rerun?.tooltip).toBe("Rerun this job");
     }
   });
 
-  it("offers no Rerun on a Completed job, since its args cannot be shown to support feedback", () => {
+  it("offers Rerun disabled, with V1's reason, when the bridge cannot rerun", () => {
+    const rerun = (
+      buildJobRowActions({ status: "Failed" }, { canDelete: true, canForceStart: true })[0]
+        .children ?? []
+    ).find((child) => child.tag === "rerun-job");
+    expect(rerun?.disabled).toBe(true);
+    expect(rerun?.tooltip).toBe(RERUN_UNAVAILABLE_REASON);
+  });
+
+  it("offers Rerun on a Completed job only when its type takes feedback", () => {
     expect(menuTags("Completed")).toEqual(["debug-job", "delete-job"]);
+    const tags = (type: string) =>
+      (buildJobRowActions({ status: "Completed", type }, ALL_CAPS)[0].children ?? []).map(
+        (child) => child.tag,
+      );
+    expect(tags("ExecutePlan")).toEqual(["rerun-job", "debug-job", "delete-job"]);
+    expect(tags("UpdatePlan")).toContain("rerun-job");
+    expect(tags("CreatePr")).not.toContain("rerun-job");
   });
 
   // `:207`: V1 adds Delete unconditionally, terminal rows included.

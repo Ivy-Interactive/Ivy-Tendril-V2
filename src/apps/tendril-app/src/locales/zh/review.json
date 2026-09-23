@@ -140,23 +140,6 @@
     "implementHint": "接受已勾选的建议，并以其作为修改请求重试该计划。",
     "select": "选择 {{title}}"
   },
-  "noteDialog": {
-    "submit": "提交",
-    "accept": {
-      "title": "接受建议",
-      "ariaLabel": "接受建议",
-      "noteLabel": "操作者备注（可选）：",
-      "noteAriaLabel": "可选备注",
-      "placeholder": "输入可选备注…"
-    },
-    "decline": {
-      "title": "拒绝建议",
-      "ariaLabel": "拒绝建议",
-      "noteLabel": "拒绝原因：",
-      "noteAriaLabel": "拒绝原因",
-      "placeholder": "输入拒绝原因…"
-    }
-  },
   "actionsBar": {
     "tooltip": {
       "barDisabled": "已禁用：{{reason}}",

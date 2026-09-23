@@ -229,7 +229,7 @@ describe("DashboardView analytics", () => {
    * scrollbar. Two things let the content decide, both in the blade primitives, and one table column
    * made the result cramped once they no longer did.
    *
-   * jsdom does no layout, so these pin the classes that do it; the `Sheets/DashboardKpiSheet`
+   * jsdom does no layout, so these pin the classes that do it; the `Sheets/KpiBreakdownSheet`
    * `FeaturesShipped` story is where the fit itself was measured.
    */
   it("lays the breakdown out at the sheet's width, not its content's", async () => {

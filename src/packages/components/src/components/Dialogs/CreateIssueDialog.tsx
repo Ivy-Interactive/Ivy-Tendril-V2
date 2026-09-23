@@ -6,6 +6,7 @@ import { NativeSelect } from "../ui/native-select";
 import { Textarea } from "../ui/textarea";
 import { Trans, useTranslation } from "@/i18n/uiDialogs";
 import { DialogShell } from "./DialogShell";
+import { PickerChips } from "./PickerChips";
 
 /**
  * A subject that is not the plan: the issue is filed about this instead, and the plan only decides
@@ -68,6 +69,17 @@ export interface CreateIssueDialogProps {
   repos: string[];
   /** Fallback when the plan records no repos of its own. */
   subject?: CreateIssueSubject;
+  /**
+   * The people issues can be assigned to, from GitHub (V1 `GetAssigneesAsync`). Given, Assignee is a
+   * select; absent or empty, it stays a free-text field.
+   */
+  assigneeOptions?: string[];
+  /** The repos' labels, from GitHub (V1 `GetLabelsAsync`). Given, Labels is a pick list. */
+  labelOptions?: string[];
+  /** The assignee and label lists are still being fetched. */
+  metadataLoading?: boolean;
+  /** Why the lists could not be loaded (V1's `assigneesError` / `labelsError`). */
+  metadataError?: string | null;
   /** Dispatches CreateIssue. The app owns the request, its busy state and its failure. */
   onSubmit: (args: CreateIssueSubmit) => void | Promise<void>;
   isBusy?: boolean;
@@ -81,9 +93,9 @@ export interface CreateIssueDialogProps {
  * `CreateIssueArgs.repo` is the working directory the promptware runs `gh` in.
  * That is why it is a select over the plan's repos rather than a text box.
  *
- * Assignee and labels stay free text — `GET /api/projects/:name/issues/metadata`
- * returns issue metadata, not the org's assignable users, so there is no list to
- * populate a picker from.
+ * Assignee and labels are V1's pickers when the caller has the lists
+ * (`GET /api/projects/:name/issues/metadata`, which asks `gh` for each repo's labels and
+ * assignable users), and free text when it does not - a repo `gh` cannot read still gets an issue.
  */
 export function CreateIssueDialog({
   isOpen,
@@ -91,6 +103,10 @@ export function CreateIssueDialog({
   planId,
   repos,
   subject,
+  assigneeOptions = [],
+  labelOptions = [],
+  metadataLoading = false,
+  metadataError,
   onSubmit,
   isBusy = false,
   error,
@@ -99,6 +115,7 @@ export function CreateIssueDialog({
   const [repo, setRepo] = React.useState(repos[0] ?? "");
   const [assignee, setAssignee] = React.useState("");
   const [labels, setLabels] = React.useState("");
+  const [pickedLabels, setPickedLabels] = React.useState<string[]>([]);
   const [comment, setComment] = React.useState("");
   const [title, setTitle] = React.useState(subject?.title ?? "");
   const [body, setBody] = React.useState(subject?.body ?? "");
@@ -125,6 +142,7 @@ export function CreateIssueDialog({
     const seed = subjectRef.current;
     setAssignee("");
     setLabels("");
+    setPickedLabels([]);
     setComment("");
     setTitle(seed?.title ?? "");
     setBody(seed?.body ?? "");
@@ -146,10 +164,13 @@ export function CreateIssueDialog({
     // Subject mode needs a title: it is the only thing the promptware has to name the issue with,
     // since it will not be reading the plan's.
     if (subject && title.trim() === "") return;
-    const labelList = labels
-      .split(",")
-      .map((entry) => entry.trim())
-      .filter((entry) => entry !== "");
+    const labelList =
+      labelOptions.length > 0
+        ? pickedLabels
+        : labels
+            .split(",")
+            .map((entry) => entry.trim())
+            .filter((entry) => entry !== "");
 
     void onSubmit({
       repo,
@@ -290,28 +311,77 @@ export function CreateIssueDialog({
         <label htmlFor="create-issue-assignee" className="mb-1 block text-xs text-muted-foreground">
           {t("createIssue.assignee.label")}
         </label>
-        <Input
-          id="create-issue-assignee"
-          aria-label={t("createIssue.assignee.label")}
-          value={assignee}
-          onChange={(event) => setAssignee(event.target.value)}
-          placeholder="octocat"
-        />
+        {assigneeOptions.length > 0 ? (
+          // V1's `.Nullable()` select: "no assignee" is an answer, not a missing one.
+          <NativeSelect
+            id="create-issue-assignee"
+            aria-label={t("createIssue.assignee.label")}
+            value={assignee}
+            onChange={(event) => setAssignee(event.target.value)}
+          >
+            <option value="">{t("createIssue.assignee.none")}</option>
+            {assigneeOptions.map((login) => (
+              <option key={login} value={login}>
+                {login}
+              </option>
+            ))}
+          </NativeSelect>
+        ) : (
+          <Input
+            id="create-issue-assignee"
+            aria-label={t("createIssue.assignee.label")}
+            value={assignee}
+            onChange={(event) => setAssignee(event.target.value)}
+            placeholder="octocat"
+          />
+        )}
       </div>
 
       <div className="mt-4">
         <label htmlFor="create-issue-labels" className="mb-1 block text-xs text-muted-foreground">
           {t("createIssue.labels.label")}
         </label>
-        <Input
-          id="create-issue-labels"
-          aria-label={t("createIssue.labels.label")}
-          value={labels}
-          onChange={(event) => setLabels(event.target.value)}
-          placeholder="bug, ui"
-        />
-        <p className="mt-1 text-xs text-muted-foreground">{t("createIssue.labels.hint")}</p>
+        {labelOptions.length > 0 ? (
+          <PickerChips
+            options={labelOptions}
+            selected={pickedLabels}
+            ariaLabel={t("createIssue.labels.label")}
+            testId="create-issue-label-picker"
+            onToggle={(label) =>
+              setPickedLabels((current) =>
+                current.includes(label)
+                  ? current.filter((entry) => entry !== label)
+                  : [...current, label],
+              )
+            }
+          />
+        ) : (
+          <>
+            <Input
+              id="create-issue-labels"
+              aria-label={t("createIssue.labels.label")}
+              value={labels}
+              onChange={(event) => setLabels(event.target.value)}
+              placeholder="bug, ui"
+            />
+            <p className="mt-1 text-xs text-muted-foreground">{t("createIssue.labels.hint")}</p>
+          </>
+        )}
       </div>
+
+      {metadataLoading && (
+        <p
+          className="mt-2 text-xs text-muted-foreground"
+          data-testid="create-issue-metadata-loading"
+        >
+          {t("createIssue.metadataLoading")}
+        </p>
+      )}
+      {metadataError && (
+        <p className="mt-2 text-xs text-destructive" data-testid="create-issue-metadata-error">
+          {t("createIssue.metadataError", { error: metadataError })}
+        </p>
+      )}
 
       <div className="mt-4">
         <label htmlFor="create-issue-comment" className="mb-1 block text-xs text-muted-foreground">

@@ -22,11 +22,6 @@
   "composerAttachment": {
     "remove": "Retirer {{name}}"
   },
-  "lightbox": {
-    "fallbackTitle": "Aperçu de l'image",
-    "fallbackAlt": "Aperçu de la pièce jointe",
-    "closeLabel": "Fermer l'aperçu"
-  },
   "newChatButtons": {
     "label": "Nouveau chat",
     "tooltip": "Nouveau chat",
@@ -156,19 +151,8 @@
     "afternoon": "Bon après-midi !",
     "evening": "Bonsoir !"
   },
-  "deleteSession": {
-    "title": "Supprimer la session",
-    "body": "Voulez-vous vraiment supprimer « {{title}} » ? Cette action est irréversible.",
-    "bodyUntitled": "Voulez-vous vraiment supprimer cette session de chat ? Cette action est irréversible."
-  },
   "jobsReview": {
     "prompt": "Examinez les résultats des jobs lancés par cette conversation et dites-moi ce qui a changé :\n{{jobs}}"
-  },
-  "search": {
-    "title": "Rechercher dans les chats",
-    "inputLabel": "Rechercher dans les chats",
-    "placeholder": "Rechercher dans les chats",
-    "empty": "Aucun chat trouvé."
   },
   "queue": {
     "title": "Messages en file d'attente",

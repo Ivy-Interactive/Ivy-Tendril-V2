@@ -11,7 +11,9 @@
 mod cloning;
 mod crud;
 mod hooks;
+mod memory;
 mod payloads;
+mod repo_assets;
 mod repos;
 mod review_actions;
 mod verifications;
@@ -21,7 +23,11 @@ pub use crud::{
     list_projects, purge_project, update_project,
 };
 pub use hooks::{add_project_hook, remove_project_hook};
-pub use repos::{add_project_repo, remove_project_repo, sync_project_repos};
+pub use memory::{
+    delete_project_memory, get_project_memory, list_project_memory, put_project_memory,
+};
+pub use repo_assets::{import_project_repo_assets, scan_project_repo_assets};
+pub use repos::{add_project_repo, project_repo_status, remove_project_repo, sync_project_repos};
 pub use review_actions::{
     add_project_review_action, execute_review_action, remove_project_review_action,
     review_action_conditions, review_action_input, review_action_resize,

@@ -1,1 +1,55 @@
-{}
+{
+  "verificationReport": {
+    "title": "Verification Report",
+    "description": "Verification report details for {{name}}",
+    "descriptionFallback": "Verification report details for plan",
+    "loading": "Loading verification report…",
+    "notFound": "No verification report file found for \"{{name}}\".",
+    "empty": "No report available for {{name}}.",
+    "status": {
+      "pass": "Pass",
+      "fail": "Fail",
+      "pending": "Pending",
+      "skipped": "Skipped"
+    }
+  },
+  "filePreview": {
+    "noPreviewTitle": "No preview",
+    "showInFolder": "Show in folder",
+    "loadingLabel": "Loading {{fileName}}",
+    "imageFailed": "Tendril could not load this image.",
+    "imageFailedWithError": "Tendril could not load this image: {{error}}",
+    "binary": "{{fileName}} is not a text file ({{size}}), so it has no preview here.",
+    "tooLarge": "{{fileName}} is {{size}}, too large to preview here.",
+    "plainNotice": "Shown as plain text: at {{size}}, {{fileName}} is too large to highlight.",
+    "plainNotice_markdown": "Shown as plain text: at {{size}}, {{fileName}} is too large to render as markdown."
+  },
+  "artifactSheet": {
+    "fallbackTitle": "Artifact",
+    "copyPath": "Copy path",
+    "revealLabel": "Show in folder"
+  },
+  "fileSheet": {
+    "fallbackTitle": "File",
+    "openInEditor": "Open in {{editor}}",
+    "copyPath": "Copy path",
+    "revealLabel": "Show in folder"
+  },
+  "commitSheet": {
+    "title": "Commit {{hash}} — {{title}}",
+    "titleUntitled": "Commit {{hash}}",
+    "description": "Changed files and diff of commit {{hash}}",
+    "loadingLabel": "Loading commit {{hash}}",
+    "failed": "Failed to load commit: {{error}}",
+    "notFound": "Commit not found.",
+    "noChanges": "This commit changed no files.",
+    "changedFiles": "Changed Files",
+    "copyHash": "Copy commit hash",
+    "fileStatus": {
+      "added": "Added",
+      "deleted": "Deleted",
+      "modified": "Modified",
+      "renamed": "Renamed"
+    }
+  }
+}

@@ -89,6 +89,7 @@ fn create_pr(folder: &std::path::Path) -> JobArgs {
         reviewers: None,
         comment: None,
         draft: false,
+        base_branch: None,
     })
 }
 

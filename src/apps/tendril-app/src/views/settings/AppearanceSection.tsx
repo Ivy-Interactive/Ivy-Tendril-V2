@@ -14,6 +14,7 @@ import {
   PanelLeftOpen,
   Sun,
   SunMoon,
+  SwatchBook,
   Terminal,
 } from "lucide-react";
 import { LOCALES, SITE_LOCALES } from "@ivy-interactive/components/i18n";
@@ -29,6 +30,14 @@ import { notificationsStore } from "../../state/notificationsStore";
 import { describeBridgeError } from "../../types/api";
 import type { AppearanceSettings, ChatMode } from "../../state/appearance";
 import { NativeSelectField, SaveError, SettingsSection, SubSection } from "./fields";
+
+/**
+ * `VaultThemesDialog.cs`, from the library's lazy dialogs entry: it is only ever opened from here,
+ * and the Settings chunk has no reason to carry the generator until someone asks for it.
+ */
+const VaultThemesDialog = React.lazy(() =>
+  import("@ivy-interactive/components/dialogs").then((m) => ({ default: m.VaultThemesDialog })),
+);
 
 /**
  * `Apps/Settings/AppearanceSetupView.cs`.
@@ -88,6 +97,7 @@ export const AppearanceSection: React.FC<{
   const [chatMode, setChatMode] = React.useState<ChatMode>(settings.chatMode);
   const [language, setLanguage] = React.useState<LanguagePreference>(savedLanguage);
   const [error, setError] = React.useState<string | null>(null);
+  const [isThemeGeneratorOpen, setIsThemeGeneratorOpen] = React.useState(false);
 
   // A config reload (this pane's own write, or an edit to config.yaml) re-seeds the controls.
   React.useEffect(() => {
@@ -336,13 +346,40 @@ export const AppearanceSection: React.FC<{
 
         <SaveError message={error} />
 
-        {/* Stated rather than offered, for the reason `SecurityTunnelingSection` states its own gaps:
-            a control that cannot do anything is worse than a sentence saying so. */}
+        {/* The vault half of `VaultThemesDialog` (reading `themes/*.json`, committing one, applying a
+            vault theme by id) has no daemon route yet, so the dialog opens as the generator alone:
+            preview, export and import work; *Upload to Team Vault* is shown refused, with the reason.
+            Stated rather than hidden, for the reason `SecurityTunnelingSection` states its own gaps. */}
         <Callout.Info data-testid="appearance-not-wired">
-          <div className="space-y-1 text-xs">
+          <div className="space-y-2 text-xs">
             <p>{t("appearance.vaultThemesNote")}</p>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsThemeGeneratorOpen(true)}
+              data-testid="appearance-open-theme-generator"
+            >
+              <SwatchBook className="size-4" aria-hidden="true" />
+              {t("appearance.vaultThemes.openGenerator")}
+            </Button>
           </div>
         </Callout.Info>
+
+        {isThemeGeneratorOpen && (
+          <React.Suspense fallback={null}>
+            <VaultThemesDialog
+              open
+              onClose={() => setIsThemeGeneratorOpen(false)}
+              themes={[]}
+              activeThemeId={theme}
+              onSave={() => {}}
+              saveDisabledReason={t("appearance.vaultThemes.uploadUnavailable")}
+              onApply={() => {}}
+              onDelete={() => {}}
+            />
+          </React.Suspense>
+        )}
       </div>
     </SettingsSection>
   );

@@ -82,21 +82,7 @@
     "failed": "Impossible d'enregistrer : {{error}}"
   },
   "test": {
-    "title": "Test de l'agent de codage",
     "defaultModel": "Par défaut",
-    "columns": {
-      "test": "Test",
-      "result": "Résultat"
-    },
-    "status": {
-      "passed": "Réussi",
-      "failed": "Échec",
-      "warning": "Avertissement",
-      "running": "En cours",
-      "pending": "En attente"
-    },
-    "showRawOutput": "Afficher la sortie brute",
-    "rawOutputTitle": "Sortie brute",
     "rows": {
       "install": "Installation",
       "auth": "Authentification",

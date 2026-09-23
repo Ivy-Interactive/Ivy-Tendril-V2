@@ -169,7 +169,11 @@
       "saved_chat": "Le chat s'ouvre en vue de chat",
       "saved_terminal": "Le chat s'ouvre dans le terminal"
     },
-    "vaultThemesNote": "Les thèmes publiés par un Team Vault ne sont pas listés : le sous-système de thèmes du vault ne fait pas partie de cette version, donc seuls les préréglages fournis sont proposés."
+    "vaultThemesNote": "Les thèmes publiés par un Team Vault ne sont pas listés : le sous-système de thèmes du vault ne fait pas partie de cette version, donc seuls les préréglages fournis sont proposés.",
+    "vaultThemes": {
+      "openGenerator": "Ouvrir le générateur de thèmes",
+      "uploadUnavailable": "La publication de thèmes dans un Team Vault n'est pas encore disponible dans cette version. Utilisez « Copier la configuration » pour partager un thème en JSON."
+    }
   },
   "levels": {
     "title": "Niveaux de priorité",
@@ -198,23 +202,6 @@
     "removeConsequence": "Les plans déjà classés à ce niveau conservent son nom dans leur plan.yaml ; il cesse simplement de faire partie des niveaux proposés.",
     "noEffect": "Les niveaux sont stockés dans config.yaml et exposés via MCP, mais rien dans cette application ne les lit encore : les modifier ici n'a donc aucun effet visible."
   },
-  "removal": {
-    "title": "Retirer : {{kind}}",
-    "title_level": "Retirer le niveau",
-    "title_repository": "Retirer le dépôt",
-    "title_reviewAction": "Retirer l'action de revue",
-    "title_environmentFile": "Retirer le fichier d'environnement",
-    "title_mcpServer": "Retirer le serveur MCP",
-    "title_customSkill": "Retirer la compétence personnalisée",
-    "body": "Retirer <name>{{name}}</name> ({{kind}}) de cette configuration ?",
-    "body_level": "Retirer le niveau <name>{{name}}</name> de cette configuration ?",
-    "body_repository": "Retirer le dépôt <name>{{name}}</name> de cette configuration ?",
-    "body_reviewAction": "Retirer l'action de revue <name>{{name}}</name> de cette configuration ?",
-    "body_environmentFile": "Retirer le fichier d'environnement <name>{{name}}</name> de cette configuration ?",
-    "body_mcpServer": "Retirer le serveur MCP <name>{{name}}</name> de cette configuration ?",
-    "body_customSkill": "Retirer la compétence personnalisée <name>{{name}}</name> de cette configuration ?",
-    "confirm": "Retirer"
-  },
   "fields": {
     "colorsLabel": "Couleurs",
     "chooseColor": "Choisir une couleur",
@@ -240,12 +227,7 @@
     "maskedNote_many": "{{count}} valeurs secrètes sont affichées sous la forme {{mask}}. Laissez un espace réservé tel quel pour conserver la valeur enregistrée ; remplacez-le pour en définir une nouvelle.",
     "maskedNote_other": "{{count}} valeurs secrètes sont affichées sous la forme {{mask}}. Laissez un espace réservé tel quel pour conserver la valeur enregistrée ; remplacez-le pour en définir une nouvelle.",
     "conflictReload": "Recharger depuis le disque",
-    "reload": "Recharger depuis le disque",
-    "discard": {
-      "title": "Abandonner les modifications non enregistrées",
-      "confirm": "Abandonner et recharger",
-      "body": "Le rechargement remplace le contenu de l'éditeur par le fichier sur le disque. Les modifications non enregistrées sont perdues."
-    }
+    "reload": "Recharger depuis le disque"
   },
   "security": {
     "title": "Sécurité et tunnels",

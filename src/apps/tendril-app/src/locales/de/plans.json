@@ -70,7 +70,8 @@
     "completePlan": "Plan abschließen",
     "retryPlan": "Plan erneut versuchen",
     "acceptPartialDelivery": "Teilauslieferung annehmen",
-    "resetToDraft": "Auf Entwurf zurücksetzen…"
+    "resetToDraft": "Auf Entwurf zurücksetzen…",
+    "share": "Teilen"
   },
   "draftActions": {
     "execute": "Plan ausführen",
@@ -127,7 +128,23 @@
     "repositories": "Repositories",
     "noRepositories": "Keine Repositories angegeben",
     "commits": "Commits",
-    "noCommits": "Noch keine Commits"
+    "noCommits": "Noch keine Commits",
+    "jobs": {
+      "heading": "Jobs",
+      "columns": {
+        "status": "Status",
+        "type": "Typ",
+        "cost": "Kosten",
+        "tokens": "Tokens",
+        "message": "Statusmeldung",
+        "actions": "Aktionen"
+      },
+      "debug": "Debuggen",
+      "debugTooltip": "Debug-Details für diesen Job anzeigen",
+      "costTooltip": "Kosten- und Token-Aufschlüsselung anzeigen",
+      "costTitle": "Kosten & Tokens",
+      "costTitleWithPlan": "Kosten & Tokens – {{planId}}"
+    }
   },
   "verificationStatus": {
     "pass": "Bestanden",
@@ -143,32 +160,12 @@
     "hideReport": "Bericht ausblenden",
     "noReport": "Noch kein Bericht"
   },
-  "reportSheet": {
-    "title": "Verifikationsbericht",
-    "description": "Details des Verifikationsberichts für {{name}}",
-    "descriptionFallback": "Details des Verifikationsberichts für den Plan",
-    "loading": "Verifikationsbericht wird geladen…",
-    "notFound": "Keine Verifikationsberichtsdatei für „{{name}}“ gefunden.",
-    "empty": "Kein Bericht für {{name}} verfügbar."
-  },
   "artifactSheet": {
     "thumbnail": {
       "openLabel": "{{fileName}} öffnen",
       "noPreview": "Keine Vorschau",
       "loadingLabel": "{{fileName}} wird geladen"
-    },
-    "fallbackTitle": "Artefakt",
-    "noPreviewTitle": "Keine Vorschau",
-    "showInFolder": "Im Ordner anzeigen",
-    "loadingLabel": "{{fileName}} wird geladen",
-    "imageFailed": "Tendril konnte dieses Bild nicht laden.",
-    "imageFailedWithError": "Tendril konnte dieses Bild nicht laden: {{error}}",
-    "binary": "{{fileName}} ist keine Textdatei ({{size}}) und hat daher hier keine Vorschau.",
-    "tooLarge": "{{fileName}} ist {{size}} groß und damit zu groß für eine Vorschau.",
-    "plainNotice": "Als Klartext angezeigt: Mit {{size}} ist {{fileName}} zu groß für die Syntaxhervorhebung.",
-    "plainNotice_markdown": "Als Klartext angezeigt: Mit {{size}} ist {{fileName}} zu groß, um als Markdown dargestellt zu werden.",
-    "copyPath": "Pfad kopieren",
-    "revealLabel": "Im Ordner anzeigen"
+    }
   },
   "pullRequests": {
     "title": "Pull Requests",
@@ -222,16 +219,6 @@
     },
     "thawFailed": "Plan {{id}} konnte nicht aufgetaut werden: {{error}}"
   },
-  "newPlan": {
-    "title": "Neuen Plan erstellen",
-    "closeLabel": "Dialog schließen",
-    "projectPickerLabel": "Zielprojekt",
-    "autoProject": "Automatisch",
-    "addProject": "+ Neues Projekt hinzufügen",
-    "submit": "Erstellen",
-    "placeholder": "Aufgabenbeschreibung eingeben…",
-    "emptyDescription": "Geben Sie eine Beschreibung für den neuen Plan ein."
-  },
   "planActions": {
     "canExecute": {
       "alreadyCompleted": "Plan ist bereits abgeschlossen.",
@@ -277,5 +264,9 @@
   "store": {
     "rollbackField": "Rollback: {{field}} konnte nicht aktualisiert werden: {{error}}",
     "rollbackVerification": "Rollback der Verifikationsaktualisierung: {{error}}"
+  },
+  "share": {
+    "linkCopiedTitle": "Link kopiert",
+    "linkCopied": "Freigabelink des Plans in die Zwischenablage kopiert"
   }
 }

@@ -81,21 +81,7 @@
     "failed": "Det gick inte att spara: {{error}}"
   },
   "test": {
-    "title": "Test av kodningsagent",
     "defaultModel": "Standard",
-    "columns": {
-      "test": "Test",
-      "result": "Resultat"
-    },
-    "status": {
-      "passed": "Godkänd",
-      "failed": "Underkänd",
-      "warning": "Varning",
-      "running": "Körs",
-      "pending": "Väntar"
-    },
-    "showRawOutput": "Visa rå utdata",
-    "rawOutputTitle": "Rå utdata",
     "rows": {
       "install": "Installation",
       "auth": "Autentisering",

@@ -164,21 +164,6 @@
       }
     }
   },
-  "sheet": {
-    "titleFallback": "Issue",
-    "assigned": "Assignés : {{assignees}}",
-    "openOnGitHub": "Ouvrir sur GitHub",
-    "dismiss": {
-      "label": "Ignorer",
-      "tooltip": "Ignorer définitivement : la vérification des issues assignées ne proposera plus cette issue"
-    },
-    "accept": {
-      "label": "Accepter",
-      "tooltip": "Démarrer un plan pour cette issue dans le projet {{project}}"
-    },
-    "fireOff": "Lancer dans Tendril",
-    "noDescription": "Aucune description fournie."
-  },
   "pullRequests": {
     "title": "Pull requests",
     "status": {
@@ -229,11 +214,6 @@
     },
     "statusFilterPlaceholder": "Filtrer par statut…",
     "resyncAll": "Tout resynchroniser",
-    "resyncing": "Resynchronisation…",
-    "sheet": {
-      "titleFallback": "Plan",
-      "loadingRevision": "Chargement de la révision…",
-      "notFound": "Plan introuvable ou vide."
-    }
+    "resyncing": "Resynchronisation…"
   }
 }

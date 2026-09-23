@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { NO_VALUE, formatTimeSpan, formatTokens } from "@ivy-interactive/components";
 import { useFormatters } from "@ivy-interactive/components/i18n";
+import { DeleteJobDialog, JobStatusCallout } from "@ivy-interactive/components/dialogs";
 import { AgentViewer } from "@ivy-interactive/components/tendril";
 import { Badge, Button, Callout, IconButton } from "@ivy-interactive/components/ui";
 import { X } from "lucide-react";
@@ -14,7 +15,6 @@ import { JOB_STATUS_COLOR, UNMAPPED_COLOR, projectColor } from "../utils/jobStat
    in the header here. The two copies had already diverged once over the case of `costSource` and
    been fixed twice; sharing the one function is what stops the third divergence. */
 import { formatJobCost, formatMonthDayTime, jobStatusMessage } from "./jobs/format";
-import { ConfirmDialog } from "./dialogs";
 import { parseProjects } from "./PlansView";
 
 interface JobSessionViewProps {
@@ -86,16 +86,6 @@ function statusMessage(job: Job, t: TFunction<"jobs">): string {
   // job showed a warning badge and nothing else.
   if (job.status === "Pending" && !job.statusMessage) return t("statusMessage.pending");
   return jobStatusMessage(job, t);
-}
-
-/**
- * The status callout title's context, V1's `$"Job {job.Status}"`: the status with its first letter
- * lower-cased, as the catalog keys it. Each status has a title of its own rather than its label
- * dropped into one shared sentence, so a language can phrase "Job Failed" the way it phrases it; a
- * status this build has no title for falls back to the shared "Job {{status}}".
- */
-function statusCalloutContext(status: string): string {
-  return `${status.charAt(0).toLowerCase()}${status.slice(1)}`;
 }
 
 /**
@@ -413,9 +403,8 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
         </div>
 
         {/* V1's row actions, in their order (`JobsApp.DataTable.cs` `RowActions`): Stop, Rerun,
-            Force Start, Debug, Delete. Rerun and Debug are still absent - Rerun needs V1's
-            `RerunJobDialog` and the job's original `TypedArgs`, which the DTO layer does not carry,
-            and Debug needs `JobDebugSheet`. Both are reported rather than stubbed. */}
+            Force Start, Debug, Delete. Rerun and Debug are the Jobs table's row menu, which this
+            sheet opens over (`RerunJobDialog`, `JobDebugSheet`); V1's output sheet has neither. */}
         <div className="flex flex-wrap items-center gap-2">
           {canStop && (
             <Button
@@ -488,16 +477,14 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
           this a failed job is a red badge and a raw stream. */}
       {explainsItself && message && (
         <div className={isSheet ? "px-4" : ""}>
-          <Callout
-            variant={isFailure ? "error" : "info"}
-            title={t("session.statusCallout.title", {
-              context: statusCalloutContext(currentJob.status),
-              status: labels.jobStatus(currentJob.status),
-            })}
+          {/* The library's callout, so the output sheet and this view title and tone it alike:
+              red for Failed and Timeout, V1's per-status title. */}
+          <JobStatusCallout
+            status={currentJob.status}
+            statusLabel={labels.jobStatus(currentJob.status)}
+            message={message}
             data-testid="job-failure-reason"
-          >
-            <p className="whitespace-pre-wrap">{message}</p>
-          </Callout>
+          />
         </div>
       )}
 
@@ -559,18 +546,12 @@ export const JobSessionView: React.FC<JobSessionViewProps> = ({
         )}
       </div>
 
-      {/* `JobsApp.DataTable.cs:296-317`, copy included: header "Delete Job", body "Are you sure you
-          want to delete this job? This cannot be undone.", a destructive "Delete". `ConfirmDialog`
-          deliberately focuses Cancel rather than V1's `.AutoFocus()` on the confirm; that departure
-          is documented there. */}
+      {/* `JobsApp.DataTable.cs:296-317`, copy included: the library's `DeleteJobDialog`, the same
+          confirm the Jobs row menu opens. */}
       {canDelete && (
-        <ConfirmDialog
+        <DeleteJobDialog
           isOpen={isConfirmDeleteOpen}
           onClose={() => setIsConfirmDeleteOpen(false)}
-          title={t("deleteDialog.title")}
-          body={<p>{t("deleteDialog.body")}</p>}
-          confirmLabel={t("common:actions.delete")}
-          confirmVariant="destructive"
           onConfirm={handleDelete}
           isBusy={isDeleting}
           error={deleteError}

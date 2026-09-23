@@ -1,1 +1,239 @@
-{}
+{
+  "chatSearch": {
+    "title": "Chats durchsuchen",
+    "inputLabel": "Chats durchsuchen",
+    "placeholder": "Chats durchsuchen",
+    "empty": "Keine Chats gefunden.",
+    "close": "Schließen"
+  },
+  "deleteChatSession": {
+    "title": "Sitzung löschen",
+    "body": "Möchten Sie „{{title}}“ wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+    "bodyUntitled": "Möchten Sie diese Chat-Sitzung wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.",
+    "confirm": "Löschen"
+  },
+  "lightbox": {
+    "fallbackTitle": "Bildvorschau",
+    "fallbackAlt": "Anhangsvorschau",
+    "closeLabel": "Vorschau schließen",
+    "close": "Schließen"
+  },
+  "shortcutsHelp": {
+    "title": "Tastenkombinationen",
+    "empty": "Keine Tastenkombinationen aktiv.",
+    "close": "Schließen"
+  },
+  "inboxSheet": {
+    "titleFallback": "Issue",
+    "assigned": "Zugewiesen: {{assignees}}",
+    "openOnGitHub": "Auf GitHub öffnen",
+    "dismiss": {
+      "label": "Verwerfen",
+      "tooltip": "Endgültig verwerfen: Die Prüfung zugewiesener Issues schlägt dieses Issue nicht erneut vor"
+    },
+    "accept": {
+      "label": "Annehmen",
+      "tooltip": "Einen Plan für dieses Issue in {{project}} starten"
+    },
+    "fireOff": "In Tendril starten",
+    "noDescription": "Keine Beschreibung angegeben."
+  },
+  "planRevisionSheet": {
+    "titleFallback": "Plan",
+    "loadingRevision": "Revision wird geladen…",
+    "notFound": "Plan nicht gefunden oder leer."
+  },
+  "kpiBreakdown": {
+    "titles": {
+      "featuresShipped": "Ausgelieferte Features",
+      "costPerFeature": "Ø Kosten pro Feature",
+      "forecastMonth": "Prognose für diesen Monat",
+      "avgCostPlan": "Ø Kosten pro Plan"
+    },
+    "empty": {
+      "title": "Keine Daten"
+    },
+    "details": {
+      "metric": "Kennzahl",
+      "formula": "Formel"
+    },
+    "delta": {
+      "notAvailable": "k. A."
+    },
+    "agents": {
+      "title": "Ausgaben nach Coding-Agent",
+      "empty": "Keine einem Agenten zugeordneten Ausgaben in diesem Zeitraum.",
+      "columns": {
+        "agent": "Coding-Agent",
+        "cost": "Ausgaben",
+        "costShare": "Ausgabenanteil",
+        "tokens": "Tokens",
+        "tokenShare": "Token-Anteil",
+        "planCount": "Pläne"
+      },
+      "shareNotAvailable": "k. A.",
+      "unknownAgent": "Unbekannt",
+      "partialAttribution": {
+        "title": "Teilweise Zuordnung",
+        "body": "Zeilen aus der Zeit vor der Agentenerfassung erscheinen als {{agent}} und können keinem bestimmten Agenten zugeordnet werden.",
+        "bodyWithShare": "Zeilen aus der Zeit vor der Agentenerfassung erscheinen als {{agent}} und können keinem bestimmten Agenten zugeordnet werden. Das sind {{share}} der Ausgaben in diesem Zeitraum.",
+        "bodyUninformative": "Zeilen aus der Zeit vor der Agentenerfassung erscheinen als {{agent}} und können keinem bestimmten Agenten zugeordnet werden. Das sind {{share}} der Ausgaben in diesem Zeitraum, daher ist die Aufteilung darunter nicht aussagekräftig."
+      }
+    },
+    "featuresShipped": {
+      "subtitle": "Die gemergten PRs und gelösten Issues hinter der Zahl",
+      "note": {
+        "title": "Ergebniskennzahl",
+        "body_one": "„Ausgelieferte Features“ zählt gemergte PRs und gelöste Issues ohne PR im letzten {{count}} Tag. Ein Plan mit drei PRs zählt als drei Features, ein Plan, der nur ein Issue löst, als eines.",
+        "body_other": "„Ausgelieferte Features“ zählt gemergte PRs und gelöste Issues ohne PR in den letzten {{count}} Tagen. Ein Plan mit drei PRs zählt als drei Features, ein Plan, der nur ein Issue löst, als eines."
+      },
+      "metric": "Ausgelieferte Features",
+      "formula_one": "Gemergte PRs + gelöste Issues, letzter {{count}} Tag",
+      "formula_other": "Gemergte PRs + gelöste Issues, letzte {{count}} Tage",
+      "last_one": "Letzter {{count}} Tag",
+      "last_other": "Letzte {{count}} Tage",
+      "prior_one": "Vorheriger {{count}} Tag",
+      "prior_other": "Vorherige {{count}} Tage",
+      "periodDelta": "Delta im {{days}}-Tage-Vergleich",
+      "byDay": {
+        "title_one": "Features pro Tag (letzter {{count}} Tag)",
+        "title_other": "Features pro Tag (letzte {{count}} Tage)",
+        "empty": "Im {{days}}-Tage-Zeitraum wurden keine Features ausgeliefert.",
+        "columns": {
+          "date": "Datum",
+          "count": "Features"
+        }
+      },
+      "mergedPrs": {
+        "title": "Zuletzt gemergte Pull Requests",
+        "empty": "Noch keine gemergten Pull Requests erfasst.",
+        "columns": {
+          "plan": "Plan",
+          "title": "Titel",
+          "repo": "Repo",
+          "merged": "Gemergt",
+          "prUrl": "PR-URL"
+        },
+        "open": "öffnen"
+      }
+    },
+    "costPerFeature": {
+      "subtitle": "Die beiden Werte, aus denen der Quotient gebildet wird",
+      "note": {
+        "title": "Stückkosten",
+        "body": "„Ø Kosten pro Feature“ teilt die Ausgaben der letzten {{days}} Tage durch die in den letzten {{days}} Tagen ausgelieferten Features, sodass die Karte genau den Quotienten der beiden Karten daneben zeigt."
+      },
+      "metric": "Ø Kosten pro Feature",
+      "formula": "Ausgaben ({{days}} Tage) / ausgelieferte Features ({{days}} Tage)",
+      "lastSpend_one": "Letzter {{count}} Tag (Ausgaben)",
+      "lastSpend_other": "Letzte {{count}} Tage (Ausgaben)",
+      "lastFeatures_one": "Letzter {{count}} Tag (Features)",
+      "lastFeatures_other": "Letzte {{count}} Tage (Features)",
+      "lastCostPerFeature_one": "Letzter {{count}} Tag (Kosten/Feature)",
+      "lastCostPerFeature_other": "Letzte {{count}} Tage (Kosten/Feature)",
+      "priorSpend_one": "Vorheriger {{count}} Tag (Ausgaben)",
+      "priorSpend_other": "Vorherige {{count}} Tage (Ausgaben)",
+      "priorFeatures_one": "Vorheriger {{count}} Tag (Features)",
+      "priorFeatures_other": "Vorherige {{count}} Tage (Features)",
+      "priorCostPerFeature_one": "Vorheriger {{count}} Tag (Kosten/Feature)",
+      "priorCostPerFeature_other": "Vorherige {{count}} Tage (Kosten/Feature)",
+      "noValue": "k. A.",
+      "periodDelta": "Delta im {{days}}-Tage-Vergleich"
+    },
+    "forecastMonth": {
+      "subtitle": "Beide Hochrechnungsgrundlagen und die Tage dahinter",
+      "empty": "Keine Aktivität erfasst.",
+      "note": {
+        "title": "Nutzungs- und Subventionsanalyse",
+        "bodySubsidized_one": "„Prognose für diesen Monat“ rechnet die Ausgaben zum Monatsende anhand der täglichen Aktivität im letzten {{count}} Tag hoch. {{percent}} der Tokens in diesem Zeitraum wurden über ein Abonnement subventioniert (Gegenwert {{subsidizedValue}}), bei {{apiCharges}} an direkten API-Kosten.",
+        "bodySubsidized_other": "„Prognose für diesen Monat“ rechnet die Ausgaben zum Monatsende anhand der täglichen Aktivität in den letzten {{count}} Tagen hoch. {{percent}} der Tokens in diesem Zeitraum wurden über ein Abonnement subventioniert (Gegenwert {{subsidizedValue}}), bei {{apiCharges}} an direkten API-Kosten.",
+        "body_one": "„Prognose für diesen Monat“ rechnet die Ausgaben zum Monatsende anhand der täglichen Aktivität im letzten {{count}} Tag hoch. Direkte API-Prognosen schätzen die tatsächlich abgerechneten Ausgaben, während Gesamtprognosen den gesamten Marktwert der Tokens widerspiegeln.",
+        "body_other": "„Prognose für diesen Monat“ rechnet die Ausgaben zum Monatsende anhand der täglichen Aktivität in den letzten {{count}} Tagen hoch. Direkte API-Prognosen schätzen die tatsächlich abgerechneten Ausgaben, während Gesamtprognosen den gesamten Marktwert der Tokens widerspiegeln."
+      },
+      "metric": "Prognose für diesen Monat",
+      "apiCalendar": "Direkte API-Prognose (Kalenderbasis)",
+      "apiActivity": "Direkte API-Prognose (Aktivitätsbasis)",
+      "totalCalendar": "Gesamtprognose (Kalenderbasis)",
+      "totalActivity": "Gesamtprognose (Aktivitätsbasis)",
+      "subsidizedTokenShare": "Anteil subventionierter Tokens",
+      "subsidizedTokenShareValue": "{{percent}} der Tokens",
+      "subsidizedValueShare": "Anteil des subventionierten Werts",
+      "subsidizedValueShareValue": "{{percent}} des Werts",
+      "mtdApiSpend": "Direkte API-Ausgaben seit Monatsbeginn",
+      "mtdSubsidizedValue": "Subventionierter Wert seit Monatsbeginn",
+      "mtdUnattributedSpend": "Nicht zugeordnete Ausgaben seit Monatsbeginn",
+      "mtdTotalMarketValue": "Gesamter Marktwert seit Monatsbeginn",
+      "calendarDays": "Kalendertage im Zeitraum",
+      "activeDays": "Aktive Tage mit Ausgaben",
+      "daysRemaining": "Verbleibende Tage",
+      "daysInMonth": "Tage im Monat",
+      "dayCount_one": "{{count}} Tag",
+      "dayCount_other": "{{count}} Tage",
+      "daily": {
+        "title_one": "Tägliche Ausgaben (letzter {{count}} Tag)",
+        "title_other": "Tägliche Ausgaben (letzte {{count}} Tage)",
+        "empty": "Im {{days}}-Tage-Zeitraum wurden keine täglichen Ausgaben gefunden.",
+        "columns": {
+          "date": "Datum",
+          "cost": "Gesamtausgaben",
+          "apiCost": "API-Ausgaben",
+          "subsidizedCost": "Subventionierte Ausgaben",
+          "tokens": "Tokens gesamt",
+          "subsidizedShare": "Subventioniert (%)"
+        },
+        "incompleteSplit": {
+          "title": "Unvollständige Aufteilung",
+          "body": "{{amount}} der Ausgaben in diesem Zeitraum haben keine Kostenquelle und sind daher in „Gesamtausgaben“ enthalten, aber weder in „API-Ausgaben“ noch in „Subventionierte Ausgaben“. Diese beiden Spalten weisen daher zu wenig aus und dürfen nicht als vollständige Aufteilung gelesen werden."
+        }
+      }
+    },
+    "avgCostPlan": {
+      "subtitle": "Aktuelle Pläne; ein Strich bedeutet, dass die Zeilen nie bepreist wurden",
+      "note": {
+        "title": "Gleitender 7-Tage-Durchschnitt",
+        "body_one": "„Ø Kosten pro Plan“ berechnet die durchschnittlichen Ausführungs- und Agentenausgaben für Pläne, die im letzten {{count}} Tag erstellt wurden und den Status {{states}} erreicht haben. Nicht bepreiste Pläne (z. B. Abonnement-Läufe, bei denen die Kosten null sind) werden aus dem Divisor ausgeschlossen, damit sie den Durchschnitt nicht künstlich senken.",
+        "body_other": "„Ø Kosten pro Plan“ berechnet die durchschnittlichen Ausführungs- und Agentenausgaben für Pläne, die in den letzten {{count}} Tagen erstellt wurden und den Status {{states}} erreicht haben. Nicht bepreiste Pläne (z. B. Abonnement-Läufe, bei denen die Kosten null sind) werden aus dem Divisor ausgeschlossen, damit sie den Durchschnitt nicht künstlich senken."
+      },
+      "metric": "Durchschnittliche Kosten pro Plan",
+      "window": "Zeitraum",
+      "windowValue_one": "{{count}} Tag (im letzten {{count}} Tag erstellte Pläne)",
+      "windowValue_other": "{{count}} Tage (in den letzten {{count}} Tagen erstellte Pläne)",
+      "statesIncluded": "Einbezogene Plan-Status",
+      "currentAverage": "Aktueller {{days}}-Tage-Durchschnitt",
+      "priorAverage": "Vorheriger {{days}}-Tage-Durchschnitt (Tage 8–14)",
+      "periodDelta": "Delta im {{days}}-Tage-Vergleich",
+      "plans": {
+        "title_one": "Pläne im gleitenden Zeitraum (letzter {{count}} Tag)",
+        "title_other": "Pläne im gleitenden Zeitraum (letzte {{count}} Tage)",
+        "empty": "Im gleitenden {{days}}-Tage-Zeitraum wurden keine Pläne erstellt.",
+        "columns": {
+          "plan": "Plan",
+          "title": "Titel",
+          "state": "Status",
+          "created": "Erstellt",
+          "tokens": "Tokens",
+          "cost": "Gesamtkosten"
+        }
+      }
+    },
+    "sheetTitle": "KPI-Aufschlüsselung",
+    "planStates": {
+      "completed": "Abgeschlossen",
+      "failed": "Fehlgeschlagen",
+      "review": "Review"
+    }
+  },
+  "updateTendril": {
+    "cancel": "Abbrechen",
+    "retry": "Erneut versuchen",
+    "title": "Tendril aktualisieren",
+    "available": "<strong>v{{latest}}</strong> ist verfügbar (Sie haben v{{current}}).",
+    "selfUpdateHint": "Klicken Sie auf „Jetzt aktualisieren“, um das Update automatisch herunterzuladen und zu installieren. Tendril startet danach automatisch neu.",
+    "manualHint": "Für diese Installationsart ist keine automatische Aktualisierung verfügbar. Führen Sie zum Aktualisieren den folgenden Befehl in Ihrem Terminal aus:",
+    "failedTitle": "Aktualisierung fehlgeschlagen",
+    "updating": "Wird aktualisiert...",
+    "progressLabel": "Fortschritt der Aktualisierung",
+    "updateNow": "Jetzt aktualisieren",
+    "ok": "OK"
+  }
+}

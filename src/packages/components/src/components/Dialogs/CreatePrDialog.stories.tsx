@@ -34,3 +34,28 @@ export const Busy: Story = { args: { repoCount: 1, isBusy: true } };
 export const Rejected: Story = {
   args: { repoCount: 1, error: "No commits between development and the plan's branch." },
 };
+
+/**
+ * V1's Target Branch field with the repo's configured base branch leading as "(default)", other
+ * branches after it, and "+ Custom branch..." at the end.
+ */
+export const TargetBranch: Story = {
+  args: { repoCount: 1, defaultBranch: "development", branches: ["main", "release/2.0"] },
+};
+
+/** No configured base branch: the select leads with each repository's own, which sends no override. */
+export const TargetBranchUnknown: Story = { args: { repoCount: 2 } };
+
+/** Reviewers as V1's pick list, from GitHub's assignable users. */
+export const ReviewerPicker: Story = {
+  args: {
+    repoCount: 1,
+    defaultBranch: "main",
+    reviewerOptions: ["octocat", "hubot", "monalisa", "defunkt", "mojombo", "pjhyett"],
+  },
+};
+
+/** The reviewer list could not be loaded: the field falls back to free text and says why. */
+export const ReviewerListFailed: Story = {
+  args: { repoCount: 1, reviewerOptionsError: "gh: authentication required (run gh auth login)" },
+};

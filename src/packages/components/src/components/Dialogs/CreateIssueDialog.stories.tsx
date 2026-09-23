@@ -102,3 +102,25 @@ export const Rejected: Story = {
     error: "gh: could not resolve to a Repository with the name 'Ivy-Tendril-V2'.",
   },
 };
+
+/** Assignee and labels as V1's pickers, from the repos' GitHub lists. */
+export const WithGitHubPickers: Story = {
+  args: {
+    repos: ["/Users/dev/repos/Ivy-Tendril-V2"],
+    assigneeOptions: ["octocat", "hubot", "monalisa"],
+    labelOptions: ["bug", "enhancement", "documentation", "good first issue", "ui", "backend"],
+  },
+};
+
+/** The lists are still loading: the fields stay usable as free text meanwhile. */
+export const LoadingGitHubLists: Story = {
+  args: { repos: ["/Users/dev/repos/Ivy-Tendril-V2"], metadataLoading: true },
+};
+
+/** The lists could not be loaded: free text, with the reason. */
+export const GitHubListsFailed: Story = {
+  args: {
+    repos: ["/Users/dev/repos/Ivy-Tendril-V2"],
+    metadataError: "gh: authentication required (run gh auth login)",
+  },
+};

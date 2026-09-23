@@ -159,21 +159,6 @@
       }
     }
   },
-  "sheet": {
-    "titleFallback": "इश्यू",
-    "assigned": "सौंपा गया: {{assignees}}",
-    "openOnGitHub": "GitHub पर खोलें",
-    "dismiss": {
-      "label": "खारिज करें",
-      "tooltip": "हमेशा के लिए खारिज करें: सौंपे गए इश्यू की जांच इस इश्यू को फिर से प्रस्तावित नहीं करेगी"
-    },
-    "accept": {
-      "label": "स्वीकार करें",
-      "tooltip": "{{project}} में इस इश्यू के लिए योजना शुरू करें"
-    },
-    "fireOff": "Tendril में शुरू करें",
-    "noDescription": "कोई विवरण नहीं दिया गया।"
-  },
   "pullRequests": {
     "title": "पुल रिक्वेस्ट्स",
     "status": {
@@ -224,11 +209,6 @@
     },
     "statusFilterPlaceholder": "स्थिति से फ़िल्टर करें…",
     "resyncAll": "सभी पुनः सिंक करें",
-    "resyncing": "पुनः सिंक हो रहा है…",
-    "sheet": {
-      "titleFallback": "योजना",
-      "loadingRevision": "संशोधन लोड हो रहा है…",
-      "notFound": "योजना नहीं मिली या खाली है।"
-    }
+    "resyncing": "पुनः सिंक हो रहा है…"
   }
 }

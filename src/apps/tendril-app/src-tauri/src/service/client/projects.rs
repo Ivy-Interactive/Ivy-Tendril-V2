@@ -313,3 +313,67 @@ impl TendrilClient {
         Ok(resp.json().await?)
     }
 }
+
+/// The create-plan dialog's two project-scoped reads.
+impl TendrilClient {
+    /// Uncommitted work in each of a project's repos, with the base branch each syncs to
+    /// (`GET /api/projects/:name/repo-status`) — the create-plan preflight's data, V1
+    /// `UsePreflightCheck(project)`.
+    pub async fn get_project_repo_status(
+        &self,
+        project_name: &str,
+    ) -> Result<Vec<crate::models::RepoStatusDto>, BridgeError> {
+        let url = format!(
+            "{}/api/projects/{}/repo-status",
+            self.base_url,
+            path_segment(project_name)
+        );
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::with_details(
+                "REPO_STATUS_FAILED",
+                format!("Failed to read repo status for project '{project_name}' ({status})"),
+                text,
+            ));
+        }
+
+        #[derive(serde::Deserialize)]
+        struct RepoStatusResponse {
+            #[serde(default)]
+            repos: Vec<crate::models::RepoStatusDto>,
+        }
+
+        let body: RepoStatusResponse = resp.json().await?;
+        Ok(body.repos)
+    }
+
+    /// The labels and assignable users of a project's GitHub repos
+    /// (`GET /api/projects/:name/issues/metadata`), for the Create Issue dialog's pickers — V1
+    /// `IGithubService.GetLabelsAsync` / `GetAssigneesAsync`.
+    pub async fn get_project_issue_metadata(
+        &self,
+        project_name: &str,
+    ) -> Result<serde_json::Value, BridgeError> {
+        let url = format!(
+            "{}/api/projects/{}/issues/metadata",
+            self.base_url,
+            path_segment(project_name)
+        );
+        let resp = self.client.get(&url).headers(self.headers()).send().await?;
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let text = resp.text().await.unwrap_or_default();
+            return Err(BridgeError::with_details(
+                "ISSUE_METADATA_FAILED",
+                format!("Failed to read issue metadata for project '{project_name}' ({status})"),
+                text,
+            ));
+        }
+
+        Ok(resp.json().await?)
+    }
+}

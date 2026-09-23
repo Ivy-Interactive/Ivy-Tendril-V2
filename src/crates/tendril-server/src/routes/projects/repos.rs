@@ -350,3 +350,109 @@ pub async fn sync_project_repos(
     )
         .into_response()
 }
+
+/// How many `git status --porcelain` lines each repo reports; `changeCount` carries the true total.
+/// The same cap as `GET /api/plans/:id/repo-status`.
+const MAX_STATUS_LINES: usize = 20;
+
+/// The branch a repo's work is based on: the configured `baseBranch`, else what
+/// `refs/remotes/origin/HEAD` points at, else `main` — the resolution V1's `UsePreflightCheck` makes
+/// through `repo.BaseBranch ?? GitHelper.ResolveDefaultBranch(...)`.
+fn resolve_repo_base_branch(repo: &std::path::Path, configured: Option<&str>) -> String {
+    if let Some(branch) = configured.map(str::trim).filter(|b| !b.is_empty()) {
+        return branch.to_string();
+    }
+    match tendril_core::git::run_git(&["symbolic-ref", "refs/remotes/origin/HEAD"], repo) {
+        Ok((0, stdout, _)) => stdout
+            .trim()
+            .rsplit('/')
+            .next()
+            .filter(|segment| !segment.is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| "main".to_string()),
+        _ => "main".to_string(),
+    }
+}
+
+/// `GET /api/projects/:name/repo-status` — uncommitted work in each of a project's repos, and the
+/// base branch each one syncs to.
+///
+/// The project-scoped sibling of `GET /api/plans/:id/repo-status`, for the one guard that runs before
+/// a plan exists: V1's `CreatePlanDialogLauncher` preflight (`UsePreflightCheck(project)`), which
+/// offers to SyncRepo a dirty repo before CreatePlan reads it. `baseBranch` is what that SyncRepo job
+/// is sent. Read-only and forgiving in the same way as the plan route: a repo that cannot be inspected
+/// is reported with an `error` and `isDirty: false`, so the guard degrades to "nothing known to be
+/// dirty" rather than blocking plan creation.
+pub async fn project_repo_status(
+    State(state): State<Arc<AppState>>,
+    Path(name): Path<String>,
+) -> impl IntoResponse {
+    let settings = load_config(&state.config_path).unwrap_or_default();
+    let Some(project) = settings
+        .projects
+        .iter()
+        .find(|p| p.name.eq_ignore_ascii_case(&name))
+    else {
+        return (
+            StatusCode::NOT_FOUND,
+            Json(json!({ "error": format!("Project '{}' not found", name) })),
+        )
+            .into_response();
+    };
+
+    let home = state.tendril_home.to_string_lossy().to_string();
+    let mut repos = Vec::new();
+    let mut seen = std::collections::HashSet::new();
+    for repo_ref in &project.repos {
+        let expanded = tendril_core::config::expand_variables(repo_ref.path.trim(), &home);
+        // V1's `checkedPaths`: one checkout listed twice is one repo to report.
+        if !seen.insert(expanded.to_ascii_lowercase()) {
+            continue;
+        }
+        let repo_path = std::path::PathBuf::from(&expanded);
+        if !repo_path.is_dir() {
+            repos.push(json!({
+                "path": expanded,
+                "isDirty": false,
+                "changes": [],
+                "error": "Repository path does not exist",
+            }));
+            continue;
+        }
+
+        let base_branch = resolve_repo_base_branch(&repo_path, repo_ref.base_branch.as_deref());
+        match tendril_core::git::run_git(&["status", "--porcelain"], &repo_path) {
+            Ok((0, stdout, _)) => {
+                let lines: Vec<&str> = stdout.lines().filter(|l| !l.trim().is_empty()).collect();
+                let changes: Vec<String> = lines
+                    .iter()
+                    .take(MAX_STATUS_LINES)
+                    .map(|l| l.to_string())
+                    .collect();
+                repos.push(json!({
+                    "path": expanded,
+                    "isDirty": !lines.is_empty(),
+                    "changes": changes,
+                    "changeCount": lines.len(),
+                    "baseBranch": base_branch,
+                }));
+            }
+            Ok((code, _, stderr)) => repos.push(json!({
+                "path": expanded,
+                "isDirty": false,
+                "changes": [],
+                "baseBranch": base_branch,
+                "error": format!("git status exited {}: {}", code, stderr.trim()),
+            })),
+            Err(e) => repos.push(json!({
+                "path": expanded,
+                "isDirty": false,
+                "changes": [],
+                "baseBranch": base_branch,
+                "error": format!("git status failed: {}", e),
+            })),
+        }
+    }
+
+    (StatusCode::OK, Json(json!({ "repos": repos }))).into_response()
+}

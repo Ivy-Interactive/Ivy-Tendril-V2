@@ -1,1 +1,145 @@
-{}
+{
+  "actions": {
+    "cancel": "Annuler"
+  },
+  "costSheet": {
+    "loading": "Chargement des détails du job…",
+    "details": {
+      "model": "Modèle",
+      "provider": "Fournisseur",
+      "type": "Type",
+      "profile": "Profil",
+      "agentCost": "Coût déclaré par l'agent"
+    },
+    "notProvided": "Non fourni",
+    "estimated": "~{{cost}}",
+    "noUsage": "Aucune ventilation par token n'a été enregistrée pour ce job.",
+    "noUsage_total": "Aucune ventilation par token n'a été enregistrée pour ce job, seulement un total de {{total}} tokens.",
+    "breakdown": {
+      "title": "Ventilation",
+      "tokenType": "Type de token",
+      "tokens": "Tokens",
+      "total": "Total"
+    },
+    "buckets": {
+      "input": "Entrée",
+      "output": "Sortie",
+      "cacheRead": "Lecture du cache",
+      "cacheWrite": "Écriture dans le cache",
+      "reasoning": "Raisonnement"
+    },
+    "totalCost": "Coût total"
+  },
+  "promptSheet": {
+    "title": "Prompt complet",
+    "empty": "Ce job n'a enregistré aucun texte de prompt."
+  },
+  "outputSheet": {
+    "noOutput": "Aucune sortie disponible.",
+    "statusCallout": {
+      "title": "Statut du job : {{status}}",
+      "title_pending": "Job en attente",
+      "title_queued": "Job en file d'attente",
+      "title_blocked": "Job bloqué",
+      "title_failed": "Échec du job",
+      "title_timeout": "Délai du job dépassé",
+      "title_stopped": "Job arrêté",
+      "blocked": "En attente de la fin des dépendances ou des jobs précédents.",
+      "pending": "Le job est en file d'attente et attend de démarrer."
+    }
+  },
+  "deleteJob": {
+    "title": "Supprimer le job",
+    "body": "Voulez-vous vraiment supprimer ce job ? Cette action est irréversible.",
+    "confirm": "Supprimer"
+  },
+  "stopQueued": {
+    "title": "Arrêter les jobs en file d'attente",
+    "body_one": "Arrêter {{count}} job en file d'attente ? Les jobs en cours ne sont pas affectés.",
+    "body_many": "Arrêter les {{count}} jobs en file d'attente ? Les jobs en cours ne sont pas affectés.",
+    "body_other": "Arrêter les {{count}} jobs en file d'attente ? Les jobs en cours ne sont pas affectés.",
+    "confirm": "Tout arrêter"
+  },
+  "stopAll": {
+    "title": "Arrêter tous les jobs",
+    "body_one": "Arrêter {{count}} job actif ? Les agents en cours d'exécution sont arrêtés de force et leurs plans reviennent à leur état précédent. Cette action est irréversible.",
+    "body_many": "Arrêter les {{count}} jobs actifs ? Les agents en cours d'exécution sont arrêtés de force et leurs plans reviennent à leur état précédent. Cette action est irréversible.",
+    "body_other": "Arrêter les {{count}} jobs actifs ? Les agents en cours d'exécution sont arrêtés de force et leurs plans reviennent à leur état précédent. Cette action est irréversible.",
+    "confirm": "Tout arrêter"
+  },
+  "clearJobs": {
+    "confirm": "Effacer",
+    "confirmCount": "Effacer ({{count}})",
+    "scopes": {
+      "completed": {
+        "title": "Effacer les jobs terminés",
+        "counting": "Décompte des jobs terminés…",
+        "empty": "Aucun job terminé à effacer.",
+        "confirm_one": "Supprimer {{count}} job terminé ? Ses journaux et sa sortie seront supprimés avec lui. Cette action est irréversible.",
+        "confirm_many": "Supprimer {{count}} jobs terminés ? Leurs journaux et leur sortie seront supprimés avec eux. Cette action est irréversible.",
+        "confirm_other": "Supprimer {{count}} jobs terminés ? Leurs journaux et leur sortie seront supprimés avec eux. Cette action est irréversible."
+      },
+      "failed": {
+        "title": "Effacer les jobs en échec",
+        "counting": "Décompte des jobs en échec…",
+        "empty": "Aucun job en échec à effacer.",
+        "confirm_one": "Supprimer {{count}} job en échec ? Ses journaux et sa sortie seront supprimés avec lui. Cette action est irréversible.",
+        "confirm_many": "Supprimer {{count}} jobs en échec ? Leurs journaux et leur sortie seront supprimés avec eux. Cette action est irréversible.",
+        "confirm_other": "Supprimer {{count}} jobs en échec ? Leurs journaux et leur sortie seront supprimés avec eux. Cette action est irréversible."
+      },
+      "timeout": {
+        "title": "Effacer les jobs expirés",
+        "counting": "Décompte des jobs expirés…",
+        "empty": "Aucun job expiré à effacer.",
+        "confirm_one": "Supprimer {{count}} job expiré ? Ses journaux et sa sortie seront supprimés avec lui. Cette action est irréversible.",
+        "confirm_many": "Supprimer {{count}} jobs expirés ? Leurs journaux et leur sortie seront supprimés avec eux. Cette action est irréversible.",
+        "confirm_other": "Supprimer {{count}} jobs expirés ? Leurs journaux et leur sortie seront supprimés avec eux. Cette action est irréversible."
+      },
+      "stopped": {
+        "title": "Effacer les jobs arrêtés",
+        "counting": "Décompte des jobs arrêtés…",
+        "empty": "Aucun job arrêté à effacer.",
+        "confirm_one": "Supprimer {{count}} job arrêté ? Ses journaux et sa sortie seront supprimés avec lui. Cette action est irréversible.",
+        "confirm_many": "Supprimer {{count}} jobs arrêtés ? Leurs journaux et leur sortie seront supprimés avec eux. Cette action est irréversible.",
+        "confirm_other": "Supprimer {{count}} jobs arrêtés ? Leurs journaux et leur sortie seront supprimés avec eux. Cette action est irréversible."
+      },
+      "all": {
+        "title": "Effacer tous les jobs achevés",
+        "counting": "Décompte des jobs achevés…",
+        "empty": "Aucun job achevé à effacer.",
+        "confirm_one": "Supprimer {{count}} job achevé ? Ses journaux et sa sortie seront supprimés avec lui. Cette action est irréversible.",
+        "confirm_many": "Supprimer {{count}} jobs achevés ? Leurs journaux et leur sortie seront supprimés avec eux. Cette action est irréversible.",
+        "confirm_other": "Supprimer {{count}} jobs achevés ? Leurs journaux et leur sortie seront supprimés avec eux. Cette action est irréversible."
+      }
+    }
+  },
+  "rerun": {
+    "title": "Relancer {{type}}",
+    "intro": "Indiquez éventuellement à l'agent ce qui s'est mal passé ou ce qu'il doit faire autrement. Laissez vide pour relancer à l'identique.",
+    "feedbackPlaceholder": "Retour pour l'agent (facultatif)",
+    "feedbackAriaLabel": "Retour pour l'agent",
+    "unchanged": "Relancer ce job avec ses arguments d'origine ?",
+    "confirm": "Relancer",
+    "busy": "Démarrage…"
+  },
+  "reportBug": {
+    "title": "Signaler un bug",
+    "intro": "Décrivez le problème. Les journaux du job et une copie nettoyée de votre configuration (secrets supprimés) seront joints à une issue GitHub publique.",
+    "descriptionPlaceholder": "Qu'est-ce qui n'a pas fonctionné ? Comment le reproduire ?",
+    "descriptionAriaLabel": "Description du bug",
+    "githubUserPlaceholder": "Votre nom d'utilisateur GitHub (facultatif)",
+    "githubUserAriaLabel": "Nom d'utilisateur GitHub",
+    "submit": "Envoyer le rapport",
+    "busy": "Envoi…"
+  },
+  "debugWithAgent": {
+    "title": "Déboguer avec {{agent}}",
+    "focusPlaceholder": "Quelque chose de précis à examiner ? (facultatif)",
+    "focusAriaLabel": "Sur quoi se concentrer",
+    "confirm": "Déboguer avec {{agent}}"
+  },
+  "jobDebug": {
+    "reportBug": "Signaler un bug",
+    "debugWithAgent": "Déboguer avec {{agent}}"
+  }
+}

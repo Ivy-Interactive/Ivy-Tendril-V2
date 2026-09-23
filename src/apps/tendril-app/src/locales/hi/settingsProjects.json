@@ -232,8 +232,7 @@
       "consequence": "इस प्रोजेक्ट पर काम करने वाले एजेंट्स को यह मिलना बंद हो जाता है। इससे केवल प्रोजेक्ट का इस स्किल से संदर्भ हटता है, स्किल की अपनी फ़ाइलें नहीं।"
     },
     "saved": "स्किल \"{{name}}\" सहेजी गई",
-    "deleted": "स्किल \"{{name}}\" हटाई गई",
-    "memoryNote": "प्रोजेक्ट मेमोरी {{path}} के अंतर्गत Markdown फ़ाइलों के रूप में रहती है। डेमॉन इनके लिए कोई रूट उपलब्ध नहीं कराता, इसलिए इन्हें अभी यहाँ संपादित नहीं किया जा सकता।"
+    "deleted": "स्किल \"{{name}}\" हटाई गई"
   },
   "dangerZone": {
     "title": "डेंजर ज़ोन",
@@ -355,5 +354,28 @@
     "environmentFile": "पर्यावरण फ़ाइल",
     "mcpServer": "MCP सर्वर",
     "customSkill": "कस्टम स्किल"
+  },
+  "importFromRepo": "रिपॉज़िटरी से इंपोर्ट करें",
+  "importedFromRepo_one": "{{count}} आइटम इंपोर्ट किया गया",
+  "importedFromRepo_other": "{{count}} आइटम इंपोर्ट किए गए",
+  "importedFromRepo_skills_one": "{{count}} कस्टम स्किल इंपोर्ट की गई",
+  "importedFromRepo_skills_other": "{{count}} कस्टम स्किल इंपोर्ट की गईं",
+  "importedFromRepo_mcpServers_one": "{{count}} MCP सर्वर इंपोर्ट किया गया",
+  "importedFromRepo_mcpServers_other": "{{count}} MCP सर्वर इंपोर्ट किए गए",
+  "memory": {
+    "title": "प्रोजेक्ट मेमोरी",
+    "hint": "इस प्रोजेक्ट के बारे में Markdown नोट्स (स्टैक, नियम, परंपराएँ), {{path}} में सहेजे जाते हैं।",
+    "addButton": "प्रोजेक्ट मेमोरी जोड़ें",
+    "columns": {
+      "file": "फ़ाइल",
+      "snippet": "सारांश"
+    },
+    "empty": "इस प्रोजेक्ट में अभी कोई मेमोरी फ़ाइल नहीं है।",
+    "loadError": "प्रोजेक्ट की मेमोरी पढ़ी नहीं जा सकी: {{error}}",
+    "saved": "मेमोरी फ़ाइल '{{name}}' सहेजी गई",
+    "deleted": "मेमोरी फ़ाइल '{{name}}' हटाई गई",
+    "removal": {
+      "consequence": "फ़ाइल प्रोजेक्ट के Memory फ़ोल्डर से हटा दी जाती है।"
+    }
   }
 }

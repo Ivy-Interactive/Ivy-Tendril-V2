@@ -1,1 +1,191 @@
-{}
+{
+  "removal": {
+    "title": "移除 {{kind}}",
+    "title_level": "移除级别",
+    "title_repository": "移除仓库",
+    "title_reviewAction": "移除审查操作",
+    "title_environmentFile": "移除环境文件",
+    "title_mcpServer": "移除 MCP 服务器",
+    "title_customSkill": "移除自定义技能",
+    "body": "要从此配置中移除 {{kind}} <name>{{name}}</name> 吗？",
+    "body_level": "要从此配置中移除级别 <name>{{name}}</name> 吗？",
+    "body_repository": "要从此配置中移除仓库 <name>{{name}}</name> 吗？",
+    "body_reviewAction": "要从此配置中移除审查操作 <name>{{name}}</name> 吗？",
+    "body_environmentFile": "要从此配置中移除环境文件 <name>{{name}}</name> 吗？",
+    "body_mcpServer": "要从此配置中移除 MCP 服务器 <name>{{name}}</name> 吗？",
+    "body_customSkill": "要从此配置中移除自定义技能 <name>{{name}}</name> 吗？",
+    "title_memoryFile": "移除记忆文件",
+    "body_memoryFile": "要从此项目中移除记忆文件 <name>{{name}}</name> 吗？",
+    "confirm": "移除"
+  },
+  "configEditor": {
+    "discard": {
+      "title": "放弃未保存的更改",
+      "confirm": "放弃并重新加载",
+      "body": "重新加载会用磁盘上的文件替换编辑器中的内容。您未保存的编辑将会丢失。"
+    }
+  },
+  "agentTest": {
+    "title": "编程智能体测试",
+    "columns": {
+      "test": "测试",
+      "result": "结果"
+    },
+    "status": {
+      "passed": "通过",
+      "failed": "失败",
+      "warning": "警告",
+      "running": "运行中",
+      "pending": "待处理"
+    },
+    "showRawOutput": "显示原始输出",
+    "rawOutputTitle": "原始输出",
+    "close": "关闭",
+    "cancel": "取消"
+  },
+  "projectMemory": {
+    "addTitle": "添加项目记忆",
+    "editTitle": "编辑记忆：{{fileName}}",
+    "description": "{{project}} 的 Memory 文件夹中的一个 Markdown 文件。",
+    "loading": "正在加载记忆文件...",
+    "fileName": {
+      "label": "文件名",
+      "placeholder": "记忆文件名（例如 stack.md、conventions.md）..."
+    },
+    "content": {
+      "label": "内容（Markdown）",
+      "placeholder": "Markdown 记忆内容（例如技术栈、规则、架构约定）..."
+    },
+    "cancel": "取消",
+    "add": "添加",
+    "save": "保存"
+  },
+  "importRepoAssets": {
+    "title": "从仓库导入",
+    "title_skills": "从仓库导入自定义技能",
+    "title_mcpServers": "从仓库导入 MCP 工具和服务器",
+    "cancel": "取消",
+    "submit_other": "导入所选项（{{count}}）",
+    "source": {
+      "heading": "仓库来源",
+      "modes": {
+        "repo": "项目仓库",
+        "gitUrl": "Git URL",
+        "localPath": "本地路径"
+      },
+      "repo": "项目仓库",
+      "gitUrl": "Git 仓库 URL",
+      "localPath": "本地文件夹路径",
+      "localPathPlaceholder": "~/path/to/repository 或 /Users/..."
+    },
+    "fetchAndScan": "获取并扫描",
+    "scan": "扫描",
+    "scanning": "正在扫描仓库...",
+    "notScanned": "选择一个来源并扫描，即可查看其中的内容。",
+    "empty": "在此仓库中未找到可导入的内容。",
+    "empty_skills": "在此仓库中未找到 SKILL.md 文件（.agents/skills、.gemini/skills、skills/ 等）。",
+    "empty_mcpServers": "未找到 MCP 配置文件（.mcp.json、mcp_config.json、.vscode/mcp.json）。",
+    "discovered": "已发现",
+    "discovered_skills": "已发现的自定义技能",
+    "discovered_mcpServers": "已发现的 MCP 服务器"
+  },
+  "vaultThemes": {
+    "title": "团队 Vault 主题",
+    "createTitle": "创建自定义主题",
+    "editTitle": "编辑自定义主题",
+    "close": "关闭",
+    "cancel": "取消",
+    "upload": "上传到团队 Vault",
+    "newTheme": "新建自定义主题",
+    "copyConfiguration": "复制配置",
+    "importConfiguration": "导入配置",
+    "defaults": {
+      "name": "团队品牌",
+      "description": "团队 Vault 自定义主题"
+    },
+    "tabs": {
+      "generator": "主题生成器",
+      "themes_other": "Vault 主题（{{count}}）"
+    },
+    "fields": {
+      "name": "主题名称",
+      "description": "描述",
+      "preset": "主题预设",
+      "presetCustom": "自定义",
+      "mode": "主题模式",
+      "fontFamily": "字体系列",
+      "fontSize": "字号",
+      "radius": "圆角"
+    },
+    "mode": {
+      "light": "浅色",
+      "dark": "深色",
+      "lightBadge": "浅色模式",
+      "darkBadge": "深色模式"
+    },
+    "sections": {
+      "preview": "组件预览",
+      "colors": "颜色",
+      "typography": "排版与布局"
+    },
+    "colorGroups": {
+      "main": "主要颜色",
+      "semantic": "语义颜色",
+      "ui": "界面元素颜色"
+    },
+    "radius": {
+      "none": "无",
+      "small": "小",
+      "medium": "中",
+      "large": "大",
+      "full": "全圆"
+    },
+    "preview": {
+      "heading": "交互式预览",
+      "hint": "随颜色、排版和圆角实时变化的预览",
+      "primary": "主要",
+      "secondary": "次要",
+      "outline": "描边",
+      "destructive": "危险",
+      "ghost": "幽灵",
+      "textField": "文本字段",
+      "switch": "开关",
+      "callout": "框、字段和选择器会继承你的圆角和颜色变量。",
+      "metric": "示例指标",
+      "healthy": "正常"
+    },
+    "list": {
+      "loading": "正在加载 Vault 主题...",
+      "noDescription": "自定义主题",
+      "active": "使用中",
+      "apply": "应用",
+      "edit": "编辑",
+      "delete": "删除 {{name}}",
+      "count_other": "Vault 中有 {{count}} 个自定义主题"
+    },
+    "empty": {
+      "title": "Vault 中没有自定义主题",
+      "body": "此团队 Vault 还没有自定义主题。使用主题生成器创建一个并上传。"
+    },
+    "export": {
+      "title": "导出主题配置",
+      "format": "格式",
+      "jsonHint": "使用此 JSON 保存或分享主题。",
+      "cssHint": "将此 CSS 粘贴到宿主中即可应用主题的颜色。",
+      "copy": "复制 {{format}}"
+    },
+    "import": {
+      "title": "导入主题配置",
+      "description": "粘贴 JSON 主题配置，以导入其颜色、排版和圆角。",
+      "fieldLabel": "主题配置",
+      "submit": "导入主题",
+      "invalidJson": "这不是有效的 JSON。",
+      "invalidShape": "未找到主题颜色：需要一个包含 \"light\" 和/或 \"dark\" 的 \"colors\" 对象。"
+    },
+    "deleteConfirm": {
+      "title": "要从 Vault 中删除 {{name}} 吗？",
+      "body": "该主题将从 Vault 仓库中移除，所有使用者都会受到影响。已应用它的人将回退到默认主题。",
+      "confirm": "删除主题"
+    }
+  }
+}

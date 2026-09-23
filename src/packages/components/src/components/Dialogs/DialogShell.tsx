@@ -26,7 +26,11 @@ export interface DialogShellProps {
   testId: string;
   /** Focused when the dialog opens. Never the destructive confirm. */
   initialFocusRef?: React.RefObject<HTMLElement | null>;
-  footer: React.ReactNode;
+  /**
+   * The button row. Omitted, no footer is rendered: `CreatePlanDialog`'s only actions live in its
+   * `ContentInput` (V1 `new Dialog(..., new DialogHeader(...), new DialogBody(...))`, no footer).
+   */
+  footer?: React.ReactNode;
   children?: React.ReactNode;
   /** Overrides the accessible name Radix would otherwise derive from `title` via `aria-labelledby`. */
   ariaLabel?: string;
@@ -50,7 +54,21 @@ export interface DialogShellProps {
    * dialogs carrying three or four choices use so the last one does not fall off a narrow window.
    */
   footerClassName?: string;
+  /**
+   * Below `sm`, dock the dialog to the bottom edge at full width instead of floating it near the top -
+   * V1's `breakpoint == Mobile ? new Sheet(...).Side(SheetSide.Bottom).Height(Size.Fit())` swap
+   * (`CreatePlanDialog.Build`). Both surfaces dismiss the same ways and carry the same title, so the
+   * swap is a placement change on one surface rather than a second component.
+   */
+  mobileSheet?: boolean;
 }
+
+/**
+ * The classes {@link DialogShellProps.mobileSheet} adds. `!` where `DialogContent` pins its own
+ * `max-sm:!w-[calc(100%-2rem)]`, which this overrides to the full width a bottom sheet has.
+ */
+const MOBILE_SHEET_CLASSES =
+  "max-sm:!top-auto max-sm:!bottom-0 max-sm:!w-full max-sm:!max-w-full max-sm:rounded-b-none max-sm:max-h-[90vh]";
 
 /**
  * The key cap for the chord a dialog declared, rendered *inside* the button that chord fires.
@@ -123,6 +141,7 @@ export function DialogShell({
   shortcut,
   onShortcut,
   footerClassName,
+  mobileSheet = false,
 }: DialogShellProps) {
   const invokerRef = React.useRef<HTMLElement | null>(null);
 
@@ -162,7 +181,10 @@ export function DialogShell({
     >
       <DialogContent
         data-testid={testId}
-        className={DIALOG_WIDTH[width]}
+        className={[DIALOG_WIDTH[width], mobileSheet ? MOBILE_SHEET_CLASSES : undefined]
+          .filter(Boolean)
+          .join(" ")}
+        data-mobile-sheet={mobileSheet ? "true" : undefined}
         onKeyDown={handleKeyDown}
         // Framework's own dialog host does exactly this, for every dialog: a click on the overlay is
         // not an answer to the question the dialog is asking.
@@ -197,7 +219,7 @@ export function DialogShell({
         {children !== undefined && (
           <div className="flex-1 overflow-y-auto px-6 pb-2 text-sm text-foreground">{children}</div>
         )}
-        <DialogFooter className={footerClassName}>{footer}</DialogFooter>
+        {footer !== undefined && <DialogFooter className={footerClassName}>{footer}</DialogFooter>}
       </DialogContent>
     </Dialog>
   );

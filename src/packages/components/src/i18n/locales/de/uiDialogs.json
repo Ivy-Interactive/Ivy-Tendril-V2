@@ -59,7 +59,8 @@
       "hint": "Der lokale Repository-Pfad, für den das Issue geöffnet wird, kein owner/name-Kürzel."
     },
     "assignee": {
-      "label": "Zugewiesene Person"
+      "label": "Zugewiesene Person",
+      "none": "Keine Zuweisung"
     },
     "labels": {
       "label": "Labels",
@@ -68,7 +69,9 @@
     "comment": {
       "label": "Kommentar",
       "placeholder": "Zusätzlicher Kontext, der an den Issue-Text angehängt wird…"
-    }
+    },
+    "metadataLoading": "Zuständige und Labels werden von GitHub geladen…",
+    "metadataError": "Zuständige und Labels konnten nicht von GitHub geladen werden: {{error}}"
   },
   "createPr": {
     "title": "PR für #{{planId}} erstellen",
@@ -98,11 +101,22 @@
     },
     "reviewers": {
       "label": "Reviewer",
-      "hint": "Kommagetrennte GitHub-Logins. V2 hat kein eigenes Feld für die zugewiesene Person – die CLI übernimmt eine zugewiesene Person in die Reviewer-Liste, daher ist es derselbe Kanal."
+      "hint": "Kommagetrennte GitHub-Logins. V2 hat kein eigenes Feld für die zugewiesene Person – die CLI übernimmt eine zugewiesene Person in die Reviewer-Liste, daher ist es derselbe Kanal.",
+      "loadError": "Reviewer konnten nicht von GitHub geladen werden: {{error}}"
     },
     "comment": {
       "label": "Kommentar",
       "placeholder": "Was der Reviewer vor dem Lesen des Diffs wissen sollte…"
+    },
+    "targetBranch": {
+      "label": "Ziel-Branch",
+      "defaultOption": "{{branch}} (Standard)",
+      "repoDefault": "Basis-Branch des jeweiligen Repositorys",
+      "custom": "+ Eigener Branch...",
+      "chooseFromList": "Aus Liste wählen",
+      "customPlaceholder": "Eigenen Branch-Namen eingeben...",
+      "customHint": "Der Pull Request zielt auf diesen eigenen Branch statt auf {{branch}}.",
+      "customHintRepoDefault": "Der Pull Request zielt auf diesen eigenen Branch statt auf den Basis-Branch des jeweiligen Repositorys."
     }
   },
   "deleteProject": {
@@ -126,7 +140,14 @@
     "changeCount_one": "{{count}} nicht committete Änderung",
     "changeCount_other": "{{count}} nicht committete Änderungen",
     "moreChanges_one": "+{{count}} weitere",
-    "moreChanges_other": "+{{count}} weitere"
+    "moreChanges_other": "+{{count}} weitere",
+    "syncRepos": "Repos synchronisieren",
+    "createPlan": {
+      "description_one": "⚠ {{count}} Repository hat nicht committete Änderungen. Der Plan wird auf dieser Grundlage geschrieben.",
+      "description_other": "⚠ {{count}} Repositorys haben nicht committete Änderungen. Der Plan wird auf dieser Grundlage geschrieben.",
+      "proceed": "Ohne Synchronisieren erstellen",
+      "context": "Der Plan basiert auf diesem Stand, aber ExecutePlan erstellt seinen Branch von <code>{{branch}}</code>. Committen und pushen Sie zuerst, wenn diese Änderungen in den Plan einfließen sollen."
+    }
   },
   "jobDebug": {
     "title": "Job-Debug",
@@ -217,7 +238,8 @@
     "confirm": "Löschen",
     "body": "Möchten Sie Plan #{{planId}} wirklich dauerhaft löschen? Dadurch werden der Planordner, alle Revisionen und alle Verifikationsberichte entfernt. Dies kann nicht rückgängig gemacht werden. Um den Ordner zu behalten, setzen Sie den Plan stattdessen auf „Übersprungen“ oder verschieben Sie ihn in die Icebox.",
     "skip": "Auf „Übersprungen“ setzen",
-    "archive": "In die Icebox verschieben"
+    "archive": "In die Icebox verschieben",
+    "bodyIcebox": "Möchten Sie Plan #{{planId}} wirklich endgültig löschen? Dadurch werden der Planordner, alle Revisionen und alle Verifizierungsberichte entfernt. Dies kann nicht rückgängig gemacht werden."
   },
   "planSearch": {
     "title": "Pläne durchsuchen",
@@ -305,5 +327,51 @@
     "instructionsLabel": "Anweisungen",
     "instructionsAriaLabel": "Anweisungen zur Aktualisierung",
     "instructionsPlaceholder": "Die beantworteten Fragen einarbeiten, dann den Umfang auf die Guard-Kette beschränken…"
+  },
+  "createPlan": {
+    "title": "Neuen Plan erstellen",
+    "projectPickerLabel": "Zielprojekt",
+    "autoProject": "Automatisch",
+    "addProject": "+ Neues Projekt hinzufügen",
+    "submit": "Erstellen",
+    "placeholder": "Aufgabenbeschreibung eingeben…",
+    "emptyDescription": "Geben Sie eine Beschreibung für den neuen Plan ein.",
+    "continueInChat": "Mit {{agent}} chatten"
+  },
+  "recommendationNote": {
+    "submit": "Absenden",
+    "accept": {
+      "title": "Empfehlung annehmen",
+      "ariaLabel": "Empfehlung annehmen",
+      "noteLabel": "Optionale Notiz:",
+      "noteAriaLabel": "Optionale Notiz",
+      "placeholder": "Optionale Notizen eingeben…"
+    },
+    "decline": {
+      "title": "Empfehlung ablehnen",
+      "ariaLabel": "Empfehlung ablehnen",
+      "noteLabel": "Grund für die Ablehnung:",
+      "noteAriaLabel": "Grund für die Ablehnung",
+      "placeholder": "Grund für die Ablehnung eingeben…"
+    }
+  },
+  "syncRepo": {
+    "title": "SyncRepo",
+    "body": "Wie soll SyncRepo mit Ihren nicht committeten Änderungen umgehen? Commits werden nach <code>{{branch}}</code> gepusht und Merge-Probleme werden gelöst.",
+    "body_untracked": "Wie soll SyncRepo mit Ihren nicht verfolgten Dateien umgehen? Commits werden nach <code>{{branch}}</code> gepusht und Merge-Probleme werden gelöst.",
+    "body_both": "Wie soll SyncRepo mit Ihren nicht committeten Änderungen und nicht verfolgten Dateien umgehen? Commits werden nach <code>{{branch}}</code> gepusht und Merge-Probleme werden gelöst.",
+    "bodyEachBranch": "Wie soll SyncRepo mit Ihren nicht committeten Änderungen umgehen? Commits werden in den Basis-Branch des jeweiligen Repositorys gepusht und Merge-Probleme werden gelöst.",
+    "bodyEachBranch_untracked": "Wie soll SyncRepo mit Ihren nicht verfolgten Dateien umgehen? Commits werden in den Basis-Branch des jeweiligen Repositorys gepusht und Merge-Probleme werden gelöst.",
+    "bodyEachBranch_both": "Wie soll SyncRepo mit Ihren nicht committeten Änderungen und nicht verfolgten Dateien umgehen? Commits werden in den Basis-Branch des jeweiligen Repositorys gepusht und Merge-Probleme werden gelöst.",
+    "stash": "Änderungen stashen",
+    "commit": "Committen und pushen",
+    "pullRequest": "PR erstellen"
+  },
+  "attachments": {
+    "label": "Anhänge",
+    "attach": "Dateien anhängen",
+    "attaching": "Wird angehängt…",
+    "remove": "{{name}} entfernen",
+    "failed": "{{name}} konnte nicht angehängt werden: {{error}}"
   }
 }

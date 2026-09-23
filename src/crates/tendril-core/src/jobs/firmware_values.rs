@@ -180,6 +180,10 @@ fn add_plan_scoped_values(
             if let Some(comment) = a.comment.as_ref().filter(|c| !c.is_empty()) {
                 values.insert("PrComment".to_string(), comment.clone());
             }
+            // V1 `JobLauncher.AddCreatePrOptions`: `PrBaseBranch` only when the dialog named one.
+            if let Some(base) = pr_base_branch_override(args) {
+                values.insert("PrBaseBranch".to_string(), base.to_string());
+            }
         }
         JobArgs::CreateIssue(a) => {
             if !a.repo.is_empty() {
@@ -217,7 +221,9 @@ fn add_plan_scoped_values(
         JobArgs::ExecutePlan(_) | JobArgs::RetryPlan(_) | JobArgs::CreatePr(_)
     ) {
         let project_config = find_project(settings, &resolve_project(job, settings));
-        if let Some(repo_configs) = build_repo_configs_yaml(&plan, project_config) {
+        if let Some(repo_configs) =
+            build_repo_configs_yaml_with_base(&plan, project_config, pr_base_branch_override(args))
+        {
             values.insert("RepoConfigs".to_string(), repo_configs);
         }
     }
@@ -307,6 +313,30 @@ pub fn build_repo_configs_yaml(
     plan: &PlanYaml,
     project_config: Option<&ProjectConfig>,
 ) -> Option<String> {
+    build_repo_configs_yaml_with_base(plan, project_config, None)
+}
+
+/// A CreatePr job's Target Branch, trimmed; `None` for every other job and for a blank value.
+fn pr_base_branch_override(args: &JobArgs) -> Option<&str> {
+    match args {
+        JobArgs::CreatePr(a) => a
+            .base_branch
+            .as_deref()
+            .map(str::trim)
+            .filter(|b| !b.is_empty()),
+        _ => None,
+    }
+}
+
+/// [`build_repo_configs_yaml`], with every *plan* repo's `baseBranch` replaced by `base_override`
+/// when one is given. V1 `JobLauncher.AddPlanRepos(..., baseBranchOverride)`: a PR targeted at a
+/// branch other than the configured one has to be opened, and merged, against that branch in every
+/// repo. The read-only build dependencies keep their own base branch - no PR is opened in them.
+pub fn build_repo_configs_yaml_with_base(
+    plan: &PlanYaml,
+    project_config: Option<&ProjectConfig>,
+    base_override: Option<&str>,
+) -> Option<String> {
     if plan.repos.is_empty() {
         return None;
     }
@@ -320,10 +350,13 @@ pub fn build_repo_configs_yaml(
     let mut lines = Vec::new();
 
     for repo_path in &plan.repos {
-        let base_branch = project_config
-            .and_then(|c| find_repo_ref(c, repo_path))
-            .and_then(|r| r.base_branch.clone())
-            .unwrap_or_else(|| "main".to_string());
+        let base_branch = match base_override {
+            Some(base) => base.to_string(),
+            None => project_config
+                .and_then(|c| find_repo_ref(c, repo_path))
+                .and_then(|r| r.base_branch.clone())
+                .unwrap_or_else(|| "main".to_string()),
+        };
         lines.push(format!("- path: {}", repo_path));
         lines.push(format!("  baseBranch: {}", base_branch));
     }

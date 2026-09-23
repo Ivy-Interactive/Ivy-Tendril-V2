@@ -16,6 +16,11 @@ export interface PlanActionsOptions {
   annotations: Annotation[];
   answeredQuestionCount: number;
   hasActiveJob: (type: string) => boolean;
+  /**
+   * V1's `BetaHelper.IsBeta`: the Share icon action (`if (ctx.IsBeta) actions.Action("Share", ...)`,
+   * `DraftActions.cs:144`) exists only for a beta install.
+   */
+  isBeta?: boolean;
   /** The page's `t`, so the labels follow its language. */
   t: TFunction<"plans">;
 }
@@ -52,6 +57,7 @@ export function buildPlanActions({
   annotations,
   answeredQuestionCount,
   hasActiveJob,
+  isBeta = false,
   t,
 }: PlanActionsOptions): PlanActionSet {
   // Gating checks
@@ -98,6 +104,11 @@ export function buildPlanActions({
         shortcut: "U",
         disabled: pendingAction !== null || hasActiveJob("UpdatePlan"),
       });
+    }
+
+    // `if (ctx.IsBeta) actions.Action("Share", "Share", Icons.Share2, SharePlan)`, right after Update.
+    if (isBeta) {
+      iconActions.push({ tag: "share", label: t("actions.share"), icon: "Share2" });
     }
 
     // The overflow menu, in `DraftActions`' own order.

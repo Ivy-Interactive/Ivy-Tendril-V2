@@ -70,7 +70,8 @@
     "completePlan": "Complete Plan",
     "retryPlan": "Retry Plan",
     "acceptPartialDelivery": "Accept Partial Delivery",
-    "resetToDraft": "Reset to Draft…"
+    "resetToDraft": "Reset to Draft…",
+    "share": "Share"
   },
   "draftActions": {
     "execute": "Execute Plan",
@@ -127,7 +128,23 @@
     "repositories": "Repositories",
     "noRepositories": "No repositories specified",
     "commits": "Commits",
-    "noCommits": "No commits yet"
+    "noCommits": "No commits yet",
+    "jobs": {
+      "heading": "Jobs",
+      "columns": {
+        "status": "Status",
+        "type": "Type",
+        "cost": "Cost",
+        "tokens": "Tokens",
+        "message": "Status Message",
+        "actions": "Actions"
+      },
+      "debug": "Debug",
+      "debugTooltip": "Show debug details for this job",
+      "costTooltip": "Show the cost and token breakdown",
+      "costTitle": "Cost & Tokens",
+      "costTitleWithPlan": "Cost & Tokens — {{planId}}"
+    }
   },
   "verificationStatus": {
     "pass": "Pass",
@@ -143,32 +160,12 @@
     "hideReport": "Hide report",
     "noReport": "No report yet"
   },
-  "reportSheet": {
-    "title": "Verification Report",
-    "description": "Verification report details for {{name}}",
-    "descriptionFallback": "Verification report details for plan",
-    "loading": "Loading verification report…",
-    "notFound": "No verification report file found for \"{{name}}\".",
-    "empty": "No report available for {{name}}."
-  },
   "artifactSheet": {
     "thumbnail": {
       "openLabel": "Open {{fileName}}",
       "noPreview": "No preview",
       "loadingLabel": "Loading {{fileName}}"
-    },
-    "fallbackTitle": "Artifact",
-    "noPreviewTitle": "No preview",
-    "showInFolder": "Show in folder",
-    "loadingLabel": "Loading {{fileName}}",
-    "imageFailed": "Tendril could not load this image.",
-    "imageFailedWithError": "Tendril could not load this image: {{error}}",
-    "binary": "{{fileName}} is not a text file ({{size}}), so it has no preview here.",
-    "tooLarge": "{{fileName}} is {{size}}, too large to preview here.",
-    "plainNotice": "Shown as plain text: at {{size}}, {{fileName}} is too large to highlight.",
-    "plainNotice_markdown": "Shown as plain text: at {{size}}, {{fileName}} is too large to render as markdown.",
-    "copyPath": "Copy path",
-    "revealLabel": "Show in folder"
+    }
   },
   "pullRequests": {
     "title": "Pull Requests",
@@ -222,16 +219,6 @@
     },
     "thawFailed": "Could not thaw plan {{id}}: {{error}}"
   },
-  "newPlan": {
-    "title": "Create New Plan",
-    "closeLabel": "Close modal",
-    "projectPickerLabel": "Target Project",
-    "autoProject": "Auto",
-    "addProject": "+ Add New Project",
-    "submit": "Create",
-    "placeholder": "Enter task description...",
-    "emptyDescription": "Please enter a description for the new plan."
-  },
   "planActions": {
     "canExecute": {
       "alreadyCompleted": "Plan is already completed.",
@@ -277,5 +264,9 @@
   "store": {
     "rollbackField": "Rollback: Failed to update {{field}}: {{error}}",
     "rollbackVerification": "Rollback verification update: {{error}}"
+  },
+  "share": {
+    "linkCopiedTitle": "Link Copied",
+    "linkCopied": "Plan share link copied to clipboard"
   }
 }

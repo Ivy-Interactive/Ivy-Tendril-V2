@@ -102,10 +102,6 @@
     "planSearch": "Sök planer",
     "showShortcuts": "Visa kortkommandon"
   },
-  "shortcutsHelp": {
-    "title": "Kortkommandon",
-    "empty": "Inga kortkommandon är aktiva."
-  },
   "updateCheck": {
     "available": {
       "title": "Uppdatering tillgänglig",
@@ -122,7 +118,8 @@
   "updateNotice": {
     "available": "v{{latest}} är tillgänglig (du har v{{current}})",
     "copyCommand": "Kopiera kommando",
-    "dismiss": "Avfärda"
+    "dismiss": "Avfärda",
+    "showDetails": "Visa detaljer"
   },
   "offlineBanner": {
     "reconnecting": "Tendril-Service är frånkopplad. Ansluter automatiskt igen om {{seconds}} s…",
@@ -143,10 +140,6 @@
     "dismissNavError": "Stäng navigeringsfelet"
   },
   "stopQueued": {
-    "title": "Stoppa köade jobb",
-    "body_one": "Vill du stoppa {{count}} köat jobb? Jobb som körs påverkas inte.",
-    "body_other": "Vill du stoppa alla {{count}} köade jobb? Jobb som körs påverkas inte.",
-    "confirm": "Stoppa alla",
     "toast": {
       "title": "Jobb",
       "description_one": "Stoppade {{count}} köat jobb.",
@@ -154,10 +147,6 @@
     }
   },
   "stopAll": {
-    "title": "Stoppa alla jobb",
-    "body_one": "Vill du stoppa {{count}} aktivt jobb? Agenter som körs avslutas och deras planer återgår till sitt tidigare tillstånd. Det går inte att ångra.",
-    "body_other": "Vill du stoppa alla {{count}} aktiva jobb? Agenter som körs avslutas och deras planer återgår till sitt tidigare tillstånd. Det går inte att ångra.",
-    "confirm": "Stoppa alla",
     "toast": {
       "title": "Jobben har stoppats",
       "description_one": "Stoppade {{count}} jobb",

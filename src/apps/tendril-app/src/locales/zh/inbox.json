@@ -154,21 +154,6 @@
       }
     }
   },
-  "sheet": {
-    "titleFallback": "Issue",
-    "assigned": "负责人：{{assignees}}",
-    "openOnGitHub": "在 GitHub 上打开",
-    "dismiss": {
-      "label": "忽略",
-      "tooltip": "永久忽略：已分配 Issue 检查将不再推荐此 Issue"
-    },
-    "accept": {
-      "label": "接受",
-      "tooltip": "在 {{project}} 中为此 Issue 启动计划"
-    },
-    "fireOff": "在 Tendril 中启动",
-    "noDescription": "未提供描述。"
-  },
   "pullRequests": {
     "title": "Pull Requests",
     "status": {
@@ -219,11 +204,6 @@
     },
     "statusFilterPlaceholder": "按状态筛选…",
     "resyncAll": "全部重新同步",
-    "resyncing": "正在重新同步…",
-    "sheet": {
-      "titleFallback": "计划",
-      "loadingRevision": "正在加载修订版本…",
-      "notFound": "计划未找到或为空。"
-    }
+    "resyncing": "正在重新同步…"
   }
 }

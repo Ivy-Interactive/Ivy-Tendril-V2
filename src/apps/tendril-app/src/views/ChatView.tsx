@@ -19,11 +19,16 @@ import {
   CHAT_VIRTUALIZATION_MIN_MESSAGES,
   estimateChatMessageHeight,
 } from "../hooks/useChatMessageWindow";
-import { ConfirmDialog } from "@ivy-interactive/components/dialogs";
+import {
+  ChatSearchDialog,
+  DeleteChatSessionDialog,
+  ImageLightbox,
+  type ChatSearchSession,
+  type LightboxImage,
+} from "@ivy-interactive/components/dialogs";
 import { ChatMessageRow } from "./ChatMessageRow";
 import { ChatHeader, JobsMenu, SYNTHETIC_JOB_TYPE } from "./ChatHeader";
 import { AgentPicker } from "../components/chat/AgentPicker";
-import { ImageLightbox, type LightboxImage } from "../components/chat/ImageLightbox";
 import { ComposerAttachment } from "../components/chat/ComposerAttachment";
 import { ErrorBanner } from "../components/ErrorBanner";
 import { resolveJobState } from "../utils/jobStatus";
@@ -40,7 +45,6 @@ import {
 import { usePendingChatQuestions } from "../hooks/usePendingChatQuestions";
 import { useWireframeBaseUrl } from "../api/proxyOrigin";
 import { ChatEmptyState } from "./chat/ChatEmptyState";
-import { ChatSearchDialog } from "./chat/ChatSearchDialog";
 import { ChatQueuedMessages } from "./chat/QueuedMessages";
 import { needsMultipleLines } from "./chat/composerMetrics";
 import { buildChatSamplePrompts, buildGreeting, type SamplePrompt } from "./chat/samplePrompts";
@@ -98,9 +102,6 @@ interface ChatViewProps {
   draftPrompt?: { text: string; token: number };
 }
 
-/** `ChatSearchDialog.MaxResults`: the search dialog never lists more than fifteen chats. */
-const MAX_CHAT_SEARCH_RESULTS = 15;
-
 /** The transcription socket the shared composer defaults to; the mic here speaks to the same one. */
 const TRANSCRIPTION_URL = "wss://tendril-api.ivy.app/transcribe/ws";
 
@@ -140,7 +141,6 @@ export const ChatView: React.FC<ChatViewProps> = ({
   const [inputPrompt, setInputPrompt] = useState("");
   /** `ChatApp`'s own search trigger, opened from the Chats section's search icon. */
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
   // The chat beside a plan resolves `wireframe` fences against that plan; the general chat page
   // has no plan, so a fence there renders a placeholder. The base names the daemon's origin, not
   // the app's -- see `useWireframeBaseUrl`.
@@ -707,10 +707,11 @@ export const ChatView: React.FC<ChatViewProps> = ({
       };
 
   const sessionPendingDeletion = sessions.find((s) => s.id === deletingSessionId);
-  // Two sentences rather than a name spliced into one: the quotes around a title are the language's.
-  const sessionPendingDeletionBody = sessionPendingDeletion?.title.trim()
-    ? t("deleteSession.body", { title: displayTitle(sessionPendingDeletion, t) })
-    : t("deleteSession.bodyUntitled");
+  // V1 quotes the chat's own title and asks about "this chat session" when it has none, so an
+  // untitled chat goes to the dialog as no title rather than as its fallback label.
+  const sessionPendingDeletionTitle = sessionPendingDeletion?.title.trim()
+    ? displayTitle(sessionPendingDeletion, t)
+    : null;
 
   /**
    * The Chats list goes to the shell sidebar, not into this page: `ChatApp.Build` renders no list of
@@ -729,10 +730,8 @@ export const ChatView: React.FC<ChatViewProps> = ({
             (id) => store.sessionRowState(id),
             {
               onNew: () => void handleCreateSession(),
-              onSearch: () => {
-                setSearchQuery("");
-                setIsSearchOpen(true);
-              },
+              // The dialog starts its query empty on every open, as V1's fresh `UseState("")` does.
+              onSearch: () => setIsSearchOpen(true),
               onSelect: (id) => void store.selectSession(id),
               onRename: (id, title) => void store.renameSession(id, title),
               onDelete: (id) => setDeletingSessionId(id),
@@ -748,15 +747,19 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
   usePublishSidebarList(sidebarList);
 
-  /** `ChatSearchDialog`: a case-insensitive match on the chat's display title, capped at fifteen. */
-  const searchResults = useMemo(() => {
-    const term = searchQuery.trim().toLowerCase();
-    return sessions
-      .filter(
-        (session) => term.length === 0 || displayTitle(session, t).toLowerCase().includes(term),
-      )
-      .slice(0, MAX_CHAT_SEARCH_RESULTS);
-  }, [sessions, searchQuery, t]);
+  /**
+   * The chats `ChatSearchDialog` searches, under the title the sidebar shows them by - which is also
+   * what V1 matches the query against (`ChatApp.DisplayTitle`). The dialog filters and caps.
+   */
+  const searchSessions = useMemo<ChatSearchSession[]>(
+    () =>
+      sessions.map((session) => ({
+        id: session.id,
+        title: displayTitle(session, t),
+        updatedAt: session.updatedAt,
+      })),
+    [sessions, t],
+  );
 
   return (
     /* One tooltip Provider for the whole composer, the way V1 registers the chat widget:
@@ -1172,24 +1175,20 @@ export const ChatView: React.FC<ChatViewProps> = ({
 
           <ImageLightbox image={activeLightboxImage} onClose={() => setActiveLightboxImage(null)} />
 
-          {/* The app's confirmation contract, rather than a bare `AlertDialog`: `AlertDialogAction`
-            renders the *primary* treatment, so deleting a chat looked like the safe choice, and a
-            rejected delete had nowhere to report itself. `ConfirmDialog` carries the destructive
-            variant, the inline error surface, and the Escape/outside-click rules from `DialogShell`. */}
-          <ConfirmDialog
+          {/* `Apps/Chat/Dialogs/DeleteSessionDialog`, with V1's wording. On the app's confirmation
+            contract rather than a bare `AlertDialog`: `AlertDialogAction` renders the *primary*
+            treatment, so deleting a chat looked like the safe choice, and a rejected delete had
+            nowhere to report itself. The dialog stays open on a refusal and shows why. */}
+          <DeleteChatSessionDialog
             isOpen={deletingSessionId !== null}
             onClose={() => {
               setDeletingSessionId(null);
               setDeleteSessionError(null);
             }}
-            title={t("deleteSession.title")}
-            body={sessionPendingDeletionBody}
-            confirmLabel={t("common:actions.delete")}
-            confirmVariant="destructive"
+            sessionTitle={sessionPendingDeletionTitle}
             onConfirm={() => void confirmDeleteSession()}
             isBusy={isDeletingSession}
             error={deleteSessionError}
-            testId="chat-delete-session-dialog"
           />
 
           {/* `Apps/Chat/Dialogs/ChatSearchDialog`: search over chat titles, opened from the Chats
@@ -1201,12 +1200,10 @@ export const ChatView: React.FC<ChatViewProps> = ({
             offer, since the panel follows the plan's session and cannot be pointed at another. */}
           {!embedded && (
             <ChatSearchDialog
-              isSearchOpen={isSearchOpen}
-              setIsSearchOpen={setIsSearchOpen}
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-              searchResults={searchResults}
-              store={store}
+              isOpen={isSearchOpen}
+              onClose={() => setIsSearchOpen(false)}
+              sessions={searchSessions}
+              onSelectSession={(id) => void store.selectSession(id)}
             />
           )}
         </main>

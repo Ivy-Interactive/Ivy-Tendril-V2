@@ -1,5 +1,5 @@
 import React from "react";
-import { Plus, X } from "lucide-react";
+import { FolderSearch, Plus, X } from "lucide-react";
 import {
   Button,
   Callout,
@@ -63,6 +63,8 @@ import {
 import { classifyRepoPath, isValidRepoPath, normalizeRepoPath } from "../../onboarding/validation";
 import { DeleteProjectDialog } from "../../dialogs/DeleteProjectDialog";
 import { RemoveProjectDialog } from "../../dialogs/RemoveProjectDialog";
+import { ImportRepoAssetsDialog } from "../../dialogs/ImportRepoAssetsDialog";
+import { ProjectMemorySection } from "./ProjectMemorySection";
 import {
   EnvFileBlade,
   McpServerBlade,
@@ -168,6 +170,8 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
   const [isAddingRepo, setIsAddingRepo] = React.useState(false);
   const [isRemoving, setIsRemoving] = React.useState(false);
   const [isDeleting, setIsDeleting] = React.useState(false);
+  /** Which `ImportRepoAssetsDialog` is open — V1 opens one per table, for skills or MCP servers. */
+  const [importing, setImporting] = React.useState<"skills" | "mcpServers" | null>(null);
   const [basic, setBasic] = React.useState({ color: project.color, context: project.context });
   const [security, setSecurity] = React.useState<ProjectSecurityForm>(project.security);
 
@@ -1030,20 +1034,32 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
           count={project.mcpServers.length}
           testId="project-mcp-servers"
           action={
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                openBlade(
-                  t("mcpServers.addTitle"),
-                  <McpServerBlade existing={null} onSubmit={(s) => submitMcpServer(s, null)} />,
-                )
-              }
-            >
-              <Plus className="size-4" aria-hidden />
-              {t("mcpServers.addButton")}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setImporting("mcpServers")}
+                data-testid="project-mcp-import"
+              >
+                <FolderSearch className="size-4" aria-hidden />
+                {t("importFromRepo")}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  openBlade(
+                    t("mcpServers.addTitle"),
+                    <McpServerBlade existing={null} onSubmit={(s) => submitMcpServer(s, null)} />,
+                  )
+                }
+              >
+                <Plus className="size-4" aria-hidden />
+                {t("mcpServers.addButton")}
+              </Button>
+            </div>
           }
         >
           <DataTable<ProjectMcpServerRefEntry>
@@ -1091,20 +1107,32 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
           count={project.skills.length}
           testId="project-skills"
           action={
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={() =>
-                openBlade(
-                  t("skills.addTitle"),
-                  <SkillBlade existing={null} onSubmit={(s) => submitSkill(s, null)} />,
-                )
-              }
-            >
-              <Plus className="size-4" aria-hidden />
-              {t("skills.addButton")}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setImporting("skills")}
+                data-testid="project-skills-import"
+              >
+                <FolderSearch className="size-4" aria-hidden />
+                {t("importFromRepo")}
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() =>
+                  openBlade(
+                    t("skills.addTitle"),
+                    <SkillBlade existing={null} onSubmit={(s) => submitSkill(s, null)} />,
+                  )
+                }
+              >
+                <Plus className="size-4" aria-hidden />
+                {t("skills.addButton")}
+              </Button>
+            </div>
           }
         >
           <DataTable<ProjectSkillRefEntry>
@@ -1137,12 +1165,9 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
               }
             }}
           />
-          {/* `ProjectMemoryTableView` and `EditProjectMemoryBladeView` read and write markdown files
-              under `<TENDRIL_HOME>/Projects/<Project>/memory/`. The daemon has no memory route and
-              the bridge has no filesystem access, so project memories stay unreachable. */}
-          <Callout.Info data-testid="project-memory-note">
-            {t("skills.memoryNote", { path: "<TENDRIL_HOME>/Projects/<Project>/memory/" })}
-          </Callout.Info>
+          {/* `ProjectMemoryTableView` + `EditProjectMemorySheet`: the markdown files under
+              `<TENDRIL_HOME>/Projects/<Project>/Memory/`, through `/api/projects/:name/memory`. */}
+          <ProjectMemorySection projectName={project.name} requestRemoval={requestAnyRemoval} />
         </SubSection>
       )}
 
@@ -1195,6 +1220,21 @@ export const ProjectDetailBody: React.FC<ProjectSettingsViewProps> = ({
         onClose={() => setIsDeleting(false)}
         projectName={project.name}
         onDeleted={onDeleted}
+      />
+
+      <ImportRepoAssetsDialog
+        isOpen={importing !== null}
+        onClose={() => setImporting(null)}
+        projectName={project.name}
+        kind={importing ?? "skills"}
+        projectRepos={project.repos.map((repo) => repo.path)}
+        onImported={(names) => {
+          notificationsStore.notifySuccess(
+            t("notifications.saved"),
+            t("importedFromRepo", { context: importing ?? "skills", count: names.length }),
+          );
+          void onReloadConfig();
+        }}
       />
 
       {removalDialog}
