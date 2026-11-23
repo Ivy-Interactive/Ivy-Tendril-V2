@@ -1,0 +1,54 @@
+# Dependabot version updates: one grouped pull request per ecosystem a week.
+# Security updates are switched on in the repository settings.
+version: 2
+updates:
+  - package-ecosystem: "github-actions"
+    directories:
+      - "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      github-actions:
+        patterns:
+          - "*"
+  - package-ecosystem: "npm"
+    directories:
+      - "/"
+      - "/src/apps/tendril-app"
+      - "/src/apps/tendril-docs"
+      - "/src/extensions/vscode"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      npm:
+        patterns:
+          - "*"
+  - package-ecosystem: "cargo"
+    directories:
+      - "/"
+      - "/src/apps/tendril-app/src-tauri"
+      - "/src/benchmark/v2-shim"
+      - "/src/crates/tendril-cli"
+      - "/src/crates/tendril-core"
+      - "/src/crates/tendril-server"
+      - "/src/crates/tendril-wireframe"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      cargo:
+        patterns:
+          - "*"
+  - package-ecosystem: "docker"
+    directories:
+      - "/"
+      - "/src/apps/tendril-docs"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      docker:
+        patterns:
+          - "*"
